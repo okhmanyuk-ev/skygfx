@@ -8,17 +8,12 @@ namespace skygfx
 	class Device
 	{
 	public:
-		Device(void* window);
-		~Device();
+		virtual ~Device() {}
 
 		// TODO: arguments should be
 		// std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil
-		void clear(float r, float g, float b, float a); 
+		virtual void clear(float r, float g, float b, float a) = 0;
 
-		void present();
-
-	private:
-		void createMainRenderTarget(uint32_t width, uint32_t height);
-		void destroyMainRenderTarget();
+		virtual void present() = 0;
 	};
 }

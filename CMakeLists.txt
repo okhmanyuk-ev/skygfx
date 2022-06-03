@@ -17,6 +17,17 @@ add_library(${PROJECT_NAME} STATIC
 
 target_include_directories(${PROJECT_NAME} PUBLIC src)
 
+if(WIN32) # TODO: should be available not only in win32 (macos, linux also should be)
+	file(GLOB GLEW_SRC 
+		lib/glew/src/glew.c
+		lib/glew/include/GL/glew.h
+	)
+	add_library(glew STATIC ${GLEW_SRC})
+	target_link_libraries(${PROJECT_NAME} glew)
+	target_include_directories(glew PUBLIC lib/glew/include)
+	target_compile_definitions(glew PRIVATE -DGLEW_STATIC)
+endif()
+
 # examples
 
 add_executable(example

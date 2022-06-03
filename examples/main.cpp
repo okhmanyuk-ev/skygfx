@@ -1,7 +1,7 @@
 #include <iostream>
 
 #include <GLFW/glfw3.h>
-#include <skygfx/device.h>
+#include <skygfx/skygfx.h>
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
@@ -31,16 +31,18 @@ int main()
 
 	auto win32_window = glfwGetWin32Window(window);
 
-	auto device = skygfx::Device(win32_window);
+	skygfx::Device* device = new skygfx::DeviceGL44(win32_window);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		device.clear(0.0f, 1.0f, 0.0f, 1.0f);
-		device.present();
+		device->clear(0.0f, 1.0f, 0.0f, 1.0f);
+		device->present();
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
+
+	delete device;
 
 	glfwTerminate();
 	return 0;
