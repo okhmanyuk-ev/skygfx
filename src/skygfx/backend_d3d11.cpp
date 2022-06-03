@@ -22,7 +22,7 @@ static struct
 
 using namespace skygfx;
 
-BackendD3D11::BackendD3D11(void* window)
+BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 {
 	DXGI_SWAP_CHAIN_DESC sd = {};
 	sd.BufferCount = 2;
@@ -46,8 +46,7 @@ BackendD3D11::BackendD3D11(void* window)
 		static_cast<UINT>(features.size()), D3D11_SDK_VERSION, &sd, &D3D11SwapChain, &D3D11Device,
 		nullptr, &D3D11Context);
 
-
-	createMainRenderTarget(800, 600); // TODO: do not use constants
+	createMainRenderTarget(width, height);
 }
 
 BackendD3D11::~BackendD3D11()

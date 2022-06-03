@@ -11,12 +11,12 @@ using namespace skygfx;
 
 static Backend* gBackend = nullptr;
 
-Device::Device(BackendType type, void* window)
+Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 {
 	assert(gBackend == nullptr);
 
 	if (type == BackendType::D3D11)
-		gBackend = new BackendD3D11(window);
+		gBackend = new BackendD3D11(window, width, height);
 	else if (type == BackendType::OpenGL44)
 		gBackend = new BackendGL44(window);
 }

@@ -13,8 +13,8 @@ int main()
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-	int width = 800;
-	int height = 600;
+	uint32_t width = 800;
+	uint32_t height = 600;
 
 	auto window = glfwCreateWindow(width, height, "Hello World", NULL, NULL);
 
@@ -31,7 +31,7 @@ int main()
 
 	auto win32_window = glfwGetWin32Window(window);
 
-	auto device = skygfx::Device(skygfx::BackendType::OpenGL44, win32_window);
+	auto device = skygfx::Device(skygfx::BackendType::D3D11, win32_window, width, height);
 
 	skygfx::Texture texture;
 

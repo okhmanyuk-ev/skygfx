@@ -27,7 +27,7 @@ namespace skygfx
 	class Device
 	{
 	public:
-		Device(BackendType type, void* window);
+		Device(BackendType type, void* window, uint32_t width, uint32_t height);
 		~Device();
 
 		void setTexture(Texture& texture);
