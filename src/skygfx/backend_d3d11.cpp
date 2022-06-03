@@ -26,7 +26,7 @@ static ID3D11Buffer* D3D11IndexBuffer = nullptr;
 
 using namespace skygfx;
 
-class ShaderData
+class ShaderDataD3D11
 {
 private:
 	ID3D11VertexShader* vertexShader = nullptr;
@@ -34,7 +34,7 @@ private:
 	ID3D11InputLayout* inputLayout = nullptr;
 
 public:
-	ShaderData(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+	ShaderDataD3D11(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
 	{
 		ID3DBlob* vertexShaderBlob;
 		ID3DBlob* pixelShaderBlob;
@@ -94,7 +94,7 @@ public:
 		D3D11Device->CreateInputLayout(input.data(), static_cast<UINT>(input.size()), vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), &inputLayout);
 	}
 
-	~ShaderData()
+	~ShaderDataD3D11()
 	{
 		vertexShader->Release();
 		pixelShader->Release();
@@ -179,7 +179,7 @@ void BackendD3D11::setTexture(TextureHandle* handle)
 
 void BackendD3D11::setShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderData*)handle;
+	auto shader = (ShaderDataD3D11*)handle;
 	shader->apply();
 }
 
@@ -298,13 +298,13 @@ void BackendD3D11::destroyTexture(TextureHandle* handle)
 
 ShaderHandle* BackendD3D11::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
 {
-	auto shader = new ShaderData(layout, vertex_code, fragment_code);
+	auto shader = new ShaderDataD3D11(layout, vertex_code, fragment_code);
 	return (ShaderHandle*)shader;
 }
 
 void BackendD3D11::destroyShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderData*)handle;
+	auto shader = (ShaderDataD3D11*)handle;
 	delete shader;
 }
 

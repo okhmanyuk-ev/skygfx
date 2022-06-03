@@ -1,16 +1,197 @@
 #include "backend_gl44.h"
 
+#include <unordered_map>
+#include <stdexcept>
+#include <iostream>
+
 #define GLEW_STATIC
 #include <GL/glew.h>
 #include <GL/GL.h>
 #include <GL/wglew.h>
+
 #pragma comment(lib, "opengl32")
 #pragma comment(lib, "glu32")
 
 using namespace skygfx;
 
+void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
+	const GLchar* message, const void* userParam)
+{
+	static const std::unordered_map<GLenum, std::string> SourceMap = {
+		{ GL_DEBUG_SOURCE_API, "GL_DEBUG_SOURCE_API" },
+		{ GL_DEBUG_SOURCE_WINDOW_SYSTEM, "GL_DEBUG_SOURCE_WINDOW_SYSTEM" },
+		{ GL_DEBUG_SOURCE_SHADER_COMPILER, "GL_DEBUG_SOURCE_SHADER_COMPILER" },
+		{ GL_DEBUG_SOURCE_THIRD_PARTY, "GL_DEBUG_SOURCE_THIRD_PARTY" },
+		{ GL_DEBUG_SOURCE_APPLICATION, "GL_DEBUG_SOURCE_APPLICATION" },
+		{ GL_DEBUG_SOURCE_OTHER, "GL_DEBUG_SOURCE_OTHER" },
+	};
+
+	static const std::unordered_map<GLenum, std::string> TypeMap = {
+		{ GL_DEBUG_TYPE_ERROR, "GL_DEBUG_TYPE_ERROR" },
+		{ GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR, "GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR" },
+		{ GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR, "GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR" },
+		{ GL_DEBUG_TYPE_PORTABILITY, "GL_DEBUG_TYPE_PORTABILITY" },
+		{ GL_DEBUG_TYPE_PERFORMANCE, "GL_DEBUG_TYPE_PERFORMANCE" },
+		{ GL_DEBUG_TYPE_MARKER, "GL_DEBUG_TYPE_MARKER" },
+		{ GL_DEBUG_TYPE_PUSH_GROUP, "GL_DEBUG_TYPE_PUSH_GROUP" },
+		{ GL_DEBUG_TYPE_POP_GROUP, "GL_DEBUG_TYPE_POP_GROUP" },
+		{ GL_DEBUG_TYPE_OTHER, "GL_DEBUG_TYPE_OTHER" },
+	};
+
+	static const std::unordered_map<GLenum, std::string> SeverityMap = {
+		{ GL_DEBUG_SEVERITY_HIGH, "GL_DEBUG_SEVERITY_HIGH" },
+		{ GL_DEBUG_SEVERITY_MEDIUM, "GL_DEBUG_SEVERITY_MEDIUM" },
+		{ GL_DEBUG_SEVERITY_LOW, "GL_DEBUG_SEVERITY_LOW" },
+		{ GL_DEBUG_SEVERITY_NOTIFICATION, "GL_DEBUG_SEVERITY_NOTIFICATION" },
+	};
+
+	std::string source_str = "unknown";
+	std::string type_str = "unknown";
+	std::string severity_str = "unknown";
+
+	if (SourceMap.contains(source))
+		source_str = SourceMap.at(source);
+
+	if (TypeMap.contains(type))
+		type_str = TypeMap.at(type);
+
+	if (SeverityMap.contains(severity))
+		severity_str = SeverityMap.at(severity);
+
+	if (type == GL_DEBUG_TYPE_OTHER)
+		return;
+
+	std::cout << "[OpenGL] source: " << source_str << 
+		", type: " << type_str <<
+		", id: " << id <<
+		", severity: " << severity_str << 
+		", msg: " << message << std::endl;
+}
+
+static const std::unordered_map<Vertex::Attribute::Format, GLint> SizeMap = {
+	{ Vertex::Attribute::Format::R32F, 1 },
+	{ Vertex::Attribute::Format::R32G32F, 2 },
+	{ Vertex::Attribute::Format::R32G32B32F, 3 },
+	{ Vertex::Attribute::Format::R32G32B32A32F, 4 },
+	{ Vertex::Attribute::Format::R8UN, 1 },
+	{ Vertex::Attribute::Format::R8G8UN, 2 },
+	{ Vertex::Attribute::Format::R8G8B8UN, 3 },
+	{ Vertex::Attribute::Format::R8G8B8A8UN, 4 }
+};
+
+static const std::unordered_map<Vertex::Attribute::Format, GLenum> TypeMap = {
+	{ Vertex::Attribute::Format::R32F, GL_FLOAT },
+	{ Vertex::Attribute::Format::R32G32F, GL_FLOAT },
+	{ Vertex::Attribute::Format::R32G32B32F, GL_FLOAT },
+	{ Vertex::Attribute::Format::R32G32B32A32F, GL_FLOAT },
+	{ Vertex::Attribute::Format::R8UN, GL_UNSIGNED_BYTE },
+	{ Vertex::Attribute::Format::R8G8UN, GL_UNSIGNED_BYTE },
+	{ Vertex::Attribute::Format::R8G8B8UN, GL_UNSIGNED_BYTE },
+	{ Vertex::Attribute::Format::R8G8B8A8UN, GL_UNSIGNED_BYTE }
+};
+
+const std::unordered_map<Vertex::Attribute::Format, GLboolean> static NormalizeMap = {
+	{ Vertex::Attribute::Format::R32F, GL_FALSE },
+	{ Vertex::Attribute::Format::R32G32F, GL_FALSE },
+	{ Vertex::Attribute::Format::R32G32B32F, GL_FALSE },
+	{ Vertex::Attribute::Format::R32G32B32A32F, GL_FALSE },
+	{ Vertex::Attribute::Format::R8UN, GL_TRUE },
+	{ Vertex::Attribute::Format::R8G8UN, GL_TRUE },
+	{ Vertex::Attribute::Format::R8G8B8UN, GL_TRUE },
+	{ Vertex::Attribute::Format::R8G8B8A8UN, GL_TRUE }
+};
+
+class ShaderDataGL44
+{
+private:
+	Vertex::Layout layout;
+	GLuint program;
+	GLuint vao;
+
+public:
+	ShaderDataGL44(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+	{
+		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, { "FLIP_TEXCOORD_Y" });
+		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code);
+
+		auto glsl_vert = CompileSpirvToGlsl(vertex_shader_spirv);
+		auto glsl_frag = CompileSpirvToGlsl(fragment_shader_spirv);
+
+		auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
+		auto v = glsl_vert.c_str();
+		glShaderSource(vertexShader, 1, &v, NULL);
+		glCompileShader(vertexShader);
+
+		GLint isCompiled = 0;
+		glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &isCompiled);
+		if (isCompiled == GL_FALSE)
+		{
+			GLint maxLength = 0;
+			glGetShaderiv(vertexShader, GL_INFO_LOG_LENGTH, &maxLength);
+			std::string errorLog;
+			errorLog.resize(maxLength);
+			glGetShaderInfoLog(vertexShader, maxLength, &maxLength, &errorLog[0]);
+			throw std::runtime_error(errorLog);
+		}
+
+		auto fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+		auto f = glsl_frag.c_str();
+		glShaderSource(fragmentShader, 1, &f, NULL);
+		glCompileShader(fragmentShader);
+
+		isCompiled = 0;
+		glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &isCompiled);
+		if (isCompiled == GL_FALSE)
+		{
+			GLint maxLength = 0;
+			glGetShaderiv(fragmentShader, GL_INFO_LOG_LENGTH, &maxLength);
+			std::string errorLog;
+			errorLog.resize(maxLength);
+			glGetShaderInfoLog(fragmentShader, maxLength, &maxLength, &errorLog[0]);
+			throw std::runtime_error(errorLog);
+		}
+
+		program = glCreateProgram();
+		glAttachShader(program, vertexShader);
+		glAttachShader(program, fragmentShader);
+		glLinkProgram(program);
+		glDeleteShader(vertexShader);
+		glDeleteShader(fragmentShader);
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
+		for (int i = 0; i < layout.attributes.size(); i++)
+		{
+			const auto& attrib = layout.attributes.at(i);
+
+			glEnableVertexAttribArray(i);
+			glVertexAttribFormat(i, SizeMap.at(attrib.format), TypeMap.at(attrib.format), 
+				NormalizeMap.at(attrib.format), attrib.offset);
+			glVertexAttribBinding(i, 0);
+		}
+	}
+
+	~ShaderDataGL44()
+	{
+		glDeleteVertexArrays(1, &vao);
+		glDeleteProgram(program);
+	}
+
+	void apply()
+	{
+		glUseProgram(program);
+		glBindVertexArray(vao);
+	}
+};
+
 static HGLRC WglContext;
 static HDC gHDC;
+
+static GLenum GLTopology;
+static GLenum GLIndexType;
+static GLuint GLVertexBuffer;
+static GLuint GLIndexBuffer;
 
 BackendGL44::BackendGL44(void* window)
 {
@@ -74,23 +255,46 @@ BackendGL44::BackendGL44(void* window)
 	WglContext = wglCreateContextAttribsARB(gHDC, 0, attribs);
 	wglMakeCurrent(gHDC, WglContext);
 
-	// auto version = glGetString(GL_VERSION);
+	glEnable(GL_DEBUG_OUTPUT);
+	glDebugMessageCallback(MessageCallback, 0);
 
+	glGenBuffers(1, &GLVertexBuffer);
+	glGenBuffers(1, &GLIndexBuffer);
+
+	glBindBuffer(GL_ARRAY_BUFFER, GLVertexBuffer);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GLIndexBuffer);
 }
 
 BackendGL44::~BackendGL44()
 {
-
+	glDeleteBuffers(1, &GLVertexBuffer);
+	glDeleteBuffers(1, &GLIndexBuffer);
+	
+	wglDeleteContext(WglContext);
 }
 
 void BackendGL44::setTopology(Topology topology)
 {
-	//
+	static const std::unordered_map<Topology, GLenum> TopologyMap = {
+		{ Topology::PointList, GL_POINTS },
+		{ Topology::LineList, GL_LINES },
+		{ Topology::LineStrip, GL_LINE_STRIP },
+		{ Topology::TriangleList, GL_TRIANGLES },
+		{ Topology::TriangleStrip, GL_TRIANGLE_STRIP }
+	};
+
+	GLTopology = TopologyMap.at(topology);
 }
 
 void BackendGL44::setViewport(const Viewport& viewport)
 {
-	//
+	glViewport(
+		(GLint)viewport.position.x,
+		(GLint)viewport.position.y,
+		(GLint)viewport.size.x,
+		(GLint)viewport.size.y);
+
+	glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
 }
 
 void BackendGL44::setTexture(TextureHandle* handle)
@@ -100,17 +304,51 @@ void BackendGL44::setTexture(TextureHandle* handle)
 
 void BackendGL44::setShader(ShaderHandle* handle)
 {
-	//
+	auto shader = (ShaderDataGL44*)handle;
+	shader->apply();
 }
 
 void BackendGL44::setVertexBuffer(const Buffer& buffer)
 {
-	//
+	glBindBuffer(GL_ARRAY_BUFFER, GLVertexBuffer);
+
+	GLint size = 0;
+	glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
+
+	if ((size_t)size < buffer.size)
+	{
+		glBufferData(GL_ARRAY_BUFFER, buffer.size, buffer.data, GL_DYNAMIC_DRAW);
+	}
+	else
+	{
+		auto ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+		memcpy(ptr, buffer.data, buffer.size);
+		glUnmapBuffer(GL_ARRAY_BUFFER);
+	}
+
+	glBindVertexBuffer(0, GLVertexBuffer, 0, buffer.stride);
 }
 
 void BackendGL44::setIndexBuffer(const Buffer& buffer)
 {
-	//
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GLIndexBuffer);
+
+	GLint size = 0;
+	glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
+
+	if ((size_t)size < buffer.size)
+	{
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, buffer.size, buffer.data, GL_DYNAMIC_DRAW);
+	}
+	else
+	{
+		auto ptr = glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+		memcpy(ptr, buffer.data, buffer.size);
+		glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
+
+	}
+
+	GLIndexType = buffer.stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 }
 
 void BackendGL44::setBlendMode(const BlendMode& value)
@@ -158,7 +396,8 @@ void BackendGL44::clear(std::optional<glm::vec4> color, std::optional<float> dep
 
 void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
-	//glDrawElementsBaseVertex(mGLTopology, (GLsizei)indexCount, mGLIndexType, (void*)(indexOffset * indexSize), (GLint)vertexOffset);
+	int index_size = GLIndexType == GL_UNSIGNED_INT ? 4 : 2;
+	glDrawElements(GLTopology, (GLsizei)index_count, GLIndexType, (void*)(index_offset * index_size));
 }
 
 void BackendGL44::present()
@@ -178,10 +417,12 @@ void BackendGL44::destroyTexture(TextureHandle* handle)
 
 ShaderHandle* BackendGL44::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
 {
-	return nullptr;
+	auto shader = new ShaderDataGL44(layout, vertex_code, fragment_code);
+	return (ShaderHandle*)shader;
 }
 
 void BackendGL44::destroyShader(ShaderHandle* handle)
 {
-	//
+	auto shader = (ShaderDataGL44*)handle;
+	delete shader;
 }

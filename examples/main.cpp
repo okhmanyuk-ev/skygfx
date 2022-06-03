@@ -67,7 +67,7 @@ int main()
 
 	auto win32_window = glfwGetWin32Window(window);
 
-	auto device = skygfx::Device(skygfx::BackendType::D3D11, win32_window, width, height);
+	auto device = skygfx::Device(skygfx::BackendType::OpenGL44, win32_window, width, height);
 	auto shader = skygfx::Shader(skygfx::Vertex::PositionColor::Layout, vertex_shader_code, fragment_shader_code);
 
 	auto viewport = skygfx::Viewport();
@@ -76,11 +76,11 @@ int main()
 	while (!glfwWindowShouldClose(window))
 	{
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.setViewport(viewport);
 		device.setTopology(skygfx::Topology::TriangleList);
+		device.setViewport(viewport);
+		device.setShader(shader);
 		device.setVertexBuffer(vertices);
 		device.setIndexBuffer(indices);
-		device.setShader(shader);
 		device.drawIndexed(3);
 		device.present();
 
