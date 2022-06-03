@@ -1,13 +1,14 @@
 #include "backend_d3d11.h"
 
+#include <stdexcept>
+#include <vector>
+#include <unordered_map>
+
 #include <d3dcompiler.h>
 #include <d3d11.h>
+
 #pragma comment(lib, "d3d11")
 #pragma comment(lib, "d3dcompiler")
-
-#include <vector>
-
-// TODO: rename D3D11Name -> gName
 
 static IDXGISwapChain* D3D11SwapChain = nullptr;
 static ID3D11Device* D3D11Device = nullptr;
@@ -20,7 +21,93 @@ static struct
 	ID3D11DepthStencilView* depth_stencil_view;
 } MainRenderTarget;
 
+static ID3D11Buffer* D3D11VertexBuffer = nullptr;
+static ID3D11Buffer* D3D11IndexBuffer = nullptr;
+
 using namespace skygfx;
+
+class ShaderData
+{
+private:
+	ID3D11VertexShader* vertexShader = nullptr;
+	ID3D11PixelShader* pixelShader = nullptr;
+	ID3D11InputLayout* inputLayout = nullptr;
+
+public:
+	ShaderData(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+	{
+		ID3DBlob* vertexShaderBlob;
+		ID3DBlob* pixelShaderBlob;
+
+		ID3DBlob* vertex_shader_error;
+		ID3DBlob* pixel_shader_error;
+
+		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code);
+		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code);
+
+		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv);
+		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv);
+
+		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_4_0", 0, 0, &vertexShaderBlob, &vertex_shader_error);
+		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_4_0", 0, 0, &pixelShaderBlob, &pixel_shader_error);
+
+		std::string vertex_shader_error_string = "";
+		std::string pixel_shader_error_string = "";
+
+		if (vertex_shader_error != nullptr)
+			vertex_shader_error_string = std::string((char*)vertex_shader_error->GetBufferPointer(), vertex_shader_error->GetBufferSize());
+
+		if (pixel_shader_error != nullptr)
+			pixel_shader_error_string = std::string((char*)pixel_shader_error->GetBufferPointer(), pixel_shader_error->GetBufferSize());
+
+		if (vertexShaderBlob == nullptr)
+			throw std::runtime_error(vertex_shader_error_string);
+
+		if (pixelShaderBlob == nullptr)
+			throw std::runtime_error(pixel_shader_error_string);
+
+		D3D11Device->CreateVertexShader(vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), nullptr, &vertexShader);
+		D3D11Device->CreatePixelShader(pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize(), nullptr, &pixelShader);
+
+		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
+			{ Vertex::Attribute::Format::R32F, DXGI_FORMAT_R32_FLOAT },
+			{ Vertex::Attribute::Format::R32G32F, DXGI_FORMAT_R32G32_FLOAT },
+			{ Vertex::Attribute::Format::R32G32B32F, DXGI_FORMAT_R32G32B32_FLOAT },
+			{ Vertex::Attribute::Format::R32G32B32A32F, DXGI_FORMAT_R32G32B32A32_FLOAT },
+			{ Vertex::Attribute::Format::R8UN, DXGI_FORMAT_R8_UNORM },
+			{ Vertex::Attribute::Format::R8G8UN, DXGI_FORMAT_R8G8_UNORM },
+			//	{ Vertex::Attribute::Format::R8G8B8UN, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
+			{ Vertex::Attribute::Format::R8G8B8A8UN, DXGI_FORMAT_R8G8B8A8_UNORM }
+		};
+
+		std::vector<D3D11_INPUT_ELEMENT_DESC> input;
+
+		UINT i = 0;
+
+		for (auto& attrib : layout.attributes)
+		{
+			input.push_back({ "TEXCOORD", i, Format.at(attrib.format), 0,
+				static_cast<UINT>(attrib.offset), D3D11_INPUT_PER_VERTEX_DATA, 0 });
+			i++;
+		}
+
+		D3D11Device->CreateInputLayout(input.data(), static_cast<UINT>(input.size()), vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), &inputLayout);
+	}
+
+	~ShaderData()
+	{
+		vertexShader->Release();
+		pixelShader->Release();
+		inputLayout->Release();
+	}
+
+	void apply()
+	{
+		D3D11Context->IASetInputLayout(inputLayout);
+		D3D11Context->VSSetShader(vertexShader, nullptr, 0);
+		D3D11Context->PSSetShader(pixelShader, nullptr, 0);
+	}
+};
 
 BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 {
@@ -47,6 +134,8 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 		nullptr, &D3D11Context);
 
 	createMainRenderTarget(width, height);
+
+	D3D11Context->OMSetRenderTargets(1, &MainRenderTarget.render_taget_view, MainRenderTarget.depth_stencil_view);
 }
 
 BackendD3D11::~BackendD3D11()
@@ -58,12 +147,137 @@ BackendD3D11::~BackendD3D11()
 	D3D11Device->Release();
 }
 
-void BackendD3D11::clear(float r, float g, float b, float a)
+void BackendD3D11::setTopology(Topology topology)
 {
-	std::vector<float> color = {
-		r, g, b, a
+	const static std::unordered_map<Topology, D3D11_PRIMITIVE_TOPOLOGY> TopologyMap = {
+		{ Topology::PointList, D3D11_PRIMITIVE_TOPOLOGY_POINTLIST },
+		{ Topology::LineList, D3D11_PRIMITIVE_TOPOLOGY_LINELIST },
+		{ Topology::LineStrip, D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP },
+		{ Topology::TriangleList, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST },
+		{ Topology::TriangleStrip, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP }
 	};
-	D3D11Context->ClearRenderTargetView(MainRenderTarget.render_taget_view, (float*)color.data());
+
+	D3D11Context->IASetPrimitiveTopology(TopologyMap.at(topology));
+}
+
+void BackendD3D11::setViewport(const Viewport& viewport)
+{
+	D3D11_VIEWPORT vp;
+	vp.Width = viewport.size.x;
+	vp.Height = viewport.size.y;
+	vp.MinDepth = viewport.min_depth;
+	vp.MaxDepth = viewport.max_depth;
+	vp.TopLeftX = viewport.position.x;
+	vp.TopLeftY = viewport.position.y;
+	D3D11Context->RSSetViewports(1, &vp);
+}
+
+void BackendD3D11::setTexture(TextureHandle* handle)
+{
+	//
+}
+
+void BackendD3D11::setShader(ShaderHandle* handle)
+{
+	auto shader = (ShaderData*)handle;
+	shader->apply();
+}
+
+void BackendD3D11::setVertexBuffer(const Buffer& buffer)
+{
+	D3D11_BUFFER_DESC desc = {};
+
+	if (D3D11VertexBuffer)
+		D3D11VertexBuffer->GetDesc(&desc);
+
+	if (desc.ByteWidth < buffer.size)
+	{
+		if (D3D11VertexBuffer)
+			D3D11VertexBuffer->Release();
+
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.ByteWidth = static_cast<UINT>(buffer.size);
+		desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11VertexBuffer);
+	}
+
+	D3D11_MAPPED_SUBRESOURCE resource;
+	D3D11Context->Map(D3D11VertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+	memcpy(resource.pData, buffer.data, buffer.size);
+	D3D11Context->Unmap(D3D11VertexBuffer, 0);
+
+	auto stride = static_cast<UINT>(buffer.stride);
+	auto offset = static_cast<UINT>(0);
+
+	D3D11Context->IASetVertexBuffers(0, 1, &D3D11VertexBuffer, &stride, &offset);
+}
+
+void BackendD3D11::setIndexBuffer(const Buffer& buffer)
+{
+	D3D11_BUFFER_DESC desc = {};
+
+	if (D3D11IndexBuffer)
+		D3D11IndexBuffer->GetDesc(&desc);
+
+	if (desc.ByteWidth < buffer.size)
+	{
+		if (D3D11IndexBuffer)
+			D3D11IndexBuffer->Release();
+
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.ByteWidth = static_cast<UINT>(buffer.size);
+		desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11IndexBuffer);
+	}
+
+	D3D11_MAPPED_SUBRESOURCE resource;
+	D3D11Context->Map(D3D11IndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+	memcpy(resource.pData, buffer.data, buffer.size);
+	D3D11Context->Unmap(D3D11IndexBuffer, 0);
+
+	D3D11Context->IASetIndexBuffer(D3D11IndexBuffer, buffer.stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
+}
+
+void BackendD3D11::setBlendMode(const BlendMode& value)
+{
+	//
+}
+
+void BackendD3D11::clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil)
+{
+	auto rtv = MainRenderTarget.render_taget_view;
+	auto dsv = MainRenderTarget.depth_stencil_view;
+
+	//if (currentRenderTarget != nullptr)
+	//{
+	//	rtv = currentRenderTarget->mRenderTargetImpl->render_target_view;
+	//	dsv = currentRenderTarget->mRenderTargetImpl->depth_stencil_view;
+	//}
+
+	if (color.has_value())
+	{
+		D3D11Context->ClearRenderTargetView(rtv, (float*)&color.value());
+	}
+
+	if (depth.has_value() || stencil.has_value())
+	{
+		UINT flags = 0;
+
+		if (depth.has_value())
+			flags |= D3D11_CLEAR_DEPTH;
+
+		if (stencil.has_value())
+			flags |= D3D11_CLEAR_STENCIL;
+
+		D3D11Context->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0));
+	}
+}
+
+void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset)
+{
+	D3D11Context->DrawIndexed((UINT)index_count, (UINT)index_offset, 0);
 }
 
 void BackendD3D11::present()
@@ -80,6 +294,18 @@ TextureHandle* BackendD3D11::createTexture()
 void BackendD3D11::destroyTexture(TextureHandle* handle)
 {
 	//
+}
+
+ShaderHandle* BackendD3D11::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+{
+	auto shader = new ShaderData(layout, vertex_code, fragment_code);
+	return (ShaderHandle*)shader;
+}
+
+void BackendD3D11::destroyShader(ShaderHandle* handle)
+{
+	auto shader = (ShaderData*)handle;
+	delete shader;
 }
 
 void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)

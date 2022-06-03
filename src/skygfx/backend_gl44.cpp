@@ -83,10 +83,82 @@ BackendGL44::~BackendGL44()
 
 }
 
-void BackendGL44::clear(float r, float g, float b, float a)
+void BackendGL44::setTopology(Topology topology)
 {
-	glClearColor(r, g, b, a);
-	glClear(GL_COLOR_BUFFER_BIT);
+	//
+}
+
+void BackendGL44::setViewport(const Viewport& viewport)
+{
+	//
+}
+
+void BackendGL44::setTexture(TextureHandle* handle)
+{
+	//
+}
+
+void BackendGL44::setShader(ShaderHandle* handle)
+{
+	//
+}
+
+void BackendGL44::setVertexBuffer(const Buffer& buffer)
+{
+	//
+}
+
+void BackendGL44::setIndexBuffer(const Buffer& buffer)
+{
+	//
+}
+
+void BackendGL44::setBlendMode(const BlendMode& value)
+{
+	//
+}
+
+void BackendGL44::clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil)
+{
+	auto scissor_was_enabled = glIsEnabled(GL_SCISSOR_TEST);
+
+	if (scissor_was_enabled)
+	{
+		glDisable(GL_SCISSOR_TEST);
+	}
+
+	GLbitfield flags = 0;
+
+	if (color.has_value())
+	{
+		flags |= GL_COLOR_BUFFER_BIT;
+		auto _color = color.value();
+		glClearColor(_color.r, _color.g, _color.b, _color.a);
+	}
+
+	if (depth.has_value())
+	{
+		flags |= GL_DEPTH_BUFFER_BIT;
+		glClearDepthf(depth.value());
+	}
+
+	if (stencil.has_value())
+	{
+		flags |= GL_STENCIL_BUFFER_BIT;
+		glClearStencil(stencil.value());
+	}
+
+	glClear(flags);
+
+	if (scissor_was_enabled)
+	{
+		glEnable(GL_SCISSOR_TEST);
+	}
+}
+
+void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)
+{
+	//glDrawElementsBaseVertex(mGLTopology, (GLsizei)indexCount, mGLIndexType, (void*)(indexOffset * indexSize), (GLint)vertexOffset);
 }
 
 void BackendGL44::present()
@@ -100,6 +172,16 @@ TextureHandle* BackendGL44::createTexture()
 }
 
 void BackendGL44::destroyTexture(TextureHandle* handle)
+{
+	//
+}
+
+ShaderHandle* BackendGL44::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+{
+	return nullptr;
+}
+
+void BackendGL44::destroyShader(ShaderHandle* handle)
 {
 	//
 }

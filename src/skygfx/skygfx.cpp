@@ -7,9 +7,33 @@
 
 using namespace skygfx;
 
-// device
-
 static Backend* gBackend = nullptr;
+
+// texture
+
+Texture::Texture()
+{
+	mTextureHandle = gBackend->createTexture();
+}
+
+Texture::~Texture()
+{
+	gBackend->destroyTexture(mTextureHandle);
+}
+
+// shader
+
+Shader::Shader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+{
+	mShaderHandle = gBackend->createShader(layout, vertex_code, fragment_code);
+}
+
+Shader::~Shader()
+{
+	gBackend->destroyShader(mShaderHandle);
+}
+
+// device
 
 Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 {
@@ -27,30 +51,52 @@ Device::~Device()
 	gBackend = nullptr;
 }
 
-void Device::setTexture(Texture& texture)
+void Device::setTopology(Topology topology)
 {
-	gBackend->setTexture(texture);
+	gBackend->setTopology(topology);
 }
 
-void Device::clear(float r, float g, float b, float a)
+void Device::setViewport(const Viewport& viewport)
 {
-	gBackend->clear(r, g, b, a);
+	gBackend->setViewport(viewport);
+}
+
+void Device::setTexture(const Texture& texture)
+{
+	gBackend->setTexture(const_cast<Texture&>(texture));
+}
+
+void Device::setShader(const Shader& shader)
+{
+	gBackend->setShader(const_cast<Shader&>(shader));
+}
+
+void Device::setVertexBuffer(const Buffer& buffer)
+{
+	gBackend->setVertexBuffer(buffer);
+}
+
+void Device::setIndexBuffer(const Buffer& buffer)
+{
+	gBackend->setIndexBuffer(buffer);
+}
+
+void Device::setBlendMode(const BlendMode& value)
+{
+	gBackend->setBlendMode(value);
+}
+
+void Device::clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil)
+{
+	gBackend->clear(color, depth, stencil);
+}
+
+void Device::drawIndexed(uint32_t index_count, uint32_t index_offset)
+{
+	gBackend->drawIndexed(index_count, index_offset);
 }
 
 void Device::present()
 {
 	gBackend->present();
 }
-
-// texture
-
-Texture::Texture()
-{
-	mTextureHandle = gBackend->createTexture();
-}
-
-Texture::~Texture()
-{
-	gBackend->destroyTexture(mTextureHandle);
-}
-
