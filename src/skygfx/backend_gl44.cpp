@@ -1,4 +1,4 @@
-#include "device_gl44.h"
+#include "backend_gl44.h"
 
 #define GLEW_STATIC
 #include <GL/glew.h>
@@ -12,7 +12,7 @@ using namespace skygfx;
 static HGLRC WglContext;
 static HDC gHDC;
 
-DeviceGL44::DeviceGL44(void* window)
+BackendGL44::BackendGL44(void* window)
 {
 	gHDC = GetDC((HWND)window);
 
@@ -78,18 +78,28 @@ DeviceGL44::DeviceGL44(void* window)
 
 }
 
-DeviceGL44::~DeviceGL44()
+BackendGL44::~BackendGL44()
 {
 
 }
 
-void DeviceGL44::clear(float r, float g, float b, float a)
+void BackendGL44::clear(float r, float g, float b, float a)
 {
 	glClearColor(r, g, b, a);
 	glClear(GL_COLOR_BUFFER_BIT);
 }
 
-void DeviceGL44::present()
+void BackendGL44::present()
 {
 	SwapBuffers(gHDC);
+}
+
+TextureHandle* BackendGL44::createTexture()
+{
+	return nullptr;
+}
+
+void BackendGL44::destroyTexture(TextureHandle* handle)
+{
+	//
 }

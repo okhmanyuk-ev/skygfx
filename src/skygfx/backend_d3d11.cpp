@@ -1,9 +1,11 @@
-#include "device_d3d11.h"
+#include "backend_d3d11.h"
 
 #include <d3dcompiler.h>
 #include <d3d11.h>
 #pragma comment(lib, "d3d11")
 #pragma comment(lib, "d3dcompiler")
+
+#include <vector>
 
 // TODO: rename D3D11Name -> gName
 
@@ -20,7 +22,7 @@ static struct
 
 using namespace skygfx;
 
-DeviceD3D11::DeviceD3D11(void* window)
+BackendD3D11::BackendD3D11(void* window)
 {
 	DXGI_SWAP_CHAIN_DESC sd = {};
 	sd.BufferCount = 2;
@@ -48,7 +50,7 @@ DeviceD3D11::DeviceD3D11(void* window)
 	createMainRenderTarget(800, 600); // TODO: do not use constants
 }
 
-DeviceD3D11::~DeviceD3D11()
+BackendD3D11::~BackendD3D11()
 {
 	destroyMainRenderTarget();
 
@@ -57,7 +59,7 @@ DeviceD3D11::~DeviceD3D11()
 	D3D11Device->Release();
 }
 
-void DeviceD3D11::clear(float r, float g, float b, float a)
+void BackendD3D11::clear(float r, float g, float b, float a)
 {
 	std::vector<float> color = {
 		r, g, b, a
@@ -65,13 +67,23 @@ void DeviceD3D11::clear(float r, float g, float b, float a)
 	D3D11Context->ClearRenderTargetView(MainRenderTarget.render_taget_view, (float*)color.data());
 }
 
-void DeviceD3D11::present()
+void BackendD3D11::present()
 {
 	bool vsync = false; // TODO: globalize this var
 	D3D11SwapChain->Present(vsync ? 1 : 0, 0);
 }
 
-void DeviceD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
+TextureHandle* BackendD3D11::createTexture()
+{
+	return nullptr;
+}
+
+void BackendD3D11::destroyTexture(TextureHandle* handle)
+{
+	//
+}
+
+void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 {
 	D3D11_TEXTURE2D_DESC desc = {};
 	desc.Width = width;
@@ -99,7 +111,7 @@ void DeviceD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 	pBackBuffer->Release();
 }
 
-void DeviceD3D11::destroyMainRenderTarget()
+void BackendD3D11::destroyMainRenderTarget()
 {
 	MainRenderTarget.render_taget_view->Release();
 	MainRenderTarget.depth_stencil_view->Release();

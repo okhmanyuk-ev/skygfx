@@ -31,18 +31,19 @@ int main()
 
 	auto win32_window = glfwGetWin32Window(window);
 
-	skygfx::Device* device = new skygfx::DeviceGL44(win32_window);
+	auto device = skygfx::Device(skygfx::BackendType::OpenGL44, win32_window);
+
+	skygfx::Texture texture;
+
+	device.setTexture(texture);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		device->clear(0.0f, 1.0f, 0.0f, 1.0f);
-		device->present();
+		device.clear(0.0f, 1.0f, 0.0f, 1.0f);
+		device.present();
 
-		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
-
-	delete device;
 
 	glfwTerminate();
 	return 0;
