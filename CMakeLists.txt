@@ -19,6 +19,10 @@ target_include_directories(${PROJECT_NAME} PUBLIC src)
 
 set(LIBS_FOLDER "libs")
 
+macro(set_option option value)
+  set(${option} ${value} CACHE INTERNAL "" FORCE)
+endmacro()
+
 # glew
 
 file(GLOB GLEW_SRC 
@@ -33,11 +37,11 @@ set_property(TARGET glew PROPERTY FOLDER ${LIBS_FOLDER})
 
 # glslang
 
-option(ENABLE_HLSL OFF)
-set(SKIP_GLSLANG_INSTALL ON)
-option(ENABLE_CTEST OFF)
-option(ENABLE_GLSLANG_BINARIES OFF)
-option(ENABLE_SPVREMAPPER OFF)
+set_option(ENABLE_HLSL OFF)
+set_option(SKIP_GLSLANG_INSTALL ON)
+set_option(ENABLE_CTEST OFF)
+set_option(ENABLE_GLSLANG_BINARIES OFF)
+set_option(ENABLE_SPVREMAPPER OFF)
 add_subdirectory(lib/glslang/glslang)
 target_include_directories(${PROJECT_NAME} PRIVATE lib/glslang)
 target_link_libraries(${PROJECT_NAME}
@@ -53,13 +57,13 @@ set_property(TARGET SPIRV PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
 
 # spirv-cross
 
-set(SPIRV_CROSS_SKIP_INSTALL ON)
-set(SPIRV_CROSS_ENABLE_TESTS OFF)
-set(SPIRV_CROSS_CLI OFF)
-set(SPIRV_CROSS_ENABLE_MSL OFF)
-set(SPIRV_CROSS_ENABLE_C_API OFF)
-set(SPIRV_CROSS_ENABLE_CPP OFF)
-set(SPIRV_CROSS_ENABLE_UTIL OFF)
+set_option(SPIRV_CROSS_SKIP_INSTALL ON)
+set_option(SPIRV_CROSS_ENABLE_TESTS OFF)
+set_option(SPIRV_CROSS_CLI OFF)
+set_option(SPIRV_CROSS_ENABLE_MSL OFF)
+set_option(SPIRV_CROSS_ENABLE_C_API OFF)
+set_option(SPIRV_CROSS_ENABLE_CPP OFF)
+set_option(SPIRV_CROSS_ENABLE_UTIL OFF)
 add_subdirectory(lib/spirv-cross)
 target_link_libraries(${PROJECT_NAME}
 	spirv-cross-core
@@ -82,21 +86,3 @@ target_compile_definitions(${PROJECT_NAME} PUBLIC -DGLM_ENABLE_EXPERIMENTAL)
 target_link_libraries(${PROJECT_NAME} glm)
 target_include_directories(${PROJECT_NAME} PUBLIC lib/glm)
 target_compile_definitions(glm INTERFACE -D_CRT_SECURE_NO_WARNINGS)
-
-# examples
-
-add_executable(example
-	examples/main.cpp
-)
-
-set(GLFW_INSTALL OFF)
-set(GLFW_BUILD_DOCS OFF)
-add_subdirectory(examples/glfw)
-target_link_libraries(example 
-	glfw
-	sky-gfx
-)
-
-if(WIN32)
-	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
-endif()

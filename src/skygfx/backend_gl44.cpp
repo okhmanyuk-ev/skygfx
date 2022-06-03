@@ -167,7 +167,7 @@ public:
 
 			glEnableVertexAttribArray(i);
 			glVertexAttribFormat(i, SizeMap.at(attrib.format), TypeMap.at(attrib.format), 
-				NormalizeMap.at(attrib.format), attrib.offset);
+				NormalizeMap.at(attrib.format), (GLuint)attrib.offset);
 			glVertexAttribBinding(i, 0);
 		}
 	}
@@ -326,7 +326,7 @@ void BackendGL44::setVertexBuffer(const Buffer& buffer)
 		glUnmapBuffer(GL_ARRAY_BUFFER);
 	}
 
-	glBindVertexBuffer(0, GLVertexBuffer, 0, buffer.stride);
+	glBindVertexBuffer(0, GLVertexBuffer, 0, (GLsizei)buffer.stride);
 }
 
 void BackendGL44::setIndexBuffer(const Buffer& buffer)
@@ -396,8 +396,8 @@ void BackendGL44::clear(std::optional<glm::vec4> color, std::optional<float> dep
 
 void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
-	int index_size = GLIndexType == GL_UNSIGNED_INT ? 4 : 2;
-	glDrawElements(GLTopology, (GLsizei)index_count, GLIndexType, (void*)(index_offset * index_size));
+	uint32_t index_size = GLIndexType == GL_UNSIGNED_INT ? 4 : 2;
+	glDrawElements(GLTopology, (GLsizei)index_count, GLIndexType, (void*)(size_t)(index_offset * index_size));
 }
 
 void BackendGL44::present()
