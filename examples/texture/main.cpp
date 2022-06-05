@@ -2,6 +2,7 @@
 
 #include <GLFW/glfw3.h>
 #include <skygfx/skygfx.h>
+#include "../utils/utils.h"
 
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
@@ -55,9 +56,9 @@ static std::vector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
 int main()
 {
-	if (!glfwInit())
-		return -1;
+	auto backend_type = utils::ChooseBackendTypeViaConsole();
 
+	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 	uint32_t width = 800;
@@ -78,7 +79,7 @@ int main()
 
 	auto win32_window = glfwGetWin32Window(window);
 
-	auto device = skygfx::Device(skygfx::BackendType::OpenGL44, win32_window, width, height);
+	auto device = skygfx::Device(backend_type, win32_window, width, height);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
 	auto viewport = skygfx::Viewport();
