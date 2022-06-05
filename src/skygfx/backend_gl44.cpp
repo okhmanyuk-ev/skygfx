@@ -412,7 +412,7 @@ void BackendGL44::present()
 	SwapBuffers(gHDC);
 }
 
-TextureHandle* BackendGL44::createTexture()
+TextureHandle* BackendGL44::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory)
 {
 	return nullptr;
 }

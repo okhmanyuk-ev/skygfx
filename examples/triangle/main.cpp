@@ -19,8 +19,7 @@ void main()
 {
 	Out.Color = aColor;
 	gl_Position = vec4(aPosition, 1.0);
-}
-)";
+})";
 
 static std::string fragment_shader_code = R"(
 #version 450 core
@@ -31,10 +30,11 @@ layout(location = 0) in struct { vec4 Color; } In;
 void main() 
 { 
 	result = In.Color;
-}
-)";
+})";
 
-static std::vector<skygfx::Vertex::PositionColor> vertices = {
+using Vertex = skygfx::Vertex::PositionColor;
+
+static std::vector<Vertex> vertices = {
 	{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
 	{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
 	{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
@@ -68,7 +68,7 @@ int main()
 	auto win32_window = glfwGetWin32Window(window);
 
 	auto device = skygfx::Device(skygfx::BackendType::D3D11, win32_window, width, height);
-	auto shader = skygfx::Shader(skygfx::Vertex::PositionColor::Layout, vertex_shader_code, fragment_shader_code);
+	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
 	auto viewport = skygfx::Viewport();
 	viewport.size = { static_cast<float>(width), static_cast<float>(height) };
@@ -81,7 +81,7 @@ int main()
 		device.setShader(shader);
 		device.setVertexBuffer(vertices);
 		device.setIndexBuffer(indices);
-		device.drawIndexed(3);
+		device.drawIndexed(indices.size());
 		device.present();
 
 		glfwPollEvents();

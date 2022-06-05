@@ -23,7 +23,7 @@ namespace skygfx
 		void drawIndexed(uint32_t index_count, uint32_t index_offset) override;
 		void present() override;
 
-		TextureHandle* createTexture() override;
+		TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory) override;
 		void destroyTexture(TextureHandle* handle) override;
 
 		ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 

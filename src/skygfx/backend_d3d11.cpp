@@ -30,9 +30,9 @@ using namespace skygfx;
 class ShaderDataD3D11
 {
 private:
-	ID3D11VertexShader* vertexShader = nullptr;
-	ID3D11PixelShader* pixelShader = nullptr;
-	ID3D11InputLayout* inputLayout = nullptr;
+	ID3D11VertexShader* vertex_shader = nullptr;
+	ID3D11PixelShader* pixel_shader = nullptr;
+	ID3D11InputLayout* input_layout = nullptr;
 
 public:
 	ShaderDataD3D11(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
@@ -67,8 +67,8 @@ public:
 		if (pixelShaderBlob == nullptr)
 			throw std::runtime_error(pixel_shader_error_string);
 
-		D3D11Device->CreateVertexShader(vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), nullptr, &vertexShader);
-		D3D11Device->CreatePixelShader(pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize(), nullptr, &pixelShader);
+		D3D11Device->CreateVertexShader(vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), nullptr, &vertex_shader);
+		D3D11Device->CreatePixelShader(pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize(), nullptr, &pixel_shader);
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
 			{ Vertex::Attribute::Format::R32F, DXGI_FORMAT_R32_FLOAT },
@@ -92,21 +92,68 @@ public:
 			i++;
 		}
 
-		D3D11Device->CreateInputLayout(input.data(), static_cast<UINT>(input.size()), vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), &inputLayout);
+		D3D11Device->CreateInputLayout(input.data(), static_cast<UINT>(input.size()), vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), &input_layout);
 	}
 
 	~ShaderDataD3D11()
 	{
-		vertexShader->Release();
-		pixelShader->Release();
-		inputLayout->Release();
+		vertex_shader->Release();
+		pixel_shader->Release();
+		input_layout->Release();
 	}
 
 	void apply()
 	{
-		D3D11Context->IASetInputLayout(inputLayout);
-		D3D11Context->VSSetShader(vertexShader, nullptr, 0);
-		D3D11Context->PSSetShader(pixelShader, nullptr, 0);
+		D3D11Context->IASetInputLayout(input_layout);
+		D3D11Context->VSSetShader(vertex_shader, nullptr, 0);
+		D3D11Context->PSSetShader(pixel_shader, nullptr, 0);
+	}
+};
+
+class TextureDataD3D11
+{
+private:
+	ID3D11Texture2D* texture2d;
+	ID3D11ShaderResourceView* shader_resource_view;
+
+public:
+	TextureDataD3D11(uint32_t width, uint32_t height, uint32_t channels, void* memory)
+	{
+		D3D11_TEXTURE2D_DESC texture2d_desc = { };
+		texture2d_desc.Width = width;
+		texture2d_desc.Height = height;
+		texture2d_desc.MipLevels = 1;
+		texture2d_desc.ArraySize = 1;
+		texture2d_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		texture2d_desc.SampleDesc.Count = 1;
+		texture2d_desc.SampleDesc.Quality = 0;
+		texture2d_desc.Usage = D3D11_USAGE_DEFAULT;
+		texture2d_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+		texture2d_desc.CPUAccessFlags = 0;
+		texture2d_desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS; // TODO: only in mapmap mode ?
+		D3D11Device->CreateTexture2D(&texture2d_desc, nullptr, &texture2d);
+
+		D3D11_SHADER_RESOURCE_VIEW_DESC shader_resource_view_desc = { };
+		shader_resource_view_desc.Format = texture2d_desc.Format;
+		shader_resource_view_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+		shader_resource_view_desc.Texture2D.MipLevels = -1;
+		shader_resource_view_desc.Texture2D.MostDetailedMip = 0;
+		D3D11Device->CreateShaderResourceView(texture2d, &shader_resource_view_desc, &shader_resource_view);
+
+		auto memPitch = width * channels;
+		auto memSlicePitch = width * height * channels;
+		D3D11Context->UpdateSubresource(texture2d, 0, nullptr, memory, memPitch, memSlicePitch);
+	}
+
+	~TextureDataD3D11()
+	{
+		shader_resource_view->Release();
+		texture2d->Release();
+	}
+
+	void bind(int slot)
+	{
+		D3D11Context->PSSetShaderResources((UINT)slot, 1, &shader_resource_view);
 	}
 };
 
@@ -175,7 +222,9 @@ void BackendD3D11::setViewport(const Viewport& viewport)
 
 void BackendD3D11::setTexture(TextureHandle* handle)
 {
-	//
+	int slot = 0;
+	auto texture = (TextureDataD3D11*)handle;
+	texture->bind(slot);
 }
 
 void BackendD3D11::setShader(ShaderHandle* handle)
@@ -316,14 +365,16 @@ void BackendD3D11::present()
 	D3D11SwapChain->Present(vsync ? 1 : 0, 0);
 }
 
-TextureHandle* BackendD3D11::createTexture()
+TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory)
 {
-	return nullptr;
+	auto texture = new TextureDataD3D11(width, height, channels, memory);
+	return (TextureHandle*)texture;
 }
 
 void BackendD3D11::destroyTexture(TextureHandle* handle)
 {
-	//
+	auto texture = (TextureDataD3D11*)handle;
+	delete texture;
 }
 
 ShaderHandle* BackendD3D11::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
