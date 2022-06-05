@@ -81,12 +81,18 @@ void Device::setIndexBuffer(const Buffer& buffer)
 	gBackend->setIndexBuffer(buffer);
 }
 
+void Device::setUniformBuffer(int slot, void* memory, size_t size)
+{
+	gBackend->setUniformBuffer(slot, memory, size);
+}
+
 void Device::setBlendMode(const BlendMode& value)
 {
 	gBackend->setBlendMode(value);
 }
 
-void Device::clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil)
+void Device::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth, 
+	const std::optional<uint8_t>& stencil)
 {
 	gBackend->clear(color, depth, stencil);
 }

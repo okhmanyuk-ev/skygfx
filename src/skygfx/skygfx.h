@@ -146,9 +146,15 @@ namespace skygfx
 		void setShader(const Shader& shader);
 		void setVertexBuffer(const Buffer& buffer);
 		void setIndexBuffer(const Buffer& buffer);
+		
+		void setUniformBuffer(int slot, void* memory, size_t size);
+		
+		template <class T> 
+		void setUniformBuffer(int slot, T buffer) { setUniformBuffer(slot, &buffer, sizeof(T)); }
+		
 		void setBlendMode(const BlendMode& value);
-		void clear(std::optional<glm::vec4> color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
-			std::optional<float> depth = 1.0f, std::optional<uint8_t> stencil = 0);
+		void clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
+			const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
 		void drawIndexed(uint32_t index_count, uint32_t index_offset = 0);
 		void present();
 	};

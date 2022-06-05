@@ -192,6 +192,7 @@ static GLenum GLTopology;
 static GLenum GLIndexType;
 static GLuint GLVertexBuffer;
 static GLuint GLIndexBuffer;
+static GLuint GLUniformBuffer;
 
 BackendGL44::BackendGL44(void* window)
 {
@@ -260,15 +261,14 @@ BackendGL44::BackendGL44(void* window)
 
 	glGenBuffers(1, &GLVertexBuffer);
 	glGenBuffers(1, &GLIndexBuffer);
-
-	glBindBuffer(GL_ARRAY_BUFFER, GLVertexBuffer);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GLIndexBuffer);
+	glGenBuffers(1, &GLUniformBuffer);
 }
 
 BackendGL44::~BackendGL44()
 {
 	glDeleteBuffers(1, &GLVertexBuffer);
 	glDeleteBuffers(1, &GLIndexBuffer);
+	glDeleteBuffers(1, &GLUniformBuffer);
 	
 	wglDeleteContext(WglContext);
 }
@@ -351,12 +351,19 @@ void BackendGL44::setIndexBuffer(const Buffer& buffer)
 	GLIndexType = buffer.stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 }
 
+void BackendGL44::setUniformBuffer(int slot, void* memory, size_t size)
+{
+	glBindBufferBase(GL_UNIFORM_BUFFER, slot, GLUniformBuffer);
+	glBufferData(GL_UNIFORM_BUFFER, size, memory, GL_DYNAMIC_DRAW);
+}
+
 void BackendGL44::setBlendMode(const BlendMode& value)
 {
 	//
 }
 
-void BackendGL44::clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil)
+void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
+	const std::optional<uint8_t>& stencil)
 {
 	auto scissor_was_enabled = glIsEnabled(GL_SCISSOR_TEST);
 

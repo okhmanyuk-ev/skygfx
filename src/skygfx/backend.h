@@ -15,8 +15,10 @@ namespace skygfx
 		virtual void setShader(ShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(const Buffer& buffer) = 0;
 		virtual void setIndexBuffer(const Buffer& buffer) = 0;
+		virtual void setUniformBuffer(int slot, void* memory, size_t size) = 0;
 		virtual void setBlendMode(const BlendMode& value) = 0;
-		virtual void clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil) = 0;
+		virtual void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
+			const std::optional<uint8_t>& stencil) = 0;
 		virtual void drawIndexed(uint32_t index_count, uint32_t index_offset) = 0;
 		virtual void present() = 0;
 

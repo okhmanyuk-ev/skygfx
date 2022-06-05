@@ -23,6 +23,7 @@ static struct
 
 static ID3D11Buffer* D3D11VertexBuffer = nullptr;
 static ID3D11Buffer* D3D11IndexBuffer = nullptr;
+static ID3D11Buffer* D3D11ConstantBuffer = nullptr;
 
 using namespace skygfx;
 
@@ -195,8 +196,8 @@ void BackendD3D11::setVertexBuffer(const Buffer& buffer)
 		if (D3D11VertexBuffer)
 			D3D11VertexBuffer->Release();
 
-		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.ByteWidth = static_cast<UINT>(buffer.size);
+		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11VertexBuffer);
@@ -225,8 +226,8 @@ void BackendD3D11::setIndexBuffer(const Buffer& buffer)
 		if (D3D11IndexBuffer)
 			D3D11IndexBuffer->Release();
 
-		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.ByteWidth = static_cast<UINT>(buffer.size);
+		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11IndexBuffer);
@@ -240,12 +241,41 @@ void BackendD3D11::setIndexBuffer(const Buffer& buffer)
 	D3D11Context->IASetIndexBuffer(D3D11IndexBuffer, buffer.stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
 }
 
+void BackendD3D11::setUniformBuffer(int slot, void* memory, size_t size)
+{
+	D3D11_BUFFER_DESC desc = {};
+
+	if (D3D11ConstantBuffer)
+		D3D11ConstantBuffer->GetDesc(&desc);
+
+	if (desc.ByteWidth < size)
+	{
+		if (D3D11ConstantBuffer)
+			D3D11ConstantBuffer->Release();
+
+		desc.ByteWidth = static_cast<UINT>(size);
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11ConstantBuffer);
+	}
+
+	D3D11_MAPPED_SUBRESOURCE resource;
+	D3D11Context->Map(D3D11ConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+	memcpy(resource.pData, memory, size);
+	D3D11Context->Unmap(D3D11ConstantBuffer, 0);
+
+	D3D11Context->VSSetConstantBuffers(slot, 1, &D3D11ConstantBuffer);
+	D3D11Context->PSSetConstantBuffers(slot, 1, &D3D11ConstantBuffer);
+}
+
 void BackendD3D11::setBlendMode(const BlendMode& value)
 {
 	//
 }
 
-void BackendD3D11::clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil)
+void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
+	const std::optional<uint8_t>& stencil)
 {
 	auto rtv = MainRenderTarget.render_taget_view;
 	auto dsv = MainRenderTarget.depth_stencil_view;

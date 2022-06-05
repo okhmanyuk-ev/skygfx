@@ -16,8 +16,10 @@ namespace skygfx
 		void setShader(ShaderHandle* handle) override;
 		void setVertexBuffer(const Buffer& buffer) override;
 		void setIndexBuffer(const Buffer& buffer) override;
+		void setUniformBuffer(int slot, void* memory, size_t size) override;
 		void setBlendMode(const BlendMode& value) override;
-		void clear(std::optional<glm::vec4> color, std::optional<float> depth, std::optional<uint8_t> stencil) override;
+		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
+			const std::optional<uint8_t>& stencil) override;
 		void drawIndexed(uint32_t index_count, uint32_t index_offset) override;
 		void present() override;
 
