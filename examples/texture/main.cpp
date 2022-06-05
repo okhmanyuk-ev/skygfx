@@ -23,6 +23,9 @@ void main()
 {
 	Out.Color = aColor;
 	Out.TexCoord = aTexCoord;
+#ifdef FLIP_TEXCOORD_Y
+	Out.TexCoord.y = 1.0 - Out.TexCoord.y;
+#endif
 	gl_Position = vec4(aPosition, 1.0);
 })";
 
@@ -75,7 +78,7 @@ int main()
 
 	auto win32_window = glfwGetWin32Window(window);
 
-	auto device = skygfx::Device(skygfx::BackendType::D3D11, win32_window, width, height);
+	auto device = skygfx::Device(skygfx::BackendType::OpenGL44, win32_window, width, height);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
 	auto viewport = skygfx::Viewport();
@@ -96,7 +99,7 @@ int main()
 		device.setTexture(texture);
 		device.setVertexBuffer(vertices);
 		device.setIndexBuffer(indices);
-		device.drawIndexed(indices.size());
+		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 
 		glfwPollEvents();

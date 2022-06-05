@@ -81,7 +81,7 @@ int main()
 		device.setShader(shader);
 		device.setVertexBuffer(vertices);
 		device.setIndexBuffer(indices);
-		device.drawIndexed(indices.size());
+		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 
 		glfwPollEvents();

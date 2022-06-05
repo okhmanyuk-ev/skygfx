@@ -185,6 +185,74 @@ public:
 	}
 };
 
+class TextureDataGL44
+{
+private:
+	GLuint texture;
+
+
+public:
+	TextureDataGL44(uint32_t width, uint32_t height, uint32_t channels, void* memory)
+	{
+		GLint last_texture;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glBindTexture(GL_TEXTURE_2D, last_texture);
+
+		writePixels(width, height, channels, memory);
+	}
+
+	void writePixels(int width, int height, int channels, void* memory)
+	{
+	//	assert(width == mWidth);
+	//	assert(height == mHeight);
+		assert(memory);
+
+		auto temp_data = malloc(width * height * 4); // TODO: we should not use magic numbers
+
+		const auto row_size = width * 4;
+
+		for (int i = 0; i < height; i++)
+		{
+			auto src = (void*)(size_t(memory) + size_t(i) * row_size);
+			auto dst = (void*)(size_t(temp_data) + size_t(height - 1 - i) * row_size);
+
+			memcpy(dst, src, row_size);
+		}
+
+		GLint last_texture;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp_data);
+
+		//if (mMipmap)
+		//	glGenerateMipmap(GL_TEXTURE_2D);
+
+		glBindTexture(GL_TEXTURE_2D, last_texture);
+
+		free(temp_data);
+	}
+
+	~TextureDataGL44()
+	{
+		glDeleteTextures(1, &texture);
+	}
+
+	void bind(int slot)
+	{
+		glActiveTexture(GL_TEXTURE0 + slot);
+		glBindTexture(GL_TEXTURE_2D, texture);
+
+		// sampler state
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	}
+};
+
 static HGLRC WglContext;
 static HDC gHDC;
 
@@ -299,7 +367,9 @@ void BackendGL44::setViewport(const Viewport& viewport)
 
 void BackendGL44::setTexture(TextureHandle* handle)
 {
-	//
+	int slot = 0;
+	auto texture = (TextureDataGL44*)handle;
+	texture->bind(slot);
 }
 
 void BackendGL44::setShader(ShaderHandle* handle)
@@ -414,12 +484,14 @@ void BackendGL44::present()
 
 TextureHandle* BackendGL44::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory)
 {
-	return nullptr;
+	auto texture = new TextureDataGL44(width, height, channels, memory);
+	return (TextureHandle*)texture;
 }
 
 void BackendGL44::destroyTexture(TextureHandle* handle)
 {
-	//
+	auto texture = (TextureDataGL44*)handle;
+	delete texture;
 }
 
 ShaderHandle* BackendGL44::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
