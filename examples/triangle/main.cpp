@@ -35,9 +35,9 @@ void main()
 )";
 
 static std::vector<skygfx::Vertex::PositionColor> vertices = {
-	{ { 0.0f, -0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-	{ { -0.5f, 0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-	{ { 0.5f, 0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+	{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+	{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+	{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
 };
 
 static std::vector<uint32_t> indices = { 0, 1, 2 };
@@ -67,7 +67,7 @@ int main()
 
 	auto win32_window = glfwGetWin32Window(window);
 
-	auto device = skygfx::Device(skygfx::BackendType::OpenGL44, win32_window, width, height);
+	auto device = skygfx::Device(skygfx::BackendType::D3D11, win32_window, width, height);
 	auto shader = skygfx::Shader(skygfx::Vertex::PositionColor::Layout, vertex_shader_code, fragment_shader_code);
 
 	auto viewport = skygfx::Viewport();
