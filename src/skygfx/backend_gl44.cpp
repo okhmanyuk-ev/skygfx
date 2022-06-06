@@ -111,8 +111,12 @@ private:
 public:
 	ShaderDataGL44(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
 	{
-		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, { "FLIP_TEXCOORD_Y" });
-		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code);
+		std::vector<std::string> defines;
+		AddShaderLocationDefines(layout, defines);
+		defines.push_back("FLIP_TEXCOORD_Y");
+
+		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
+		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
 		auto glsl_vert = CompileSpirvToGlsl(vertex_shader_spirv);
 		auto glsl_frag = CompileSpirvToGlsl(fragment_shader_spirv);

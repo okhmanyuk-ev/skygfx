@@ -13,9 +13,9 @@
 static std::string vertex_shader_code = R"(
 #version 450 core
 
-layout(location = 0) in vec3 aPosition;
-layout(location = 1) in vec4 aColor;
-layout(location = 2) in vec2 aTexCoord;
+layout(location = POSITION_LOCATION) in vec3 aPosition;
+layout(location = COLOR_LOCATION) in vec4 aColor;
+layout(location = TEXCOORD_LOCATION) in vec2 aTexCoord;
 
 layout(location = 0) out struct { vec4 Color; vec2 TexCoord; } Out;
 out gl_PerVertex { vec4 gl_Position; };
