@@ -120,12 +120,12 @@ private:
 	ID3D11ShaderResourceView* shader_resource_view;
 
 public:
-	TextureDataD3D11(uint32_t width, uint32_t height, uint32_t channels, void* memory)
+	TextureDataD3D11(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 	{
 		D3D11_TEXTURE2D_DESC texture2d_desc = { };
 		texture2d_desc.Width = width;
 		texture2d_desc.Height = height;
-		texture2d_desc.MipLevels = 1;
+		texture2d_desc.MipLevels = mipmap ? 0 : 1;
 		texture2d_desc.ArraySize = 1;
 		texture2d_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		texture2d_desc.SampleDesc.Count = 1;
@@ -146,6 +146,9 @@ public:
 		auto memPitch = width * channels;
 		auto memSlicePitch = width * height * channels;
 		D3D11Context->UpdateSubresource(texture2d, 0, nullptr, memory, memPitch, memSlicePitch);
+
+		if (mipmap)
+			D3D11Context->GenerateMips(shader_resource_view);
 	}
 
 	~TextureDataD3D11()
@@ -295,6 +298,8 @@ void BackendD3D11::setIndexBuffer(const Buffer& buffer)
 
 void BackendD3D11::setUniformBuffer(int slot, void* memory, size_t size)
 {
+	assert(size % 16 == 0);
+
 	D3D11_BUFFER_DESC desc = {};
 
 	if (D3D11ConstantBuffer)
@@ -368,9 +373,9 @@ void BackendD3D11::present()
 	D3D11SwapChain->Present(vsync ? 1 : 0, 0);
 }
 
-TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory)
+TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 {
-	auto texture = new TextureDataD3D11(width, height, channels, memory);
+	auto texture = new TextureDataD3D11(width, height, channels, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 

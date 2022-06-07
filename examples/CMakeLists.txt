@@ -31,3 +31,10 @@ add_executable(texture texture/main.cpp)
 target_link_libraries(texture glfw sky-gfx)
 target_include_directories(texture PUBLIC lib/stb)
 set_target_properties(texture PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# uniform_buffer
+
+add_executable(uniform_buffer uniform/main.cpp)
+target_link_libraries(uniform_buffer glfw sky-gfx)
+target_include_directories(uniform_buffer PUBLIC lib/stb)
+set_target_properties(uniform_buffer PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

@@ -22,7 +22,7 @@ namespace skygfx
 		virtual void drawIndexed(uint32_t index_count, uint32_t index_offset) = 0;
 		virtual void present() = 0;
 
-		virtual TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory) = 0;
+		virtual TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) = 0;
 		virtual void destroyTexture(TextureHandle* handle) = 0;
 
 		virtual ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 

@@ -193,10 +193,10 @@ class TextureDataGL44
 {
 private:
 	GLuint texture;
-
+	bool is_mipmap;
 
 public:
-	TextureDataGL44(uint32_t width, uint32_t height, uint32_t channels, void* memory)
+	TextureDataGL44(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) : is_mipmap(mipmap)
 	{
 		GLint last_texture;
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
@@ -205,10 +205,10 @@ public:
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 		glBindTexture(GL_TEXTURE_2D, last_texture);
 
-		writePixels(width, height, channels, memory);
+		writePixels(width, height, channels, memory, mipmap);
 	}
 
-	void writePixels(int width, int height, int channels, void* memory)
+	void writePixels(int width, int height, int channels, void* memory, bool mipmap)
 	{
 	//	assert(width == mWidth);
 	//	assert(height == mHeight);
@@ -231,8 +231,8 @@ public:
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp_data);
 
-		//if (mMipmap)
-		//	glGenerateMipmap(GL_TEXTURE_2D);
+		if (mipmap)
+			glGenerateMipmap(GL_TEXTURE_2D);
 
 		glBindTexture(GL_TEXTURE_2D, last_texture);
 
@@ -250,7 +250,7 @@ public:
 		glBindTexture(GL_TEXTURE_2D, texture);
 
 		// sampler state
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, is_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -427,6 +427,8 @@ void BackendGL44::setIndexBuffer(const Buffer& buffer)
 
 void BackendGL44::setUniformBuffer(int slot, void* memory, size_t size)
 {
+	assert(size % 16 == 0);
+
 	glBindBufferBase(GL_UNIFORM_BUFFER, slot, GLUniformBuffer);
 	glBufferData(GL_UNIFORM_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 }
@@ -486,9 +488,9 @@ void BackendGL44::present()
 	SwapBuffers(gHDC);
 }
 
-TextureHandle* BackendGL44::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory)
+TextureHandle* BackendGL44::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 {
-	auto texture = new TextureDataGL44(width, height, channels, memory);
+	auto texture = new TextureDataGL44(width, height, channels, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
