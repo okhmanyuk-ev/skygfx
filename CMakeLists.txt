@@ -24,16 +24,17 @@ macro(set_option option value)
 endmacro()
 
 # glew
-
-file(GLOB GLEW_SRC 
-	lib/glew/src/glew.c
-	lib/glew/include/GL/glew.h
-)
-add_library(glew STATIC ${GLEW_SRC})
+if (NOT TARGET glew)
+	file(GLOB GLEW_SRC 
+		lib/glew/src/glew.c
+		lib/glew/include/GL/glew.h
+	)
+	add_library(glew STATIC ${GLEW_SRC})
+	target_include_directories(glew PUBLIC lib/glew/include)
+	target_compile_definitions(glew PRIVATE -DGLEW_STATIC)
+	set_property(TARGET glew PROPERTY FOLDER ${LIBS_FOLDER})
+endif()
 target_link_libraries(${PROJECT_NAME} glew)
-target_include_directories(glew PUBLIC lib/glew/include)
-target_compile_definitions(glew PRIVATE -DGLEW_STATIC)
-set_property(TARGET glew PROPERTY FOLDER ${LIBS_FOLDER})
 
 # glslang
 
@@ -77,12 +78,13 @@ set_property(TARGET spirv-cross-hlsl PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 set_property(TARGET spirv-cross-reflect PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 
 # glm
-
-set(GLM_QUIET ON)
-set(BUILD_SHARED_LIBS OFF)
-set(GLM_TEST_ENABLE OFF)
-add_subdirectory(lib/glm)
-target_compile_definitions(${PROJECT_NAME} PUBLIC -DGLM_ENABLE_EXPERIMENTAL)
+if (NOT TARGET glm)
+	set(GLM_QUIET ON)
+	set(BUILD_SHARED_LIBS OFF)
+	set(GLM_TEST_ENABLE OFF)
+	add_subdirectory(lib/glm)
+	target_compile_definitions(${PROJECT_NAME} PUBLIC -DGLM_ENABLE_EXPERIMENTAL)
+	target_include_directories(${PROJECT_NAME} PUBLIC lib/glm)
+	target_compile_definitions(glm INTERFACE -D_CRT_SECURE_NO_WARNINGS)
+endif()
 target_link_libraries(${PROJECT_NAME} glm)
-target_include_directories(${PROJECT_NAME} PUBLIC lib/glm)
-target_compile_definitions(glm INTERFACE -D_CRT_SECURE_NO_WARNINGS)
