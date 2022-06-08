@@ -110,8 +110,7 @@ namespace skygfx
 	{
 		BlendMode(Blend srcColorBlend, Blend dstColorBlend, Blend srcAlphaBlend, Blend dstAlphaBlend) :
 			colorSrcBlend(srcColorBlend), colorDstBlend(dstColorBlend), alphaSrcBlend(srcAlphaBlend), alphaDstBlend(dstAlphaBlend)
-		{
-		}
+		{}
 
 		BlendMode(Blend srcBlend, Blend dstBlend) : BlendMode(srcBlend, dstBlend, srcBlend, dstBlend) { }
 
@@ -125,6 +124,37 @@ namespace skygfx
 
 		ColorMask colorMask;
 	};
+
+	inline bool operator==(const ColorMask& left, const ColorMask& right)
+	{
+		return
+			left.red == right.red &&
+			left.green == right.green &&
+			left.blue == right.blue &&
+			left.alpha == right.alpha;
+	}
+
+	inline bool operator!=(const ColorMask& left, const ColorMask& right)
+	{
+		return !(left == right);
+	}
+
+	inline bool operator==(const BlendMode& left, const BlendMode& right)
+	{
+		return
+			left.colorBlendFunction == right.colorBlendFunction &&
+			left.colorSrcBlend == right.colorSrcBlend &&
+			left.colorDstBlend == right.colorDstBlend &&
+			left.alphaBlendFunction == right.alphaBlendFunction &&
+			left.alphaSrcBlend == right.alphaSrcBlend &&
+			left.alphaDstBlend == right.alphaDstBlend &&
+			left.colorMask == right.colorMask;
+	}
+
+	inline bool operator!=(const BlendMode& left, const BlendMode& right)
+	{
+		return !(left == right);
+	}
 
 	namespace BlendStates
 	{

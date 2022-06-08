@@ -25,7 +25,30 @@ static ID3D11Buffer* D3D11VertexBuffer = nullptr;
 static ID3D11Buffer* D3D11IndexBuffer = nullptr;
 static ID3D11Buffer* D3D11ConstantBuffer = nullptr;
 
+template <class T> inline void combine(size_t& seed, const T& v)
+{
+	std::hash<T> hasher;
+	seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
 using namespace skygfx;
+
+struct BlendModeHasher
+{
+	size_t operator()(const BlendMode& k) const
+	{
+		size_t seed = 0;
+		combine(seed, k.alphaBlendFunction);
+		combine(seed, k.alphaDstBlend);
+		combine(seed, k.alphaSrcBlend);
+		combine(seed, k.colorBlendFunction);
+		combine(seed, k.colorDstBlend);
+		combine(seed, k.colorSrcBlend);
+		return seed;
+	}
+};
+
+static std::unordered_map<BlendMode, ID3D11BlendState*, BlendModeHasher> D3D11BlendModes;
 
 class ShaderDataD3D11
 {
@@ -199,6 +222,11 @@ BackendD3D11::~BackendD3D11()
 	D3D11SwapChain->Release();
 	D3D11Context->Release();
 	D3D11Device->Release();
+
+	for (const auto& [_, blend_state] : D3D11BlendModes)
+	{
+		blend_state->Release();
+	}
 }
 
 void BackendD3D11::setTopology(Topology topology)
@@ -328,7 +356,61 @@ void BackendD3D11::setUniformBuffer(int slot, void* memory, size_t size)
 
 void BackendD3D11::setBlendMode(const BlendMode& value)
 {
-	//
+	if (D3D11BlendModes.count(value) == 0)
+	{
+		const static std::unordered_map<Blend, D3D11_BLEND> BlendMap = {
+			{ Blend::One, D3D11_BLEND_ONE },
+			{ Blend::Zero, D3D11_BLEND_ZERO },
+			{ Blend::SrcColor, D3D11_BLEND_SRC_COLOR },
+			{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_COLOR },
+			{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
+			{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
+			{ Blend::DstColor, D3D11_BLEND_DEST_COLOR },
+			{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_COLOR },
+			{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
+			{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
+		};
+
+		const static std::unordered_map<BlendFunction, D3D11_BLEND_OP> BlendOpMap = {
+			{ BlendFunction::Add, D3D11_BLEND_OP_ADD },
+			{ BlendFunction::Subtract, D3D11_BLEND_OP_SUBTRACT },
+			{ BlendFunction::ReverseSubtract, D3D11_BLEND_OP_REV_SUBTRACT },
+			{ BlendFunction::Min, D3D11_BLEND_OP_MIN },
+			{ BlendFunction::Max, D3D11_BLEND_OP_MAX },
+		};
+
+		D3D11_BLEND_DESC desc = {};
+		desc.AlphaToCoverageEnable = false;
+
+		auto& blend = desc.RenderTarget[0];
+
+		if (value.colorMask.red)
+			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
+
+		if (value.colorMask.green)
+			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
+
+		if (value.colorMask.blue)
+			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
+
+		if (value.colorMask.alpha)
+			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+
+		blend.BlendEnable = true;
+
+		blend.SrcBlend = BlendMap.at(value.colorSrcBlend);
+		blend.DestBlend = BlendMap.at(value.colorDstBlend);
+		blend.BlendOp = BlendOpMap.at(value.colorBlendFunction);
+
+		blend.SrcBlendAlpha = BlendMap.at(value.alphaSrcBlend);
+		blend.DestBlendAlpha = BlendMap.at(value.alphaDstBlend);
+		blend.BlendOpAlpha = BlendOpMap.at(value.alphaBlendFunction);
+
+		D3D11Device->CreateBlendState(&desc, &D3D11BlendModes[value]);
+	}
+
+	const float blend_factor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+	D3D11Context->OMSetBlendState(D3D11BlendModes.at(value), blend_factor, 0xFFFFFFFF);
 }
 
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
