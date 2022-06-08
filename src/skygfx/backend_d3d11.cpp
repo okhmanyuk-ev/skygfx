@@ -50,6 +50,52 @@ struct BlendModeHasher
 
 static std::unordered_map<BlendMode, ID3D11BlendState*, BlendModeHasher> D3D11BlendModes;
 
+struct DepthStencilState
+{
+	DepthMode depthMode;
+	StencilMode stencilMode;
+
+	bool operator==(const DepthStencilState& value) const
+	{
+		return depthMode == value.depthMode && stencilMode == value.stencilMode;
+	}
+
+	bool operator!=(const DepthStencilState& value) const
+	{
+		return !(value == *this);
+	}
+
+	struct Hasher
+	{
+		size_t operator()(const DepthStencilState& k) const
+		{
+			size_t seed = 0;
+			combine(seed, k.depthMode.enabled);
+			combine(seed, k.depthMode.func);
+			combine(seed, k.stencilMode.enabled);
+			combine(seed, k.stencilMode.readMask);
+			combine(seed, k.stencilMode.writeMask);
+			combine(seed, k.stencilMode.depthFailOp);
+			combine(seed, k.stencilMode.failOp);
+			combine(seed, k.stencilMode.func);
+			combine(seed, k.stencilMode.passOp);
+			return seed;
+		}
+	};
+
+	struct Comparer
+	{
+		bool operator()(const DepthStencilState& left, const DepthStencilState& right) const
+		{
+			return left == right;
+		}
+	};
+};
+
+static DepthStencilState D3D11DepthStencilState;
+static bool D3D11DepthStencilStateDirty = true;
+static std::unordered_map<DepthStencilState, ID3D11DepthStencilState*, DepthStencilState::Hasher, DepthStencilState::Comparer> D3D11DepthStencilStates;
+
 class ShaderDataD3D11
 {
 private:
@@ -413,6 +459,18 @@ void BackendD3D11::setBlendMode(const BlendMode& value)
 	D3D11Context->OMSetBlendState(D3D11BlendModes.at(value), blend_factor, 0xFFFFFFFF);
 }
 
+void BackendD3D11::setDepthMode(const DepthMode& value)
+{
+	D3D11DepthStencilState.depthMode = value;
+	D3D11DepthStencilStateDirty = true;
+}
+
+void BackendD3D11::setStencilMode(const StencilMode& value)
+{
+	D3D11DepthStencilState.stencilMode = value;
+	D3D11DepthStencilStateDirty = true;
+}
+
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
@@ -446,6 +504,7 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 
 void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
+	prepareForDrawing();
 	D3D11Context->DrawIndexed((UINT)index_count, (UINT)index_offset, 0);
 }
 
@@ -512,4 +571,61 @@ void BackendD3D11::destroyMainRenderTarget()
 	MainRenderTarget.render_taget_view->Release();
 	MainRenderTarget.depth_stencil_view->Release();
 	MainRenderTarget.texture2d->Release();
+}
+
+void BackendD3D11::prepareForDrawing()
+{
+	// depthstencil state
+
+	if (D3D11DepthStencilStateDirty)
+	{
+		D3D11DepthStencilStateDirty = false;
+
+		auto value = D3D11DepthStencilState;
+
+		if (D3D11DepthStencilStates.count(value) == 0)
+		{
+			const static std::unordered_map<ComparisonFunc, D3D11_COMPARISON_FUNC> ComparisonFuncMap = {
+				{ ComparisonFunc::Always, D3D11_COMPARISON_ALWAYS },
+				{ ComparisonFunc::Never, D3D11_COMPARISON_NEVER },
+				{ ComparisonFunc::Less, D3D11_COMPARISON_LESS },
+				{ ComparisonFunc::Equal, D3D11_COMPARISON_EQUAL },
+				{ ComparisonFunc::NotEqual, D3D11_COMPARISON_NOT_EQUAL },
+				{ ComparisonFunc::LessEqual, D3D11_COMPARISON_LESS_EQUAL },
+				{ ComparisonFunc::Greater, D3D11_COMPARISON_GREATER },
+				{ ComparisonFunc::GreaterEqual, D3D11_COMPARISON_GREATER_EQUAL }
+			};
+
+			const static std::unordered_map<StencilOp, D3D11_STENCIL_OP> StencilOpMap = {
+				{ StencilOp::Keep, D3D11_STENCIL_OP_KEEP },
+				{ StencilOp::Zero, D3D11_STENCIL_OP_ZERO },
+				{ StencilOp::Replace, D3D11_STENCIL_OP_REPLACE },
+				{ StencilOp::IncrementSaturation, D3D11_STENCIL_OP_INCR_SAT },
+				{ StencilOp::DecrementSaturation, D3D11_STENCIL_OP_DECR_SAT },
+				{ StencilOp::Invert, D3D11_STENCIL_OP_INVERT },
+				{ StencilOp::Increment, D3D11_STENCIL_OP_INCR },
+				{ StencilOp::Decrement, D3D11_STENCIL_OP_DECR },
+			};
+
+			D3D11_DEPTH_STENCIL_DESC desc = {};
+			desc.DepthEnable = value.depthMode.enabled;
+			desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+			desc.DepthFunc = ComparisonFuncMap.at(value.depthMode.func);
+
+			desc.StencilEnable = value.stencilMode.enabled;
+			desc.StencilReadMask = value.stencilMode.readMask;
+			desc.StencilWriteMask = value.stencilMode.writeMask;
+
+			desc.FrontFace.StencilDepthFailOp = StencilOpMap.at(value.stencilMode.depthFailOp);
+			desc.FrontFace.StencilFailOp = StencilOpMap.at(value.stencilMode.failOp);
+			desc.FrontFace.StencilFunc = ComparisonFuncMap.at(value.stencilMode.func);
+			desc.FrontFace.StencilPassOp = StencilOpMap.at(value.stencilMode.passOp);
+
+			desc.BackFace = desc.FrontFace;
+
+			D3D11Device->CreateDepthStencilState(&desc, &D3D11DepthStencilStates[value]);
+		}
+
+		D3D11Context->OMSetDepthStencilState(D3D11DepthStencilStates.at(value), value.stencilMode.reference);
+	}
 }

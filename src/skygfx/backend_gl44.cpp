@@ -438,6 +438,16 @@ void BackendGL44::setBlendMode(const BlendMode& value)
 	//
 }
 
+void BackendGL44::setDepthMode(const DepthMode& value)
+{
+	//
+}
+
+void BackendGL44::setStencilMode(const StencilMode& value)
+{
+	//
+}
+
 void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

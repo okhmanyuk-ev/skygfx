@@ -164,6 +164,97 @@ namespace skygfx
 		inline const BlendMode NonPremultiplied = BlendMode(Blend::SrcAlpha, Blend::InvSrcAlpha);
 	}
 
+	enum class ComparisonFunc
+	{
+		Always,         // comparison always succeeds
+		Never,          // comparison always fails
+		Less,           // passes if source is less than the destination
+		Equal,          // passes if source is equal to the destination
+		NotEqual,       // passes if source is not equal to the destination
+		LessEqual,      // passes if source is less than or equal to the destination
+		Greater,        // passes if source is greater than to the destination
+		GreaterEqual,   // passes if source is greater than or equal to the destination
+	};
+
+	struct DepthMode
+	{
+		DepthMode() { };
+
+		DepthMode(ComparisonFunc _func) : DepthMode()
+		{
+			enabled = true;
+			func = _func;
+		}
+
+		bool enabled = false;
+		ComparisonFunc func = ComparisonFunc::Always;
+	};
+
+	inline bool operator==(const DepthMode& left, const DepthMode& right)
+	{
+		return
+			left.enabled == right.enabled &&
+			left.func == right.func;
+	}
+
+	inline bool operator!=(const DepthMode& left, const DepthMode& right)
+	{
+		return !(left == right);
+	}
+
+	enum class StencilOp
+	{
+		Keep, // Does not update the stencil buffer entry.
+		Zero, // Sets the stencil buffer entry to 0.
+		Replace, // Replaces the stencil buffer entry with a reference value.
+		Increment, // Increments the stencil buffer entry, wrapping to 0 if the new value exceeds the maximum value.
+		Decrement, // Decrements the stencil buffer entry, wrapping to the maximum value if the new value is less than 0.
+		IncrementSaturation, // Increments the stencil buffer entry, clamping to the maximum value.
+		DecrementSaturation, // Decrements the stencil buffer entry, clamping to 0.
+		Invert // Inverts the bits in the stencil buffer entry.
+	};
+
+	struct StencilMode
+	{
+		bool enabled = false;
+
+		uint8_t readMask = 255;
+		uint8_t writeMask = 255;
+
+		StencilOp depthFailOp = StencilOp::Keep;
+		StencilOp failOp = StencilOp::Keep;
+		ComparisonFunc func = ComparisonFunc::Always;
+		StencilOp passOp = StencilOp::Keep;
+
+		uint8_t reference = 1;
+	};
+
+	inline bool operator==(const StencilMode& left, const StencilMode& right)
+	{
+		return
+			left.enabled == right.enabled &&
+
+			left.readMask == right.readMask &&
+			left.writeMask == right.writeMask &&
+
+			left.depthFailOp == right.failOp &&
+			left.failOp == right.failOp &&
+			left.func == right.func &&
+			left.passOp == right.passOp &&
+
+			left.reference == right.reference;
+	}
+
+	inline bool operator!=(const StencilMode& left, const StencilMode& right)
+	{
+		return !(left == right);
+	}
+
+	namespace StencilStates
+	{
+		inline const StencilMode Disabled = StencilMode();
+	}
+
 	class Device
 	{
 	public:
@@ -183,6 +274,9 @@ namespace skygfx
 		void setUniformBuffer(int slot, T buffer) { setUniformBuffer(slot, &buffer, sizeof(T)); }
 		
 		void setBlendMode(const BlendMode& value);
+		void setDepthMode(const DepthMode& value);
+		void setStencilMode(const StencilMode& value);
+
 		void clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
 			const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
 		void drawIndexed(uint32_t index_count, uint32_t index_offset = 0);

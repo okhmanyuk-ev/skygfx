@@ -18,6 +18,9 @@ namespace skygfx
 		void setIndexBuffer(const Buffer& buffer) override;
 		void setUniformBuffer(int slot, void* memory, size_t size) override;
 		void setBlendMode(const BlendMode& value) override;
+		void setDepthMode(const DepthMode& value) override;
+		void setStencilMode(const StencilMode& value) override;
+
 		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) override;
 		void drawIndexed(uint32_t index_count, uint32_t index_offset) override;
@@ -34,5 +37,7 @@ namespace skygfx
 	private:
 		void createMainRenderTarget(uint32_t width, uint32_t height);
 		void destroyMainRenderTarget();
+
+		void prepareForDrawing();
 	};
 }
