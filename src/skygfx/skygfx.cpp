@@ -61,6 +61,12 @@ Device::~Device()
 	gBackend = nullptr;
 }
 
+
+void Device::resize(uint32_t width, uint32_t height)
+{
+	gBackend->resize(width, height);
+}
+
 void Device::setTopology(Topology topology)
 {
 	gBackend->setTopology(topology);

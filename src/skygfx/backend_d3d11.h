@@ -10,6 +10,8 @@ namespace skygfx
 		BackendD3D11(void* window, uint32_t width, uint32_t height);
 		~BackendD3D11();
 
+		void resize(uint32_t width, uint32_t height) override;
+
 		void setTopology(Topology topology) override;
 		void setViewport(const Viewport& viewport) override;
 		void setScissor(const Scissor& value) override;

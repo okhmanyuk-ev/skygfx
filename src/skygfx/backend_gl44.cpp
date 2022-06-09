@@ -345,6 +345,10 @@ BackendGL44::~BackendGL44()
 	wglDeleteContext(WglContext);
 }
 
+void BackendGL44::resize(uint32_t width, uint32_t height)
+{
+}
+
 void BackendGL44::setTopology(Topology topology)
 {
 	static const std::unordered_map<Topology, GLenum> TopologyMap = {

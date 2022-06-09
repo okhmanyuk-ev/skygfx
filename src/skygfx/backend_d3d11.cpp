@@ -399,6 +399,13 @@ BackendD3D11::~BackendD3D11()
 	}
 }
 
+void BackendD3D11::resize(uint32_t width, uint32_t height)
+{
+	destroyMainRenderTarget();
+	D3D11SwapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+	createMainRenderTarget(width, height);
+}
+
 void BackendD3D11::setTopology(Topology topology)
 {
 	const static std::unordered_map<Topology, D3D11_PRIMITIVE_TOPOLOGY> TopologyMap = {

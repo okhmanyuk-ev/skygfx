@@ -312,6 +312,8 @@ namespace skygfx
 		Device(BackendType type, void* window, uint32_t width, uint32_t height);
 		~Device();
 
+		void resize(uint32_t width, uint32_t height);
+
 		void setTopology(Topology topology);
 		void setViewport(const Viewport& viewport);
 		void setScissor(const Scissor& value);

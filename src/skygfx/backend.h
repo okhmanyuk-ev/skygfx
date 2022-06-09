@@ -9,6 +9,8 @@ namespace skygfx
 	public:
 		virtual ~Backend() {}
 
+		virtual void resize(uint32_t width, uint32_t height) = 0;
+
 		virtual void setTopology(Topology topology) = 0;
 		virtual void setViewport(const Viewport& viewport) = 0;
 		virtual void setScissor(const Scissor& value) = 0;
