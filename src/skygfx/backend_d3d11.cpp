@@ -23,7 +23,7 @@ static struct
 
 static ID3D11Buffer* D3D11VertexBuffer = nullptr;
 static ID3D11Buffer* D3D11IndexBuffer = nullptr;
-static ID3D11Buffer* D3D11ConstantBuffer = nullptr;
+static std::unordered_map<int, ID3D11Buffer*> D3D11ConstantBuffers;
 
 template <class T> inline void combine(size_t& seed, const T& v)
 {
@@ -393,6 +393,14 @@ BackendD3D11::~BackendD3D11()
 	D3D11Context->Release();
 	D3D11Device->Release();
 
+	D3D11VertexBuffer->Release();
+	D3D11IndexBuffer->Release();
+	
+	for (auto [slot, buffer] : D3D11ConstantBuffers)
+	{
+		buffer->Release();
+	}
+
 	for (const auto& [_, blend_state] : D3D11BlendModes)
 	{
 		blend_state->Release();
@@ -554,28 +562,30 @@ void BackendD3D11::setUniformBuffer(int slot, void* memory, size_t size)
 
 	D3D11_BUFFER_DESC desc = {};
 
-	if (D3D11ConstantBuffer)
-		D3D11ConstantBuffer->GetDesc(&desc);
+	if (D3D11ConstantBuffers.contains(slot))
+		D3D11ConstantBuffers.at(slot)->GetDesc(&desc);
 
 	if (desc.ByteWidth < size)
 	{
-		if (D3D11ConstantBuffer)
-			D3D11ConstantBuffer->Release();
+		if (D3D11ConstantBuffers.contains(slot))
+			D3D11ConstantBuffers.at(slot)->Release();
 
 		desc.ByteWidth = static_cast<UINT>(size);
 		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11ConstantBuffer);
+		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11ConstantBuffers[slot]);
 	}
 
-	D3D11_MAPPED_SUBRESOURCE resource;
-	D3D11Context->Map(D3D11ConstantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-	memcpy(resource.pData, memory, size);
-	D3D11Context->Unmap(D3D11ConstantBuffer, 0);
+	auto constant_buffer = D3D11ConstantBuffers.at(slot);
 
-	D3D11Context->VSSetConstantBuffers(slot, 1, &D3D11ConstantBuffer);
-	D3D11Context->PSSetConstantBuffers(slot, 1, &D3D11ConstantBuffer);
+	D3D11_MAPPED_SUBRESOURCE resource;
+	D3D11Context->Map(constant_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+	memcpy(resource.pData, memory, size);
+	D3D11Context->Unmap(constant_buffer, 0);
+
+	D3D11Context->VSSetConstantBuffers(slot, 1, &constant_buffer);
+	D3D11Context->PSSetConstantBuffers(slot, 1, &constant_buffer);
 }
 
 void BackendD3D11::setBlendMode(const BlendMode& value)
