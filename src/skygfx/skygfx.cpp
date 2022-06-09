@@ -116,6 +116,16 @@ void Device::setCullMode(const CullMode& value)
 	gBackend->setCullMode(value);
 }
 
+void Device::setSampler(const Sampler& value)
+{
+	gBackend->setSampler(value);
+}
+
+void Device::setTextureAddressMode(const TextureAddress& value)
+{
+	gBackend->setTextureAddressMode(value);
+}
+
 void Device::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth, 
 	const std::optional<uint8_t>& stencil)
 {

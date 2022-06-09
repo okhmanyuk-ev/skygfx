@@ -279,6 +279,20 @@ namespace skygfx
 		Back,   // Cull back-facing primitives
 	};
 
+	enum class Sampler
+	{
+		Linear,
+		Nearest,
+		LinearMipmapLinear
+	};
+
+	enum class TextureAddress
+	{
+		Wrap, // Texels outside range will form the tile at every integer junction.		
+		Clamp, // Texels outside range will be set to color of 0.0 or 1.0 texel.
+		MirrorWrap
+	};
+
 	class Device
 	{
 	public:
@@ -303,6 +317,8 @@ namespace skygfx
 		void setDepthMode(const DepthMode& value);
 		void setStencilMode(const StencilMode& value);
 		void setCullMode(const CullMode& value);
+		void setSampler(const Sampler& value);
+		void setTextureAddressMode(const TextureAddress& value);
 
 		void clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
 			const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);

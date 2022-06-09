@@ -135,6 +135,37 @@ static std::unordered_map<RasterizerState, ID3D11RasterizerState*, RasterizerSta
 static RasterizerState D3D11RasterizerState;
 static bool D3D11RasterizerStateDirty = true;
 
+struct SamplerState
+{
+	Sampler sampler = Sampler::Linear;
+	TextureAddress textureAddress = TextureAddress::Clamp;
+
+	struct Hasher
+	{
+		size_t operator()(const SamplerState& k) const
+		{
+			size_t seed = 0;
+			combine(seed, k.sampler);
+			combine(seed, k.textureAddress);
+			return seed;
+		}
+	};
+
+	struct Comparer
+	{
+		bool operator()(const SamplerState& left, const SamplerState& right) const
+		{
+			return
+				left.sampler == right.sampler &&
+				left.textureAddress == right.textureAddress;
+		}
+	};
+};
+
+static std::unordered_map<SamplerState, ID3D11SamplerState*, SamplerState::Hasher, SamplerState::Comparer> D3D11SamplerStates;
+static SamplerState D3D11SamplerState;
+static bool D3D11SamplerStateDirty = true;
+
 class ShaderDataD3D11
 {
 private:
@@ -536,6 +567,18 @@ void BackendD3D11::setCullMode(const CullMode& value)
 	D3D11RasterizerStateDirty = true;
 }
 
+void BackendD3D11::setSampler(const Sampler& value)
+{
+	D3D11SamplerState.sampler = value;
+	D3D11SamplerStateDirty = true;
+}
+
+void BackendD3D11::setTextureAddressMode(const TextureAddress& value)
+{
+	D3D11SamplerState.textureAddress = value;
+	D3D11SamplerStateDirty = true;
+}
+
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
@@ -719,5 +762,45 @@ void BackendD3D11::prepareForDrawing()
 		}
 
 		D3D11Context->RSSetState(D3D11RasterizerStates.at(value));
+	}
+
+	// sampler state
+
+	if (D3D11SamplerStateDirty)
+	{
+		D3D11SamplerStateDirty = false;
+
+		const auto& value = D3D11SamplerState;
+
+		if (D3D11SamplerStates.count(value) == 0)
+		{
+			// TODO: see D3D11_ENCODE_BASIC_FILTER
+
+			const static std::unordered_map<Sampler, D3D11_FILTER> SamplerMap = {
+				{ Sampler::Linear, D3D11_FILTER_MIN_MAG_MIP_LINEAR  },
+				{ Sampler::Nearest, D3D11_FILTER_MIN_MAG_MIP_POINT },
+				{ Sampler::LinearMipmapLinear, D3D11_FILTER_MIN_MAG_MIP_LINEAR }
+			};
+
+			const static std::unordered_map<TextureAddress, D3D11_TEXTURE_ADDRESS_MODE> TextureAddressMap = {
+				{ TextureAddress::Clamp, D3D11_TEXTURE_ADDRESS_CLAMP },
+				{ TextureAddress::Wrap, D3D11_TEXTURE_ADDRESS_WRAP },
+				{ TextureAddress::MirrorWrap, D3D11_TEXTURE_ADDRESS_MIRROR }
+			};
+
+			D3D11_SAMPLER_DESC desc = {};
+			desc.Filter = SamplerMap.at(value.sampler);
+			desc.AddressU = TextureAddressMap.at(value.textureAddress);
+			desc.AddressV = TextureAddressMap.at(value.textureAddress);
+			desc.AddressW = TextureAddressMap.at(value.textureAddress);
+			desc.MaxAnisotropy = D3D11_MAX_MAXANISOTROPY;
+			desc.MipLODBias = 0.0f;
+			desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+			desc.MinLOD = 0.0f;
+			desc.MaxLOD = FLT_MAX;
+			D3D11Device->CreateSamplerState(&desc, &D3D11SamplerStates[value]);
+		}
+
+		D3D11Context->PSSetSamplers(0, 1, &D3D11SamplerStates.at(value));
 	}
 }

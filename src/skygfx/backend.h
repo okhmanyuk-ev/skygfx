@@ -22,6 +22,8 @@ namespace skygfx
 		virtual void setDepthMode(const DepthMode& value) = 0;
 		virtual void setStencilMode(const StencilMode& value) = 0;
 		virtual void setCullMode(const CullMode& value) = 0;
+		virtual void setSampler(const Sampler& value) = 0;
+		virtual void setTextureAddressMode(const TextureAddress& value) = 0;
 
 		virtual void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) = 0;

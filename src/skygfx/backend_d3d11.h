@@ -23,6 +23,8 @@ namespace skygfx
 		void setDepthMode(const DepthMode& value) override;
 		void setStencilMode(const StencilMode& value) override;
 		void setCullMode(const CullMode& value) override;
+		void setSampler(const Sampler& value) override;
+		void setTextureAddressMode(const TextureAddress& value) override;
 
 		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) override;

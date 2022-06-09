@@ -463,6 +463,17 @@ void BackendGL44::setCullMode(const CullMode& value)
 	//
 }
 
+void BackendGL44::setSampler(const Sampler& value)
+{
+	//
+}
+
+void BackendGL44::setTextureAddressMode(const TextureAddress& value)
+{
+	//
+}
+
+
 void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
