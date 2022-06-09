@@ -15,6 +15,8 @@ namespace skygfx
 		void setScissor(const Scissor& value) override;
 		void setScissor(std::nullptr_t value) override;
 		void setTexture(TextureHandle* handle) override;
+		void setRenderTarget(RenderTargetHandle* handle) override;
+		void setRenderTarget(std::nullptr_t value) override;
 		void setShader(ShaderHandle* handle) override;
 		void setVertexBuffer(const Buffer& buffer) override;
 		void setIndexBuffer(const Buffer& buffer) override;
@@ -35,6 +37,9 @@ namespace skygfx
 		TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 
 			void* memory, bool mipmap) override;
 		void destroyTexture(TextureHandle* handle) override;
+
+		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) override;
+		void destroyRenderTarget(RenderTargetHandle* handle) override;
 
 		ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
 			const std::string& fragment_code) override;

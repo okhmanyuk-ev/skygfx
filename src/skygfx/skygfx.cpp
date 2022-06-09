@@ -21,6 +21,16 @@ Texture::~Texture()
 	gBackend->destroyTexture(mTextureHandle);
 }
 
+RenderTarget::RenderTarget(uint32_t width, uint32_t height) : Texture(width, height, 4, nullptr)
+{
+	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
+}
+
+RenderTarget::~RenderTarget()
+{
+	gBackend->destroyRenderTarget(mRenderTargetHandle);
+}
+
 // shader
 
 Shader::Shader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
@@ -74,6 +84,16 @@ void Device::setScissor(std::nullptr_t value)
 void Device::setTexture(const Texture& texture)
 {
 	gBackend->setTexture(const_cast<Texture&>(texture));
+}
+
+void Device::setRenderTarget(const RenderTarget& value)
+{
+	gBackend->setRenderTarget(const_cast<RenderTarget&>(value));
+}
+
+void Device::setRenderTarget(std::nullptr_t value)
+{
+	gBackend->setRenderTarget(value);
 }
 
 void Device::setShader(const Shader& shader)

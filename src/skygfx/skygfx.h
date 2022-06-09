@@ -17,6 +17,7 @@ namespace skygfx
 	};
 
 	using TextureHandle = struct TextureHandle;
+	using RenderTargetHandle = struct RenderTargetHandle;
 	using ShaderHandle = struct ShaderHandle;
 
 	class Texture
@@ -29,6 +30,18 @@ namespace skygfx
 
 	private:
 		TextureHandle* mTextureHandle = nullptr;
+	};
+
+	class RenderTarget : public Texture
+	{
+	public:
+		RenderTarget(uint32_t width, uint32_t height);
+		~RenderTarget();
+		
+		operator RenderTargetHandle* () { return mRenderTargetHandle; }
+
+	private:
+		RenderTargetHandle* mRenderTargetHandle = nullptr;
 	};
 
 	class Shader
@@ -304,6 +317,8 @@ namespace skygfx
 		void setScissor(const Scissor& value);
 		void setScissor(std::nullptr_t value);
 		void setTexture(const Texture& texture);
+		void setRenderTarget(const RenderTarget& value);
+		void setRenderTarget(std::nullptr_t value);
 		void setShader(const Shader& shader);
 		void setVertexBuffer(const Buffer& buffer);
 		void setIndexBuffer(const Buffer& buffer);

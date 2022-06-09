@@ -254,6 +254,9 @@ public:
 
 class TextureDataD3D11
 {
+	friend class RenderTargetDataD3D11;
+	friend class BackendD3D11;
+
 private:
 	ID3D11Texture2D* texture2d;
 	ID3D11ShaderResourceView* shader_resource_view;
@@ -305,6 +308,55 @@ public:
 	}
 };
 
+class RenderTargetDataD3D11
+{
+	friend class BackendD3D11;
+
+private:
+	ID3D11RenderTargetView* render_target_view;
+	ID3D11Texture2D* depth_stencil_texture;
+	ID3D11DepthStencilView* depth_stencil_view;
+	TextureDataD3D11* texture_data;
+
+public:
+	RenderTargetDataD3D11(uint32_t width, uint32_t height, TextureDataD3D11* _texture_data) : texture_data(_texture_data)
+	{
+		D3D11_RENDER_TARGET_VIEW_DESC render_target_view_desc = { };
+		render_target_view_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		render_target_view_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		render_target_view_desc.Texture2D.MipSlice = 0;
+		D3D11Device->CreateRenderTargetView(texture_data->texture2d, &render_target_view_desc, &render_target_view);
+
+		D3D11_TEXTURE2D_DESC texture2d_desc = { };
+		texture2d_desc.Width = width;
+		texture2d_desc.Height = height;
+		texture2d_desc.MipLevels = 1;
+		texture2d_desc.ArraySize = 1;
+		texture2d_desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		texture2d_desc.SampleDesc.Count = 1;
+		texture2d_desc.SampleDesc.Quality = 0;
+		texture2d_desc.Usage = D3D11_USAGE_DEFAULT;
+		texture2d_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+		texture2d_desc.CPUAccessFlags = 0;
+		texture2d_desc.MiscFlags = 0;
+		D3D11Device->CreateTexture2D(&texture2d_desc, nullptr, &depth_stencil_texture);
+
+		D3D11_DEPTH_STENCIL_VIEW_DESC depth_stencil_view_desc = {};
+		depth_stencil_view_desc.Format = texture2d_desc.Format;
+		depth_stencil_view_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+		D3D11Device->CreateDepthStencilView(depth_stencil_texture, &depth_stencil_view_desc, &depth_stencil_view);
+	}
+
+	~RenderTargetDataD3D11()
+	{
+		render_target_view->Release();
+		depth_stencil_texture->Release();
+		depth_stencil_view->Release();
+	}
+};
+
+static RenderTargetDataD3D11* D3D11CurrentRenderTarget = nullptr;
+
 BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 {
 	DXGI_SWAP_CHAIN_DESC sd = {};
@@ -330,6 +382,7 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 		nullptr, &D3D11Context);
 
 	createMainRenderTarget(width, height);
+	setRenderTarget(nullptr);
 
 	D3D11Context->OMSetRenderTargets(1, &MainRenderTarget.render_taget_view, MainRenderTarget.depth_stencil_view);
 }
@@ -398,6 +451,33 @@ void BackendD3D11::setTexture(TextureHandle* handle)
 	int slot = 0;
 	auto texture = (TextureDataD3D11*)handle;
 	texture->bind(slot);
+}
+
+void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
+{
+	auto render_target = (RenderTargetDataD3D11*)handle;
+
+	ID3D11ShaderResourceView* prev_shader_resource_view;
+	D3D11Context->PSGetShaderResources(0, 1, &prev_shader_resource_view);
+
+	if (prev_shader_resource_view == render_target->texture_data->shader_resource_view)
+	{
+		ID3D11ShaderResourceView* null[] = { nullptr };
+		D3D11Context->PSSetShaderResources(0, 1, null); // remove old shader view
+	}
+
+	if (prev_shader_resource_view)
+		prev_shader_resource_view->Release(); // avoid memory leak
+
+	D3D11Context->OMSetRenderTargets(1, &render_target->render_target_view, render_target->depth_stencil_view);
+
+	D3D11CurrentRenderTarget = render_target;
+}
+
+void BackendD3D11::setRenderTarget(std::nullptr_t value)
+{
+	D3D11Context->OMSetRenderTargets(1, &MainRenderTarget.render_taget_view, MainRenderTarget.depth_stencil_view);
+	D3D11CurrentRenderTarget = nullptr;
 }
 
 void BackendD3D11::setShader(ShaderHandle* handle)
@@ -588,11 +668,11 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 	auto rtv = MainRenderTarget.render_taget_view;
 	auto dsv = MainRenderTarget.depth_stencil_view;
 
-	//if (currentRenderTarget != nullptr)
-	//{
-	//	rtv = currentRenderTarget->mRenderTargetImpl->render_target_view;
-	//	dsv = currentRenderTarget->mRenderTargetImpl->depth_stencil_view;
-	//}
+	if (D3D11CurrentRenderTarget != nullptr)
+	{
+		rtv = D3D11CurrentRenderTarget->render_target_view;
+		dsv = D3D11CurrentRenderTarget->depth_stencil_view;
+	}
 
 	if (color.has_value())
 	{
@@ -641,6 +721,19 @@ void BackendD3D11::destroyTexture(TextureHandle* handle)
 {
 	auto texture = (TextureDataD3D11*)handle;
 	delete texture;
+}
+
+RenderTargetHandle* BackendD3D11::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
+{
+	auto texture = (TextureDataD3D11*)texture_handle;
+	auto render_target = new RenderTargetDataD3D11(width, height, texture);
+	return (RenderTargetHandle*)render_target;
+}
+
+void BackendD3D11::destroyRenderTarget(RenderTargetHandle* handle)
+{
+	auto render_target = (RenderTargetHandle*)handle;
+	delete render_target;
 }
 
 ShaderHandle* BackendD3D11::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)

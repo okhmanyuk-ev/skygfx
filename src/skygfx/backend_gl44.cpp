@@ -386,6 +386,16 @@ void BackendGL44::setTexture(TextureHandle* handle)
 	texture->bind(slot);
 }
 
+void BackendGL44::setRenderTarget(RenderTargetHandle* handle)
+{
+	//
+}
+
+void BackendGL44::setRenderTarget(std::nullptr_t value)
+{
+	//
+}
+
 void BackendGL44::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderDataGL44*)handle;
@@ -538,6 +548,16 @@ void BackendGL44::destroyTexture(TextureHandle* handle)
 {
 	auto texture = (TextureDataGL44*)handle;
 	delete texture;
+}
+
+RenderTargetHandle* BackendGL44::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture)
+{
+	return nullptr;
+}
+
+void BackendGL44::destroyRenderTarget(RenderTargetHandle* handle)
+{
+	//
 }
 
 ShaderHandle* BackendGL44::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
