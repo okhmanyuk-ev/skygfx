@@ -282,12 +282,15 @@ public:
 		shader_resource_view_desc.Texture2D.MostDetailedMip = 0;
 		D3D11Device->CreateShaderResourceView(texture2d, &shader_resource_view_desc, &shader_resource_view);
 
-		auto memPitch = width * channels;
-		auto memSlicePitch = width * height * channels;
-		D3D11Context->UpdateSubresource(texture2d, 0, nullptr, memory, memPitch, memSlicePitch);
+		if (memory)
+		{
+			auto memPitch = width * channels;
+			auto memSlicePitch = width * height * channels;
+			D3D11Context->UpdateSubresource(texture2d, 0, nullptr, memory, memPitch, memSlicePitch);
 
-		if (mipmap)
-			D3D11Context->GenerateMips(shader_resource_view);
+			if (mipmap)
+				D3D11Context->GenerateMips(shader_resource_view);
+		}
 	}
 
 	~TextureDataD3D11()
