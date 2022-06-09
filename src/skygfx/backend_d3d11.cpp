@@ -732,7 +732,7 @@ RenderTargetHandle* BackendD3D11::createRenderTarget(uint32_t width, uint32_t he
 
 void BackendD3D11::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetHandle*)handle;
+	auto render_target = (RenderTargetDataD3D11*)handle;
 	delete render_target;
 }
 
