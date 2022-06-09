@@ -383,8 +383,6 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 
 	createMainRenderTarget(width, height);
 	setRenderTarget(nullptr);
-
-	D3D11Context->OMSetRenderTargets(1, &MainRenderTarget.render_taget_view, MainRenderTarget.depth_stencil_view);
 }
 
 BackendD3D11::~BackendD3D11()
