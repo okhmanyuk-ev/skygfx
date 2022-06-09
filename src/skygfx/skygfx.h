@@ -322,6 +322,7 @@ namespace skygfx
 
 		void clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
 			const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
+		void draw(size_t vertex_count, size_t vertex_offset = 0);
 		void drawIndexed(uint32_t index_count, uint32_t index_offset = 0);
 		void present();
 	};

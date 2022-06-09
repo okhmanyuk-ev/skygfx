@@ -28,6 +28,7 @@ namespace skygfx
 
 		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) override;
+		void draw(size_t vertex_count, size_t vertex_offset) override;
 		void drawIndexed(uint32_t index_count, uint32_t index_offset = 0) override;
 		void present() override;
 

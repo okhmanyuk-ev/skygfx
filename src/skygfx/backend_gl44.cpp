@@ -473,7 +473,6 @@ void BackendGL44::setTextureAddressMode(const TextureAddress& value)
 	//
 }
 
-
 void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
@@ -511,6 +510,11 @@ void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::option
 	{
 		glEnable(GL_SCISSOR_TEST);
 	}
+}
+
+void BackendGL44::draw(size_t vertex_count, size_t vertex_offset)
+{
+	glDrawArrays(GLTopology, (GLint)vertex_offset, (GLsizei)vertex_count);
 }
 
 void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)

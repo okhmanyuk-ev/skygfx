@@ -610,6 +610,12 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 	}
 }
 
+void BackendD3D11::draw(size_t vertex_count, size_t vertex_offset)
+{
+	prepareForDrawing();
+	D3D11Context->Draw((UINT)vertex_count, (UINT)vertex_offset);
+}
+
 void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
