@@ -168,6 +168,11 @@ void Device::drawIndexed(uint32_t index_count, uint32_t index_offset)
 	gBackend->drawIndexed(index_count, index_offset);
 }
 
+void Device::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture)
+{
+	gBackend->readPixels(pos, size, dst_texture);
+}
+
 void Device::present()
 {
 	gBackend->present();

@@ -34,6 +34,9 @@ namespace skygfx
 			const std::optional<uint8_t>& stencil) override;
 		void draw(size_t vertex_count, size_t vertex_offset) override;
 		void drawIndexed(uint32_t index_count, uint32_t index_offset) override;
+
+		void readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture) override;
+
 		void present() override;
 
 		TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 

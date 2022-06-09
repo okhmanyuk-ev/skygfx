@@ -260,9 +260,15 @@ class TextureDataD3D11
 private:
 	ID3D11Texture2D* texture2d;
 	ID3D11ShaderResourceView* shader_resource_view;
+	uint32_t width;
+	uint32_t height;
+	bool mipmap;
 
 public:
-	TextureDataD3D11(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+	TextureDataD3D11(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) :
+		width(_width),
+		height(_height),
+		mipmap(_mipmap)
 	{
 		D3D11_TEXTURE2D_DESC texture2d_desc = { };
 		texture2d_desc.Width = width;
@@ -718,6 +724,81 @@ void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
 	D3D11Context->DrawIndexed((UINT)index_count, (UINT)index_offset, 0);
+}
+
+void BackendD3D11::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
+{
+	auto dst_texture = (TextureDataD3D11*)dst_texture_handle;
+
+	assert(dst_texture->width == size.x);
+	assert(dst_texture->height == size.y);
+
+	if (size.x <= 0 || size.y <= 0)
+		return;
+
+	ID3D11Resource* resource = NULL;
+
+	if (D3D11CurrentRenderTarget)
+		D3D11CurrentRenderTarget->render_target_view->GetResource(&resource);
+	else
+		MainRenderTarget.render_taget_view->GetResource(&resource);
+
+	ID3D11Texture2D* texture = NULL;
+	resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&texture);
+
+	D3D11_TEXTURE2D_DESC desc = { 0 };
+	texture->GetDesc(&desc);
+	auto back_w = desc.Width;
+	auto back_h = desc.Height;
+	texture->Release();
+
+	auto src_x = (UINT)pos.x;
+	auto src_y = (UINT)pos.y;
+	auto src_w = (UINT)size.x;
+	auto src_h = (UINT)size.y;
+
+	UINT dst_x = 0;
+	UINT dst_y = 0;
+
+	if (pos.x < 0)
+	{
+		src_x = 0;
+		if (-pos.x > size.x)
+			src_w = 0;
+		else
+			src_w += pos.x;
+
+		dst_x = -pos.x;
+	}
+
+	if (pos.y < 0)
+	{
+		src_y = 0;
+		if (-pos.y > size.y)
+			src_h = 0;
+		else
+			src_h += pos.y;
+
+		dst_y = -pos.y;
+	}
+
+	D3D11_BOX box;
+	box.left = src_x;
+	box.right = src_x + src_w;
+	box.top = src_y;
+	box.bottom = src_y + src_h;
+	box.front = 0;
+	box.back = 1;
+
+	if (pos.y < (int)back_h && pos.x < (int)back_w)
+	{
+		D3D11Context->CopySubresourceRegion(dst_texture->texture2d, 0, dst_x, dst_y, 0, resource, 0, &box);
+
+		if (dst_texture->mipmap)
+			D3D11Context->GenerateMips(dst_texture->shader_resource_view);
+	}
+
+	resource->Release();
 }
 
 void BackendD3D11::present()

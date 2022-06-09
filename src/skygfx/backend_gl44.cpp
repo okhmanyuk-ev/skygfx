@@ -537,6 +537,11 @@ void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)
 	glDrawElements(GLTopology, (GLsizei)index_count, GLIndexType, (void*)(size_t)(index_offset * index_size));
 }
 
+void BackendGL44::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture)
+{
+	//
+}
+
 void BackendGL44::present()
 {
 	SwapBuffers(gHDC);
