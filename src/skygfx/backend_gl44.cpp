@@ -369,6 +369,16 @@ void BackendGL44::setViewport(const Viewport& viewport)
 	glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
 }
 
+void BackendGL44::setScissor(const Scissor& value)
+{
+	//
+}
+
+void BackendGL44::setScissor(std::nullptr_t value)
+{
+	//
+}
+
 void BackendGL44::setTexture(TextureHandle* handle)
 {
 	int slot = 0;
@@ -444,6 +454,11 @@ void BackendGL44::setDepthMode(const DepthMode& value)
 }
 
 void BackendGL44::setStencilMode(const StencilMode& value)
+{
+	//
+}
+
+void BackendGL44::setCullMode(const CullMode& value)
 {
 	//
 }

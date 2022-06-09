@@ -96,6 +96,45 @@ static DepthStencilState D3D11DepthStencilState;
 static bool D3D11DepthStencilStateDirty = true;
 static std::unordered_map<DepthStencilState, ID3D11DepthStencilState*, DepthStencilState::Hasher, DepthStencilState::Comparer> D3D11DepthStencilStates;
 
+struct RasterizerState
+{
+	bool scissorEnabled = false;
+	CullMode cullMode = CullMode::None;
+
+	bool operator==(const RasterizerState& value) const
+	{
+		return scissorEnabled == value.scissorEnabled && cullMode == value.cullMode;
+	}
+
+	bool operator!=(const RasterizerState& value) const
+	{
+		return !(value == *this);
+	}
+
+	struct Hasher
+	{
+		size_t operator()(const RasterizerState& k) const
+		{
+			size_t seed = 0;
+			combine(seed, k.cullMode);
+			combine(seed, k.scissorEnabled);
+			return seed;
+		}
+	};
+
+	struct Comparer
+	{
+		bool operator()(const RasterizerState& left, const RasterizerState& right) const
+		{
+			return left == right;
+		}
+	};
+};
+
+static std::unordered_map<RasterizerState, ID3D11RasterizerState*, RasterizerState::Hasher, RasterizerState::Comparer> D3D11RasterizerStates;
+static RasterizerState D3D11RasterizerState;
+static bool D3D11RasterizerStateDirty = true;
+
 class ShaderDataD3D11
 {
 private:
@@ -300,6 +339,26 @@ void BackendD3D11::setViewport(const Viewport& viewport)
 	D3D11Context->RSSetViewports(1, &vp);
 }
 
+void BackendD3D11::setScissor(const Scissor& value)
+{
+	D3D11RasterizerState.scissorEnabled = true;
+
+	D3D11_RECT rect;
+	rect.left = static_cast<LONG>(value.position.x);
+	rect.top = static_cast<LONG>(value.position.y);
+	rect.right = static_cast<LONG>(value.position.x + value.size.x);
+	rect.bottom = static_cast<LONG>(value.position.y + value.size.y);
+	D3D11Context->RSSetScissorRects(1, &rect);
+
+	D3D11RasterizerStateDirty = true;
+}
+
+void BackendD3D11::setScissor(std::nullptr_t value)
+{
+	D3D11RasterizerState.scissorEnabled = false;
+	D3D11RasterizerStateDirty = true;
+}
+
 void BackendD3D11::setTexture(TextureHandle* handle)
 {
 	int slot = 0;
@@ -471,6 +530,12 @@ void BackendD3D11::setStencilMode(const StencilMode& value)
 	D3D11DepthStencilStateDirty = true;
 }
 
+void BackendD3D11::setCullMode(const CullMode& value)
+{
+	D3D11RasterizerState.cullMode = value;
+	D3D11RasterizerStateDirty = true;
+}
+
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
@@ -581,7 +646,7 @@ void BackendD3D11::prepareForDrawing()
 	{
 		D3D11DepthStencilStateDirty = false;
 
-		auto value = D3D11DepthStencilState;
+		const auto& value = D3D11DepthStencilState;
 
 		if (D3D11DepthStencilStates.count(value) == 0)
 		{
@@ -627,5 +692,32 @@ void BackendD3D11::prepareForDrawing()
 		}
 
 		D3D11Context->OMSetDepthStencilState(D3D11DepthStencilStates.at(value), value.stencilMode.reference);
+	}
+
+	// rasterizer state
+
+	if (D3D11RasterizerStateDirty)
+	{
+		D3D11RasterizerStateDirty = false;
+
+		const auto& value = D3D11RasterizerState;
+
+		if (D3D11RasterizerStates.count(value) == 0)
+		{
+			const static std::unordered_map<CullMode, D3D11_CULL_MODE> CullMap = {
+				{ CullMode::None, D3D11_CULL_NONE },
+				{ CullMode::Front, D3D11_CULL_FRONT },
+				{ CullMode::Back, D3D11_CULL_BACK }
+			};
+
+			D3D11_RASTERIZER_DESC desc = {};
+			desc.FillMode = D3D11_FILL_SOLID;
+			desc.CullMode = CullMap.at(value.cullMode);
+			desc.ScissorEnable = value.scissorEnabled;
+			desc.DepthClipEnable = true;
+			D3D11Device->CreateRasterizerState(&desc, &D3D11RasterizerStates[value]);
+		}
+
+		D3D11Context->RSSetState(D3D11RasterizerStates.at(value));
 	}
 }

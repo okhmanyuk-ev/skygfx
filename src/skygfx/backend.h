@@ -11,6 +11,8 @@ namespace skygfx
 
 		virtual void setTopology(Topology topology) = 0;
 		virtual void setViewport(const Viewport& viewport) = 0;
+		virtual void setScissor(const Scissor& value) = 0;
+		virtual void setScissor(std::nullptr_t value) = 0;
 		virtual void setTexture(TextureHandle* handle) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(const Buffer& buffer) = 0;
@@ -19,6 +21,7 @@ namespace skygfx
 		virtual void setBlendMode(const BlendMode& value) = 0;
 		virtual void setDepthMode(const DepthMode& value) = 0;
 		virtual void setStencilMode(const StencilMode& value) = 0;
+		virtual void setCullMode(const CullMode& value) = 0;
 
 		virtual void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) = 0;

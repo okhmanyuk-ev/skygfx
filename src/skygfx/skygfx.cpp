@@ -61,6 +61,16 @@ void Device::setViewport(const Viewport& viewport)
 	gBackend->setViewport(viewport);
 }
 
+void Device::setScissor(const Scissor& value)
+{
+	gBackend->setScissor(value);
+}
+
+void Device::setScissor(std::nullptr_t value)
+{
+	gBackend->setScissor(value);
+}
+
 void Device::setTexture(const Texture& texture)
 {
 	gBackend->setTexture(const_cast<Texture&>(texture));
@@ -99,6 +109,11 @@ void Device::setDepthMode(const DepthMode& value)
 void Device::setStencilMode(const StencilMode& value)
 {
 	gBackend->setStencilMode(value);
+}
+
+void Device::setCullMode(const CullMode& value)
+{
+	gBackend->setCullMode(value);
 }
 
 void Device::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth, 

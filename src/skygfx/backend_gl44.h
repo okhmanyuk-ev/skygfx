@@ -12,6 +12,8 @@ namespace skygfx
 
 		void setTopology(Topology topology) override;
 		void setViewport(const Viewport& viewport) override;
+		void setScissor(const Scissor& value) override;
+		void setScissor(std::nullptr_t value) override;
 		void setTexture(TextureHandle* handle) override;
 		void setShader(ShaderHandle* handle) override;
 		void setVertexBuffer(const Buffer& buffer) override;
@@ -20,6 +22,7 @@ namespace skygfx
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(const DepthMode& value) override;
 		void setStencilMode(const StencilMode& value) override;
+		void setCullMode(const CullMode& value) override;
 
 		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) override;

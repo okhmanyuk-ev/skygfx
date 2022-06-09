@@ -255,6 +255,30 @@ namespace skygfx
 		inline const StencilMode Disabled = StencilMode();
 	}
 
+	struct Scissor
+	{
+		glm::vec2 position = { 0.0f, 0.0f };
+		glm::vec2 size = { 0.0f, 0.0f };
+	};
+
+	inline bool operator==(const Scissor& left, const Scissor& right)
+	{
+		return left.position == right.position &&
+			left.size == right.size;
+	}
+
+	inline bool operator!=(const Scissor& left, const Scissor& right)
+	{
+		return !(left == right);
+	}
+
+	enum class CullMode
+	{
+		None,   // No culling
+		Front,  // Cull front-facing primitives
+		Back,   // Cull back-facing primitives
+	};
+
 	class Device
 	{
 	public:
@@ -263,6 +287,8 @@ namespace skygfx
 
 		void setTopology(Topology topology);
 		void setViewport(const Viewport& viewport);
+		void setScissor(const Scissor& value);
+		void setScissor(std::nullptr_t value);
 		void setTexture(const Texture& texture);
 		void setShader(const Shader& shader);
 		void setVertexBuffer(const Buffer& buffer);
@@ -276,6 +302,7 @@ namespace skygfx
 		void setBlendMode(const BlendMode& value);
 		void setDepthMode(const DepthMode& value);
 		void setStencilMode(const StencilMode& value);
+		void setCullMode(const CullMode& value);
 
 		void clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
 			const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
