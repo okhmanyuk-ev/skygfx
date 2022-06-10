@@ -52,7 +52,7 @@ Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 	if (type == BackendType::D3D11)
 		gBackend = new BackendD3D11(window, width, height);
 	else if (type == BackendType::OpenGL44)
-		gBackend = new BackendGL44(window);
+		gBackend = new BackendGL44(window, width, height);
 }
 
 Device::~Device()
@@ -60,7 +60,6 @@ Device::~Device()
 	delete gBackend;
 	gBackend = nullptr;
 }
-
 
 void Device::resize(uint32_t width, uint32_t height)
 {

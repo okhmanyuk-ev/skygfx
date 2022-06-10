@@ -7,7 +7,7 @@ namespace skygfx
 	class BackendGL44 : public Backend
 	{
 	public:
-		BackendGL44(void* window);
+		BackendGL44(void* window, uint32_t width, uint32_t height);
 		~BackendGL44();
 
 		void resize(uint32_t width, uint32_t height) override;
@@ -49,5 +49,20 @@ namespace skygfx
 		ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
 			const std::string& fragment_code) override;
 		void destroyShader(ShaderHandle* handle) override;
+
+	private:
+		void prepareForDrawing();
+
+		void setInternalVertexBuffer(const Buffer& value);
+		void setInternalIndexBuffer(const Buffer& value);
+		void refreshInternalSampler();
+
+	private:
+		bool mVertexBufferDirty = false;
+		bool mIndexBufferDirty = false;
+		Buffer mVertexBuffer;
+		Buffer mIndexBuffer;
+		Sampler mSampler;
+		TextureAddress mTextureAddress;
 	};
 }

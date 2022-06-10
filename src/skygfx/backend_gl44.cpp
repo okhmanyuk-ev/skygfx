@@ -90,7 +90,7 @@ static const std::unordered_map<Vertex::Attribute::Format, GLenum> TypeMap = {
 	{ Vertex::Attribute::Format::R8G8B8A8UN, GL_UNSIGNED_BYTE }
 };
 
-const std::unordered_map<Vertex::Attribute::Format, GLboolean> static NormalizeMap = {
+static const std::unordered_map<Vertex::Attribute::Format, GLboolean> NormalizeMap = {
 	{ Vertex::Attribute::Format::R32F, GL_FALSE },
 	{ Vertex::Attribute::Format::R32G32F, GL_FALSE },
 	{ Vertex::Attribute::Format::R32G32B32F, GL_FALSE },
@@ -99,6 +99,17 @@ const std::unordered_map<Vertex::Attribute::Format, GLboolean> static NormalizeM
 	{ Vertex::Attribute::Format::R8G8UN, GL_TRUE },
 	{ Vertex::Attribute::Format::R8G8B8UN, GL_TRUE },
 	{ Vertex::Attribute::Format::R8G8B8A8UN, GL_TRUE }
+};
+
+static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
+	{ ComparisonFunc::Always, GL_ALWAYS },
+	{ ComparisonFunc::Never, GL_NEVER },
+	{ ComparisonFunc::Less, GL_LESS },
+	{ ComparisonFunc::Equal, GL_EQUAL },
+	{ ComparisonFunc::NotEqual, GL_NOTEQUAL },
+	{ ComparisonFunc::LessEqual, GL_LEQUAL },
+	{ ComparisonFunc::Greater, GL_GREATER },
+	{ ComparisonFunc::GreaterEqual, GL_GEQUAL }
 };
 
 class ShaderDataGL44
@@ -191,52 +202,49 @@ public:
 
 class TextureDataGL44
 {
+	friend class RenderTargetDataGL44;
+	friend class BackendGL44;
+
 private:
 	GLuint texture;
-	bool is_mipmap;
+	bool mipmap;
+	uint32_t width;
+	uint32_t height;
 
 public:
-	TextureDataGL44(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) : is_mipmap(mipmap)
+	TextureDataGL44(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) : 
+		mipmap(_mipmap),
+		width(_width),
+		height(_height)
 	{
 		GLint last_texture;
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
 		glGenTextures(1, &texture);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-		glBindTexture(GL_TEXTURE_2D, last_texture);
 
-		writePixels(width, height, channels, memory, mipmap);
-	}
-
-	void writePixels(int width, int height, int channels, void* memory, bool mipmap)
-	{
-	//	assert(width == mWidth);
-	//	assert(height == mHeight);
-		assert(memory);
-
-		auto temp_data = malloc(width * height * 4); // TODO: we should not use magic numbers
-
-		const auto row_size = width * 4;
-
-		for (int i = 0; i < height; i++)
+		if (memory)
 		{
-			auto src = (void*)(size_t(memory) + size_t(i) * row_size);
-			auto dst = (void*)(size_t(temp_data) + size_t(height - 1 - i) * row_size);
+			auto temp_data = malloc(width * height * 4); // TODO: we should not use magic numbers
+			const auto row_size = width * 4;
 
-			memcpy(dst, src, row_size);
+			for (int i = 0; i < height; i++)
+			{
+				auto src = (void*)(size_t(memory) + size_t(i) * row_size);
+				auto dst = (void*)(size_t(temp_data) + size_t(height - 1 - i) * row_size);
+
+				memcpy(dst, src, row_size);
+			}
+
+			glBindTexture(GL_TEXTURE_2D, texture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp_data);
+			free(temp_data);
+			
+			if (mipmap)
+				glGenerateMipmap(GL_TEXTURE_2D);
 		}
 
-		GLint last_texture;
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp_data);
-
-		if (mipmap)
-			glGenerateMipmap(GL_TEXTURE_2D);
-
 		glBindTexture(GL_TEXTURE_2D, last_texture);
-
-		free(temp_data);
 	}
 
 	~TextureDataGL44()
@@ -248,12 +256,48 @@ public:
 	{
 		glActiveTexture(GL_TEXTURE0 + slot);
 		glBindTexture(GL_TEXTURE_2D, texture);
+	}
+};
 
-		// sampler state
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, is_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+class RenderTargetDataGL44
+{
+	friend class BackendGL44;
+
+private:
+	GLuint framebuffer;
+	GLuint depth_stencil_renderbuffer;
+	TextureDataGL44* texture_data;
+
+public:
+	RenderTargetDataGL44(uint32_t width, uint32_t height, TextureDataGL44* _texture_data) : texture_data(_texture_data)
+	{
+		GLint last_fbo;
+		GLint last_rbo;
+
+		glGetIntegerv(GL_FRAMEBUFFER_BINDING, &last_fbo);
+		glGetIntegerv(GL_RENDERBUFFER_BINDING, &last_rbo);
+
+		glGenFramebuffers(1, &framebuffer);
+		glGenRenderbuffers(1, &depth_stencil_renderbuffer);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+		glBindRenderbuffer(GL_RENDERBUFFER, depth_stencil_renderbuffer);
+
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture_data->texture, 0);
+
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, depth_stencil_renderbuffer);
+
+		assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, last_fbo);
+		glBindRenderbuffer(GL_RENDERBUFFER, last_rbo);
+	}
+
+	~RenderTargetDataGL44()
+	{
+		glDeleteFramebuffers(1, &framebuffer);
+		glDeleteRenderbuffers(1, &depth_stencil_renderbuffer);
 	}
 };
 
@@ -264,9 +308,11 @@ static GLenum GLTopology;
 static GLenum GLIndexType;
 static GLuint GLVertexBuffer;
 static GLuint GLIndexBuffer;
-static GLuint GLUniformBuffer;
+static std::unordered_map<int, GLuint> GLUniformBuffers;
+static GLuint GLPixelBuffer;
+static uint32_t gHeight = 0;
 
-BackendGL44::BackendGL44(void* window)
+BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 {
 	gHDC = GetDC((HWND)window);
 
@@ -333,20 +379,28 @@ BackendGL44::BackendGL44(void* window)
 
 	glGenBuffers(1, &GLVertexBuffer);
 	glGenBuffers(1, &GLIndexBuffer);
-	glGenBuffers(1, &GLUniformBuffer);
+	glGenBuffers(1, &GLPixelBuffer);
+
+	gHeight = height;
 }
 
 BackendGL44::~BackendGL44()
 {
 	glDeleteBuffers(1, &GLVertexBuffer);
 	glDeleteBuffers(1, &GLIndexBuffer);
-	glDeleteBuffers(1, &GLUniformBuffer);
+	glDeleteBuffers(1, &GLPixelBuffer);
+
+	for (auto [slot, buffer] : GLUniformBuffers)
+	{
+		glDeleteBuffers(1, &buffer);
+	}
 	
 	wglDeleteContext(WglContext);
 }
 
 void BackendGL44::resize(uint32_t width, uint32_t height)
 {
+	gHeight = height;
 }
 
 void BackendGL44::setTopology(Topology topology)
@@ -375,12 +429,17 @@ void BackendGL44::setViewport(const Viewport& viewport)
 
 void BackendGL44::setScissor(const Scissor& value)
 {
-	//
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(
+		(GLint)glm::round(value.position.x),
+		(GLint)glm::round(gHeight - value.position.y - value.size.y),
+		(GLint)glm::round(value.size.x),
+		(GLint)glm::round(value.size.y));
 }
 
 void BackendGL44::setScissor(std::nullptr_t value)
 {
-	//
+	glDisable(GL_SCISSOR_TEST);
 }
 
 void BackendGL44::setTexture(TextureHandle* handle)
@@ -388,16 +447,18 @@ void BackendGL44::setTexture(TextureHandle* handle)
 	int slot = 0;
 	auto texture = (TextureDataGL44*)handle;
 	texture->bind(slot);
+	refreshInternalSampler();
 }
 
 void BackendGL44::setRenderTarget(RenderTargetHandle* handle)
 {
-	//
+	auto render_target = (RenderTargetDataGL44*)handle;
+	glBindFramebuffer(GL_FRAMEBUFFER, render_target->framebuffer);
 }
 
 void BackendGL44::setRenderTarget(std::nullptr_t value)
 {
-	//
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void BackendGL44::setShader(ShaderHandle* handle)
@@ -408,83 +469,124 @@ void BackendGL44::setShader(ShaderHandle* handle)
 
 void BackendGL44::setVertexBuffer(const Buffer& buffer)
 {
-	glBindBuffer(GL_ARRAY_BUFFER, GLVertexBuffer);
-
-	GLint size = 0;
-	glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
-
-	if ((size_t)size < buffer.size)
-	{
-		glBufferData(GL_ARRAY_BUFFER, buffer.size, buffer.data, GL_DYNAMIC_DRAW);
-	}
-	else
-	{
-		auto ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-		memcpy(ptr, buffer.data, buffer.size);
-		glUnmapBuffer(GL_ARRAY_BUFFER);
-	}
-
-	glBindVertexBuffer(0, GLVertexBuffer, 0, (GLsizei)buffer.stride);
+	mVertexBufferDirty = true;
+	mVertexBuffer = buffer;
 }
 
 void BackendGL44::setIndexBuffer(const Buffer& buffer)
 {
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GLIndexBuffer);
-
-	GLint size = 0;
-	glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
-
-	if ((size_t)size < buffer.size)
-	{
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, buffer.size, buffer.data, GL_DYNAMIC_DRAW);
-	}
-	else
-	{
-		auto ptr = glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-		memcpy(ptr, buffer.data, buffer.size);
-		glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
-
-	}
-
-	GLIndexType = buffer.stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+	mIndexBufferDirty = true;
+	mIndexBuffer = buffer;
 }
 
 void BackendGL44::setUniformBuffer(int slot, void* memory, size_t size)
 {
 	assert(size % 16 == 0);
 
-	glBindBufferBase(GL_UNIFORM_BUFFER, slot, GLUniformBuffer);
+	if (!GLUniformBuffers.contains(slot))
+		glGenBuffers(1, &GLUniformBuffers[slot]);
+	
+	glBindBufferBase(GL_UNIFORM_BUFFER, slot, GLUniformBuffers.at(slot));
 	glBufferData(GL_UNIFORM_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 }
 
 void BackendGL44::setBlendMode(const BlendMode& value)
 {
-	//
+	const static std::unordered_map<Blend, GLenum> BlendMap = {
+		{ Blend::One, GL_ONE },
+		{ Blend::Zero, GL_ZERO },
+		{ Blend::SrcColor, GL_SRC_COLOR },
+		{ Blend::InvSrcColor, GL_ONE_MINUS_SRC_COLOR },
+		{ Blend::SrcAlpha, GL_SRC_ALPHA },
+		{ Blend::InvSrcAlpha, GL_ONE_MINUS_SRC_ALPHA },
+		{ Blend::DstColor, GL_DST_COLOR },
+		{ Blend::InvDstColor, GL_ONE_MINUS_DST_COLOR },
+		{ Blend::DstAlpha, GL_DST_ALPHA },
+		{ Blend::InvDstAlpha, GL_ONE_MINUS_DST_ALPHA }
+	};
+
+	const static std::unordered_map<BlendFunction, GLenum> BlendOpMap = {
+		{ BlendFunction::Add, GL_FUNC_ADD },
+		{ BlendFunction::Subtract, GL_FUNC_SUBTRACT },
+		{ BlendFunction::ReverseSubtract, GL_FUNC_REVERSE_SUBTRACT },
+		{ BlendFunction::Min, GL_MIN },
+		{ BlendFunction::Max, GL_MAX },
+	};
+
+	glEnable(GL_BLEND);
+	glBlendEquationSeparate(BlendOpMap.at(value.colorBlendFunction), BlendOpMap.at(value.alphaBlendFunction));
+	glBlendFuncSeparate(BlendMap.at(value.colorSrcBlend), BlendMap.at(value.colorDstBlend), BlendMap.at(value.alphaSrcBlend), BlendMap.at(value.alphaDstBlend));
+	glColorMask(value.colorMask.red, value.colorMask.green, value.colorMask.blue, value.colorMask.alpha);
 }
 
 void BackendGL44::setDepthMode(const DepthMode& value)
 {
-	//
+	if (value.enabled)
+	{
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(ComparisonFuncMap.at(value.func));
+	}
+	else
+	{
+		glDisable(GL_DEPTH_TEST);
+	}
 }
 
 void BackendGL44::setStencilMode(const StencilMode& value)
 {
-	//
+	if (!value.enabled)
+	{
+		glDisable(GL_STENCIL_TEST);
+		return;
+	}
+
+	static const std::unordered_map<StencilOp, GLenum> StencilOpMap = {
+		{ StencilOp::Keep, GL_KEEP },
+		{ StencilOp::Zero, GL_ZERO },
+		{ StencilOp::Replace, GL_REPLACE },
+		{ StencilOp::IncrementSaturation, GL_INCR },
+		{ StencilOp::DecrementSaturation, GL_DECR },
+		{ StencilOp::Invert, GL_INVERT },
+		{ StencilOp::Increment, GL_INCR_WRAP },
+		{ StencilOp::Decrement, GL_DECR_WRAP },
+	};
+
+	glEnable(GL_STENCIL_TEST);
+	glStencilMask(value.writeMask);
+	glStencilOp(StencilOpMap.at(value.failOp), StencilOpMap.at(value.depthFailOp), StencilOpMap.at(value.passOp));
+	glStencilFunc(ComparisonFuncMap.at(value.func), value.reference, value.readMask);
 }
 
 void BackendGL44::setCullMode(const CullMode& value)
 {
-	//
+	static const std::unordered_map<CullMode, GLenum> CullMap = {
+		{ CullMode::None, GL_NONE },
+		{ CullMode::Front, GL_FRONT },
+		{ CullMode::Back, GL_BACK }
+	};
+
+	if (value != CullMode::None)
+	{
+		glEnable(GL_CULL_FACE);
+		glFrontFace(GL_CW);
+		glCullFace(CullMap.at(value));
+	}
+	else
+	{
+		glDisable(GL_CULL_FACE);
+	}
 }
 
 void BackendGL44::setSampler(const Sampler& value)
 {
-	//
+	mSampler = value;
+	refreshInternalSampler();
 }
 
 void BackendGL44::setTextureAddressMode(const TextureAddress& value)
 {
-	//
+	mTextureAddress = value;
+	refreshInternalSampler();
 }
 
 void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -528,18 +630,46 @@ void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::option
 
 void BackendGL44::draw(size_t vertex_count, size_t vertex_offset)
 {
+	prepareForDrawing();
 	glDrawArrays(GLTopology, (GLint)vertex_offset, (GLsizei)vertex_count);
 }
 
 void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
+	prepareForDrawing();
 	uint32_t index_size = GLIndexType == GL_UNSIGNED_INT ? 4 : 2;
 	glDrawElements(GLTopology, (GLsizei)index_count, GLIndexType, (void*)(size_t)(index_offset * index_size));
 }
 
-void BackendGL44::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture)
+void BackendGL44::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
 {
-	//
+	auto dst_texture = (TextureDataGL44*)dst_texture_handle;
+
+	assert(dst_texture->width == size.x);
+	assert(dst_texture->height == size.y);
+
+	if (size.x <= 0 || size.y <= 0)
+		return;
+
+	auto x = (GLint)pos.x;
+	auto y = (GLint)(gHeight - pos.y - size.y);
+	auto w = (GLint)size.x;
+	auto h = (GLint)size.y;
+
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, GLPixelBuffer);
+	glBufferData(GL_PIXEL_PACK_BUFFER, w * h * 4, nullptr, GL_STATIC_READ);
+	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+	glBindTexture(GL_TEXTURE_2D, dst_texture->texture);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, GLPixelBuffer);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+	if (dst_texture->mipmap)
+		glGenerateMipmap(GL_TEXTURE_2D);
+
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 void BackendGL44::present()
@@ -559,14 +689,17 @@ void BackendGL44::destroyTexture(TextureHandle* handle)
 	delete texture;
 }
 
-RenderTargetHandle* BackendGL44::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture)
+RenderTargetHandle* BackendGL44::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
-	return nullptr;
+	auto texture = (TextureDataGL44*)texture_handle;
+	auto render_target = new RenderTargetDataGL44(width, height, texture);
+	return (RenderTargetHandle*)render_target;
 }
 
 void BackendGL44::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	//
+	auto render_target = (RenderTargetDataGL44*)handle;
+	delete render_target;
 }
 
 ShaderHandle* BackendGL44::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
@@ -579,4 +712,99 @@ void BackendGL44::destroyShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderDataGL44*)handle;
 	delete shader;
+}
+
+void BackendGL44::prepareForDrawing()
+{
+	// opengl crashes when index or vertex buffers are binded before VAO from shader classes 
+
+	if (mIndexBufferDirty)
+	{
+		setInternalIndexBuffer(mIndexBuffer);
+		mIndexBufferDirty = false;
+	}
+
+	if (mVertexBufferDirty)
+	{
+		setInternalVertexBuffer(mVertexBuffer);
+		mVertexBufferDirty = false;
+	}
+}
+
+void BackendGL44::setInternalVertexBuffer(const Buffer& value)
+{
+	glBindBuffer(GL_ARRAY_BUFFER, GLVertexBuffer);
+
+	GLint size = 0;
+	glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
+
+	if ((size_t)size < value.size)
+	{
+		glBufferData(GL_ARRAY_BUFFER, value.size, value.data, GL_DYNAMIC_DRAW);
+	}
+	else
+	{
+		auto ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+		memcpy(ptr, value.data, value.size);
+		glUnmapBuffer(GL_ARRAY_BUFFER);
+	}
+
+	glBindVertexBuffer(0, GLVertexBuffer, 0, (GLsizei)value.stride);
+}
+
+void BackendGL44::setInternalIndexBuffer(const Buffer& value)
+{
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GLIndexBuffer);
+
+	GLint size = 0;
+	glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
+
+	if ((size_t)size < value.size)
+	{
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, value.size, value.data, GL_DYNAMIC_DRAW);
+	}
+	else
+	{
+		auto ptr = glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+		memcpy(ptr, value.data, value.size);
+		glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
+
+	}
+
+	GLIndexType = value.stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+}
+
+void BackendGL44::refreshInternalSampler()
+{
+	if (mSampler == Sampler::Linear)
+	{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	}
+	else if (mSampler == Sampler::Nearest)
+	{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	else if (mSampler == Sampler::LinearMipmapLinear)
+	{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); // mag parameter support only linear or nearest filters
+	}
+
+	if (mTextureAddress == TextureAddress::Clamp)
+	{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	else if (mTextureAddress == TextureAddress::Wrap)
+	{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	}
+	else if (mTextureAddress == TextureAddress::MirrorWrap)
+	{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+	}
 }
