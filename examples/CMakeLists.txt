@@ -38,3 +38,8 @@ add_executable(uniform_buffer uniform/main.cpp)
 target_link_libraries(uniform_buffer glfw sky-gfx)
 target_include_directories(uniform_buffer PUBLIC lib/stb)
 set_target_properties(uniform_buffer PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# cube
+
+add_executable(cube cube/main.cpp)
+target_link_libraries(cube glfw sky-gfx)

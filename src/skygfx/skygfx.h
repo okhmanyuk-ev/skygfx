@@ -5,6 +5,7 @@
 #include <vector>
 #include <optional>
 #include <glm/glm.hpp>
+#include <glm/ext.hpp>
 #include "vertex.h"
 #include "shader_compiler.h"
 
