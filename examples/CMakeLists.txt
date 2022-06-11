@@ -50,3 +50,8 @@ add_executable(textured_cube textured_cube/main.cpp)
 target_link_libraries(textured_cube glfw sky-gfx)
 target_include_directories(textured_cube PUBLIC lib/stb)
 set_target_properties(textured_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# render target
+
+add_executable(render_target render_target/main.cpp)
+target_link_libraries(render_target glfw sky-gfx)
