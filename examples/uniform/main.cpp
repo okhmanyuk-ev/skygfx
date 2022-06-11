@@ -113,7 +113,7 @@ int main()
 		device.setVertexBuffer(vertices);
 		device.setIndexBuffer(indices);
 		device.setUniformBuffer(1, ubo); 
-		// TODO: device.setSampler(Sampler::LinearMipmapLinear);
+		device.setSampler(skygfx::Sampler::LinearMipmapLinear);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 
