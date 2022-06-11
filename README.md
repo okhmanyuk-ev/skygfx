@@ -33,3 +33,12 @@ target_link_libraries(YOUR_TARGET sky-gfx)
 ## Uniform Buffer
 
 ![a (4)](https://user-images.githubusercontent.com/3295141/173176075-7fdb9759-e3ca-4447-b439-2acd27f7ced9.gif)
+
+## Cube
+
+![a (5)](https://user-images.githubusercontent.com/3295141/173178283-083e54c7-488d-457f-91f1-e4685ecc3538.gif)
+
+## Textured Cube
+
+![a (7)](https://user-images.githubusercontent.com/3295141/173178767-7bafba29-96f2-4d44-8067-04fc1fb872a2.gif)
+
