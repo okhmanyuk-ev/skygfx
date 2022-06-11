@@ -42,3 +42,6 @@ target_link_libraries(YOUR_TARGET sky-gfx)
 
 ![a (7)](https://user-images.githubusercontent.com/3295141/173178767-7bafba29-96f2-4d44-8067-04fc1fb872a2.gif)
 
+## Render Target
+
+![a (8)](https://user-images.githubusercontent.com/3295141/173179661-e9e9947d-bc46-41a6-82f9-cf9041ce56c2.gif)
