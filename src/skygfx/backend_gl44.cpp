@@ -447,7 +447,8 @@ void BackendGL44::setTexture(TextureHandle* handle)
 	int slot = 0;
 	auto texture = (TextureDataGL44*)handle;
 	texture->bind(slot);
-	refreshInternalSampler();
+	mCurrentTexture = handle;
+	mTexParametersDirty = true;
 }
 
 void BackendGL44::setRenderTarget(RenderTargetHandle* handle)
@@ -580,13 +581,13 @@ void BackendGL44::setCullMode(const CullMode& value)
 void BackendGL44::setSampler(const Sampler& value)
 {
 	mSampler = value;
-	refreshInternalSampler();
+	mTexParametersDirty = true;
 }
 
 void BackendGL44::setTextureAddressMode(const TextureAddress& value)
 {
 	mTextureAddress = value;
-	refreshInternalSampler();
+	mTexParametersDirty = true;
 }
 
 void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -729,6 +730,12 @@ void BackendGL44::prepareForDrawing()
 		setInternalVertexBuffer(mVertexBuffer);
 		mVertexBufferDirty = false;
 	}
+
+	if (mTexParametersDirty)
+	{
+		refreshTexParameters();
+		mTexParametersDirty = false;
+	}
 }
 
 void BackendGL44::setInternalVertexBuffer(const Buffer& value)
@@ -774,8 +781,14 @@ void BackendGL44::setInternalIndexBuffer(const Buffer& value)
 	GLIndexType = value.stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 }
 
-void BackendGL44::refreshInternalSampler()
+void BackendGL44::refreshTexParameters()
 {
+	if (mCurrentTexture == nullptr)
+		return;
+
+	if (mSampler == Sampler::LinearMipmapLinear && !((TextureDataGL44*)mCurrentTexture)->mipmap)
+		mSampler = Sampler::Linear;
+	
 	if (mSampler == Sampler::Linear)
 	{
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

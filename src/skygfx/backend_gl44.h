@@ -55,14 +55,16 @@ namespace skygfx
 
 		void setInternalVertexBuffer(const Buffer& value);
 		void setInternalIndexBuffer(const Buffer& value);
-		void refreshInternalSampler();
+		void refreshTexParameters();
 
 	private:
 		bool mVertexBufferDirty = false;
 		bool mIndexBufferDirty = false;
+		bool mTexParametersDirty = true;
 		Buffer mVertexBuffer;
 		Buffer mIndexBuffer;
-		Sampler mSampler;
-		TextureAddress mTextureAddress;
+		Sampler mSampler = Sampler::Linear;
+		TextureAddress mTextureAddress = TextureAddress::Wrap;
+		TextureHandle* mCurrentTexture = nullptr;
 	};
 }

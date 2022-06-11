@@ -11,7 +11,9 @@ static Backend* gBackend = nullptr;
 
 // texture
 
-Texture::Texture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+Texture::Texture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+	mWidth(width),
+	mHeight(height)
 {
 	mTextureHandle = gBackend->createTexture(width, height, channels, memory, mipmap);
 }

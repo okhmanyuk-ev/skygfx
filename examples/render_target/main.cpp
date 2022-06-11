@@ -233,7 +233,6 @@ int main()
 		device.setIndexBuffer(cube_indices);
 		device.setUniformBuffer(1, cube_ubo);
 		device.setCullMode(skygfx::CullMode::Back);
-		device.setSampler(skygfx::Sampler::LinearMipmapLinear);
 		device.setTexture(target); // render targets can be pushed as textures
 		device.drawIndexed(static_cast<uint32_t>(cube_indices.size()));
 		device.present();
