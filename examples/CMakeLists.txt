@@ -43,3 +43,10 @@ set_target_properties(uniform_buffer PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${
 
 add_executable(cube cube/main.cpp)
 target_link_libraries(cube glfw sky-gfx)
+
+# textured cube
+
+add_executable(textured_cube textured_cube/main.cpp)
+target_link_libraries(textured_cube glfw sky-gfx)
+target_include_directories(textured_cube PUBLIC lib/stb)
+set_target_properties(textured_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
