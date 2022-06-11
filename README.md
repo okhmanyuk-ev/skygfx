@@ -13,6 +13,13 @@ add_subdirectory(sky-gfx)
 target_link_libraries(YOUR_TARGET sky-gfx)
 ```
 
+# Building Examples
+
+## Visual Studio
+1. Open the `examples` folder
+2. Execute `build.cmd`
+3. The `build` folder will be created in a short time and the `.sln` file will be inside
+
 # Examples
 
 ## Triangle
