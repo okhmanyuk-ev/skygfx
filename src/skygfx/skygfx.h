@@ -29,8 +29,13 @@ namespace skygfx
 
 		operator TextureHandle* () { return mTextureHandle; }
 
+		auto getWidth() const { return mWidth; }
+		auto getHeight() const { return mHeight; }
+
 	private:
 		TextureHandle* mTextureHandle = nullptr;
+		uint32_t mWidth = 0;
+		uint32_t mHeight = 0;
 	};
 
 	class RenderTarget : public Texture
