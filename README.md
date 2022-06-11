@@ -22,26 +22,26 @@ target_link_libraries(YOUR_TARGET sky-gfx)
 
 # Examples
 
-## Triangle
+## [Triangle](examples/triangle)
 
 ![image](https://user-images.githubusercontent.com/3295141/173175376-c33d287d-4cc5-4070-9f08-d1379b6b4374.png)
 
-## Texture
+## [Texture](examples/texture)
 
 ![image](https://user-images.githubusercontent.com/3295141/173175982-79d1f92f-76bf-4dea-adf2-973f66db4b02.png)
 
-## Uniform Buffer
+## [Uniform Buffer](examples/uniform_buffer)
 
 ![a (4)](https://user-images.githubusercontent.com/3295141/173176075-7fdb9759-e3ca-4447-b439-2acd27f7ced9.gif)
 
-## Cube
+## [Cube](examples/cube)
 
 ![a (5)](https://user-images.githubusercontent.com/3295141/173178283-083e54c7-488d-457f-91f1-e4685ecc3538.gif)
 
-## Textured Cube
+## [Textured Cube](examples/textured_cube)
 
 ![a (7)](https://user-images.githubusercontent.com/3295141/173178767-7bafba29-96f2-4d44-8067-04fc1fb872a2.gif)
 
-## Render Target
+## [Render Target](examples/render_target)
 
 ![a (8)](https://user-images.githubusercontent.com/3295141/173182205-6fa59a5f-7ea4-4e8d-94d7-3a5dae38474e.gif)
