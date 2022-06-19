@@ -174,7 +174,8 @@ private:
 	ID3D11InputLayout* input_layout = nullptr;
 
 public:
-	ShaderDataD3D11(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+	ShaderDataD3D11(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code, 
+		std::vector<std::string> defines)
 	{
 		ID3DBlob* vertexShaderBlob;
 		ID3DBlob* pixelShaderBlob;
@@ -182,7 +183,6 @@ public:
 		ID3DBlob* vertex_shader_error;
 		ID3DBlob* pixel_shader_error;
 		
-		std::vector<std::string> defines;
 		AddShaderLocationDefines(layout, defines);
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
@@ -832,9 +832,10 @@ void BackendD3D11::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendD3D11::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+ShaderHandle* BackendD3D11::createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
+	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderDataD3D11(layout, vertex_code, fragment_code);
+	auto shader = new ShaderDataD3D11(layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

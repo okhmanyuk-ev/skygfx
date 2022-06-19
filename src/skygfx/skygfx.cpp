@@ -35,9 +35,9 @@ RenderTarget::~RenderTarget()
 
 // shader
 
-Shader::Shader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+Shader::Shader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	mShaderHandle = gBackend->createShader(layout, vertex_code, fragment_code);
+	mShaderHandle = gBackend->createShader(layout, vertex_code, fragment_code, defines);
 }
 
 Shader::~Shader()

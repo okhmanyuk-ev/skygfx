@@ -46,7 +46,7 @@ namespace skygfx
 		virtual void destroyRenderTarget(RenderTargetHandle* handle) = 0;
 
 		virtual ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
-			const std::string& fragment_code) = 0;
+			const std::string& fragment_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyShader(ShaderHandle* handle) = 0;
 	};
 }

@@ -120,9 +120,9 @@ private:
 	GLuint vao;
 
 public:
-	ShaderDataGL44(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+	ShaderDataGL44(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+		std::vector<std::string> defines)
 	{
-		std::vector<std::string> defines;
 		AddShaderLocationDefines(layout, defines);
 		defines.push_back("FLIP_TEXCOORD_Y");
 
@@ -703,9 +703,10 @@ void BackendGL44::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendGL44::createShader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code)
+ShaderHandle* BackendGL44::createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
+	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderDataGL44(layout, vertex_code, fragment_code);
+	auto shader = new ShaderDataGL44(layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 
