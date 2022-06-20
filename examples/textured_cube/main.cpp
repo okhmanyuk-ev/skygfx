@@ -14,7 +14,6 @@ static std::string vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
-layout(location = COLOR_LOCATION) in vec4 aColor;
 layout(location = TEXCOORD_LOCATION) in vec2 aTexCoord;
 
 layout(binding = 1) uniform _ubo
@@ -24,12 +23,11 @@ layout(binding = 1) uniform _ubo
 	mat4 model;
 } ubo;
 
-layout(location = 0) out struct { vec4 Color; vec2 TexCoord; } Out;
+layout(location = 0) out struct { vec2 TexCoord; } Out;
 out gl_PerVertex { vec4 gl_Position; };
 
 void main()
 {
-	Out.Color = aColor;
 	Out.TexCoord = aTexCoord;
 #ifdef FLIP_TEXCOORD_Y
 	Out.TexCoord.y = 1.0 - Out.TexCoord.y;
@@ -41,54 +39,52 @@ static std::string fragment_shader_code = R"(
 #version 450 core
 
 layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec4 Color; vec2 TexCoord; } In;
+layout(location = 0) in struct { vec2 TexCoord; } In;
 layout(binding = 0) uniform sampler2D sTexture;
 
 void main() 
 { 
-	result = In.Color * texture(sTexture, In.TexCoord);
+	result = texture(sTexture, In.TexCoord);
 })";
 
-using Vertex = skygfx::Vertex::PositionColorTexture;
-
-const glm::vec4 White = { 1.0f, 1.0f, 1.0f, 1.0f };
+using Vertex = skygfx::Vertex::PositionTexture;
 
 const std::vector<Vertex> vertices = {
 	/* front */
-	/* 0  */ { { -1.0f,  1.0f,  1.0f }, White, { 0.0f, 0.0f } },
-	/* 1  */ { {  1.0f,  1.0f,  1.0f }, White, { 1.0f, 0.0f } },
-	/* 2  */ { { -1.0f, -1.0f,  1.0f }, White, { 0.0f, 1.0f } },
-	/* 3  */ { {  1.0f, -1.0f,  1.0f }, White, { 1.0f, 1.0f } },
+	/* 0  */ { { -1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f } },
+	/* 1  */ { {  1.0f,  1.0f,  1.0f }, { 1.0f, 0.0f } },
+	/* 2  */ { { -1.0f, -1.0f,  1.0f }, { 0.0f, 1.0f } },
+	/* 3  */ { {  1.0f, -1.0f,  1.0f }, { 1.0f, 1.0f } },
 
 	/* top */
-	/* 4  */ { { -1.0f,  1.0f,  1.0f }, White, { 0.0f, 0.0f } },
-	/* 5  */ { { -1.0f,  1.0f, -1.0f }, White, { 0.0f, 1.0f } },
-	/* 6  */ { {  1.0f,  1.0f,  1.0f }, White, { 1.0f, 0.0f } },
-	/* 7  */ { {  1.0f,  1.0f, -1.0f }, White, { 1.0f, 1.0f } },
+	/* 4  */ { { -1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f } },
+	/* 5  */ { { -1.0f,  1.0f, -1.0f }, { 0.0f, 1.0f } },
+	/* 6  */ { {  1.0f,  1.0f,  1.0f }, { 1.0f, 0.0f } },
+	/* 7  */ { {  1.0f,  1.0f, -1.0f }, { 1.0f, 1.0f } },
 
 	/* left */
-	/* 8  */ { { -1.0f,  1.0f, -1.0f }, White, { 0.0f, 0.0f } },
-	/* 9  */ { { -1.0f,  1.0f,  1.0f }, White, { 1.0f, 0.0f } },
-	/* 10 */ { { -1.0f, -1.0f, -1.0f }, White, { 0.0f, 1.0f } },
-	/* 11 */ { { -1.0f, -1.0f,  1.0f }, White, { 1.0f, 1.0f } },
+	/* 8  */ { { -1.0f,  1.0f, -1.0f }, { 0.0f, 0.0f } },
+	/* 9  */ { { -1.0f,  1.0f,  1.0f }, { 1.0f, 0.0f } },
+	/* 10 */ { { -1.0f, -1.0f, -1.0f }, { 0.0f, 1.0f } },
+	/* 11 */ { { -1.0f, -1.0f,  1.0f }, { 1.0f, 1.0f } },
 
 	/* back */
-	/* 12 */ { { -1.0f,  1.0f, -1.0f }, White, { 1.0f, 0.0f } },
-	/* 13 */ { { -1.0f, -1.0f, -1.0f }, White, { 1.0f, 1.0f } },
-	/* 14 */ { {  1.0f,  1.0f, -1.0f }, White, { 0.0f, 0.0f } },
-	/* 15 */ { {  1.0f, -1.0f, -1.0f }, White, { 0.0f, 1.0f } },
+	/* 12 */ { { -1.0f,  1.0f, -1.0f }, { 1.0f, 0.0f } },
+	/* 13 */ { { -1.0f, -1.0f, -1.0f }, { 1.0f, 1.0f } },
+	/* 14 */ { {  1.0f,  1.0f, -1.0f }, { 0.0f, 0.0f } },
+	/* 15 */ { {  1.0f, -1.0f, -1.0f }, { 0.0f, 1.0f } },
 
 	/* bottom */
-	/* 16 */ { { -1.0f, -1.0f,  1.0f }, White, { 0.0f, 0.0f } },
-	/* 17 */ { {  1.0f, -1.0f,  1.0f }, White, { 0.0f, 1.0f } },
-	/* 18 */ { { -1.0f, -1.0f, -1.0f }, White, { 1.0f, 0.0f } },
-	/* 19 */ { {  1.0f, -1.0f, -1.0f }, White, { 1.0f, 1.0f } },
+	/* 16 */ { { -1.0f, -1.0f,  1.0f }, { 0.0f, 0.0f } },
+	/* 17 */ { {  1.0f, -1.0f,  1.0f }, { 0.0f, 1.0f } },
+	/* 18 */ { { -1.0f, -1.0f, -1.0f }, { 1.0f, 0.0f } },
+	/* 19 */ { {  1.0f, -1.0f, -1.0f }, { 1.0f, 1.0f } },
 
 	/* right */
-	/* 20 */ { { 1.0f, -1.0f, -1.0f }, White, { 1.0f, 1.0f } },
-	/* 21 */ { { 1.0f, -1.0f,  1.0f }, White, { 0.0f, 1.0f } },
-	/* 22 */ { { 1.0f,  1.0f, -1.0f }, White, { 1.0f, 0.0f } },
-	/* 23 */ { { 1.0f,  1.0f,  1.0f }, White, { 0.0f, 0.0f } },
+	/* 20 */ { { 1.0f, -1.0f, -1.0f }, { 1.0f, 1.0f } },
+	/* 21 */ { { 1.0f, -1.0f,  1.0f }, { 0.0f, 1.0f } },
+	/* 22 */ { { 1.0f,  1.0f, -1.0f }, { 1.0f, 0.0f } },
+	/* 23 */ { { 1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f } },
 };
 
 static std::vector<uint32_t> indices = {
