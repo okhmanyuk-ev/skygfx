@@ -146,22 +146,22 @@ int main()
 
 	const auto scale = 100.0f;
 
+	const float sin_yaw = glm::sin(yaw);
+	const float sin_pitch = glm::sin(pitch);
+
+	const float cos_yaw = glm::cos(yaw);
+	const float cos_pitch = glm::cos(pitch);
+
+	const auto front = glm::normalize(glm::vec3(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch));
+	const auto right = glm::normalize(glm::cross(front, world_up));
+	const auto up = glm::normalize(glm::cross(right, front));
+
+	ubo.view = glm::lookAtRH(position, position + front, up);
+	ubo.projection = glm::perspectiveFov(fov, (float)width, (float)height, near_plane, far_plane);
+
 	while (!glfwWindowShouldClose(window))
 	{
 		auto time = (float)glfwGetTime();
-
-		float sin_yaw = glm::sin(yaw);
-		float sin_pitch = glm::sin(pitch);
-
-		float cos_yaw = glm::cos(yaw);
-		float cos_pitch = glm::cos(pitch);
-
-		auto front = glm::normalize(glm::vec3(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch));
-		auto right = glm::normalize(glm::cross(front, world_up));
-		auto up = glm::normalize(glm::cross(right, front));
-
-		ubo.view = glm::lookAtRH(position, position + front, up);
-		ubo.projection = glm::perspectiveFov(fov, (float)width, (float)height, near_plane, far_plane);
 
 		ubo.model = glm::mat4(1.0f);
 		ubo.model = glm::scale(ubo.model, { scale, scale, scale });
