@@ -42,6 +42,10 @@ target_link_libraries(YOUR_TARGET sky-gfx)
 
 ![](https://user-images.githubusercontent.com/3295141/173226641-41363763-272a-46c4-9da5-beae22fff94c.gif)
 
+## [Light](examples/light)
+
+![](https://user-images.githubusercontent.com/3295141/174522886-2c72e7f0-18b1-405d-9c7b-a40eb65b5544.gif)
+
 ## [Render Target](examples/render_target)
 
-![](https://user-images.githubusercontent.com/3295141/173182205-6fa59a5f-7ea4-4e8d-94d7-3a5dae38474e.gif)
+![](https://user-images.githubusercontent.com/3295141/174523347-3e8f54bb-db2f-48e1-ab59-ef39c274915d.gif)
