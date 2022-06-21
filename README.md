@@ -30,7 +30,7 @@ target_link_libraries(YOUR_TARGET sky-gfx)
 
 ![](https://user-images.githubusercontent.com/3295141/173175982-79d1f92f-76bf-4dea-adf2-973f66db4b02.png)
 
-## [Uniform Buffer](examples/uniform_buffer)
+## [Uniform Buffer](examples/uniform)
 
 ![](https://user-images.githubusercontent.com/3295141/173176075-7fdb9759-e3ca-4447-b439-2acd27f7ced9.gif)
 
