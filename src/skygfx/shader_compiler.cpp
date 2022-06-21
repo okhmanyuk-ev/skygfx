@@ -2,6 +2,7 @@
 #include <glslang/SPIRV/GlslangToSpv.h>
 #include <glslang/StandAlone/ResourceLimits.h>
 #include <spirv_hlsl.hpp>
+#include <spirv_reflect.h>
 
 using namespace skygfx;
 
@@ -205,4 +206,44 @@ void skygfx::AddShaderLocationDefines(const Vertex::Layout& layout, std::vector<
 		auto name = Names.at(attrib.type);
 		defines.push_back(name + " " + std::to_string(i));
 	}
+}
+
+ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
+{
+	static const std::unordered_map<SpvReflectDescriptorType, ShaderReflection::DescriptorSet::Type> DescriptorTypeMap = {
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ShaderReflection::DescriptorSet::Type::CombinedImageSampler },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ShaderReflection::DescriptorSet::Type::UniformBuffer },
+	};
+
+	static const std::unordered_map<SpvReflectShaderStageFlagBits, ShaderStage> StageMap = {
+		{ SPV_REFLECT_SHADER_STAGE_VERTEX_BIT, ShaderStage::Vertex },
+		{ SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT, ShaderStage::Fragment }
+	};
+
+	auto refl = spv_reflect::ShaderModule(spirv);
+
+	SpvReflectResult r;
+
+	uint32_t count = 0;
+	r = refl.EnumerateDescriptorBindings(&count, nullptr);
+	assert(r == SPV_REFLECT_RESULT_SUCCESS);
+
+	std::vector<SpvReflectDescriptorBinding*> bindings(count);
+	r = refl.EnumerateDescriptorBindings(&count, bindings.data());
+	assert(r == SPV_REFLECT_RESULT_SUCCESS);
+
+	ShaderReflection result;
+
+	auto stage = refl.GetShaderStage();
+	result.stage = StageMap.at(stage);
+
+	for (const auto& binding : bindings)
+	{
+		ShaderReflection::DescriptorSet descriptor_set;
+		descriptor_set.binding = binding->binding;
+		descriptor_set.type = DescriptorTypeMap.at(binding->descriptor_type);
+		result.descriptor_sets.push_back(descriptor_set);
+	}
+
+	return result;
 }

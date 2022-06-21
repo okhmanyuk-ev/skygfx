@@ -228,9 +228,9 @@ public:
 			auto temp_data = malloc(width * height * 4); // TODO: we should not use magic numbers
 			const auto row_size = width * 4;
 
-			for (int i = 0; i < height; i++)
+			for (size_t i = 0; i < (size_t)height; i++)
 			{
-				auto src = (void*)(size_t(memory) + size_t(i) * row_size);
+				auto src = (void*)(size_t(memory) + i * row_size);
 				auto dst = (void*)(size_t(temp_data) + size_t(height - 1 - i) * row_size);
 
 				memcpy(dst, src, row_size);

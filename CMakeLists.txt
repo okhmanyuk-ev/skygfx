@@ -24,6 +24,7 @@ macro(set_option option value)
 endmacro()
 
 # glew
+
 if (NOT TARGET glew)
 	file(GLOB GLEW_SRC 
 		lib/glew/src/glew.c
@@ -77,7 +78,19 @@ set_property(TARGET spirv-cross-glsl PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 set_property(TARGET spirv-cross-hlsl PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 set_property(TARGET spirv-cross-reflect PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 
+# spirv-reflect
+
+file(GLOB SPIRV_REFLECT_SRC 
+	lib/spirv-reflect/spirv_reflect.cpp 
+	lib/spirv-reflect/spirv_reflect.h
+)
+target_include_directories(${PROJECT_NAME} PUBLIC lib/spirv-reflect)
+add_library(spirv-reflect STATIC ${SPIRV_REFLECT_SRC})
+target_link_libraries(${PROJECT_NAME} spirv-reflect)
+set_property(TARGET spirv-reflect PROPERTY FOLDER ${LIBS_FOLDER})
+
 # glm
+
 if (NOT TARGET glm)
 	set(GLM_QUIET ON)
 	set(BUILD_SHARED_LIBS OFF)
