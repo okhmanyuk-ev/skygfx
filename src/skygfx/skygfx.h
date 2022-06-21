@@ -8,6 +8,7 @@
 #include <glm/ext.hpp>
 #include "vertex.h"
 #include "shader_compiler.h"
+#include "utils.h"
 
 namespace skygfx
 {
@@ -353,3 +354,24 @@ namespace skygfx
 		void present();
 	};
 }
+
+SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
+	t.alphaBlendFunction,
+	t.alphaDstBlend,
+	t.alphaSrcBlend,
+	t.colorBlendFunction,
+	t.colorDstBlend,
+	t.colorSrcBlend);
+
+SKYGFX_MAKE_HASHABLE(skygfx::DepthMode,
+	t.enabled,
+	t.func);
+
+SKYGFX_MAKE_HASHABLE(skygfx::StencilMode,
+	t.enabled,
+	t.readMask,
+	t.writeMask,
+	t.depthFailOp,
+	t.failOp,
+	t.func,
+	t.passOp);

@@ -25,30 +25,9 @@ static ID3D11Buffer* D3D11VertexBuffer = nullptr;
 static ID3D11Buffer* D3D11IndexBuffer = nullptr;
 static std::unordered_map<int, ID3D11Buffer*> D3D11ConstantBuffers;
 
-template <class T> inline void combine(size_t& seed, const T& v)
-{
-	std::hash<T> hasher;
-	seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-}
-
 using namespace skygfx;
 
-struct BlendModeHasher
-{
-	size_t operator()(const BlendMode& k) const
-	{
-		size_t seed = 0;
-		combine(seed, k.alphaBlendFunction);
-		combine(seed, k.alphaDstBlend);
-		combine(seed, k.alphaSrcBlend);
-		combine(seed, k.colorBlendFunction);
-		combine(seed, k.colorDstBlend);
-		combine(seed, k.colorSrcBlend);
-		return seed;
-	}
-};
-
-static std::unordered_map<BlendMode, ID3D11BlendState*, BlendModeHasher> D3D11BlendModes;
+static std::unordered_map<BlendMode, ID3D11BlendState*> D3D11BlendModes;
 
 struct DepthStencilState
 {
@@ -59,42 +38,15 @@ struct DepthStencilState
 	{
 		return depthMode == value.depthMode && stencilMode == value.stencilMode;
 	}
-
-	bool operator!=(const DepthStencilState& value) const
-	{
-		return !(value == *this);
-	}
-
-	struct Hasher
-	{
-		size_t operator()(const DepthStencilState& k) const
-		{
-			size_t seed = 0;
-			combine(seed, k.depthMode.enabled);
-			combine(seed, k.depthMode.func);
-			combine(seed, k.stencilMode.enabled);
-			combine(seed, k.stencilMode.readMask);
-			combine(seed, k.stencilMode.writeMask);
-			combine(seed, k.stencilMode.depthFailOp);
-			combine(seed, k.stencilMode.failOp);
-			combine(seed, k.stencilMode.func);
-			combine(seed, k.stencilMode.passOp);
-			return seed;
-		}
-	};
-
-	struct Comparer
-	{
-		bool operator()(const DepthStencilState& left, const DepthStencilState& right) const
-		{
-			return left == right;
-		}
-	};
 };
+
+SKYGFX_MAKE_HASHABLE(DepthStencilState,
+	t.depthMode,
+	t.stencilMode);
 
 static DepthStencilState D3D11DepthStencilState;
 static bool D3D11DepthStencilStateDirty = true;
-static std::unordered_map<DepthStencilState, ID3D11DepthStencilState*, DepthStencilState::Hasher, DepthStencilState::Comparer> D3D11DepthStencilStates;
+static std::unordered_map<DepthStencilState, ID3D11DepthStencilState*> D3D11DepthStencilStates;
 
 struct RasterizerState
 {
@@ -105,33 +57,13 @@ struct RasterizerState
 	{
 		return scissorEnabled == value.scissorEnabled && cullMode == value.cullMode;
 	}
-
-	bool operator!=(const RasterizerState& value) const
-	{
-		return !(value == *this);
-	}
-
-	struct Hasher
-	{
-		size_t operator()(const RasterizerState& k) const
-		{
-			size_t seed = 0;
-			combine(seed, k.cullMode);
-			combine(seed, k.scissorEnabled);
-			return seed;
-		}
-	};
-
-	struct Comparer
-	{
-		bool operator()(const RasterizerState& left, const RasterizerState& right) const
-		{
-			return left == right;
-		}
-	};
 };
 
-static std::unordered_map<RasterizerState, ID3D11RasterizerState*, RasterizerState::Hasher, RasterizerState::Comparer> D3D11RasterizerStates;
+SKYGFX_MAKE_HASHABLE(RasterizerState,
+	t.cullMode,
+	t.scissorEnabled);
+
+static std::unordered_map<RasterizerState, ID3D11RasterizerState*> D3D11RasterizerStates;
 static RasterizerState D3D11RasterizerState;
 static bool D3D11RasterizerStateDirty = true;
 
@@ -140,29 +72,19 @@ struct SamplerState
 	Sampler sampler = Sampler::Linear;
 	TextureAddress textureAddress = TextureAddress::Clamp;
 
-	struct Hasher
+	bool operator==(const SamplerState& value) const
 	{
-		size_t operator()(const SamplerState& k) const
-		{
-			size_t seed = 0;
-			combine(seed, k.sampler);
-			combine(seed, k.textureAddress);
-			return seed;
-		}
-	};
-
-	struct Comparer
-	{
-		bool operator()(const SamplerState& left, const SamplerState& right) const
-		{
-			return
-				left.sampler == right.sampler &&
-				left.textureAddress == right.textureAddress;
-		}
-	};
+		return
+			sampler == value.sampler &&
+			textureAddress == value.textureAddress;
+	}
 };
 
-static std::unordered_map<SamplerState, ID3D11SamplerState*, SamplerState::Hasher, SamplerState::Comparer> D3D11SamplerStates;
+SKYGFX_MAKE_HASHABLE(SamplerState,
+	t.sampler,
+	t.textureAddress);
+
+static std::unordered_map<SamplerState, ID3D11SamplerState*> D3D11SamplerStates;
 static SamplerState D3D11SamplerState;
 static bool D3D11SamplerStateDirty = true;
 
