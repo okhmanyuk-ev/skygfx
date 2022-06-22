@@ -1,7 +1,6 @@
 #pragma once
 
 #include "backend.h"
-#include <vulkan/vulkan_raii.hpp>
 
 namespace skygfx
 {
@@ -33,7 +32,7 @@ namespace skygfx
 
 		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) override;
-		void draw(size_t vertex_count, size_t vertex_offset) override;
+		void draw(uint32_t vertex_count, uint32_t vertex_offset) override;
 		void drawIndexed(uint32_t index_count, uint32_t index_offset) override;
 
 		void readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture) override;
@@ -56,27 +55,5 @@ namespace skygfx
 		void begin();
 		void end();
 		void prepareForDrawing();
-
-	public:
-		static void setImageLayout(vk::raii::CommandBuffer const& commandBuffer, vk::Image image,
-			vk::Format format, vk::ImageLayout oldImageLayout, vk::ImageLayout newImageLayout);
-
-		template <typename Func>
-		static void oneTimeSubmit(vk::raii::CommandBuffer const& commandBuffer, vk::raii::Queue const& queue, Func const& func)
-		{
-			commandBuffer.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-			func(commandBuffer);
-			commandBuffer.end();
-			vk::SubmitInfo submitInfo(nullptr, nullptr, *commandBuffer);
-			queue.submit(submitInfo, nullptr);
-			queue.waitIdle();
-		}
-
-		template <typename Func>
-		static void oneTimeSubmit(vk::raii::Device const& device, vk::raii::CommandPool const& commandPool, vk::raii::Queue const& queue, Func const& func)
-		{
-			vk::raii::CommandBuffers commandBuffers(device, { *commandPool, vk::CommandBufferLevel::ePrimary, 1 });
-			oneTimeSubmit(commandBuffers.front(), queue, func);
-		}
 	};
 }

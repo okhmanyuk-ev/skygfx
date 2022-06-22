@@ -165,7 +165,7 @@ void Device::clear(const std::optional<glm::vec4>& color, const std::optional<fl
 	gBackend->clear(color, depth, stencil);
 }
 
-void Device::draw(size_t vertex_count, size_t vertex_offset)
+void Device::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	gBackend->draw(vertex_count, vertex_offset);
 }

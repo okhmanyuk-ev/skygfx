@@ -629,7 +629,7 @@ void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::option
 	}
 }
 
-void BackendGL44::draw(size_t vertex_count, size_t vertex_offset)
+void BackendGL44::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
 	glDrawArrays(GLTopology, (GLint)vertex_offset, (GLsizei)vertex_count);
