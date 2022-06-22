@@ -15,7 +15,8 @@ namespace skygfx
 	enum class BackendType
 	{
 		D3D11,
-		OpenGL44
+		OpenGL44,
+		Vulkan
 	};
 
 	using TextureHandle = struct TextureHandle;

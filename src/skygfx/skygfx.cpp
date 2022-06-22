@@ -2,7 +2,9 @@
 #include "backend.h"
 #include "backend_d3d11.h"
 #include "backend_gl44.h"
+#include "backend_vk.h"
 
+#include <stdexcept>
 #include <cassert>
 
 using namespace skygfx;
@@ -55,6 +57,10 @@ Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 		gBackend = new BackendD3D11(window, width, height);
 	else if (type == BackendType::OpenGL44)
 		gBackend = new BackendGL44(window, width, height);
+	else if (type == BackendType::Vulkan)
+		gBackend = new BackendVK(window, width, height);
+	else
+		throw std::runtime_error("backend not implemented");
 }
 
 Device::~Device()
