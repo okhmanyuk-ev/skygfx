@@ -53,13 +53,20 @@ Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 {
 	assert(gBackend == nullptr);
 
+#ifdef SKYGFX_HAS_D3D11
 	if (type == BackendType::D3D11)
 		gBackend = new BackendD3D11(window, width, height);
-	else if (type == BackendType::OpenGL44)
+#endif
+#ifdef SKYGFX_HAS_OPENGL
+	if (type == BackendType::OpenGL44)
 		gBackend = new BackendGL44(window, width, height);
-	else if (type == BackendType::Vulkan)
+#endif
+#ifdef SKYGFX_HAS_VULKAN
+	if (type == BackendType::Vulkan)
 		gBackend = new BackendVK(window, width, height);
-	else
+#endif
+		
+	if (gBackend == nullptr)
 		throw std::runtime_error("backend not implemented");
 }
 

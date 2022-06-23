@@ -1,5 +1,7 @@
 #include "backend_gl44.h"
 
+#ifdef SKYGFX_HAS_OPENGL
+
 #include <unordered_map>
 #include <stdexcept>
 #include <iostream>
@@ -822,3 +824,5 @@ void BackendGL44::refreshTexParameters()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 	}
 }
+
+#endif

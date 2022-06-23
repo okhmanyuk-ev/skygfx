@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef SKYGFX_HAS_D3D11
+
 #include "backend.h"
 
 namespace skygfx
@@ -57,3 +59,5 @@ namespace skygfx
 		void prepareForDrawing();
 	};
 }
+
+#endif

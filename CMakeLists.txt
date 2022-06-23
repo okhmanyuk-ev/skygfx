@@ -23,6 +23,12 @@ macro(set_option option value)
   set(${option} ${value} CACHE INTERNAL "" FORCE)
 endmacro()
 
+if(WIN32)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_D3D11)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)
+endif()
+
 # glew
 
 if (NOT TARGET glew)

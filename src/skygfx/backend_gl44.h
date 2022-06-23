@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef SKYGFX_HAS_OPENGL
+
 #include "backend.h"
 
 namespace skygfx
@@ -68,3 +70,5 @@ namespace skygfx
 		TextureHandle* mCurrentTexture = nullptr;
 	};
 }
+
+#endif

@@ -1,4 +1,7 @@
 #include "backend_vk.h"
+
+#ifdef SKYGFX_HAS_VULKAN
+
 #include <vulkan/vulkan_raii.hpp>
 
 using namespace skygfx;
@@ -1239,3 +1242,5 @@ void BackendVK::prepareForDrawing()
 
 	mUniformBuffersPushQueue.clear();
 }
+
+#endif

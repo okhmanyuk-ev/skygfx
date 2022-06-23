@@ -1,5 +1,7 @@
 #include "backend_d3d11.h"
 
+#ifdef SKYGFX_HAS_D3D11
+
 #include <stdexcept>
 #include <vector>
 #include <unordered_map>
@@ -925,3 +927,5 @@ void BackendD3D11::prepareForDrawing()
 		D3D11Context->PSSetSamplers(0, 1, &D3D11SamplerStates.at(value));
 	}
 }
+
+#endif
