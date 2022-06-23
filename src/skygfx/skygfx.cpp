@@ -3,6 +3,7 @@
 #include "backend_d3d11.h"
 #include "backend_gl44.h"
 #include "backend_vk.h"
+#include "backend_mtl.h"
 
 #include <stdexcept>
 #include <cassert>
@@ -65,7 +66,11 @@ Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 	if (type == BackendType::Vulkan)
 		gBackend = new BackendVK(window, width, height);
 #endif
-		
+#ifdef SKYGFX_HAS_METAL
+	if (type == BackendType::Metal)
+		gBackend = new BackendMetal(window, width, height);
+#endif
+
 	if (gBackend == nullptr)
 		throw std::runtime_error("backend not implemented");
 }

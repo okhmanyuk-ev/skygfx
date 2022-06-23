@@ -16,7 +16,8 @@ namespace skygfx
 	{
 		D3D11,
 		OpenGL44,
-		Vulkan
+		Vulkan,
+		Metal
 	};
 
 	using TextureHandle = struct TextureHandle;

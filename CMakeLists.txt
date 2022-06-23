@@ -27,6 +27,8 @@ if(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_D3D11)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)
+elseif(APPLE)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
 endif()
 
 # glew
@@ -117,3 +119,8 @@ if(WIN32)
 	target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_WIN32_KHR)
 endif()
 target_link_libraries(${PROJECT_NAME} vulkan)
+
+# metal-cpp
+
+target_include_directories(${PROJECT_NAME} PUBLIC lib/metal-cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC lib/metal-cpp-extensions)
