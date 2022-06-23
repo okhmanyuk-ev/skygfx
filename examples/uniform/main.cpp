@@ -4,9 +4,6 @@
 #include <skygfx/skygfx.h>
 #include "../utils/utils.h"
 
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
-
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>	
 
@@ -87,9 +84,9 @@ int main()
 	glfwSetWindowPos(window, window_pos_x, window_pos_y);
 	glfwMakeContextCurrent(window);
 
-	auto win32_window = glfwGetWin32Window(window);
+	auto native_window = utils::GetNativeWindow(window);
 
-	auto device = skygfx::Device(backend_type, win32_window, width, height);
+	auto device = skygfx::Device(backend_type, native_window, width, height);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
 	auto viewport = skygfx::Viewport();

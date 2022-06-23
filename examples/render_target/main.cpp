@@ -4,9 +4,6 @@
 #include <skygfx/skygfx.h>
 #include "../utils/utils.h"
 
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
-
 static std::string triangle_vertex_shader_code = R"(
 #version 450 core
 
@@ -194,9 +191,9 @@ int main()
 	glfwSetWindowPos(window, window_pos_x, window_pos_y);
 	glfwMakeContextCurrent(window);
 
-	auto win32_window = glfwGetWin32Window(window);
+	auto native_window = utils::GetNativeWindow(window);
 
-	auto device = skygfx::Device(backend_type, win32_window, width, height);
+	auto device = skygfx::Device(backend_type, native_window, width, height);
 	auto cube_shader = skygfx::Shader(CubeVertex::Layout, cube_vertex_shader_code, cube_fragment_shader_code);
 	auto triangle_shader = skygfx::Shader(TriangleVertex::Layout, triangle_vertex_shader_code, triangle_fragment_shader_code);
 
