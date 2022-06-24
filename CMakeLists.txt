@@ -89,6 +89,7 @@ target_link_libraries(${PROJECT_NAME}
 set_property(TARGET spirv-cross-core PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 set_property(TARGET spirv-cross-glsl PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 set_property(TARGET spirv-cross-hlsl PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
+set_property(TARGET spirv-cross-msl PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 set_property(TARGET spirv-cross-reflect PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)
 
 # spirv-reflect
