@@ -5,9 +5,11 @@
 #include <GLFW/glfw3.h>
 
 #if defined(WIN32)
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
+	#define GLFW_EXPOSE_NATIVE_WIN32
+#elif defined(__APPLE__)
+	#define GLFW_EXPOSE_NATIVE_COCOA
 #endif
+#include <GLFW/glfw3native.h>
 
 namespace utils
 {
@@ -17,6 +19,7 @@ namespace utils
 		std::cout << "1. D3D11" << std::endl;
 		std::cout << "2. OpenGL 4.4" << std::endl;
 		std::cout << "3. Vulkan" << std::endl;
+		std::cout << "4. Metal" << std::endl;
 
 		int value = 0;
 		std::cin >> value;
@@ -27,6 +30,8 @@ namespace utils
 			return skygfx::BackendType::OpenGL44;
 		else if (value == 3)
 			return skygfx::BackendType::Vulkan;
+		else if (value == 4)
+			return skygfx::BackendType::Metal;
 		else
 			throw std::runtime_error("unknown type");
 	}
@@ -35,6 +40,8 @@ namespace utils
 	{
 #if defined(GLFW_EXPOSE_NATIVE_WIN32)
 		return glfwGetWin32Window(window);
+#elif defined(GLFW_EXPOSE_NATIVE_COCOA)
+		return glfwGetCocoaWindow(window);
 #endif
 		return nullptr;
 	}

@@ -29,6 +29,11 @@ if(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)
 elseif(APPLE)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
+
+	target_link_libraries(${PROJECT_NAME}
+		"-ObjC"
+		"-framework Metal"
+	)
 endif()
 
 # glew
