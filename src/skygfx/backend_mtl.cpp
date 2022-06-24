@@ -23,6 +23,13 @@ public:
 	ShaderDataMetal(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
+		AddShaderLocationDefines(layout, defines);
+
+		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
+		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
+
+		auto msl_vert = CompileSpirvToMsl(vertex_shader_spirv);
+		auto msl_frag = CompileSpirvToMsl(fragment_shader_spirv);
 	}
 
 	~ShaderDataMetal()

@@ -75,7 +75,6 @@ set_property(TARGET SPIRV PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
 set_option(SPIRV_CROSS_SKIP_INSTALL ON)
 set_option(SPIRV_CROSS_ENABLE_TESTS OFF)
 set_option(SPIRV_CROSS_CLI OFF)
-set_option(SPIRV_CROSS_ENABLE_MSL OFF)
 set_option(SPIRV_CROSS_ENABLE_C_API OFF)
 set_option(SPIRV_CROSS_ENABLE_CPP OFF)
 set_option(SPIRV_CROSS_ENABLE_UTIL OFF)
@@ -84,6 +83,7 @@ target_link_libraries(${PROJECT_NAME}
 	spirv-cross-core
 	spirv-cross-glsl
 	spirv-cross-hlsl
+	spirv-cross-msl
 	spirv-cross-reflect
 )
 set_property(TARGET spirv-cross-core PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cross)

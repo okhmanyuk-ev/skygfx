@@ -3,6 +3,7 @@
 #include <glslang/StandAlone/ResourceLimits.h>
 #include <spirv_hlsl.hpp>
 #include <spirv_reflect.h>
+#include <spirv_msl.hpp>
 
 using namespace skygfx;
 
@@ -187,6 +188,12 @@ std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv)
 	spirv_cross::CompilerGLSL::Options options;
 	compiler.set_common_options(options);
 
+	return compiler.compile();
+}
+
+std::string skygfx::CompileSpirvToMsl(const std::vector<uint32_t>& spirv)
+{
+	auto compiler = spirv_cross::CompilerMSL(spirv);
 	return compiler.compile();
 }
 
