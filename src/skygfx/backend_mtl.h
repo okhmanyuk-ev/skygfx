@@ -51,6 +51,9 @@ namespace skygfx
 		ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
+		
+	private:
+		void prepareForDrawing();
 	};
 }
 
