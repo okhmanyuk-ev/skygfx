@@ -30,6 +30,7 @@ static MTL::Texture* gTexture = nullptr;
 static MTL::SamplerState* gSamplerState = nullptr;
 static std::unordered_map<int, MTL::Buffer*> gUniformBuffers;
 static CullMode gCullMode = CullMode::None;
+static const uint32_t gVertexBufferStageBinding = 30;
 
 class ShaderDataMetal;
 
@@ -94,10 +95,10 @@ public:
 			auto desc = vertex_descriptor->attributes()->object(i);
 			desc->setFormat(Format.at(attrib.format));
 			desc->setOffset(attrib.offset);
-			desc->setBufferIndex(0);
+			desc->setBufferIndex(gVertexBufferStageBinding);
 		}
 
-		auto vertex_layout = vertex_descriptor->layouts()->object(0);
+		auto vertex_layout = vertex_descriptor->layouts()->object(gVertexBufferStageBinding);
 		vertex_layout->setStride(layout.stride);
 		vertex_layout->setStepRate(1);
 		vertex_layout->setStepFunction(MTL::VertexStepFunction::VertexStepFunctionPerVertex);
@@ -150,7 +151,7 @@ public:
 		desc->setUsage(MTL::ResourceUsageSample | MTL::ResourceUsageRead);
 
 		texture = gDevice->newTexture(desc);
-		texture->replaceRegion(MTL::Region( 0, 0, 0, width, height, 1), 0, memory, width * channels);
+		texture->replaceRegion(MTL::Region(0, 0, 0, width, height, 1), 0, memory, width * channels);
 		
 		desc->release();
 	}
@@ -440,7 +441,7 @@ void BackendMetal::prepareForDrawing()
 		gRenderCommandEncoder->setFragmentSamplerState(gSamplerState, 0);
 	}
 	
-	gRenderCommandEncoder->setVertexBytes(gVertexBuffer.data, gVertexBuffer.size, 0);
+	gRenderCommandEncoder->setVertexBytes(gVertexBuffer.data, gVertexBuffer.size, gVertexBufferStageBinding);
 	gRenderCommandEncoder->setRenderPipelineState(gShader->pso);
 
 	for (auto [slot, buffer] : gUniformBuffers)
