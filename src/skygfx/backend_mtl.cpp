@@ -28,6 +28,7 @@ static MTL::Buffer* gIndexBuffer = nullptr;
 static Buffer gVertexBuffer;
 static MTL::Texture* gTexture = nullptr;
 static MTL::SamplerState* gSamplerState = nullptr;
+static std::unordered_map<int, MTL::Buffer*> gUniformBuffers;
 
 class ShaderDataMetal;
 
@@ -221,6 +222,11 @@ BackendMetal::~BackendMetal()
 {
 	end();
 	
+	for (auto [slot, buffer] : gUniformBuffers)
+	{
+		buffer->release();
+	}
+	
 	gSamplerState->release();
 	gCommandQueue->release();
 	gView->release();
@@ -303,6 +309,26 @@ void BackendMetal::setIndexBuffer(const Buffer& buffer)
 
 void BackendMetal::setUniformBuffer(int slot, void* memory, size_t size)
 {
+	auto createBuffer = [&] {
+		return gDevice->newBuffer(size, MTL::ResourceStorageModeManaged);
+	};
+	
+	if (!gUniformBuffers.contains(slot))
+	{
+		gUniformBuffers.insert({ slot, createBuffer() });
+	}
+	
+	auto uniform_buffer = gUniformBuffers.at(slot);
+	
+	if (uniform_buffer->length() < size)
+	{
+		uniform_buffer->release();
+		uniform_buffer = createBuffer();
+		gUniformBuffers[slot] = uniform_buffer;
+	}
+
+	memcpy(uniform_buffer->contents(), memory, size);
+	uniform_buffer->didModifyRange(NS::Range::Make(0, size));
 }
 
 void BackendMetal::setBlendMode(const BlendMode& value)
@@ -416,6 +442,12 @@ void BackendMetal::prepareForDrawing()
 	
 	gRenderCommandEncoder->setVertexBytes(gVertexBuffer.data, gVertexBuffer.size, 0);
 	gRenderCommandEncoder->setRenderPipelineState(gShader->pso);
+
+	for (auto [slot, buffer] : gUniformBuffers)
+	{
+		gRenderCommandEncoder->setVertexBuffer(buffer, 0, slot);
+		gRenderCommandEncoder->setFragmentBuffer(buffer, 0, slot);
+	}
 }
 
 #endif

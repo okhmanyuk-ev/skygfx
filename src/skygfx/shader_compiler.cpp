@@ -194,6 +194,11 @@ std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv)
 std::string skygfx::CompileSpirvToMsl(const std::vector<uint32_t>& spirv)
 {
 	auto compiler = spirv_cross::CompilerMSL(spirv);
+	
+	spirv_cross::CompilerMSL::Options options;
+	options.enable_decoration_binding = true;
+	compiler.set_msl_options(options);
+	
 	return compiler.compile();
 }
 
