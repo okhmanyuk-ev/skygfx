@@ -15,6 +15,7 @@
 
 using namespace skygfx;
 
+static NS::AutoreleasePool* gAutoreleasePool = nullptr;
 static MTL::Device* gDevice = nullptr;
 static MTK::View* gView = nullptr;
 static MTL::CommandQueue* gCommandQueue = nullptr;
@@ -170,8 +171,30 @@ public:
 	}
 };
 
+static NS::AutoreleasePool* gFrameAutoreleasePool = nullptr;
+
+static void begin()
+{
+	gFrameAutoreleasePool = NS::AutoreleasePool::alloc()->init();
+	
+	gCommandBuffer = gCommandQueue->commandBuffer();
+	gRenderPassDescriptor = gView->currentRenderPassDescriptor();
+	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
+}
+
+static void end()
+{
+	gRenderCommandEncoder->endEncoding();
+	gCommandBuffer->presentDrawable(gView->currentDrawable());
+	gCommandBuffer->commit();
+	
+	gFrameAutoreleasePool->release();
+}
+
 BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 {
+	gAutoreleasePool = NS::AutoreleasePool::alloc()->init();
+	
 	gDevice = MTL::CreateSystemDefaultDevice();
 	
 	auto frame = CGRect{ { 0.0, 0.0 }, { (float)width, (float)height } };
@@ -184,23 +207,25 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	
 	gCommandQueue = gDevice->newCommandQueue();
 	
-	gCommandBuffer = gCommandQueue->commandBuffer();
-	gRenderPassDescriptor = gView->currentRenderPassDescriptor();
-	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
-	
 	auto sampler_desc = MTL::SamplerDescriptor::alloc()->init();
 	sampler_desc->setMagFilter(MTL::SamplerMinMagFilter::SamplerMinMagFilterLinear);
 	sampler_desc->setMinFilter(MTL::SamplerMinMagFilter::SamplerMinMagFilterLinear);
 	sampler_desc->setMipFilter(MTL::SamplerMipFilter::SamplerMipFilterLinear);
 	gSamplerState = gDevice->newSamplerState(sampler_desc);
 	sampler_desc->release();
+	
+	begin();
 }
 
 BackendMetal::~BackendMetal()
 {
+	end();
+	
+	gSamplerState->release();
 	gCommandQueue->release();
 	gView->release();
 	gDevice->release();
+	gAutoreleasePool->release();
 }
 
 void BackendMetal::resize(uint32_t width, uint32_t height)
@@ -334,13 +359,9 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 
 void BackendMetal::present()
 {
-	gRenderCommandEncoder->endEncoding();
-	gCommandBuffer->presentDrawable(gView->currentDrawable());
-	gCommandBuffer->commit();
-	
-	gCommandBuffer = gCommandQueue->commandBuffer();
-	gRenderPassDescriptor = gView->currentRenderPassDescriptor();
-	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
+	end();
+	gView->draw();
+	begin();
 }
 
 TextureHandle* BackendMetal::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
