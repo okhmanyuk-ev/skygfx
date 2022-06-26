@@ -10,7 +10,7 @@ static std::string vertex_shader_code = R"(
 layout(location = POSITION_LOCATION) in vec3 aPosition;
 layout(location = COLOR_LOCATION) in vec4 aColor;
 
-layout(binding = 1) uniform _ubo
+layout(binding = 0) uniform _ubo
 {
 	mat4 projection;
 	mat4 view;
@@ -170,7 +170,7 @@ int main()
 		device.setShader(shader);
 		device.setVertexBuffer(vertices);
 		device.setIndexBuffer(indices);
-		device.setUniformBuffer(1, ubo);
+		device.setUniformBuffer(0, ubo);
 		device.setCullMode(skygfx::CullMode::Back);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
