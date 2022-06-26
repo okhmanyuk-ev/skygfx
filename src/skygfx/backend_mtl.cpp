@@ -150,8 +150,26 @@ public:
 		desc->setStorageMode(MTL::StorageModeManaged);
 		desc->setUsage(MTL::ResourceUsageSample | MTL::ResourceUsageRead);
 
+		if (mipmap)
+		{
+			int height_levels = ceil(log2(height));
+			int width_levels = ceil(log2(width));
+			int mip_count = (height_levels > width_levels) ? height_levels : width_levels;
+			desc->setMipmapLevelCount(mip_count);
+		}
+		
 		texture = gDevice->newTexture(desc);
 		texture->replaceRegion(MTL::Region(0, 0, 0, width, height, 1), 0, memory, width * channels);
+		
+		if (mipmap)
+		{
+			auto cmd = gCommandQueue->commandBuffer();
+			auto enc = cmd->blitCommandEncoder();
+			enc->generateMipmaps(texture);
+			enc->endEncoding();
+			cmd->commit();
+			cmd->waitUntilCompleted();
+		}
 		
 		desc->release();
 	}
