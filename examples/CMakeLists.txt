@@ -4,6 +4,13 @@ project(examples)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(APPLE)
+	set(CMAKE_MACOSX_BUNDLE YES)
+endif()
+
+set(RESOURCES
+	assets
+)
 
 set(LIBS_FOLDER "libs")
 
@@ -27,17 +34,19 @@ target_link_libraries(triangle glfw sky-gfx)
 
 # texture
 
-add_executable(texture texture/main.cpp)
+add_executable(texture texture/main.cpp ${RESOURCES})
 target_link_libraries(texture glfw sky-gfx)
 target_include_directories(texture PUBLIC lib/stb)
 set_target_properties(texture PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
 
 # uniform_buffer
 
-add_executable(uniform_buffer uniform/main.cpp)
+add_executable(uniform_buffer uniform/main.cpp ${RESOURCES})
 target_link_libraries(uniform_buffer glfw sky-gfx)
 target_include_directories(uniform_buffer PUBLIC lib/stb)
 set_target_properties(uniform_buffer PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
 
 # cube
 
@@ -46,17 +55,19 @@ target_link_libraries(cube glfw sky-gfx)
 
 # textured cube
 
-add_executable(textured_cube textured_cube/main.cpp)
+add_executable(textured_cube textured_cube/main.cpp ${RESOURCES})
 target_link_libraries(textured_cube glfw sky-gfx)
 target_include_directories(textured_cube PUBLIC lib/stb)
 set_target_properties(textured_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
 
 # light
 
-add_executable(light light/main.cpp)
+add_executable(light light/main.cpp ${RESOURCES})
 target_link_libraries(light glfw sky-gfx)
 target_include_directories(light PUBLIC lib/stb)
 set_target_properties(light PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
 
 # render target
 

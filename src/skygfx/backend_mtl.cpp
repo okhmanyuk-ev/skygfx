@@ -25,6 +25,8 @@ static MTL::PrimitiveType gPrimitiveType = MTL::PrimitiveType::PrimitiveTypeTria
 static MTL::IndexType gIndexType = MTL::IndexType::IndexTypeUInt16;
 static MTL::Buffer* gIndexBuffer = nullptr;
 static Buffer gVertexBuffer;
+static MTL::Texture* gTexture = nullptr;
+static MTL::SamplerState* gSamplerState = nullptr;
 
 class ShaderDataMetal;
 
@@ -128,13 +130,31 @@ public:
 
 class TextureDataMetal
 {
+	friend class BackendMetal;
+	
+private:
+	MTL::Texture* texture = nullptr;
+	
 public:
-	TextureDataMetal(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap)
+	TextureDataMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 	{
+		auto desc = MTL::TextureDescriptor::alloc()->init();
+		desc->setWidth(width);
+		desc->setHeight(height);
+		desc->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
+		desc->setTextureType(MTL::TextureType2D);
+		desc->setStorageMode(MTL::StorageModeManaged);
+		desc->setUsage(MTL::ResourceUsageSample | MTL::ResourceUsageRead);
+
+		texture = gDevice->newTexture(desc);
+		texture->replaceRegion(MTL::Region( 0, 0, 0, width, height, 1), 0, memory, width * channels);
+		
+		desc->release();
 	}
 
 	~TextureDataMetal()
 	{
+		texture->release();
 	}
 };
 
@@ -167,6 +187,13 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gCommandBuffer = gCommandQueue->commandBuffer();
 	gRenderPassDescriptor = gView->currentRenderPassDescriptor();
 	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
+	
+	auto sampler_desc = MTL::SamplerDescriptor::alloc()->init();
+	sampler_desc->setMagFilter(MTL::SamplerMinMagFilter::SamplerMinMagFilterLinear);
+	sampler_desc->setMinFilter(MTL::SamplerMinMagFilter::SamplerMinMagFilterLinear);
+	sampler_desc->setMipFilter(MTL::SamplerMipFilter::SamplerMipFilterLinear);
+	gSamplerState = gDevice->newSamplerState(sampler_desc);
+	sampler_desc->release();
 }
 
 BackendMetal::~BackendMetal()
@@ -207,6 +234,8 @@ void BackendMetal::setScissor(std::nullptr_t value)
 
 void BackendMetal::setTexture(TextureHandle* handle)
 {
+	auto texture = (TextureDataMetal*)handle;
+	gTexture = texture->texture;
 }
 
 void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
@@ -354,6 +383,16 @@ void BackendMetal::destroyShader(ShaderHandle* handle)
 
 void BackendMetal::prepareForDrawing()
 {
+	if (gTexture)
+	{
+		gRenderCommandEncoder->setFragmentTexture(gTexture, 0);
+	}
+	
+	if (gSamplerState)
+	{
+		gRenderCommandEncoder->setFragmentSamplerState(gSamplerState, 0);
+	}
+	
 	gRenderCommandEncoder->setVertexBytes(gVertexBuffer.data, gVertexBuffer.size, 0);
 	gRenderCommandEncoder->setRenderPipelineState(gShader->pso);
 }
