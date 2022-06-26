@@ -24,6 +24,7 @@ static MTL::RenderCommandEncoder* gRenderCommandEncoder = nullptr;
 static MTL::PrimitiveType gPrimitiveType = MTL::PrimitiveType::PrimitiveTypeTriangle;
 static MTL::IndexType gIndexType = MTL::IndexType::IndexTypeUInt16;
 static MTL::Buffer* gIndexBuffer = nullptr;
+static Buffer gVertexBuffer;
 
 class ShaderDataMetal;
 
@@ -157,12 +158,12 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	
 	gView = MTK::View::alloc()->init(frame, gDevice);
 	gView->setColorPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
-	gView->setClearColor(MTL::ClearColor::Make(0.0, 0.0, 0.0, 1.0));
 
 	auto _window = (NS::Window*)window;
 	_window->setContentView(gView);
 	
 	gCommandQueue = gDevice->newCommandQueue();
+	
 	gCommandBuffer = gCommandQueue->commandBuffer();
 	gRenderPassDescriptor = gView->currentRenderPassDescriptor();
 	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
@@ -224,7 +225,7 @@ void BackendMetal::setShader(ShaderHandle* handle)
 
 void BackendMetal::setVertexBuffer(const Buffer& buffer)
 {
-	gRenderCommandEncoder->setVertexBytes(buffer.data, buffer.size, 0);
+	gVertexBuffer = buffer;
 }
 
 void BackendMetal::setIndexBuffer(const Buffer& buffer)
@@ -279,7 +280,11 @@ void BackendMetal::setTextureAddressMode(const TextureAddress& value)
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	// not implemented in metal ?
+	auto col = color.value();
+	gView->setClearColor(MTL::ClearColor::Make(col.r, col.g, col.b, col.a));
+
+	gRenderCommandEncoder->endEncoding();
+	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
 }
 
 void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
@@ -349,6 +354,7 @@ void BackendMetal::destroyShader(ShaderHandle* handle)
 
 void BackendMetal::prepareForDrawing()
 {
+	gRenderCommandEncoder->setVertexBytes(gVertexBuffer.data, gVertexBuffer.size, 0);
 	gRenderCommandEncoder->setRenderPipelineState(gShader->pso);
 }
 
