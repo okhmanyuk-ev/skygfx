@@ -29,6 +29,7 @@ static Buffer gVertexBuffer;
 static MTL::Texture* gTexture = nullptr;
 static MTL::SamplerState* gSamplerState = nullptr;
 static std::unordered_map<int, MTL::Buffer*> gUniformBuffers;
+static CullMode gCullMode = CullMode::None;
 
 class ShaderDataMetal;
 
@@ -345,8 +346,7 @@ void BackendMetal::setStencilMode(const StencilMode& value)
 
 void BackendMetal::setCullMode(const CullMode& value)
 {
-	//pEnc->setCullMode( MTL::CullModeBack );
-	//pEnc->setFrontFacingWinding( MTL::Winding::WindingCounterClockwise );
+	gCullMode = value;
 }
 
 void BackendMetal::setSampler(const Sampler& value)
@@ -448,6 +448,15 @@ void BackendMetal::prepareForDrawing()
 		gRenderCommandEncoder->setVertexBuffer(buffer, 0, slot);
 		gRenderCommandEncoder->setFragmentBuffer(buffer, 0, slot);
 	}
+	
+	static const std::unordered_map<CullMode, MTL::CullMode> CullModes = {
+		{ CullMode::None, MTL::CullMode::CullModeNone },
+		{ CullMode::Back, MTL::CullMode::CullModeBack },
+		{ CullMode::Front, MTL::CullMode::CullModeFront }
+	};
+	
+	gRenderCommandEncoder->setCullMode(CullModes.at(gCullMode));
+	gRenderCommandEncoder->setFrontFacingWinding(MTL::Winding::WindingClockwise);
 }
 
 #endif
