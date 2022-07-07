@@ -91,7 +91,7 @@ void Device::setTopology(Topology topology)
 	gBackend->setTopology(topology);
 }
 
-void Device::setViewport(const Viewport& viewport)
+void Device::setViewport(std::optional<Viewport> viewport)
 {
 	gBackend->setViewport(viewport);
 }

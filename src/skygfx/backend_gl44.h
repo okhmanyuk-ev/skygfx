@@ -15,7 +15,7 @@ namespace skygfx
 		void resize(uint32_t width, uint32_t height) override;
 
 		void setTopology(Topology topology) override;
-		void setViewport(const Viewport& viewport) override;
+		void setViewport(std::optional<Viewport> viewport) override;
 		void setScissor(const Scissor& value) override;
 		void setScissor(std::nullptr_t value) override;
 		void setTexture(TextureHandle* handle) override;
@@ -63,11 +63,15 @@ namespace skygfx
 		bool mVertexBufferDirty = false;
 		bool mIndexBufferDirty = false;
 		bool mTexParametersDirty = true;
+		bool mViewportDirty = true;
 		Buffer mVertexBuffer;
 		Buffer mIndexBuffer;
 		Sampler mSampler = Sampler::Linear;
 		TextureAddress mTextureAddress = TextureAddress::Wrap;
 		TextureHandle* mCurrentTexture = nullptr;
+		std::optional<Viewport> mViewport;
+		uint32_t mBackbufferWidth = 0;
+		uint32_t mBackbufferHeight = 0;
 	};
 }
 

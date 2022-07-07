@@ -592,8 +592,13 @@ void BackendVK::setTopology(Topology topology)
 	mCommandBuffer.setPrimitiveTopology(TopologyMap.at(topology));
 }
 
-void BackendVK::setViewport(const Viewport& value)
+void BackendVK::setViewport(std::optional<Viewport> _viewport)
 {
+	if (!_viewport.has_value()) // TODO: fix this according to other APIs
+		return;
+
+	auto value = _viewport.value();
+
 	auto viewport = vk::Viewport()
 		.setX(value.position.x)
 		.setY(value.size.y - value.position.y)

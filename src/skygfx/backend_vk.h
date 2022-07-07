@@ -15,7 +15,7 @@ namespace skygfx
 		void resize(uint32_t width, uint32_t height) override;
 
 		void setTopology(Topology topology) override;
-		void setViewport(const Viewport& viewport) override;
+		void setViewport(std::optional<Viewport> viewport) override;
 		void setScissor(const Scissor& value) override;
 		void setScissor(std::nullptr_t value) override;
 		void setTexture(TextureHandle* handle) override;

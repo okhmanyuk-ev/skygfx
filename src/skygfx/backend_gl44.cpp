@@ -269,9 +269,12 @@ private:
 	GLuint framebuffer;
 	GLuint depth_stencil_renderbuffer;
 	TextureDataGL44* texture_data;
+	uint32_t width;
+	uint32_t height;
 
 public:
-	RenderTargetDataGL44(uint32_t width, uint32_t height, TextureDataGL44* _texture_data) : texture_data(_texture_data)
+	RenderTargetDataGL44(uint32_t _width, uint32_t _height, TextureDataGL44* _texture_data) : 
+		texture_data(_texture_data), width(_width), height(_height)
 	{
 		GLint last_fbo;
 		GLint last_rbo;
@@ -312,7 +315,7 @@ static GLuint GLVertexBuffer;
 static GLuint GLIndexBuffer;
 static std::unordered_map<int, GLuint> GLUniformBuffers;
 static GLuint GLPixelBuffer;
-static uint32_t gHeight = 0;
+static RenderTargetDataGL44* GLCurrentRenderTarget = nullptr;
 
 BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 {
@@ -383,7 +386,8 @@ BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 	glGenBuffers(1, &GLIndexBuffer);
 	glGenBuffers(1, &GLPixelBuffer);
 
-	gHeight = height;
+	mBackbufferWidth = width;
+	mBackbufferHeight = height;
 }
 
 BackendGL44::~BackendGL44()
@@ -402,7 +406,8 @@ BackendGL44::~BackendGL44()
 
 void BackendGL44::resize(uint32_t width, uint32_t height)
 {
-	gHeight = height;
+	mBackbufferWidth = width;
+	mBackbufferHeight = height;
 }
 
 void BackendGL44::setTopology(Topology topology)
@@ -418,15 +423,10 @@ void BackendGL44::setTopology(Topology topology)
 	GLTopology = TopologyMap.at(topology);
 }
 
-void BackendGL44::setViewport(const Viewport& viewport)
+void BackendGL44::setViewport(std::optional<Viewport> viewport)
 {
-	glViewport(
-		(GLint)viewport.position.x,
-		(GLint)viewport.position.y,
-		(GLint)viewport.size.x,
-		(GLint)viewport.size.y);
-
-	glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
+	mViewport = viewport;
+	mViewportDirty = true;
 }
 
 void BackendGL44::setScissor(const Scissor& value)
@@ -434,7 +434,7 @@ void BackendGL44::setScissor(const Scissor& value)
 	glEnable(GL_SCISSOR_TEST);
 	glScissor(
 		(GLint)glm::round(value.position.x),
-		(GLint)glm::round(gHeight - value.position.y - value.size.y),
+		(GLint)glm::round(mBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
 		(GLint)glm::round(value.size.x),
 		(GLint)glm::round(value.size.y));
 }
@@ -457,11 +457,19 @@ void BackendGL44::setRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetDataGL44*)handle;
 	glBindFramebuffer(GL_FRAMEBUFFER, render_target->framebuffer);
+	GLCurrentRenderTarget = render_target;
+
+	if (!mViewport.has_value())
+		mViewportDirty = true;
 }
 
 void BackendGL44::setRenderTarget(std::nullptr_t value)
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	GLCurrentRenderTarget = nullptr;
+
+	if (!mViewport.has_value())
+		mViewportDirty = true;
 }
 
 void BackendGL44::setShader(ShaderHandle* handle)
@@ -655,7 +663,7 @@ void BackendGL44::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Text
 		return;
 
 	auto x = (GLint)pos.x;
-	auto y = (GLint)(gHeight - pos.y - size.y);
+	auto y = (GLint)(mBackbufferHeight - pos.y - size.y); // TODO: need different calculations when render target
 	auto w = (GLint)size.x;
 	auto h = (GLint)size.y;
 
@@ -738,6 +746,34 @@ void BackendGL44::prepareForDrawing()
 	{
 		refreshTexParameters();
 		mTexParametersDirty = false;
+	}
+
+	if (mViewportDirty)
+	{
+		float width;
+		float height;
+
+		if (GLCurrentRenderTarget == nullptr)
+		{
+			width = static_cast<float>(mBackbufferWidth);
+			height = static_cast<float>(mBackbufferHeight);
+		}
+		else
+		{
+			width = static_cast<float>(GLCurrentRenderTarget->width);
+			height = static_cast<float>(GLCurrentRenderTarget->height);
+		}
+
+		auto viewport = mViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+
+		glViewport(
+			(GLint)viewport.position.x,
+			(GLint)viewport.position.y,
+			(GLint)viewport.size.x,
+			(GLint)viewport.size.y);
+
+		glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
+
 	}
 }
 

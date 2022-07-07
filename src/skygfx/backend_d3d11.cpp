@@ -247,9 +247,12 @@ private:
 	ID3D11Texture2D* depth_stencil_texture;
 	ID3D11DepthStencilView* depth_stencil_view;
 	TextureDataD3D11* texture_data;
+	uint32_t width;
+	uint32_t height;
 
 public:
-	RenderTargetDataD3D11(uint32_t width, uint32_t height, TextureDataD3D11* _texture_data) : texture_data(_texture_data)
+	RenderTargetDataD3D11(uint32_t _width, uint32_t _height, TextureDataD3D11* _texture_data) : 
+		texture_data(_texture_data), width(_width), height(_height)
 	{
 		D3D11_RENDER_TARGET_VIEW_DESC render_target_view_desc = { };
 		render_target_view_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -357,16 +360,10 @@ void BackendD3D11::setTopology(Topology topology)
 	D3D11Context->IASetPrimitiveTopology(TopologyMap.at(topology));
 }
 
-void BackendD3D11::setViewport(const Viewport& viewport)
+void BackendD3D11::setViewport(std::optional<Viewport> viewport)
 {
-	D3D11_VIEWPORT vp;
-	vp.Width = viewport.size.x;
-	vp.Height = viewport.size.y;
-	vp.MinDepth = viewport.min_depth;
-	vp.MaxDepth = viewport.max_depth;
-	vp.TopLeftX = viewport.position.x;
-	vp.TopLeftY = viewport.position.y;
-	D3D11Context->RSSetViewports(1, &vp);
+	mViewport = viewport;
+	mViewportDirty = true;
 }
 
 void BackendD3D11::setScissor(const Scissor& value)
@@ -415,12 +412,18 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 	D3D11Context->OMSetRenderTargets(1, &render_target->render_target_view, render_target->depth_stencil_view);
 
 	D3D11CurrentRenderTarget = render_target;
+	
+	if (!mViewport.has_value())
+		mViewportDirty = true;
 }
 
 void BackendD3D11::setRenderTarget(std::nullptr_t value)
 {
 	D3D11Context->OMSetRenderTargets(1, &MainRenderTarget.render_taget_view, MainRenderTarget.depth_stencil_view);
 	D3D11CurrentRenderTarget = nullptr;
+
+	if (!mViewport.has_value())
+		mViewportDirty = true;
 }
 
 void BackendD3D11::setShader(ShaderHandle* handle)
@@ -795,6 +798,9 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 	D3D11SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
 	D3D11Device->CreateRenderTargetView(pBackBuffer, nullptr, &MainRenderTarget.render_taget_view);
 	pBackBuffer->Release();
+
+	mBackbufferWidth = width;
+	mBackbufferHeight = height;
 }
 
 void BackendD3D11::destroyMainRenderTarget()
@@ -925,6 +931,38 @@ void BackendD3D11::prepareForDrawing()
 		}
 
 		D3D11Context->PSSetSamplers(0, 1, &D3D11SamplerStates.at(value));
+	}
+
+	// viewport
+
+	if (mViewportDirty)
+	{
+		float width;
+		float height;
+
+		if (D3D11CurrentRenderTarget == nullptr)
+		{
+			width = static_cast<float>(mBackbufferWidth);
+			height = static_cast<float>(mBackbufferHeight);
+		}
+		else
+		{
+			width = static_cast<float>(D3D11CurrentRenderTarget->width);
+			height = static_cast<float>(D3D11CurrentRenderTarget->height);
+		}
+
+		auto viewport = mViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+
+		D3D11_VIEWPORT vp;
+		vp.Width = viewport.size.x;
+		vp.Height = viewport.size.y;
+		vp.MinDepth = viewport.min_depth;
+		vp.MaxDepth = viewport.max_depth;
+		vp.TopLeftX = viewport.position.x;
+		vp.TopLeftY = viewport.position.y;
+		D3D11Context->RSSetViewports(1, &vp);
+
+		mViewportDirty = false;
 	}
 }
 

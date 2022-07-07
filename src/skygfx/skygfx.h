@@ -324,7 +324,7 @@ namespace skygfx
 		void resize(uint32_t width, uint32_t height);
 
 		void setTopology(Topology topology);
-		void setViewport(const Viewport& viewport);
+		void setViewport(std::optional<Viewport> viewport);
 		void setScissor(const Scissor& value);
 		void setScissor(std::nullptr_t value);
 		void setTexture(const Texture& texture);
