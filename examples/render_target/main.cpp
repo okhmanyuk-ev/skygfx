@@ -197,9 +197,6 @@ int main()
 	auto cube_shader = skygfx::Shader(CubeVertex::Layout, cube_vertex_shader_code, cube_fragment_shader_code);
 	auto triangle_shader = skygfx::Shader(TriangleVertex::Layout, triangle_vertex_shader_code, triangle_fragment_shader_code);
 
-	auto window_viewport = skygfx::Viewport();
-	window_viewport.size = { static_cast<float>(width), static_cast<float>(height) };
-
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 
@@ -234,9 +231,6 @@ int main()
 
 	auto target = skygfx::RenderTarget(800, 600);
 
-	auto target_viewport = skygfx::Viewport();
-	target_viewport.size = { static_cast<float>(target.getWidth()), static_cast<float>(target.getHeight()) };
-
 	while (!glfwWindowShouldClose(window))
 	{
 		// draw triangle to target
@@ -244,7 +238,6 @@ int main()
 		device.setRenderTarget(target);
 		device.clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
-		device.setViewport(target_viewport);
 		device.setShader(triangle_shader);
 		device.setVertexBuffer(triangle_vertices);
 		device.setIndexBuffer(triangle_indices);
@@ -262,7 +255,6 @@ int main()
 		device.setRenderTarget(nullptr);
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
-		device.setViewport(window_viewport);
 		device.setShader(cube_shader);
 		device.setVertexBuffer(cube_vertices);
 		device.setIndexBuffer(cube_indices);

@@ -79,9 +79,6 @@ int main()
 	auto device = skygfx::Device(backend_type, native_window, width, height);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
-	auto viewport = skygfx::Viewport();
-	viewport.size = { static_cast<float>(width), static_cast<float>(height) };
-
 	int tex_width = 0;
 	int tex_height = 0;
 	void* tex_memory = stbi_load("assets/bricks.png", &tex_width, &tex_height, nullptr, 4); // TODO: this image has 3 channels, we must can load that type of images
@@ -92,7 +89,6 @@ int main()
 	{
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
-		device.setViewport(viewport);
 		device.setShader(shader);
 		device.setTexture(texture);
 		device.setVertexBuffer(vertices);

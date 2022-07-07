@@ -128,9 +128,6 @@ int main()
 	auto device = skygfx::Device(backend_type, native_window, width, height);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
-	auto viewport = skygfx::Viewport();
-	viewport.size = { static_cast<float>(width), static_cast<float>(height) };
-
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 
@@ -166,7 +163,6 @@ int main()
 
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
-		device.setViewport(viewport);
 		device.setShader(shader);
 		device.setVertexBuffer(vertices);
 		device.setIndexBuffer(indices);
