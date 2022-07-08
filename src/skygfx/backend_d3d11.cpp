@@ -366,24 +366,28 @@ void BackendD3D11::setViewport(std::optional<Viewport> viewport)
 	mViewportDirty = true;
 }
 
-void BackendD3D11::setScissor(const Scissor& value)
+void BackendD3D11::setScissor(std::optional<Scissor> scissor)
 {
-	D3D11RasterizerState.scissorEnabled = true;
+	if (scissor.has_value())
+	{
+		auto value = scissor.value();
 
-	D3D11_RECT rect;
-	rect.left = static_cast<LONG>(value.position.x);
-	rect.top = static_cast<LONG>(value.position.y);
-	rect.right = static_cast<LONG>(value.position.x + value.size.x);
-	rect.bottom = static_cast<LONG>(value.position.y + value.size.y);
-	D3D11Context->RSSetScissorRects(1, &rect);
+		D3D11RasterizerState.scissorEnabled = true;
 
-	D3D11RasterizerStateDirty = true;
-}
+		D3D11_RECT rect;
+		rect.left = static_cast<LONG>(value.position.x);
+		rect.top = static_cast<LONG>(value.position.y);
+		rect.right = static_cast<LONG>(value.position.x + value.size.x);
+		rect.bottom = static_cast<LONG>(value.position.y + value.size.y);
+		D3D11Context->RSSetScissorRects(1, &rect);
 
-void BackendD3D11::setScissor(std::nullptr_t value)
-{
-	D3D11RasterizerState.scissorEnabled = false;
-	D3D11RasterizerStateDirty = true;
+		D3D11RasterizerStateDirty = true;
+	}
+	else
+	{
+		D3D11RasterizerState.scissorEnabled = false;
+		D3D11RasterizerStateDirty = true;
+	}
 }
 
 void BackendD3D11::setTexture(TextureHandle* handle)

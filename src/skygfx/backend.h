@@ -13,8 +13,7 @@ namespace skygfx
 
 		virtual void setTopology(Topology topology) = 0;
 		virtual void setViewport(std::optional<Viewport> viewport) = 0;
-		virtual void setScissor(const Scissor& value) = 0;
-		virtual void setScissor(std::nullptr_t value) = 0;
+		virtual void setScissor(std::optional<Scissor> scissor) = 0;
 		virtual void setTexture(TextureHandle* handle) = 0;
 		virtual void setRenderTarget(RenderTargetHandle* handle) = 0;
 		virtual void setRenderTarget(std::nullptr_t value) = 0;

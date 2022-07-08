@@ -610,18 +610,22 @@ void BackendVK::setViewport(std::optional<Viewport> _viewport)
 	mCommandBuffer.setViewport(0, { viewport });
 }
 
-void BackendVK::setScissor(const Scissor& value)
+void BackendVK::setScissor(std::optional<Scissor> scissor)
 {
-	auto rect = vk::Rect2D()
-		.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
-		.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
+	if (scissor.has_value())
+	{
+		auto value = scissor.value();
 
-	mCommandBuffer.setScissor(0, { rect });
-}
+		auto rect = vk::Rect2D()
+			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
+			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
 
-void BackendVK::setScissor(std::nullptr_t value)
-{
-	setScissor({ { 0.0f, 0.0f }, { static_cast<float>(mWidth), static_cast<float>(mHeight) } });
+		mCommandBuffer.setScissor(0, { rect });
+	}
+	else
+	{
+		setScissor(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(mWidth), static_cast<float>(mHeight) } });
+	}
 }
 
 void BackendVK::setTexture(TextureHandle* handle)

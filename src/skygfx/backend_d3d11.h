@@ -16,8 +16,7 @@ namespace skygfx
 
 		void setTopology(Topology topology) override;
 		void setViewport(std::optional<Viewport> viewport) override;
-		void setScissor(const Scissor& value) override;
-		void setScissor(std::nullptr_t value) override;
+		void setScissor(std::optional<Scissor> scissor) override;
 		void setTexture(TextureHandle* handle) override;
 		void setRenderTarget(RenderTargetHandle* handle) override;
 		void setRenderTarget(std::nullptr_t value) override;

@@ -429,19 +429,23 @@ void BackendGL44::setViewport(std::optional<Viewport> viewport)
 	mViewportDirty = true;
 }
 
-void BackendGL44::setScissor(const Scissor& value)
+void BackendGL44::setScissor(std::optional<Scissor> scissor)
 {
-	glEnable(GL_SCISSOR_TEST);
-	glScissor(
-		(GLint)glm::round(value.position.x),
-		(GLint)glm::round(mBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
-		(GLint)glm::round(value.size.x),
-		(GLint)glm::round(value.size.y));
-}
+	if (scissor.has_value())
+	{
+		auto value = scissor.value();
 
-void BackendGL44::setScissor(std::nullptr_t value)
-{
-	glDisable(GL_SCISSOR_TEST);
+		glEnable(GL_SCISSOR_TEST);
+		glScissor(
+			(GLint)glm::round(value.position.x),
+			(GLint)glm::round(mBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
+			(GLint)glm::round(value.size.x),
+			(GLint)glm::round(value.size.y));
+	}
+	else
+	{
+		glDisable(GL_SCISSOR_TEST);
+	}
 }
 
 void BackendGL44::setTexture(TextureHandle* handle)

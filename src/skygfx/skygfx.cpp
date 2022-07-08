@@ -96,14 +96,9 @@ void Device::setViewport(std::optional<Viewport> viewport)
 	gBackend->setViewport(viewport);
 }
 
-void Device::setScissor(const Scissor& value)
+void Device::setScissor(std::optional<Scissor> scissor)
 {
-	gBackend->setScissor(value);
-}
-
-void Device::setScissor(std::nullptr_t value)
-{
-	gBackend->setScissor(value);
+	gBackend->setScissor(scissor);
 }
 
 void Device::setTexture(const Texture& texture)
