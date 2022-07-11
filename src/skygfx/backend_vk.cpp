@@ -55,6 +55,12 @@ static std::vector<DeviceBufferVK> mUniformBuffers;
 static std::unordered_map<int, vk::ImageView> mTexturesPushQueue;
 static std::unordered_map<int, vk::Buffer> mUniformBuffersPushQueue;
 
+static std::optional<Scissor> mScissor;
+static bool mScissorDirty = true;
+
+static std::optional<Viewport> mViewport;
+static bool mViewportDirty = true;
+
 class ShaderDataVK;
 
 static ShaderDataVK* mShader = nullptr;
@@ -592,40 +598,16 @@ void BackendVK::setTopology(Topology topology)
 	mCommandBuffer.setPrimitiveTopology(TopologyMap.at(topology));
 }
 
-void BackendVK::setViewport(std::optional<Viewport> _viewport)
+void BackendVK::setViewport(std::optional<Viewport> viewport)
 {
-	if (!_viewport.has_value()) // TODO: fix this according to other APIs
-		return;
-
-	auto value = _viewport.value();
-
-	auto viewport = vk::Viewport()
-		.setX(value.position.x)
-		.setY(value.size.y - value.position.y)
-		.setWidth(value.size.x)
-		.setHeight(-value.size.y)
-		.setMinDepth(value.min_depth)
-		.setMaxDepth(value.max_depth);
-
-	mCommandBuffer.setViewport(0, { viewport });
+	mViewport = viewport;
+	mViewportDirty = true;
 }
 
 void BackendVK::setScissor(std::optional<Scissor> scissor)
 {
-	if (scissor.has_value())
-	{
-		auto value = scissor.value();
-
-		auto rect = vk::Rect2D()
-			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
-			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
-
-		mCommandBuffer.setScissor(0, { rect });
-	}
-	else
-	{
-		setScissor(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(mWidth), static_cast<float>(mHeight) } });
-	}
+	mScissor = scissor;
+	mScissorDirty = true;
 }
 
 void BackendVK::setTexture(TextureHandle* handle)
@@ -1099,6 +1081,9 @@ void BackendVK::begin()
 	mIndexBufferIndex = 0;
 	mUniformBufferIndex = 0;
 
+	mViewportDirty = true;
+	mScissorDirty = true;
+
 	auto inheritance_rendering_info = vk::CommandBufferInheritanceRenderingInfo()
 		.setColorAttachmentCount(1)
 		.setPColorAttachmentFormats(&mSurfaceFormat.format)
@@ -1250,6 +1235,34 @@ void BackendVK::prepareForDrawing()
 	}
 
 	mUniformBuffersPushQueue.clear();
+
+	if (mViewportDirty)
+	{
+		auto value = mViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(mWidth), static_cast<float>(mHeight) } });
+
+		auto viewport = vk::Viewport()
+			.setX(value.position.x)
+			.setY(value.size.y - value.position.y)
+			.setWidth(value.size.x)
+			.setHeight(-value.size.y)
+			.setMinDepth(value.min_depth)
+			.setMaxDepth(value.max_depth);
+
+		mCommandBuffer.setViewport(0, { viewport });
+		mViewportDirty = false;
+	}
+
+	if (mScissorDirty)
+	{
+		auto value = mScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(mWidth), static_cast<float>(mHeight) } });
+
+		auto rect = vk::Rect2D()
+			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
+			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
+
+		mCommandBuffer.setScissor(0, { rect });
+		mScissorDirty = false;
+	}
 }
 
 #endif
