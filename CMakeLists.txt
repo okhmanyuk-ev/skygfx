@@ -24,6 +24,7 @@ macro(set_option option value)
 endmacro()
 
 if(WIN32)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE -DNOMINMAX)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_D3D11)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)

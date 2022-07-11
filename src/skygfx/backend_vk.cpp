@@ -96,80 +96,88 @@ static void oneTimeSubmit(vk::raii::Device const& device, vk::raii::CommandPool 
 }
 
 static void setImageLayout(vk::raii::CommandBuffer const& commandBuffer, vk::Image image,
-	vk::Format format, vk::ImageLayout oldImageLayout, vk::ImageLayout newImageLayout)
+	vk::Format format, vk::ImageLayout oldImageLayout, vk::ImageLayout newImageLayout, std::optional<vk::ImageSubresourceRange> subresource_range = std::nullopt)
 {
-	vk::AccessFlags sourceAccessMask;
+	vk::AccessFlags src_access_mask;
 	switch (oldImageLayout)
 	{
-	case vk::ImageLayout::eTransferDstOptimal: sourceAccessMask = vk::AccessFlagBits::eTransferWrite; break;
-	case vk::ImageLayout::ePreinitialized: sourceAccessMask = vk::AccessFlagBits::eHostWrite; break;
-	case vk::ImageLayout::eGeneral:  // sourceAccessMask is empty
+	case vk::ImageLayout::eTransferSrcOptimal: src_access_mask = vk::AccessFlagBits::eTransferRead; break;
+	case vk::ImageLayout::eTransferDstOptimal: src_access_mask = vk::AccessFlagBits::eTransferWrite; break;
+	case vk::ImageLayout::ePreinitialized: src_access_mask = vk::AccessFlagBits::eHostWrite; break;
+	case vk::ImageLayout::eGeneral:  // src_access_mask is empty
 	case vk::ImageLayout::eUndefined: break;
 	default: assert(false); break;
 	}
 
-	vk::PipelineStageFlags sourceStage;
+	vk::PipelineStageFlags src_stage;
 	switch (oldImageLayout)
 	{
 	case vk::ImageLayout::eGeneral:
-	case vk::ImageLayout::ePreinitialized: sourceStage = vk::PipelineStageFlagBits::eHost; break;
-	case vk::ImageLayout::eTransferDstOptimal: sourceStage = vk::PipelineStageFlagBits::eTransfer; break;
-	case vk::ImageLayout::eUndefined: sourceStage = vk::PipelineStageFlagBits::eTopOfPipe; break;
+	case vk::ImageLayout::ePreinitialized: src_stage = vk::PipelineStageFlagBits::eHost; break;
+	case vk::ImageLayout::eTransferSrcOptimal:
+	case vk::ImageLayout::eTransferDstOptimal: src_stage = vk::PipelineStageFlagBits::eTransfer; break;
+	case vk::ImageLayout::eUndefined: src_stage = vk::PipelineStageFlagBits::eTopOfPipe; break;
 	default: assert(false); break;
 	}
 
-	vk::AccessFlags destinationAccessMask;
+	vk::AccessFlags dst_access_mask;
 	switch (newImageLayout)
 	{
-	case vk::ImageLayout::eColorAttachmentOptimal: destinationAccessMask = vk::AccessFlagBits::eColorAttachmentWrite; break;
+	case vk::ImageLayout::eColorAttachmentOptimal: dst_access_mask = vk::AccessFlagBits::eColorAttachmentWrite; break;
 	case vk::ImageLayout::eDepthStencilAttachmentOptimal:
-		destinationAccessMask = vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+		dst_access_mask = vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 		break;
-	case vk::ImageLayout::eGeneral:  // empty destinationAccessMask
+	case vk::ImageLayout::eGeneral:  // empty dst_access_mask
 	case vk::ImageLayout::ePresentSrcKHR: break;
-	case vk::ImageLayout::eShaderReadOnlyOptimal: destinationAccessMask = vk::AccessFlagBits::eShaderRead; break;
-	case vk::ImageLayout::eTransferSrcOptimal: destinationAccessMask = vk::AccessFlagBits::eTransferRead; break;
-	case vk::ImageLayout::eTransferDstOptimal: destinationAccessMask = vk::AccessFlagBits::eTransferWrite; break;
+	case vk::ImageLayout::eShaderReadOnlyOptimal: dst_access_mask = vk::AccessFlagBits::eShaderRead; break;
+	case vk::ImageLayout::eTransferSrcOptimal: dst_access_mask = vk::AccessFlagBits::eTransferRead; break;
+	case vk::ImageLayout::eTransferDstOptimal: dst_access_mask = vk::AccessFlagBits::eTransferWrite; break;
 	default: assert(false); break;
 	}
 
-	vk::PipelineStageFlags destinationStage;
+	vk::PipelineStageFlags dst_stage;
 	switch (newImageLayout)
 	{
-	case vk::ImageLayout::eColorAttachmentOptimal: destinationStage = vk::PipelineStageFlagBits::eColorAttachmentOutput; break;
-	case vk::ImageLayout::eDepthStencilAttachmentOptimal: destinationStage = vk::PipelineStageFlagBits::eEarlyFragmentTests; break;
-	case vk::ImageLayout::eGeneral: destinationStage = vk::PipelineStageFlagBits::eHost; break;
-	case vk::ImageLayout::ePresentSrcKHR: destinationStage = vk::PipelineStageFlagBits::eBottomOfPipe; break;
-	case vk::ImageLayout::eShaderReadOnlyOptimal: destinationStage = vk::PipelineStageFlagBits::eFragmentShader; break;
+	case vk::ImageLayout::eColorAttachmentOptimal: dst_stage = vk::PipelineStageFlagBits::eColorAttachmentOutput; break;
+	case vk::ImageLayout::eDepthStencilAttachmentOptimal: dst_stage = vk::PipelineStageFlagBits::eEarlyFragmentTests; break;
+	case vk::ImageLayout::eGeneral: dst_stage = vk::PipelineStageFlagBits::eHost; break;
+	case vk::ImageLayout::ePresentSrcKHR: dst_stage = vk::PipelineStageFlagBits::eBottomOfPipe; break;
+	case vk::ImageLayout::eShaderReadOnlyOptimal: dst_stage = vk::PipelineStageFlagBits::eFragmentShader; break;
 	case vk::ImageLayout::eTransferDstOptimal:
-	case vk::ImageLayout::eTransferSrcOptimal: destinationStage = vk::PipelineStageFlagBits::eTransfer; break;
+	case vk::ImageLayout::eTransferSrcOptimal: dst_stage = vk::PipelineStageFlagBits::eTransfer; break;
 	default: assert(false); break;
 	}
 
-	vk::ImageAspectFlags aspectMask;
+	vk::ImageAspectFlags aspect_mask;
 	if (newImageLayout == vk::ImageLayout::eDepthStencilAttachmentOptimal)
 	{
-		aspectMask = vk::ImageAspectFlagBits::eDepth;
+		aspect_mask = vk::ImageAspectFlagBits::eDepth;
 		if (format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint)
 		{
-			aspectMask |= vk::ImageAspectFlagBits::eStencil;
+			aspect_mask |= vk::ImageAspectFlagBits::eStencil;
 		}
 	}
 	else
 	{
-		aspectMask = vk::ImageAspectFlagBits::eColor;
+		aspect_mask = vk::ImageAspectFlagBits::eColor;
 	}
 
-	vk::ImageSubresourceRange imageSubresourceRange(aspectMask, 0, 1, 0, 1);
-	vk::ImageMemoryBarrier    imageMemoryBarrier(sourceAccessMask,
-		destinationAccessMask,
-		oldImageLayout,
-		newImageLayout,
-		VK_QUEUE_FAMILY_IGNORED,
-		VK_QUEUE_FAMILY_IGNORED,
-		image,
-		imageSubresourceRange);
-	return commandBuffer.pipelineBarrier(sourceStage, destinationStage, {}, nullptr, nullptr, imageMemoryBarrier);
+	auto default_image_subresource_range = vk::ImageSubresourceRange()
+		.setAspectMask(aspect_mask)
+		.setLayerCount(1)
+		.setLevelCount(1);
+
+	auto image_memory_barrier = vk::ImageMemoryBarrier()
+		.setSrcAccessMask(src_access_mask)
+		.setDstAccessMask(dst_access_mask)
+		.setOldLayout(oldImageLayout)
+		.setNewLayout(newImageLayout)
+		.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+		.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+		.setImage(image)
+		.setSubresourceRange(subresource_range.value_or(default_image_subresource_range));
+
+	return commandBuffer.pipelineBarrier(src_stage, dst_stage, {}, nullptr, nullptr, image_memory_barrier);
 }
 
 const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
@@ -312,15 +320,23 @@ private:
 public:
 	TextureDataVK(uint32_t width, uint32_t height, uint32_t channels, void* data, bool mipmap)
 	{
+		uint32_t mip_levels = 1;
+
+		if (mipmap)
+		{
+			mip_levels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
+		}
+
 		auto image_create_info = vk::ImageCreateInfo()
 			.setImageType(vk::ImageType::e2D)
 			.setFormat(vk::Format::eR8G8B8A8Unorm)
 			.setExtent({ width, height, 1 })
-			.setMipLevels(1)
+			.setMipLevels(mip_levels)
 			.setArrayLayers(1)
 			.setSamples(vk::SampleCountFlagBits::e1)
 			.setTiling(vk::ImageTiling::eOptimal)
-			.setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst)
+			.setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst 
+				| vk::ImageUsageFlagBits::eTransferSrc)
 			.setSharingMode(vk::SharingMode::eExclusive)
 			.setInitialLayout(vk::ImageLayout::eUndefined);
 
@@ -339,7 +355,7 @@ public:
 
 		auto image_subresource_range = vk::ImageSubresourceRange()
 			.setAspectMask(vk::ImageAspectFlagBits::eColor)
-			.setLevelCount(1)
+			.setLevelCount(mip_levels)
 			.setLayerCount(1);
 
 		auto image_view_create_info = vk::ImageViewCreateInfo()
@@ -392,7 +408,49 @@ public:
 				cmd.copyBufferToImage(*upload_buffer, *image, vk::ImageLayout::eTransferDstOptimal, { region });
 
 				setImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
-					vk::ImageLayout::eShaderReadOnlyOptimal);
+					vk::ImageLayout::eTransferSrcOptimal);
+
+				for (uint32_t i = 1; i < mip_levels; i++)
+				{
+					auto mip_subresource_range = vk::ImageSubresourceRange()
+						.setAspectMask(vk::ImageAspectFlagBits::eColor)
+						.setBaseMipLevel(i)
+						.setLayerCount(1)
+						.setLevelCount(1);
+
+					setImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+						vk::ImageLayout::eTransferDstOptimal, mip_subresource_range);
+
+					auto src_subresource = vk::ImageSubresourceLayers()
+						.setAspectMask(vk::ImageAspectFlagBits::eColor)
+						.setMipLevel(i - 1)
+						.setLayerCount(1);
+
+					auto dst_subresource = vk::ImageSubresourceLayers()
+						.setAspectMask(vk::ImageAspectFlagBits::eColor)
+						.setMipLevel(i)
+						.setLayerCount(1);
+
+					auto mip_region = vk::ImageBlit()
+						.setSrcSubresource(src_subresource)
+						.setDstSubresource(dst_subresource)
+						.setSrcOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(width >> (i - 1)), int32_t(height >> (i - 1)), 1 } })
+						.setDstOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(width >> i), int32_t(height >> i), 1 } });
+
+					cmd.blitImage(*image, vk::ImageLayout::eTransferSrcOptimal, *image,
+						vk::ImageLayout::eTransferDstOptimal, { mip_region }, vk::Filter::eLinear);
+
+					setImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+						vk::ImageLayout::eTransferSrcOptimal, mip_subresource_range);
+				}
+
+				auto subresource_range = vk::ImageSubresourceRange()
+					.setAspectMask(vk::ImageAspectFlagBits::eColor)
+					.setLayerCount(1)
+					.setLevelCount(mip_levels);
+
+				setImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferSrcOptimal,
+					vk::ImageLayout::eShaderReadOnlyOptimal, subresource_range);
 			});
 		}
 	}
