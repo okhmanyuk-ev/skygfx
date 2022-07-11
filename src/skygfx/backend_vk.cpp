@@ -6,22 +6,22 @@
 
 using namespace skygfx;
 
-static vk::raii::Context mContext;
-static vk::raii::Instance mInstance = nullptr;
-static vk::raii::PhysicalDevice mPhysicalDevice = nullptr;
-static vk::raii::Queue mQueue = nullptr;
-static vk::raii::Device mDevice = nullptr;
-static uint32_t mQueueFamilyIndex = -1;
-static vk::SurfaceFormatKHR mSurfaceFormat;
-static vk::raii::SurfaceKHR mSurface = nullptr;
-static vk::raii::SwapchainKHR mSwapchain = nullptr;
-static vk::raii::CommandPool mCommandPool = nullptr;
-static vk::raii::CommandBuffer mCommandBuffer = nullptr;
-static vk::raii::Sampler mSampler = nullptr;
-static bool mWorking = false;
-static uint32_t mWidth = 0;
-static uint32_t mHeight = 0;
-static uint32_t mMinImageCount = 2; // TODO: https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
+static vk::raii::Context gContext;
+static vk::raii::Instance gInstance = nullptr;
+static vk::raii::PhysicalDevice gPhysicalDevice = nullptr;
+static vk::raii::Queue gQueue = nullptr;
+static vk::raii::Device gDevice = nullptr;
+static uint32_t gQueueFamilyIndex = -1;
+static vk::SurfaceFormatKHR gSurfaceFormat;
+static vk::raii::SurfaceKHR gSurface = nullptr;
+static vk::raii::SwapchainKHR gSwapchain = nullptr;
+static vk::raii::CommandPool gCommandPool = nullptr;
+static vk::raii::CommandBuffer gCommandBuffer = nullptr;
+static vk::raii::Sampler gSampler = nullptr;
+static bool gWorking = false;
+static uint32_t gWidth = 0;
+static uint32_t gHeight = 0;
+static const uint32_t gMinImageCount = 2; // TODO: https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
 
 struct FrameVK
 {
@@ -32,14 +32,14 @@ struct FrameVK
 	vk::raii::Semaphore render_complete_semaphore = nullptr;
 };
 
-static std::vector<FrameVK> mFrames;
+static std::vector<FrameVK> gFrames;
 
-static int mVertexBufferIndex = 0;
-static int mIndexBufferIndex = 0;
-static int mUniformBufferIndex = 0;
+static int gVertexBufferIndex = 0;
+static int gIndexBufferIndex = 0;
+static int gUniformBufferIndex = 0;
 
-static uint32_t mSemaphoreIndex = 0;
-static uint32_t mFrameIndex = 0;
+static uint32_t gSemaphoreIndex = 0;
+static uint32_t gFrameIndex = 0;
 
 struct DeviceBufferVK
 {
@@ -48,23 +48,23 @@ struct DeviceBufferVK
 	vk::DeviceSize size = 0;
 };
 
-static std::vector<DeviceBufferVK> mVertexBuffers;
-static std::vector<DeviceBufferVK> mIndexBuffers;
-static std::vector<DeviceBufferVK> mUniformBuffers;
+static std::vector<DeviceBufferVK> gVertexBuffers;
+static std::vector<DeviceBufferVK> gIndexBuffers;
+static std::vector<DeviceBufferVK> gUniformBuffers;
 
-static std::unordered_map<int, vk::ImageView> mTexturesPushQueue;
-static std::unordered_map<int, vk::Buffer> mUniformBuffersPushQueue;
+static std::unordered_map<int, vk::ImageView> gTexturesPushQueue;
+static std::unordered_map<int, vk::Buffer> gUniformBuffersPushQueue;
 
-static std::optional<Scissor> mScissor;
-static bool mScissorDirty = true;
+static std::optional<Scissor> gScissor;
+static bool gScissorDirty = true;
 
-static std::optional<Viewport> mViewport;
-static bool mViewportDirty = true;
+static std::optional<Viewport> gViewport;
+static bool gViewportDirty = true;
 
 class ShaderDataVK;
 
-static ShaderDataVK* mShader = nullptr;
-static std::unordered_map<ShaderDataVK*, vk::raii::Pipeline> mPipelines;
+static ShaderDataVK* gShader = nullptr;
+static std::unordered_map<ShaderDataVK*, vk::raii::Pipeline> gPipelines;
 
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits, vk::raii::PhysicalDevice& physical_device)
 {
@@ -252,13 +252,13 @@ public:
 			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
 			.setBindings(bindings);
 
-		descriptor_set_layout = mDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
+		descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
 		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
 			.setSetLayoutCount(1)
 			.setPSetLayouts(&*descriptor_set_layout);
 
-		pipeline_layout = mDevice.createPipelineLayout(pipeline_layout_create_info);
+		pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
 
 		auto vertex_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(vertex_shader_spirv);
@@ -266,8 +266,8 @@ public:
 		auto fragment_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(fragment_shader_spirv);
 
-		vertex_shader_module = mDevice.createShaderModule(vertex_shader_module_create_info);
-		fragment_shader_module = mDevice.createShaderModule(fragment_shader_module_create_info);
+		vertex_shader_module = gDevice.createShaderModule(vertex_shader_module_create_info);
+		fragment_shader_module = gDevice.createShaderModule(fragment_shader_module_create_info);
 
 		static const std::unordered_map<Vertex::Attribute::Format, vk::Format> Format = {
 			{ Vertex::Attribute::Format::R32F, vk::Format::eR32Sfloat },
@@ -324,16 +324,16 @@ public:
 			.setSharingMode(vk::SharingMode::eExclusive)
 			.setInitialLayout(vk::ImageLayout::eUndefined);
 
-		image = mDevice.createImage(image_create_info);
+		image = gDevice.createImage(image_create_info);
 
 		auto memory_requirements = image.getMemoryRequirements();
 
 		auto memory_allocate_info = vk::MemoryAllocateInfo()
 			.setAllocationSize(memory_requirements.size)
 			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, 
-				memory_requirements.memoryTypeBits, mPhysicalDevice));
+				memory_requirements.memoryTypeBits, gPhysicalDevice));
 
-		memory = mDevice.allocateMemory(memory_allocate_info);
+		memory = gDevice.allocateMemory(memory_allocate_info);
 	
 		image.bindMemory(*memory, 0);
 
@@ -348,7 +348,7 @@ public:
 			.setFormat(vk::Format::eR8G8B8A8Unorm)
 			.setSubresourceRange(image_subresource_range);
 
-		image_view = mDevice.createImageView(image_view_create_info);
+		image_view = gDevice.createImageView(image_view_create_info);
 
 		if (data)
 		{
@@ -359,7 +359,7 @@ public:
 				.setUsage(vk::BufferUsageFlagBits::eTransferSrc)
 				.setSharingMode(vk::SharingMode::eExclusive);
 
-			auto upload_buffer = mDevice.createBuffer(buffer_create_info);
+			auto upload_buffer = gDevice.createBuffer(buffer_create_info);
 
 			auto req = upload_buffer.getMemoryRequirements();
 
@@ -367,9 +367,9 @@ public:
 
 			auto memory_allocate_info = vk::MemoryAllocateInfo()
 				.setAllocationSize(req.size)
-				.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, req.memoryTypeBits, mPhysicalDevice));
+				.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, req.memoryTypeBits, gPhysicalDevice));
 
-			auto upload_buffer_memory = mDevice.allocateMemory(memory_allocate_info);
+			auto upload_buffer_memory = gDevice.allocateMemory(memory_allocate_info);
 
 			upload_buffer.bindMemory(*upload_buffer_memory, 0);
 
@@ -377,7 +377,7 @@ public:
 			memcpy(map, data, size);
 			upload_buffer_memory.unmapMemory();
 
-			oneTimeSubmit(mDevice, mCommandPool, mQueue, [&](auto& cmd) {
+			oneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmd) {
 				setImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
 					vk::ImageLayout::eTransferDstOptimal);
 
@@ -412,14 +412,14 @@ public:
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
-	auto all_extensions = mContext.enumerateInstanceExtensionProperties();
+	auto all_extensions = gContext.enumerateInstanceExtensionProperties();
 
 	for (auto extension : all_extensions)
 	{
 		//	std::cout << extension.extensionName << std::endl;
 	}
 
-	auto all_layers = mContext.enumerateInstanceLayerProperties();
+	auto all_layers = gContext.enumerateInstanceLayerProperties();
 
 	for (auto layer : all_layers)
 	{
@@ -435,7 +435,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		"VK_LAYER_KHRONOS_validation"
 	};
 
-	auto version = mContext.enumerateInstanceVersion();
+	auto version = gContext.enumerateInstanceVersion();
 
 	auto major_version = VK_API_VERSION_MAJOR(version);
 	auto minor_version = VK_API_VERSION_MINOR(version);
@@ -450,9 +450,9 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setPEnabledLayerNames(layers)
 		.setPApplicationInfo(&application_info);
 
-	mInstance = mContext.createInstance(instance_info);
+	gInstance = gContext.createInstance(instance_info);
 
-	auto devices = mInstance.enumeratePhysicalDevices();
+	auto devices = gInstance.enumeratePhysicalDevices();
 	size_t device_index = 0;
 	for (size_t i = 0; i < devices.size(); i++)
 	{
@@ -464,20 +464,20 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		}
 	}
 
-	mPhysicalDevice = std::move(devices.at(device_index));
+	gPhysicalDevice = std::move(devices.at(device_index));
 
-	auto properties = mPhysicalDevice.getQueueFamilyProperties();
+	auto properties = gPhysicalDevice.getQueueFamilyProperties();
 
 	for (size_t i = 0; i < properties.size(); i++)
 	{
 		if (properties[i].queueFlags & vk::QueueFlagBits::eGraphics)
 		{
-			mQueueFamilyIndex = static_cast<uint32_t>(i);
+			gQueueFamilyIndex = static_cast<uint32_t>(i);
 			break;
 		}
 	}
 
-	auto all_device_extensions = mPhysicalDevice.enumerateDeviceExtensionProperties();
+	auto all_device_extensions = gPhysicalDevice.enumerateDeviceExtensionProperties();
 
 	for (auto device_extension : all_device_extensions)
 	{
@@ -492,13 +492,13 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	auto queue_priority = { 1.0f };
 
 	auto queue_info = vk::DeviceQueueCreateInfo()
-		.setQueueFamilyIndex(mQueueFamilyIndex)
+		.setQueueFamilyIndex(gQueueFamilyIndex)
 		.setQueuePriorities(queue_priority);
 
-	auto device_features = mPhysicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2,
+	auto device_features = gPhysicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2,
 		vk::PhysicalDeviceVulkan13Features>();
 
-	//auto device_properties = mPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2, 
+	//auto device_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2, 
 	//	vk::PhysicalDeviceVulkan13Properties>(); // TODO: unused
 
 	auto device_info = vk::DeviceCreateInfo()
@@ -508,20 +508,20 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setPEnabledFeatures(nullptr)
 		.setPNext(&device_features.get<vk::PhysicalDeviceFeatures2>());
 
-	mDevice = mPhysicalDevice.createDevice(device_info);
+	gDevice = gPhysicalDevice.createDevice(device_info);
 
-	mQueue = mDevice.getQueue(mQueueFamilyIndex, 0);
+	gQueue = gDevice.getQueue(gQueueFamilyIndex, 0);
 
 	auto surface_info = vk::Win32SurfaceCreateInfoKHR()
 		.setHwnd((HWND)window);
 
-	mSurface = vk::raii::SurfaceKHR(mInstance, surface_info);
+	gSurface = vk::raii::SurfaceKHR(gInstance, surface_info);
 
-	auto formats = mPhysicalDevice.getSurfaceFormatsKHR(*mSurface);
+	auto formats = gPhysicalDevice.getSurfaceFormatsKHR(*gSurface);
 
 	if ((formats.size() == 1) && (formats.at(0).format == vk::Format::eUndefined))
 	{
-		mSurfaceFormat = {
+		gSurfaceFormat = {
 			vk::Format::eB8G8R8A8Unorm,
 			formats.at(0).colorSpace
 		};
@@ -533,30 +533,30 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		{
 			if (format.format == vk::Format::eB8G8R8A8Unorm)
 			{
-				mSurfaceFormat = format;
+				gSurfaceFormat = format;
 				found = true;
 				break;
 			}
 		}
 		if (!found)
 		{
-			mSurfaceFormat = formats.at(0);
+			gSurfaceFormat = formats.at(0);
 		}
 	}
 
 	auto command_pool_info = vk::CommandPoolCreateInfo()
 		.setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
-		.setQueueFamilyIndex(mQueueFamilyIndex);
+		.setQueueFamilyIndex(gQueueFamilyIndex);
 
-	mCommandPool = mDevice.createCommandPool(command_pool_info);
+	gCommandPool = gDevice.createCommandPool(command_pool_info);
 
 	auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
 		.setCommandBufferCount(1)
 		.setLevel(vk::CommandBufferLevel::eSecondary)
-		.setCommandPool(*mCommandPool);
+		.setCommandPool(*gCommandPool);
 
-	auto command_buffers = mDevice.allocateCommandBuffers(command_buffer_allocate_info);
-	mCommandBuffer = std::move(command_buffers.at(0));
+	auto command_buffers = gDevice.allocateCommandBuffers(command_buffer_allocate_info);
+	gCommandBuffer = std::move(command_buffers.at(0));
 
 	auto sampler_create_info = vk::SamplerCreateInfo()
 		.setMagFilter(vk::Filter::eLinear)
@@ -569,7 +569,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setMaxLod(1000)
 		.setMaxAnisotropy(1.0f);
 
-	mSampler = mDevice.createSampler(sampler_create_info);
+	gSampler = gDevice.createSampler(sampler_create_info);
 
 	createSwapchain(width, height);
 
@@ -595,26 +595,26 @@ void BackendVK::setTopology(Topology topology)
 		{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
 	};
 
-	mCommandBuffer.setPrimitiveTopology(TopologyMap.at(topology));
+	gCommandBuffer.setPrimitiveTopology(TopologyMap.at(topology));
 }
 
 void BackendVK::setViewport(std::optional<Viewport> viewport)
 {
-	mViewport = viewport;
-	mViewportDirty = true;
+	gViewport = viewport;
+	gViewportDirty = true;
 }
 
 void BackendVK::setScissor(std::optional<Scissor> scissor)
 {
-	mScissor = scissor;
-	mScissorDirty = true;
+	gScissor = scissor;
+	gScissorDirty = true;
 }
 
 void BackendVK::setTexture(TextureHandle* handle)
 {
 	auto texture = (TextureDataVK*)handle;
 	int binding = 0;
-	mTexturesPushQueue[binding] = *texture->image_view;
+	gTexturesPushQueue[binding] = *texture->image_view;
 }
 
 void BackendVK::setRenderTarget(RenderTargetHandle* handle)
@@ -627,7 +627,7 @@ void BackendVK::setRenderTarget(std::nullptr_t value)
 
 void BackendVK::setShader(ShaderHandle* handle)
 {
-	mShader = (ShaderDataVK*)handle;
+	gShader = (ShaderDataVK*)handle;
 }
 
 void BackendVK::setVertexBuffer(const Buffer& value)
@@ -642,15 +642,15 @@ void BackendVK::setVertexBuffer(const Buffer& value)
 			.setUsage(vk::BufferUsageFlagBits::eVertexBuffer)
 			.setSharingMode(vk::SharingMode::eExclusive);
 
-		buffer.buffer = mDevice.createBuffer(buffer_create_info);
+		buffer.buffer = gDevice.createBuffer(buffer_create_info);
 
 		auto memory_requirements = buffer.buffer.getMemoryRequirements();
 
 		auto memory_allocate_info = vk::MemoryAllocateInfo()
 			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits, mPhysicalDevice));
+			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits, gPhysicalDevice));
 
-		buffer.memory = mDevice.allocateMemory(memory_allocate_info);
+		buffer.memory = gDevice.allocateMemory(memory_allocate_info);
 		buffer.size = memory_requirements.size;
 
 		buffer.buffer.bindMemory(*buffer.memory, 0);
@@ -658,13 +658,13 @@ void BackendVK::setVertexBuffer(const Buffer& value)
 		return buffer;
 	};
 
-	if (mVertexBuffers.size() < mVertexBufferIndex + 1)
+	if (gVertexBuffers.size() < gVertexBufferIndex + 1)
 	{
-		assert(mVertexBuffers.size() == mVertexBufferIndex);
-		mVertexBuffers.push_back(create_buffer());
+		assert(gVertexBuffers.size() == gVertexBufferIndex);
+		gVertexBuffers.push_back(create_buffer());
 	}
 
-	auto& buffer = mVertexBuffers[mVertexBufferIndex];
+	auto& buffer = gVertexBuffers[gVertexBufferIndex];
 
 	if (buffer.size < value.size)
 	{
@@ -675,9 +675,9 @@ void BackendVK::setVertexBuffer(const Buffer& value)
 	memcpy(mem, value.data, value.size);
 	buffer.memory.unmapMemory();
 
-	mCommandBuffer.bindVertexBuffers2(0, { *buffer.buffer }, { 0 }, nullptr, { value.stride });
+	gCommandBuffer.bindVertexBuffers2(0, { *buffer.buffer }, { 0 }, nullptr, { value.stride });
 
-	mVertexBufferIndex += 1;
+	gVertexBufferIndex += 1;
 }
 
 void BackendVK::setIndexBuffer(const Buffer& value)
@@ -692,15 +692,15 @@ void BackendVK::setIndexBuffer(const Buffer& value)
 			.setUsage(vk::BufferUsageFlagBits::eIndexBuffer)
 			.setSharingMode(vk::SharingMode::eExclusive);
 
-		buffer.buffer = mDevice.createBuffer(buffer_create_info);
+		buffer.buffer = gDevice.createBuffer(buffer_create_info);
 
 		auto memory_requirements = buffer.buffer.getMemoryRequirements();
 
 		auto memory_allocate_info = vk::MemoryAllocateInfo()
 			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits, mPhysicalDevice));
+			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits, gPhysicalDevice));
 
-		buffer.memory = mDevice.allocateMemory(memory_allocate_info);
+		buffer.memory = gDevice.allocateMemory(memory_allocate_info);
 		buffer.size = memory_requirements.size;
 
 		buffer.buffer.bindMemory(*buffer.memory, 0);
@@ -708,13 +708,13 @@ void BackendVK::setIndexBuffer(const Buffer& value)
 		return buffer;
 	};
 
-	if (mIndexBuffers.size() < mIndexBufferIndex + 1)
+	if (gIndexBuffers.size() < gIndexBufferIndex + 1)
 	{
-		assert(mIndexBuffers.size() == mIndexBufferIndex);
-		mIndexBuffers.push_back(create_buffer());
+		assert(gIndexBuffers.size() == gIndexBufferIndex);
+		gIndexBuffers.push_back(create_buffer());
 	}
 
-	auto& buffer = mIndexBuffers[mIndexBufferIndex];
+	auto& buffer = gIndexBuffers[gIndexBufferIndex];
 
 	if (buffer.size < value.size)
 	{
@@ -725,9 +725,9 @@ void BackendVK::setIndexBuffer(const Buffer& value)
 	memcpy(mem, value.data, value.size);
 	buffer.memory.unmapMemory();
 
-	mCommandBuffer.bindIndexBuffer(*buffer.buffer, 0, value.stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+	gCommandBuffer.bindIndexBuffer(*buffer.buffer, 0, value.stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
 
-	mIndexBufferIndex += 1;
+	gIndexBufferIndex += 1;
 }
 
 void BackendVK::setUniformBuffer(int slot, void* memory, size_t size)
@@ -742,15 +742,15 @@ void BackendVK::setUniformBuffer(int slot, void* memory, size_t size)
 			.setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
 			.setSharingMode(vk::SharingMode::eExclusive);
 
-		buffer.buffer = mDevice.createBuffer(buffer_create_info);
+		buffer.buffer = gDevice.createBuffer(buffer_create_info);
 
 		auto memory_requirements = buffer.buffer.getMemoryRequirements();
 
 		auto memory_allocate_info = vk::MemoryAllocateInfo()
 			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits, mPhysicalDevice));
+			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits, gPhysicalDevice));
 
-		buffer.memory = mDevice.allocateMemory(memory_allocate_info);
+		buffer.memory = gDevice.allocateMemory(memory_allocate_info);
 		buffer.size = memory_requirements.size;
 
 		buffer.buffer.bindMemory(*buffer.memory, 0);
@@ -758,13 +758,13 @@ void BackendVK::setUniformBuffer(int slot, void* memory, size_t size)
 		return buffer;
 	};
 
-	if (mUniformBuffers.size() < mUniformBufferIndex + 1)
+	if (gUniformBuffers.size() < gUniformBufferIndex + 1)
 	{
-		assert(mUniformBuffers.size() == mUniformBufferIndex);
-		mUniformBuffers.push_back(create_buffer());
+		assert(gUniformBuffers.size() == gUniformBufferIndex);
+		gUniformBuffers.push_back(create_buffer());
 	}
 
-	auto& buffer = mUniformBuffers[mUniformBufferIndex];
+	auto& buffer = gUniformBuffers[gUniformBufferIndex];
 
 	if (buffer.size < size)
 	{
@@ -775,8 +775,8 @@ void BackendVK::setUniformBuffer(int slot, void* memory, size_t size)
 	memcpy(mem, memory, size);
 	buffer.memory.unmapMemory();
 
-	mUniformBuffersPushQueue[slot] = *buffer.buffer;
-	mUniformBufferIndex += 1;
+	gUniformBuffersPushQueue[slot] = *buffer.buffer;
+	gUniformBufferIndex += 1;
 }
 
 void BackendVK::setBlendMode(const BlendMode& value)
@@ -785,14 +785,14 @@ void BackendVK::setBlendMode(const BlendMode& value)
 
 void BackendVK::setDepthMode(const DepthMode& value)
 {
-	mCommandBuffer.setDepthTestEnable(value.enabled);
-	mCommandBuffer.setDepthCompareOp(CompareOpMap.at(value.func));
-	mCommandBuffer.setDepthWriteEnable(true);
+	gCommandBuffer.setDepthTestEnable(value.enabled);
+	gCommandBuffer.setDepthCompareOp(CompareOpMap.at(value.func));
+	gCommandBuffer.setDepthWriteEnable(true);
 }
 
 void BackendVK::setStencilMode(const StencilMode& value)
 {
-	mCommandBuffer.setStencilTestEnable(value.enabled);
+	gCommandBuffer.setStencilTestEnable(value.enabled);
 }
 
 void BackendVK::setCullMode(const CullMode& value)
@@ -803,8 +803,8 @@ void BackendVK::setCullMode(const CullMode& value)
 		{ CullMode::Back, vk::CullModeFlagBits::eBack },
 	};
 
-	mCommandBuffer.setCullMode(CullModeMap.at(value));
-	//mCommandBuffer.setFrontFace(vk::FrontFace::eCounterClockwise);
+	gCommandBuffer.setCullMode(CullModeMap.at(value));
+	//gCommandBuffer.setFrontFace(vk::FrontFace::eCounterClockwise);
 }
 
 void BackendVK::setSampler(const Sampler& value)
@@ -821,7 +821,7 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 		auto clear_rect = vk::ClearRect()
 		.setBaseArrayLayer(0)
 		.setLayerCount(1)
-		.setRect({ { 0, 0 }, { mWidth, mHeight } });
+		.setRect({ { 0, 0 }, { gWidth, gHeight } });
 
 	if (color.has_value())
 	{
@@ -838,7 +838,7 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 			.setColorAttachment(0)
 			.setClearValue(clear_value);
 
-		mCommandBuffer.clearAttachments({ attachment }, { clear_rect });
+		gCommandBuffer.clearAttachments({ attachment }, { clear_rect });
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -863,20 +863,20 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 			.setColorAttachment(0)
 			.setClearValue(clear_value);
 
-		mCommandBuffer.clearAttachments({ attachment }, { clear_rect });
+		gCommandBuffer.clearAttachments({ attachment }, { clear_rect });
 	}
 }
 
 void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
-	mCommandBuffer.draw(vertex_count, 0, vertex_offset, 0);
+	gCommandBuffer.draw(vertex_count, 0, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
-	mCommandBuffer.drawIndexed(index_count, 1, index_offset, 0, 0);
+	gCommandBuffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
 
 void BackendVK::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
@@ -887,17 +887,17 @@ void BackendVK::present()
 {
 	end(); 
 
-	const auto& image_acquired_semaphore = mFrames.at(mSemaphoreIndex).image_acquired_semaphore;
+	const auto& image_acquired_semaphore = gFrames.at(gSemaphoreIndex).image_acquired_semaphore;
 
-	auto [result, image_index] = mSwapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
+	auto [result, image_index] = gSwapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
 
-	mFrameIndex = image_index;
+	gFrameIndex = image_index;
 
-	const auto& frame = mFrames.at(mFrameIndex);
+	const auto& frame = gFrames.at(gFrameIndex);
 
-	auto wait_result = mDevice.waitForFences({ *frame.fence }, true, UINT64_MAX);
+	auto wait_result = gDevice.waitForFences({ *frame.fence }, true, UINT64_MAX);
 
-	mDevice.resetFences({ *frame.fence });
+	gDevice.resetFences({ *frame.fence });
 
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -913,18 +913,18 @@ void BackendVK::present()
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
 
 	auto rendering_info = vk::RenderingInfo()
-		.setRenderArea({ { 0, 0 }, { mWidth, mHeight } })
+		.setRenderArea({ { 0, 0 }, { gWidth, gHeight } })
 		.setLayerCount(1)
 		.setColorAttachmentCount(1)
 		.setPColorAttachments(&color_attachment)
 		.setFlags(vk::RenderingFlagBits::eContentsSecondaryCommandBuffers);
 
 	cmd.beginRendering(rendering_info);
-	cmd.executeCommands({ *mCommandBuffer });
+	cmd.executeCommands({ *gCommandBuffer });
 	cmd.endRendering();
 	cmd.end();
 
-	const auto& render_complete_semaphore = mFrames.at(mSemaphoreIndex).render_complete_semaphore;
+	const auto& render_complete_semaphore = gFrames.at(gSemaphoreIndex).render_complete_semaphore;
 
 	vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
 
@@ -937,20 +937,20 @@ void BackendVK::present()
 		.setSignalSemaphoreCount(1)
 		.setPSignalSemaphores(&*render_complete_semaphore);
 
-	mQueue.submit({ submit_info }, *frame.fence); // TODO: can be called with no fence, check it out
+	gQueue.submit({ submit_info }, *frame.fence); // TODO: can be called with no fence, check it out
 
 	auto present_info = vk::PresentInfoKHR()
 		.setWaitSemaphoreCount(1)
 		.setPWaitSemaphores(&*render_complete_semaphore)
 		.setSwapchainCount(1)
-		.setPSwapchains(&*mSwapchain)
-		.setPImageIndices(&mFrameIndex);
+		.setPSwapchains(&*gSwapchain)
+		.setPImageIndices(&gFrameIndex);
 
-	auto present_result = mQueue.presentKHR(present_info);
+	auto present_result = gQueue.presentKHR(present_info);
 
-	mQueue.waitIdle();
+	gQueue.waitIdle();
 
-	mSemaphoreIndex = (mSemaphoreIndex + 1) % mFrames.size(); // TODO: maybe gFrameIndex can be used for both
+	gSemaphoreIndex = (gSemaphoreIndex + 1) % gFrames.size(); // TODO: maybe gFrameIndex can be used for both
 
 	begin();
 }
@@ -997,31 +997,31 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 
 void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 {
-	mWidth = width;
-	mHeight = height;
+	gWidth = width;
+	gHeight = height;
 
 	auto swapchain_info = vk::SwapchainCreateInfoKHR()
-		.setSurface(*mSurface)
-		.setMinImageCount(mMinImageCount)
-		.setImageFormat(mSurfaceFormat.format)
-		.setImageColorSpace(mSurfaceFormat.colorSpace)
-		.setImageExtent({ mWidth, mHeight })
+		.setSurface(*gSurface)
+		.setMinImageCount(gMinImageCount)
+		.setImageFormat(gSurfaceFormat.format)
+		.setImageColorSpace(gSurfaceFormat.colorSpace)
+		.setImageExtent({ gWidth, gHeight })
 		.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
 		.setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
 		.setImageArrayLayers(1)
 		.setImageSharingMode(vk::SharingMode::eExclusive)
 		.setQueueFamilyIndexCount(1)
-		.setPQueueFamilyIndices(&mQueueFamilyIndex)
+		.setPQueueFamilyIndices(&gQueueFamilyIndex)
 		.setPresentMode(vk::PresentModeKHR::eFifo)
 		.setClipped(true)
 		.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
-		.setOldSwapchain(*mSwapchain);
+		.setOldSwapchain(*gSwapchain);
 
-	mSwapchain = mDevice.createSwapchainKHR(swapchain_info);
+	gSwapchain = gDevice.createSwapchainKHR(swapchain_info);
 
-	auto backbuffers = mSwapchain.getImages();
+	auto backbuffers = gSwapchain.getImages();
 
-	mFrames.clear();
+	gFrames.clear();
 
 	for (auto& backbuffer : backbuffers)
 	{
@@ -1030,22 +1030,22 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 		auto buffer_allocate_info = vk::CommandBufferAllocateInfo()
 			.setCommandBufferCount(1)
 			.setLevel(vk::CommandBufferLevel::ePrimary)
-			.setCommandPool(*mCommandPool);
+			.setCommandPool(*gCommandPool);
 
-		auto command_buffers = mDevice.allocateCommandBuffers(buffer_allocate_info);
+		auto command_buffers = gDevice.allocateCommandBuffers(buffer_allocate_info);
 		frame.command_buffer = std::move(command_buffers.at(0));
 
 		auto fence_info = vk::FenceCreateInfo()
 			.setFlags(vk::FenceCreateFlagBits::eSignaled);
 
-		frame.fence = mDevice.createFence(fence_info);
+		frame.fence = gDevice.createFence(fence_info);
 
-		frame.image_acquired_semaphore = mDevice.createSemaphore({});
-		frame.render_complete_semaphore = mDevice.createSemaphore({});
+		frame.image_acquired_semaphore = gDevice.createSemaphore({});
+		frame.render_complete_semaphore = gDevice.createSemaphore({});
 
 		auto image_view_info = vk::ImageViewCreateInfo()
 			.setViewType(vk::ImageViewType::e2D)
-			.setFormat(mSurfaceFormat.format)
+			.setFormat(gSurfaceFormat.format)
 			.setComponents(vk::ComponentMapping()
 				.setR(vk::ComponentSwizzle::eR)
 				.setG(vk::ComponentSwizzle::eG)
@@ -1061,32 +1061,32 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 			)
 			.setImage(backbuffer);
 
-		frame.backbuffer_view = mDevice.createImageView(image_view_info);
+		frame.backbuffer_view = gDevice.createImageView(image_view_info);
 
-		oneTimeSubmit(mDevice, mCommandPool, mQueue, [&](auto& cmd) {
-			setImageLayout(cmd, backbuffer, mSurfaceFormat.format, vk::ImageLayout::eUndefined, 
+		oneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmd) {
+			setImageLayout(cmd, backbuffer, gSurfaceFormat.format, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::ePresentSrcKHR);
 		});
 
-		mFrames.push_back(std::move(frame));
+		gFrames.push_back(std::move(frame));
 	}
 }
 
 void BackendVK::begin()
 {
-	assert(!mWorking);
-	mWorking = true;
+	assert(!gWorking);
+	gWorking = true;
 
-	mVertexBufferIndex = 0;
-	mIndexBufferIndex = 0;
-	mUniformBufferIndex = 0;
+	gVertexBufferIndex = 0;
+	gIndexBufferIndex = 0;
+	gUniformBufferIndex = 0;
 
-	mViewportDirty = true;
-	mScissorDirty = true;
+	gViewportDirty = true;
+	gScissorDirty = true;
 
 	auto inheritance_rendering_info = vk::CommandBufferInheritanceRenderingInfo()
 		.setColorAttachmentCount(1)
-		.setPColorAttachmentFormats(&mSurfaceFormat.format)
+		.setPColorAttachmentFormats(&gSurfaceFormat.format)
 		.setRasterizationSamples(vk::SampleCountFlagBits::e1);
 
 	auto inheritance_info = vk::CommandBufferInheritanceInfo()
@@ -1096,32 +1096,32 @@ void BackendVK::begin()
 		.setFlags(vk::CommandBufferUsageFlagBits::eRenderPassContinue)
 		.setPInheritanceInfo(&inheritance_info);
 
-	mCommandBuffer.begin(begin_info);
+	gCommandBuffer.begin(begin_info);
 }
 
 void BackendVK::end()
 {
-	assert(mWorking);
-	mWorking = false;
+	assert(gWorking);
+	gWorking = false;
 
-	mCommandBuffer.end();
+	gCommandBuffer.end();
 }
 
 void BackendVK::prepareForDrawing()
 {
-	assert(mShader);
+	assert(gShader);
 
-	if (!mPipelines.contains(mShader))
+	if (!gPipelines.contains(gShader))
 	{
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eVertex)
-				.setModule(*mShader->vertex_shader_module)
+				.setModule(*gShader->vertex_shader_module)
 				.setPName("main"),
 
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eFragment)
-				.setModule(*mShader->fragment_shader_module)
+				.setModule(*gShader->fragment_shader_module)
 				.setPName("main")
 		};
 
@@ -1157,8 +1157,8 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 			.setVertexBindingDescriptionCount(1)
-			.setPVertexBindingDescriptions(&mShader->vertex_input_binding_description)
-			.setVertexAttributeDescriptions(mShader->vertex_input_attribute_descriptions);
+			.setPVertexBindingDescriptions(&gShader->vertex_input_binding_description)
+			.setVertexAttributeDescriptions(gShader->vertex_input_attribute_descriptions);
 
 		auto dynamic_states = {
 			vk::DynamicState::eViewport,
@@ -1175,10 +1175,10 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
 			.setColorAttachmentCount(1)
-			.setColorAttachmentFormats(mSurfaceFormat.format);
+			.setColorAttachmentFormats(gSurfaceFormat.format);
 
 		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
-			.setLayout(*mShader->pipeline_layout)
+			.setLayout(*gShader->pipeline_layout)
 			.setFlags(vk::PipelineCreateFlagBits())
 			.setStages(pipeline_shader_stage_create_info)
 			.setPVertexInputState(&pipeline_vertex_input_state_create_info)
@@ -1192,19 +1192,19 @@ void BackendVK::prepareForDrawing()
 			.setRenderPass(nullptr)
 			.setPNext(&pipeline_rendering_create_info);
 
-		mPipelines.insert({ mShader, mDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info) });
+		gPipelines.insert({ gShader, gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info) });
 	}
 
-	auto pipeline = *mPipelines.at(mShader);
+	auto pipeline = *gPipelines.at(gShader);
 
-	mCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 
-	auto pipeline_layout = *mShader->pipeline_layout;
+	auto pipeline_layout = *gShader->pipeline_layout;
 
-	for (const auto& [slot, image_view] : mTexturesPushQueue)
+	for (const auto& [slot, image_view] : gTexturesPushQueue)
 	{
 		auto descriptor_image_info = vk::DescriptorImageInfo()
-			.setSampler(*mSampler)
+			.setSampler(*gSampler)
 			.setImageView(image_view)
 			.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 
@@ -1214,12 +1214,12 @@ void BackendVK::prepareForDrawing()
 			.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
 			.setPImageInfo(&descriptor_image_info);
 
-		mCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
-	mTexturesPushQueue.clear();
+	gTexturesPushQueue.clear();
 
-	for (const auto& [slot, buffer] : mUniformBuffersPushQueue)
+	for (const auto& [slot, buffer] : gUniformBuffersPushQueue)
 	{
 		auto descriptor_buffer_info = vk::DescriptorBufferInfo()
 			.setBuffer(buffer)
@@ -1231,14 +1231,14 @@ void BackendVK::prepareForDrawing()
 			.setDescriptorType(vk::DescriptorType::eUniformBuffer)
 			.setPBufferInfo(&descriptor_buffer_info);
 
-		mCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
-	mUniformBuffersPushQueue.clear();
+	gUniformBuffersPushQueue.clear();
 
-	if (mViewportDirty)
+	if (gViewportDirty)
 	{
-		auto value = mViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(mWidth), static_cast<float>(mHeight) } });
+		auto value = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
 
 		auto viewport = vk::Viewport()
 			.setX(value.position.x)
@@ -1248,20 +1248,20 @@ void BackendVK::prepareForDrawing()
 			.setMinDepth(value.min_depth)
 			.setMaxDepth(value.max_depth);
 
-		mCommandBuffer.setViewport(0, { viewport });
-		mViewportDirty = false;
+		gCommandBuffer.setViewport(0, { viewport });
+		gViewportDirty = false;
 	}
 
-	if (mScissorDirty)
+	if (gScissorDirty)
 	{
-		auto value = mScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(mWidth), static_cast<float>(mHeight) } });
+		auto value = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
 
 		auto rect = vk::Rect2D()
 			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
 			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
 
-		mCommandBuffer.setScissor(0, { rect });
-		mScissorDirty = false;
+		gCommandBuffer.setScissor(0, { rect });
+		gScissorDirty = false;
 	}
 }
 
