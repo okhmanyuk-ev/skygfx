@@ -78,6 +78,9 @@ static std::unordered_map<ShaderDataVK*, vk::raii::Pipeline> gPipelines;
 static std::optional<DepthMode> gDepthMode = DepthMode();
 static bool gDepthModeDirty = true;
 
+static CullMode gCullMode = CullMode::None;
+static bool gCullModeDirty = true;
+
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
 	auto prop = gPhysicalDevice.getMemoryProperties();
@@ -875,16 +878,10 @@ void BackendVK::setStencilMode(std::optional<StencilMode> stencil_mode)
 	gCommandBuffer.setStencilTestEnable(stencil_mode.has_value());
 }
 
-void BackendVK::setCullMode(const CullMode& value)
+void BackendVK::setCullMode(CullMode cull_mode)
 {	
-	const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
-		{ CullMode::None, vk::CullModeFlagBits::eNone },
-		{ CullMode::Front, vk::CullModeFlagBits::eFront },
-		{ CullMode::Back, vk::CullModeFlagBits::eBack },
-	};
-
-	gCommandBuffer.setCullMode(CullModeMap.at(value));
-	//gCommandBuffer.setFrontFace(vk::FrontFace::eCounterClockwise);
+	gCullMode = cull_mode;
+	gCullModeDirty = true;
 }
 
 void BackendVK::setSampler(const Sampler& value)
@@ -1418,6 +1415,22 @@ void BackendVK::prepareForDrawing()
 
 		gCommandBuffer.setScissor(0, { rect });
 		gScissorDirty = false;
+	}
+
+	if (gCullModeDirty)
+	{
+		// NOTE: bug with vkCmdSetCullMode have been fixed in NVIDIA Vulkan 1.3.212 developer driver 473.50 
+
+		const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
+			{ CullMode::None, vk::CullModeFlagBits::eNone },
+			{ CullMode::Front, vk::CullModeFlagBits::eFront },
+			{ CullMode::Back, vk::CullModeFlagBits::eBack },
+		};
+
+		gCommandBuffer.setFrontFace(vk::FrontFace::eClockwise);
+		gCommandBuffer.setCullMode(CullModeMap.at(gCullMode));
+
+		gCullModeDirty = false;
 	}
 }
 

@@ -321,7 +321,7 @@ namespace skygfx
 		void setBlendMode(const BlendMode& value);
 		void setDepthMode(std::optional<DepthMode> depth_mode);
 		void setStencilMode(std::optional<StencilMode> stencil_mode);
-		void setCullMode(const CullMode& value);
+		void setCullMode(CullMode cull_mode);
 		void setSampler(const Sampler& value);
 		void setTextureAddressMode(const TextureAddress& value);
 

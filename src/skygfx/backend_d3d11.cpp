@@ -52,18 +52,18 @@ static std::unordered_map<DepthStencilState, ID3D11DepthStencilState*> D3D11Dept
 
 struct RasterizerState
 {
-	bool scissorEnabled = false;
-	CullMode cullMode = CullMode::None;
+	bool scissor_enabled = false;
+	CullMode cull_mode = CullMode::None;
 
 	bool operator==(const RasterizerState& value) const
 	{
-		return scissorEnabled == value.scissorEnabled && cullMode == value.cullMode;
+		return scissor_enabled == value.scissor_enabled && cull_mode == value.cull_mode;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(RasterizerState,
-	t.cullMode,
-	t.scissorEnabled);
+	t.cull_mode,
+	t.scissor_enabled);
 
 static std::unordered_map<RasterizerState, ID3D11RasterizerState*> D3D11RasterizerStates;
 static RasterizerState D3D11RasterizerState;
@@ -372,7 +372,7 @@ void BackendD3D11::setScissor(std::optional<Scissor> scissor)
 	{
 		auto value = scissor.value();
 
-		D3D11RasterizerState.scissorEnabled = true;
+		D3D11RasterizerState.scissor_enabled = true;
 
 		D3D11_RECT rect;
 		rect.left = static_cast<LONG>(value.position.x);
@@ -385,7 +385,7 @@ void BackendD3D11::setScissor(std::optional<Scissor> scissor)
 	}
 	else
 	{
-		D3D11RasterizerState.scissorEnabled = false;
+		D3D11RasterizerState.scissor_enabled = false;
 		D3D11RasterizerStateDirty = true;
 	}
 }
@@ -596,9 +596,9 @@ void BackendD3D11::setStencilMode(std::optional<StencilMode> stencil_mode)
 	D3D11DepthStencilStateDirty = true;
 }
 
-void BackendD3D11::setCullMode(const CullMode& value)
+void BackendD3D11::setCullMode(CullMode cull_mode)
 {
-	D3D11RasterizerState.cullMode = value;
+	D3D11RasterizerState.cull_mode = cull_mode;
 	D3D11RasterizerStateDirty = true;
 }
 
@@ -891,8 +891,8 @@ void BackendD3D11::prepareForDrawing()
 
 			D3D11_RASTERIZER_DESC desc = {};
 			desc.FillMode = D3D11_FILL_SOLID;
-			desc.CullMode = CullMap.at(value.cullMode);
-			desc.ScissorEnable = value.scissorEnabled;
+			desc.CullMode = CullMap.at(value.cull_mode);
+			desc.ScissorEnable = value.scissor_enabled;
 			desc.DepthClipEnable = true;
 			D3D11Device->CreateRasterizerState(&desc, &D3D11RasterizerStates[value]);
 		}

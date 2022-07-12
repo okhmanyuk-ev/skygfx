@@ -573,24 +573,23 @@ void BackendGL44::setStencilMode(std::optional<StencilMode> stencil_mode)
 	glStencilFunc(ComparisonFuncMap.at(stencil_mode_nn.func), stencil_mode_nn.reference, stencil_mode_nn.read_mask);
 }
 
-void BackendGL44::setCullMode(const CullMode& value)
+void BackendGL44::setCullMode(CullMode cull_mode)
 {
+	if (cull_mode == CullMode::None)
+	{
+		glDisable(GL_CULL_FACE);
+		return;
+	}
+
 	static const std::unordered_map<CullMode, GLenum> CullMap = {
 		{ CullMode::None, GL_NONE },
 		{ CullMode::Front, GL_FRONT },
 		{ CullMode::Back, GL_BACK }
 	};
 
-	if (value != CullMode::None)
-	{
-		glEnable(GL_CULL_FACE);
-		glFrontFace(GL_CW);
-		glCullFace(CullMap.at(value));
-	}
-	else
-	{
-		glDisable(GL_CULL_FACE);
-	}
+	glEnable(GL_CULL_FACE);
+	glFrontFace(GL_CW);
+	glCullFace(CullMap.at(cull_mode));
 }
 
 void BackendGL44::setSampler(const Sampler& value)

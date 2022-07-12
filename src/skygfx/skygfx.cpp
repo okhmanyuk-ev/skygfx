@@ -151,9 +151,9 @@ void Device::setStencilMode(std::optional<StencilMode> stencil_mode)
 	gBackend->setStencilMode(stencil_mode);
 }
 
-void Device::setCullMode(const CullMode& value)
+void Device::setCullMode(CullMode cull_mode)
 {
-	gBackend->setCullMode(value);
+	gBackend->setCullMode(cull_mode);
 }
 
 void Device::setSampler(const Sampler& value)
