@@ -75,8 +75,8 @@ class ShaderDataVK;
 static ShaderDataVK* gShader = nullptr;
 static std::unordered_map<ShaderDataVK*, vk::raii::Pipeline> gPipelines;
 
-static std::optional<skygfx::ComparisonFunc> gDepthFunc = skygfx::ComparisonFunc::Less;
-static bool gDepthFuncDirty = true;
+static std::optional<DepthMode> gDepthMode = DepthMode();
+static bool gDepthModeDirty = true;
 
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
@@ -860,17 +860,14 @@ void BackendVK::setBlendMode(const BlendMode& value)
 {
 }
 
-void BackendVK::setDepthMode(const DepthMode& value)
+void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	auto prev_depth_func = gDepthFunc;
+	auto prev_depth_mode = gDepthMode;
 
-	if (value.enabled)
-		gDepthFunc = value.func;
-	else
-		gDepthFunc = std::nullopt;
+	gDepthMode = depth_mode;
 
-	if (prev_depth_func != gDepthFunc)
-		gDepthFuncDirty = true;
+	if (prev_depth_mode != gDepthMode)
+		gDepthModeDirty = true;
 }
 
 void BackendVK::setStencilMode(const StencilMode& value)
@@ -1246,17 +1243,17 @@ void BackendVK::prepareForDrawing()
 {
 	assert(gShader);
 
-	if (gDepthFuncDirty)
+	if (gDepthModeDirty)
 	{
 		// TODO: this depth options should work only when dynamic state enabled, 
 		// but now it working only when dynamic state turned off. wtf is going on?
 		// WTR: try to uncomment dynamic state depth values, try to move this block to end of this function
 
-		if (gDepthFunc.has_value())
+		if (gDepthMode.has_value())
 		{
 			gCommandBuffer.setDepthTestEnable(true);
 			gCommandBuffer.setDepthWriteEnable(true);
-			gCommandBuffer.setDepthCompareOp(CompareOpMap.at(gDepthFunc.value()));
+			gCommandBuffer.setDepthCompareOp(CompareOpMap.at(gDepthMode.value().func));
 		}
 		else
 		{
@@ -1264,7 +1261,7 @@ void BackendVK::prepareForDrawing()
 			gCommandBuffer.setDepthWriteEnable(false);
 		}
 
-		gDepthFuncDirty = false;
+		gDepthModeDirty = false;
 	}
 
 	if (!gPipelines.contains(gShader))

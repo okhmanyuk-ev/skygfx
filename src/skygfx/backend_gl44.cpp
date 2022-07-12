@@ -534,12 +534,12 @@ void BackendGL44::setBlendMode(const BlendMode& value)
 	glColorMask(value.colorMask.red, value.colorMask.green, value.colorMask.blue, value.colorMask.alpha);
 }
 
-void BackendGL44::setDepthMode(const DepthMode& value)
+void BackendGL44::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	if (value.enabled)
+	if (depth_mode.has_value())
 	{
 		glEnable(GL_DEPTH_TEST);
-		glDepthFunc(ComparisonFuncMap.at(value.func));
+		glDepthFunc(ComparisonFuncMap.at(depth_mode.value().func));
 	}
 	else
 	{

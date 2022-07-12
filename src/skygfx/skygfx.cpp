@@ -141,9 +141,9 @@ void Device::setBlendMode(const BlendMode& value)
 	gBackend->setBlendMode(value);
 }
 
-void Device::setDepthMode(const DepthMode& value)
+void Device::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	gBackend->setDepthMode(value);
+	gBackend->setDepthMode(depth_mode);
 }
 
 void Device::setStencilMode(const StencilMode& value)

@@ -22,7 +22,7 @@ namespace skygfx
 		virtual void setIndexBuffer(const Buffer& buffer) = 0;
 		virtual void setUniformBuffer(int slot, void* memory, size_t size) = 0;
 		virtual void setBlendMode(const BlendMode& value) = 0;
-		virtual void setDepthMode(const DepthMode& value) = 0;
+		virtual void setDepthMode(std::optional<DepthMode> depth_mode) = 0;
 		virtual void setStencilMode(const StencilMode& value) = 0;
 		virtual void setCullMode(const CullMode& value) = 0;
 		virtual void setSampler(const Sampler& value) = 0;

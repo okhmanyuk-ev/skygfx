@@ -200,23 +200,12 @@ namespace skygfx
 
 	struct DepthMode
 	{
-		DepthMode() { };
-
-		DepthMode(ComparisonFunc _func) : DepthMode()
-		{
-			enabled = true;
-			func = _func;
-		}
-
-		bool enabled = false;
 		ComparisonFunc func = ComparisonFunc::Always;
 	};
 
 	inline bool operator==(const DepthMode& left, const DepthMode& right)
 	{
-		return
-			left.enabled == right.enabled &&
-			left.func == right.func;
+		return left.func == right.func;
 	}
 
 	inline bool operator!=(const DepthMode& left, const DepthMode& right)
@@ -339,7 +328,7 @@ namespace skygfx
 		void setUniformBuffer(int slot, T buffer) { setUniformBuffer(slot, &buffer, sizeof(T)); }
 		
 		void setBlendMode(const BlendMode& value);
-		void setDepthMode(const DepthMode& value);
+		void setDepthMode(std::optional<DepthMode> depth_mode);
 		void setStencilMode(const StencilMode& value);
 		void setCullMode(const CullMode& value);
 		void setSampler(const Sampler& value);
@@ -365,7 +354,6 @@ SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
 	t.colorSrcBlend);
 
 SKYGFX_MAKE_HASHABLE(skygfx::DepthMode,
-	t.enabled,
 	t.func);
 
 SKYGFX_MAKE_HASHABLE(skygfx::StencilMode,
