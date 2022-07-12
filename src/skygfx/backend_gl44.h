@@ -26,7 +26,7 @@ namespace skygfx
 		void setUniformBuffer(int slot, void* memory, size_t size) override;
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(std::optional<DepthMode> depth_mode) override;
-		void setStencilMode(const StencilMode& value) override;
+		void setStencilMode(std::optional<StencilMode> stencil_mode) override;
 		void setCullMode(const CullMode& value) override;
 		void setSampler(const Sampler& value) override;
 		void setTextureAddressMode(const TextureAddress& value) override;

@@ -227,15 +227,13 @@ namespace skygfx
 
 	struct StencilMode
 	{
-		bool enabled = false;
+		uint8_t read_mask = 255;
+		uint8_t write_mask = 255;
 
-		uint8_t readMask = 255;
-		uint8_t writeMask = 255;
-
-		StencilOp depthFailOp = StencilOp::Keep;
-		StencilOp failOp = StencilOp::Keep;
+		StencilOp depth_fail_op = StencilOp::Keep;
+		StencilOp fail_op = StencilOp::Keep;
 		ComparisonFunc func = ComparisonFunc::Always;
-		StencilOp passOp = StencilOp::Keep;
+		StencilOp pass_op = StencilOp::Keep;
 
 		uint8_t reference = 1;
 	};
@@ -243,15 +241,13 @@ namespace skygfx
 	inline bool operator==(const StencilMode& left, const StencilMode& right)
 	{
 		return
-			left.enabled == right.enabled &&
+			left.read_mask == right.read_mask &&
+			left.write_mask == right.write_mask &&
 
-			left.readMask == right.readMask &&
-			left.writeMask == right.writeMask &&
-
-			left.depthFailOp == right.failOp &&
-			left.failOp == right.failOp &&
+			left.depth_fail_op == right.depth_fail_op &&
+			left.fail_op == right.fail_op &&
 			left.func == right.func &&
-			left.passOp == right.passOp &&
+			left.pass_op == right.pass_op &&
 
 			left.reference == right.reference;
 	}
@@ -259,11 +255,6 @@ namespace skygfx
 	inline bool operator!=(const StencilMode& left, const StencilMode& right)
 	{
 		return !(left == right);
-	}
-
-	namespace StencilStates
-	{
-		inline const StencilMode Disabled = StencilMode();
 	}
 
 	struct Scissor
@@ -329,7 +320,7 @@ namespace skygfx
 		
 		void setBlendMode(const BlendMode& value);
 		void setDepthMode(std::optional<DepthMode> depth_mode);
-		void setStencilMode(const StencilMode& value);
+		void setStencilMode(std::optional<StencilMode> stencil_mode);
 		void setCullMode(const CullMode& value);
 		void setSampler(const Sampler& value);
 		void setTextureAddressMode(const TextureAddress& value);
@@ -357,10 +348,9 @@ SKYGFX_MAKE_HASHABLE(skygfx::DepthMode,
 	t.func);
 
 SKYGFX_MAKE_HASHABLE(skygfx::StencilMode,
-	t.enabled,
-	t.readMask,
-	t.writeMask,
-	t.depthFailOp,
-	t.failOp,
+	t.read_mask,
+	t.write_mask,
+	t.depth_fail_op,
+	t.fail_op,
 	t.func,
-	t.passOp);
+	t.pass_op);

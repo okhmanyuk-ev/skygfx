@@ -536,20 +536,19 @@ void BackendGL44::setBlendMode(const BlendMode& value)
 
 void BackendGL44::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	if (depth_mode.has_value())
-	{
-		glEnable(GL_DEPTH_TEST);
-		glDepthFunc(ComparisonFuncMap.at(depth_mode.value().func));
-	}
-	else
+	if (!depth_mode.has_value())
 	{
 		glDisable(GL_DEPTH_TEST);
+		return;
 	}
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(ComparisonFuncMap.at(depth_mode.value().func));
 }
 
-void BackendGL44::setStencilMode(const StencilMode& value)
+void BackendGL44::setStencilMode(std::optional<StencilMode> stencil_mode)
 {
-	if (!value.enabled)
+	if (!stencil_mode.has_value())
 	{
 		glDisable(GL_STENCIL_TEST);
 		return;
@@ -566,10 +565,12 @@ void BackendGL44::setStencilMode(const StencilMode& value)
 		{ StencilOp::Decrement, GL_DECR_WRAP },
 	};
 
+	auto stencil_mode_nn = stencil_mode.value();
+
 	glEnable(GL_STENCIL_TEST);
-	glStencilMask(value.writeMask);
-	glStencilOp(StencilOpMap.at(value.failOp), StencilOpMap.at(value.depthFailOp), StencilOpMap.at(value.passOp));
-	glStencilFunc(ComparisonFuncMap.at(value.func), value.reference, value.readMask);
+	glStencilMask(stencil_mode_nn.write_mask);
+	glStencilOp(StencilOpMap.at(stencil_mode_nn.fail_op), StencilOpMap.at(stencil_mode_nn.depth_fail_op), StencilOpMap.at(stencil_mode_nn.pass_op));
+	glStencilFunc(ComparisonFuncMap.at(stencil_mode_nn.func), stencil_mode_nn.reference, stencil_mode_nn.read_mask);
 }
 
 void BackendGL44::setCullMode(const CullMode& value)

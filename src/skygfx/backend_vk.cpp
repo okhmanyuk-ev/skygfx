@@ -870,9 +870,9 @@ void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
 		gDepthModeDirty = true;
 }
 
-void BackendVK::setStencilMode(const StencilMode& value)
+void BackendVK::setStencilMode(std::optional<StencilMode> stencil_mode)
 {
-	gCommandBuffer.setStencilTestEnable(value.enabled);
+	gCommandBuffer.setStencilTestEnable(stencil_mode.has_value());
 }
 
 void BackendVK::setCullMode(const CullMode& value)

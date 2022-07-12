@@ -34,7 +34,7 @@ static std::unordered_map<BlendMode, ID3D11BlendState*> D3D11BlendModes;
 struct DepthStencilState
 {
 	std::optional<DepthMode> depth_mode;
-	StencilMode stencil_mode;
+	std::optional<StencilMode> stencil_mode;
 
 	bool operator==(const DepthStencilState& value) const
 	{
@@ -590,9 +590,9 @@ void BackendD3D11::setDepthMode(std::optional<DepthMode> depth_mode)
 	D3D11DepthStencilStateDirty = true;
 }
 
-void BackendD3D11::setStencilMode(const StencilMode& value)
+void BackendD3D11::setStencilMode(std::optional<StencilMode> stencil_mode)
 {
-	D3D11DepthStencilState.stencil_mode = value;
+	D3D11DepthStencilState.stencil_mode = stencil_mode;
 	D3D11DepthStencilStateDirty = true;
 }
 
@@ -825,7 +825,7 @@ void BackendD3D11::prepareForDrawing()
 		const auto& depth_stencil_state = D3D11DepthStencilState;
 
 		auto depth_mode = depth_stencil_state.depth_mode.value_or(DepthMode());
-		auto stencil_mode = depth_stencil_state.stencil_mode; // TODO: will be optional
+		auto stencil_mode = depth_stencil_state.stencil_mode.value_or(StencilMode());
 
 		if (D3D11DepthStencilStates.count(depth_stencil_state) == 0)
 		{
@@ -856,14 +856,14 @@ void BackendD3D11::prepareForDrawing()
 			desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 			desc.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
 
-			desc.StencilEnable = stencil_mode.enabled;
-			desc.StencilReadMask = stencil_mode.readMask;
-			desc.StencilWriteMask = stencil_mode.writeMask;
+			desc.StencilEnable = depth_stencil_state.stencil_mode.has_value();
+			desc.StencilReadMask = stencil_mode.read_mask;
+			desc.StencilWriteMask = stencil_mode.write_mask;
 
-			desc.FrontFace.StencilDepthFailOp = StencilOpMap.at(stencil_mode.depthFailOp);
-			desc.FrontFace.StencilFailOp = StencilOpMap.at(stencil_mode.failOp);
+			desc.FrontFace.StencilDepthFailOp = StencilOpMap.at(stencil_mode.depth_fail_op);
+			desc.FrontFace.StencilFailOp = StencilOpMap.at(stencil_mode.fail_op);
 			desc.FrontFace.StencilFunc = ComparisonFuncMap.at(stencil_mode.func);
-			desc.FrontFace.StencilPassOp = StencilOpMap.at(stencil_mode.passOp);
+			desc.FrontFace.StencilPassOp = StencilOpMap.at(stencil_mode.pass_op);
 
 			desc.BackFace = desc.FrontFace;
 
