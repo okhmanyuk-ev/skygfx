@@ -519,6 +519,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto major_version = VK_API_VERSION_MAJOR(version);
 	auto minor_version = VK_API_VERSION_MINOR(version);
+	auto patch_version = VK_API_VERSION_PATCH(version);
 
 	//std::cout << "available vulkan version: " << major_version << "." << minor_version << std::endl;
 
