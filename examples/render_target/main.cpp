@@ -199,28 +199,11 @@ int main()
 
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
-
-	const auto world_up = glm::vec3{ 0.0f, 1.0f, 0.0f };
 	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
-
-	const float fov = 70.0f;
-	const float near_plane = 1.0f;
-	const float far_plane = 8192.0f;
+	
+	std::tie(cube_ubo.view, cube_ubo.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position, width, height);
 
 	const auto scale = 100.0f;
-
-	const float sin_yaw = glm::sin(yaw);
-	const float sin_pitch = glm::sin(pitch);
-
-	const float cos_yaw = glm::cos(yaw);
-	const float cos_pitch = glm::cos(pitch);
-
-	const auto front = glm::normalize(glm::vec3(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch));
-	const auto right = glm::normalize(glm::cross(front, world_up));
-	const auto up = glm::normalize(glm::cross(right, front));
-
-	cube_ubo.view = glm::lookAtRH(position, position + front, up);
-	cube_ubo.projection = glm::perspectiveFov(fov, (float)width, (float)height, near_plane, far_plane);
 
 	cube_light.eye_position = position;
 	cube_light.ambient = { 0.25f, 0.25f, 0.25f };
