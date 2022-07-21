@@ -915,7 +915,6 @@ void BackendD3D11::prepareForDrawing()
 			const static std::unordered_map<Sampler, D3D11_FILTER> SamplerMap = {
 				{ Sampler::Linear, D3D11_FILTER_MIN_MAG_MIP_LINEAR  },
 				{ Sampler::Nearest, D3D11_FILTER_MIN_MAG_MIP_POINT },
-				{ Sampler::LinearMipmapLinear, D3D11_FILTER_MIN_MAG_MIP_LINEAR }
 			};
 
 			const static std::unordered_map<TextureAddress, D3D11_TEXTURE_ADDRESS_MODE> TextureAddressMap = {

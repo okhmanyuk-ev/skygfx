@@ -284,8 +284,7 @@ namespace skygfx
 	enum class Sampler
 	{
 		Linear,
-		Nearest,
-		LinearMipmapLinear
+		Nearest
 	};
 
 	enum class TextureAddress
