@@ -94,6 +94,20 @@ namespace skygfx
 		float max_depth = 1.0f;
 	};
 
+	inline bool operator==(const Viewport& left, const Viewport& right)
+	{
+		return
+			left.position == right.position &&
+			left.size == right.size &&
+			left.min_depth == right.min_depth &&
+			left.max_depth == right.max_depth;
+	}
+
+	inline bool operator!=(const Viewport& left, const Viewport& right)
+	{
+		return !(left == right);
+	}
+
 	enum class Blend
 	{
 		One, // Each component of the color is multiplied by {1, 1, 1, 1}.

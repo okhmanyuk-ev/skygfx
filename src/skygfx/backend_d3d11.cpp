@@ -12,6 +12,18 @@
 #pragma comment(lib, "d3d11")
 #pragma comment(lib, "d3dcompiler")
 
+template <typename T>
+inline void D3D11Release(T& a)
+{
+	if (!a)
+		return;
+
+	a->Release();
+		
+	if constexpr (!std::is_const<T>())
+		a = nullptr;
+}
+
 static IDXGISwapChain* D3D11SwapChain = nullptr;
 static ID3D11Device* D3D11Device = nullptr;
 static ID3D11DeviceContext* D3D11Context = nullptr;
@@ -163,9 +175,9 @@ public:
 
 	~ShaderDataD3D11()
 	{
-		vertex_shader->Release();
-		pixel_shader->Release();
-		input_layout->Release();
+		D3D11Release(vertex_shader);
+		D3D11Release(pixel_shader);
+		D3D11Release(input_layout);
 	}
 
 	void apply()
@@ -228,8 +240,8 @@ public:
 
 	~TextureDataD3D11()
 	{
-		shader_resource_view->Release();
-		texture2d->Release();
+		D3D11Release(shader_resource_view);
+		D3D11Release(texture2d);
 	}
 
 	void bind(uint32_t slot)
@@ -282,9 +294,9 @@ public:
 
 	~RenderTargetDataD3D11()
 	{
-		render_target_view->Release();
-		depth_stencil_texture->Release();
-		depth_stencil_view->Release();
+		D3D11Release(render_target_view);
+		D3D11Release(depth_stencil_texture);
+		D3D11Release(depth_stencil_view);
 	}
 };
 
@@ -322,21 +334,21 @@ BackendD3D11::~BackendD3D11()
 {
 	destroyMainRenderTarget();
 
-	D3D11SwapChain->Release();
-	D3D11Context->Release();
-	D3D11Device->Release();
+	D3D11Release(D3D11SwapChain);
+	D3D11Release(D3D11Context);
+	D3D11Release(D3D11Device);
 
-	D3D11VertexBuffer->Release();
-	D3D11IndexBuffer->Release();
+	D3D11Release(D3D11VertexBuffer);
+	D3D11Release(D3D11IndexBuffer);
 	
 	for (auto [slot, buffer] : D3D11ConstantBuffers)
 	{
-		buffer->Release();
+		D3D11Release(buffer);
 	}
 
 	for (const auto& [_, blend_state] : D3D11BlendModes)
 	{
-		blend_state->Release();
+		D3D11Release(blend_state);
 	}
 }
 
@@ -345,6 +357,10 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	destroyMainRenderTarget();
 	D3D11SwapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
 	createMainRenderTarget(width, height);
+	mViewportDirty = true;
+	D3D11DepthStencilStateDirty = true;
+	D3D11RasterizerStateDirty = true;
+	D3D11SamplerStateDirty = true;
 }
 
 void BackendD3D11::setTopology(Topology topology)
@@ -362,8 +378,10 @@ void BackendD3D11::setTopology(Topology topology)
 
 void BackendD3D11::setViewport(std::optional<Viewport> viewport)
 {
+	if (mViewport != viewport)
+		mViewportDirty = true;
+
 	mViewport = viewport;
-	mViewportDirty = true;
 }
 
 void BackendD3D11::setScissor(std::optional<Scissor> scissor)
@@ -409,8 +427,7 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 		D3D11Context->PSSetShaderResources(0, 1, null); // remove old shader view
 	}
 
-	if (prev_shader_resource_view)
-		prev_shader_resource_view->Release(); // avoid memory leak
+	D3D11Release(prev_shader_resource_view); // avoid memory leak
 
 	D3D11Context->OMSetRenderTargets(1, &render_target->render_target_view, render_target->depth_stencil_view);
 
@@ -444,8 +461,7 @@ void BackendD3D11::setVertexBuffer(const Buffer& buffer)
 
 	if (desc.ByteWidth < buffer.size)
 	{
-		if (D3D11VertexBuffer)
-			D3D11VertexBuffer->Release();
+		D3D11Release(D3D11VertexBuffer);
 
 		desc.ByteWidth = static_cast<UINT>(buffer.size);
 		desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -474,8 +490,7 @@ void BackendD3D11::setIndexBuffer(const Buffer& buffer)
 
 	if (desc.ByteWidth < buffer.size)
 	{
-		if (D3D11IndexBuffer)
-			D3D11IndexBuffer->Release();
+		D3D11Release(D3D11IndexBuffer);
 
 		desc.ByteWidth = static_cast<UINT>(buffer.size);
 		desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -504,7 +519,7 @@ void BackendD3D11::setUniformBuffer(uint32_t slot, void* memory, size_t size)
 	if (desc.ByteWidth < size)
 	{
 		if (D3D11ConstantBuffers.contains(slot))
-			D3D11ConstantBuffers.at(slot)->Release();
+			D3D11Release(D3D11ConstantBuffers.at(slot));
 
 		desc.ByteWidth = static_cast<UINT>(size);
 		desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -680,7 +695,7 @@ void BackendD3D11::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	texture->GetDesc(&desc);
 	auto back_w = desc.Width;
 	auto back_h = desc.Height;
-	texture->Release();
+	D3D11Release(texture);
 
 	auto src_x = (UINT)pos.x;
 	auto src_y = (UINT)pos.y;
@@ -728,7 +743,7 @@ void BackendD3D11::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 			D3D11Context->GenerateMips(dst_texture->shader_resource_view);
 	}
 
-	resource->Release();
+	D3D11Release(resource);
 }
 
 void BackendD3D11::present()
@@ -800,7 +815,7 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 	ID3D11Texture2D* pBackBuffer;
 	D3D11SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
 	D3D11Device->CreateRenderTargetView(pBackBuffer, nullptr, &MainRenderTarget.render_taget_view);
-	pBackBuffer->Release();
+	D3D11Release(pBackBuffer);
 
 	mBackbufferWidth = width;
 	mBackbufferHeight = height;
@@ -808,9 +823,9 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 
 void BackendD3D11::destroyMainRenderTarget()
 {
-	MainRenderTarget.render_taget_view->Release();
-	MainRenderTarget.depth_stencil_view->Release();
-	MainRenderTarget.texture2d->Release();
+	D3D11Release(MainRenderTarget.render_taget_view);
+	D3D11Release(MainRenderTarget.depth_stencil_view);
+	D3D11Release(MainRenderTarget.texture2d);
 }
 
 void BackendD3D11::prepareForDrawing()
