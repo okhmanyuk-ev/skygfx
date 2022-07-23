@@ -157,8 +157,7 @@ int main()
 		device.setIndexBuffer(indices);
 		device.setUniformBuffer(1, ubo);
 		device.setCullMode(skygfx::CullMode::Back);
-		device.setSampler(skygfx::Sampler::LinearMipmapLinear);
-		device.setTexture(texture);
+		device.setTexture(0, texture);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 

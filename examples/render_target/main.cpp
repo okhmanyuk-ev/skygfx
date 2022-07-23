@@ -244,7 +244,7 @@ int main()
 		device.setUniformBuffer(1, cube_ubo);
 		device.setUniformBuffer(2, cube_light);
 		device.setCullMode(skygfx::CullMode::Back);
-		device.setTexture(target); // render targets can be pushed as textures
+		device.setTexture(0, target); // render targets can be pushed as textures
 		device.drawIndexed(static_cast<uint32_t>(cube_indices.size()));
 		device.present();
 

@@ -200,8 +200,7 @@ int main()
 		device.setUniformBuffer(1, ubo);
 		device.setUniformBuffer(2, light);
 		device.setCullMode(skygfx::CullMode::Back);
-		device.setSampler(skygfx::Sampler::LinearMipmapLinear);
-		device.setTexture(texture);
+		device.setTexture(0, texture);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 
