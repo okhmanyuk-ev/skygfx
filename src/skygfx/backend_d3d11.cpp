@@ -409,6 +409,7 @@ void BackendD3D11::setTexture(TextureHandle* handle, uint32_t slot)
 {
 	auto texture = (TextureDataD3D11*)handle;
 	texture->bind(slot);
+	mCurrentTextures[slot] = handle;
 }
 
 void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
@@ -947,7 +948,10 @@ void BackendD3D11::prepareForDrawing()
 			D3D11Device->CreateSamplerState(&desc, &D3D11SamplerStates[value]);
 		}
 
-		D3D11Context->PSSetSamplers(0, 1, &D3D11SamplerStates.at(value));
+		for (auto [slot, texture_handle] : mCurrentTextures)
+		{
+			D3D11Context->PSSetSamplers(slot, 1, &D3D11SamplerStates.at(value));
+		}
 	}
 
 	// viewport

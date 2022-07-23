@@ -62,6 +62,7 @@ namespace skygfx
 		bool mViewportDirty = true;
 		uint32_t mBackbufferWidth = 0;
 		uint32_t mBackbufferHeight = 0;
+		std::unordered_map<uint32_t, TextureHandle*> mCurrentTextures;
 	};
 }
 
