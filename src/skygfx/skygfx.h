@@ -24,7 +24,17 @@ namespace skygfx
 	using RenderTargetHandle = struct RenderTargetHandle;
 	using ShaderHandle = struct ShaderHandle;
 
-	class Texture
+	class noncopyable
+	{
+	protected:
+		noncopyable() = default;
+
+	private:
+		noncopyable(const noncopyable&) = delete;
+		noncopyable& operator=(const noncopyable&) = delete;
+	};
+
+	class Texture : private noncopyable
 	{
 	public:
 		Texture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap = false);
@@ -53,7 +63,7 @@ namespace skygfx
 		RenderTargetHandle* mRenderTargetHandle = nullptr;
 	};
 
-	class Shader
+	class Shader : private noncopyable
 	{
 	public:
 		Shader(const Vertex::Layout& layout, const std::string& vertex_code, 
@@ -308,7 +318,7 @@ namespace skygfx
 		MirrorWrap
 	};
 
-	class Device
+	class Device : private noncopyable
 	{
 	public:
 		Device(BackendType type, void* window, uint32_t width, uint32_t height);
