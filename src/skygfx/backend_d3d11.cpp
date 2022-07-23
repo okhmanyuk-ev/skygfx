@@ -357,10 +357,7 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	destroyMainRenderTarget();
 	D3D11SwapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
 	createMainRenderTarget(width, height);
-	mViewportDirty = true;
-	D3D11DepthStencilStateDirty = true;
-	D3D11RasterizerStateDirty = true;
-	D3D11SamplerStateDirty = true;
+	setRenderTarget(nullptr);
 }
 
 void BackendD3D11::setTopology(Topology topology)
