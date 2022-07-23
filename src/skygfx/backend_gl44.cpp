@@ -254,7 +254,7 @@ public:
 		glDeleteTextures(1, &texture);
 	}
 
-	void bind(int slot)
+	void bind(uint32_t slot)
 	{
 		glActiveTexture(GL_TEXTURE0 + slot);
 		glBindTexture(GL_TEXTURE_2D, texture);
@@ -313,7 +313,7 @@ static GLenum GLTopology;
 static GLenum GLIndexType;
 static GLuint GLVertexBuffer;
 static GLuint GLIndexBuffer;
-static std::unordered_map<int, GLuint> GLUniformBuffers;
+static std::unordered_map<uint32_t, GLuint> GLUniformBuffers;
 static GLuint GLPixelBuffer;
 static RenderTargetDataGL44* GLCurrentRenderTarget = nullptr;
 
@@ -448,13 +448,20 @@ void BackendGL44::setScissor(std::optional<Scissor> scissor)
 	}
 }
 
-void BackendGL44::setTexture(TextureHandle* handle)
+void BackendGL44::setTexture(TextureHandle* handle, uint32_t slot)
 {
-	int slot = 0;
 	auto texture = (TextureDataGL44*)handle;
 	texture->bind(slot);
-	mCurrentTexture = handle;
-	mTexParametersDirty = true;
+	
+	TextureHandle* prev_texture = nullptr;
+	
+	if (mCurrentTextures.contains(slot))
+		prev_texture = mCurrentTextures.at(slot);
+
+	mCurrentTextures[slot] = handle;
+	
+	if (prev_texture != handle)
+		mTexParametersDirty = true;
 }
 
 void BackendGL44::setRenderTarget(RenderTargetHandle* handle)
@@ -494,7 +501,7 @@ void BackendGL44::setIndexBuffer(const Buffer& buffer)
 	mIndexBuffer = buffer;
 }
 
-void BackendGL44::setUniformBuffer(int slot, void* memory, size_t size)
+void BackendGL44::setUniformBuffer(uint32_t slot, void* memory, size_t size)
 {
 	assert(size % 16 == 0);
 
@@ -826,36 +833,38 @@ void BackendGL44::setInternalIndexBuffer(const Buffer& value)
 
 void BackendGL44::refreshTexParameters()
 {
-	if (mCurrentTexture == nullptr)
-		return;
+	for (auto [slot, texture_handle] : mCurrentTextures)
+	{
+		glActiveTexture(GL_TEXTURE0 + slot);
+	
+		bool texture_has_mipmap = ((TextureDataGL44*)texture_handle)->mipmap;
 
-	bool texture_has_mipmap = ((TextureDataGL44*)mCurrentTexture)->mipmap;
+		if (mSampler == Sampler::Linear)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		}
+		else if (mSampler == Sampler::Nearest)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		}
 
-	if (mSampler == Sampler::Linear)
-	{
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	}
-	else if (mSampler == Sampler::Nearest)
-	{
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	}
-
-	if (mTextureAddress == TextureAddress::Clamp)
-	{
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	}
-	else if (mTextureAddress == TextureAddress::Wrap)
-	{
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	}
-	else if (mTextureAddress == TextureAddress::MirrorWrap)
-	{
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+		if (mTextureAddress == TextureAddress::Clamp)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		}
+		else if (mTextureAddress == TextureAddress::Wrap)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		}
+		else if (mTextureAddress == TextureAddress::MirrorWrap)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+		}
 	}
 }
 

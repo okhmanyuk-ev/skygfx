@@ -17,13 +17,13 @@ namespace skygfx
 		void setTopology(Topology topology) override;
 		void setViewport(std::optional<Viewport> viewport) override;
 		void setScissor(std::optional<Scissor> scissor) override;
-		void setTexture(TextureHandle* handle) override;
+		void setTexture(TextureHandle* handle, uint32_t slot) override;
 		void setRenderTarget(RenderTargetHandle* handle) override;
 		void setRenderTarget(std::nullptr_t value) override;
 		void setShader(ShaderHandle* handle) override;
 		void setVertexBuffer(const Buffer& buffer) override;
 		void setIndexBuffer(const Buffer& buffer) override;
-		void setUniformBuffer(int slot, void* memory, size_t size) override;
+		void setUniformBuffer(uint32_t slot, void* memory, size_t size) override;
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(std::optional<DepthMode> depth_mode) override;
 		void setStencilMode(std::optional<StencilMode> stencil_mode) override;

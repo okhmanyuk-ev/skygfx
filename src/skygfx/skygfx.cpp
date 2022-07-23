@@ -101,9 +101,9 @@ void Device::setScissor(std::optional<Scissor> scissor)
 	gBackend->setScissor(scissor);
 }
 
-void Device::setTexture(const Texture& texture)
+void Device::setTexture(const Texture& texture, uint32_t slot)
 {
-	gBackend->setTexture(const_cast<Texture&>(texture));
+	gBackend->setTexture(const_cast<Texture&>(texture), slot);
 }
 
 void Device::setRenderTarget(const RenderTarget& value)

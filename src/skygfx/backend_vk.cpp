@@ -61,8 +61,8 @@ static std::vector<DeviceBufferVK> gVertexBuffers;
 static std::vector<DeviceBufferVK> gIndexBuffers;
 static std::vector<DeviceBufferVK> gUniformBuffers;
 
-static std::unordered_map<int, vk::ImageView> gTexturesPushQueue;
-static std::unordered_map<int, vk::Buffer> gUniformBuffersPushQueue;
+static std::unordered_map<uint32_t, vk::ImageView> gTexturesPushQueue;
+static std::unordered_map<uint32_t, vk::Buffer> gUniformBuffersPushQueue;
 
 static std::optional<Scissor> gScissor;
 static bool gScissorDirty = true;
@@ -691,11 +691,10 @@ void BackendVK::setScissor(std::optional<Scissor> scissor)
 	gScissorDirty = true;
 }
 
-void BackendVK::setTexture(TextureHandle* handle)
+void BackendVK::setTexture(TextureHandle* handle, uint32_t slot)
 {
 	auto texture = (TextureDataVK*)handle;
-	int binding = 0;
-	gTexturesPushQueue[binding] = *texture->image_view;
+	gTexturesPushQueue[slot] = *texture->image_view;
 }
 
 void BackendVK::setRenderTarget(RenderTargetHandle* handle)
@@ -811,7 +810,7 @@ void BackendVK::setIndexBuffer(const Buffer& value)
 	gIndexBufferIndex += 1;
 }
 
-void BackendVK::setUniformBuffer(int slot, void* memory, size_t size)
+void BackendVK::setUniformBuffer(uint32_t slot, void* memory, size_t size)
 {
 	assert(size > 0);
 

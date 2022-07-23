@@ -25,7 +25,7 @@ static struct
 
 static ID3D11Buffer* D3D11VertexBuffer = nullptr;
 static ID3D11Buffer* D3D11IndexBuffer = nullptr;
-static std::unordered_map<int, ID3D11Buffer*> D3D11ConstantBuffers;
+static std::unordered_map<uint32_t, ID3D11Buffer*> D3D11ConstantBuffers;
 
 using namespace skygfx;
 
@@ -232,7 +232,7 @@ public:
 		texture2d->Release();
 	}
 
-	void bind(int slot)
+	void bind(uint32_t slot)
 	{
 		D3D11Context->PSSetShaderResources((UINT)slot, 1, &shader_resource_view);
 	}
@@ -390,9 +390,8 @@ void BackendD3D11::setScissor(std::optional<Scissor> scissor)
 	}
 }
 
-void BackendD3D11::setTexture(TextureHandle* handle)
+void BackendD3D11::setTexture(TextureHandle* handle, uint32_t slot)
 {
-	int slot = 0;
 	auto texture = (TextureDataD3D11*)handle;
 	texture->bind(slot);
 }
@@ -493,7 +492,7 @@ void BackendD3D11::setIndexBuffer(const Buffer& buffer)
 	D3D11Context->IASetIndexBuffer(D3D11IndexBuffer, buffer.stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
 }
 
-void BackendD3D11::setUniformBuffer(int slot, void* memory, size_t size)
+void BackendD3D11::setUniformBuffer(uint32_t slot, void* memory, size_t size)
 {
 	assert(size % 16 == 0);
 
