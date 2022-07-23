@@ -101,9 +101,9 @@ void Device::setScissor(std::optional<Scissor> scissor)
 	gBackend->setScissor(scissor);
 }
 
-void Device::setTexture(const Texture& texture, uint32_t slot)
+void Device::setTexture(uint32_t binding, const Texture& texture)
 {
-	gBackend->setTexture(const_cast<Texture&>(texture), slot);
+	gBackend->setTexture(binding, const_cast<Texture&>(texture));
 }
 
 void Device::setRenderTarget(const RenderTarget& value)
@@ -131,9 +131,9 @@ void Device::setIndexBuffer(const Buffer& buffer)
 	gBackend->setIndexBuffer(buffer);
 }
 
-void Device::setUniformBuffer(int slot, void* memory, size_t size)
+void Device::setUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
-	gBackend->setUniformBuffer(slot, memory, size);
+	gBackend->setUniformBuffer(binding, memory, size);
 }
 
 void Device::setBlendMode(const BlendMode& value)

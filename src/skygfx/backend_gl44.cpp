@@ -254,9 +254,9 @@ public:
 		glDeleteTextures(1, &texture);
 	}
 
-	void bind(uint32_t slot)
+	void bind(uint32_t binding)
 	{
-		glActiveTexture(GL_TEXTURE0 + slot);
+		glActiveTexture(GL_TEXTURE0 + binding);
 		glBindTexture(GL_TEXTURE_2D, texture);
 	}
 };
@@ -396,7 +396,7 @@ BackendGL44::~BackendGL44()
 	glDeleteBuffers(1, &GLIndexBuffer);
 	glDeleteBuffers(1, &GLPixelBuffer);
 
-	for (auto [slot, buffer] : GLUniformBuffers)
+	for (auto [_, buffer] : GLUniformBuffers)
 	{
 		glDeleteBuffers(1, &buffer);
 	}
@@ -448,17 +448,17 @@ void BackendGL44::setScissor(std::optional<Scissor> scissor)
 	}
 }
 
-void BackendGL44::setTexture(TextureHandle* handle, uint32_t slot)
+void BackendGL44::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureDataGL44*)handle;
-	texture->bind(slot);
+	texture->bind(binding);
 	
 	TextureHandle* prev_texture = nullptr;
 	
-	if (mCurrentTextures.contains(slot))
-		prev_texture = mCurrentTextures.at(slot);
+	if (mCurrentTextures.contains(binding))
+		prev_texture = mCurrentTextures.at(binding);
 
-	mCurrentTextures[slot] = handle;
+	mCurrentTextures[binding] = handle;
 	
 	if (prev_texture != handle)
 		mTexParametersDirty = true;
@@ -501,14 +501,14 @@ void BackendGL44::setIndexBuffer(const Buffer& buffer)
 	mIndexBuffer = buffer;
 }
 
-void BackendGL44::setUniformBuffer(uint32_t slot, void* memory, size_t size)
+void BackendGL44::setUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	assert(size % 16 == 0);
 
-	if (!GLUniformBuffers.contains(slot))
-		glGenBuffers(1, &GLUniformBuffers[slot]);
+	if (!GLUniformBuffers.contains(binding))
+		glGenBuffers(1, &GLUniformBuffers[binding]);
 	
-	glBindBufferBase(GL_UNIFORM_BUFFER, slot, GLUniformBuffers.at(slot));
+	glBindBufferBase(GL_UNIFORM_BUFFER, binding, GLUniformBuffers.at(binding));
 	glBufferData(GL_UNIFORM_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 }
 
@@ -833,9 +833,9 @@ void BackendGL44::setInternalIndexBuffer(const Buffer& value)
 
 void BackendGL44::refreshTexParameters()
 {
-	for (auto [slot, texture_handle] : mCurrentTextures)
+	for (auto [binding, texture_handle] : mCurrentTextures)
 	{
-		glActiveTexture(GL_TEXTURE0 + slot);
+		glActiveTexture(GL_TEXTURE0 + binding);
 	
 		bool texture_has_mipmap = ((TextureDataGL44*)texture_handle)->mipmap;
 

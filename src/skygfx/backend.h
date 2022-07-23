@@ -14,13 +14,13 @@ namespace skygfx
 		virtual void setTopology(Topology topology) = 0;
 		virtual void setViewport(std::optional<Viewport> viewport) = 0;
 		virtual void setScissor(std::optional<Scissor> scissor) = 0;
-		virtual void setTexture(TextureHandle* handle, uint32_t slot) = 0;
+		virtual void setTexture(uint32_t binding, TextureHandle* handle) = 0;
 		virtual void setRenderTarget(RenderTargetHandle* handle) = 0;
 		virtual void setRenderTarget(std::nullptr_t value) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(const Buffer& buffer) = 0;
 		virtual void setIndexBuffer(const Buffer& buffer) = 0;
-		virtual void setUniformBuffer(uint32_t slot, void* memory, size_t size) = 0;
+		virtual void setUniformBuffer(uint32_t binding, void* memory, size_t size) = 0;
 		virtual void setBlendMode(const BlendMode& value) = 0;
 		virtual void setDepthMode(std::optional<DepthMode> depth_mode) = 0;
 		virtual void setStencilMode(std::optional<StencilMode> stencil_mode) = 0;

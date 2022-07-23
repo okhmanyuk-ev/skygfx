@@ -691,10 +691,10 @@ void BackendVK::setScissor(std::optional<Scissor> scissor)
 	gScissorDirty = true;
 }
 
-void BackendVK::setTexture(TextureHandle* handle, uint32_t slot)
+void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureDataVK*)handle;
-	gTexturesPushQueue[slot] = *texture->image_view;
+	gTexturesPushQueue[binding] = *texture->image_view;
 }
 
 void BackendVK::setRenderTarget(RenderTargetHandle* handle)
@@ -810,7 +810,7 @@ void BackendVK::setIndexBuffer(const Buffer& value)
 	gIndexBufferIndex += 1;
 }
 
-void BackendVK::setUniformBuffer(uint32_t slot, void* memory, size_t size)
+void BackendVK::setUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	assert(size > 0);
 
@@ -855,7 +855,7 @@ void BackendVK::setUniformBuffer(uint32_t slot, void* memory, size_t size)
 	memcpy(mem, memory, size);
 	buffer.memory.unmapMemory();
 
-	gUniformBuffersPushQueue[slot] = *buffer.buffer;
+	gUniformBuffersPushQueue[binding] = *buffer.buffer;
 	gUniformBufferIndex += 1;
 }
 
@@ -1354,7 +1354,7 @@ void BackendVK::prepareForDrawing()
 
 	auto pipeline_layout = *gShader->pipeline_layout;
 
-	for (const auto& [slot, image_view] : gTexturesPushQueue)
+	for (const auto& [binding, image_view] : gTexturesPushQueue)
 	{
 		auto descriptor_image_info = vk::DescriptorImageInfo()
 			.setSampler(*gSampler)
@@ -1363,7 +1363,7 @@ void BackendVK::prepareForDrawing()
 
 		auto write_descriptor_set = vk::WriteDescriptorSet()
 			.setDescriptorCount(1)
-			.setDstBinding(slot)
+			.setDstBinding(binding)
 			.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
 			.setPImageInfo(&descriptor_image_info);
 
@@ -1372,7 +1372,7 @@ void BackendVK::prepareForDrawing()
 
 	gTexturesPushQueue.clear();
 
-	for (const auto& [slot, buffer] : gUniformBuffersPushQueue)
+	for (const auto& [binding, buffer] : gUniformBuffersPushQueue)
 	{
 		auto descriptor_buffer_info = vk::DescriptorBufferInfo()
 			.setBuffer(buffer)
@@ -1380,7 +1380,7 @@ void BackendVK::prepareForDrawing()
 
 		auto write_descriptor_set = vk::WriteDescriptorSet()
 			.setDescriptorCount(1)
-			.setDstBinding(slot)
+			.setDstBinding(binding)
 			.setDescriptorType(vk::DescriptorType::eUniformBuffer)
 			.setPBufferInfo(&descriptor_buffer_info);
 

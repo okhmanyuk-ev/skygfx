@@ -244,9 +244,9 @@ public:
 		D3D11Release(texture2d);
 	}
 
-	void bind(uint32_t slot)
+	void bind(uint32_t binding)
 	{
-		D3D11Context->PSSetShaderResources((UINT)slot, 1, &shader_resource_view);
+		D3D11Context->PSSetShaderResources((UINT)binding, 1, &shader_resource_view);
 	}
 };
 
@@ -341,7 +341,7 @@ BackendD3D11::~BackendD3D11()
 	D3D11Release(D3D11VertexBuffer);
 	D3D11Release(D3D11IndexBuffer);
 	
-	for (auto [slot, buffer] : D3D11ConstantBuffers)
+	for (auto [_, buffer] : D3D11ConstantBuffers)
 	{
 		D3D11Release(buffer);
 	}
@@ -405,11 +405,11 @@ void BackendD3D11::setScissor(std::optional<Scissor> scissor)
 	}
 }
 
-void BackendD3D11::setTexture(TextureHandle* handle, uint32_t slot)
+void BackendD3D11::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureDataD3D11*)handle;
-	texture->bind(slot);
-	mCurrentTextures[slot] = handle;
+	texture->bind(binding);
+	mCurrentTextures[binding] = handle;
 }
 
 void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
@@ -505,36 +505,36 @@ void BackendD3D11::setIndexBuffer(const Buffer& buffer)
 	D3D11Context->IASetIndexBuffer(D3D11IndexBuffer, buffer.stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
 }
 
-void BackendD3D11::setUniformBuffer(uint32_t slot, void* memory, size_t size)
+void BackendD3D11::setUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	assert(size % 16 == 0);
 
 	D3D11_BUFFER_DESC desc = {};
 
-	if (D3D11ConstantBuffers.contains(slot))
-		D3D11ConstantBuffers.at(slot)->GetDesc(&desc);
+	if (D3D11ConstantBuffers.contains(binding))
+		D3D11ConstantBuffers.at(binding)->GetDesc(&desc);
 
 	if (desc.ByteWidth < size)
 	{
-		if (D3D11ConstantBuffers.contains(slot))
-			D3D11Release(D3D11ConstantBuffers.at(slot));
+		if (D3D11ConstantBuffers.contains(binding))
+			D3D11Release(D3D11ConstantBuffers.at(binding));
 
 		desc.ByteWidth = static_cast<UINT>(size);
 		desc.Usage = D3D11_USAGE_DYNAMIC;
 		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11ConstantBuffers[slot]);
+		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11ConstantBuffers[binding]);
 	}
 
-	auto constant_buffer = D3D11ConstantBuffers.at(slot);
+	auto constant_buffer = D3D11ConstantBuffers.at(binding);
 
 	D3D11_MAPPED_SUBRESOURCE resource;
 	D3D11Context->Map(constant_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
 	memcpy(resource.pData, memory, size);
 	D3D11Context->Unmap(constant_buffer, 0);
 
-	D3D11Context->VSSetConstantBuffers(slot, 1, &constant_buffer);
-	D3D11Context->PSSetConstantBuffers(slot, 1, &constant_buffer);
+	D3D11Context->VSSetConstantBuffers(binding, 1, &constant_buffer);
+	D3D11Context->PSSetConstantBuffers(binding, 1, &constant_buffer);
 }
 
 void BackendD3D11::setBlendMode(const BlendMode& value)
@@ -948,9 +948,9 @@ void BackendD3D11::prepareForDrawing()
 			D3D11Device->CreateSamplerState(&desc, &D3D11SamplerStates[value]);
 		}
 
-		for (auto [slot, texture_handle] : mCurrentTextures)
+		for (auto [binding, texture_handle] : mCurrentTextures)
 		{
-			D3D11Context->PSSetSamplers(slot, 1, &D3D11SamplerStates.at(value));
+			D3D11Context->PSSetSamplers(binding, 1, &D3D11SamplerStates.at(value));
 		}
 	}
 

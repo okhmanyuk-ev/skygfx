@@ -319,17 +319,17 @@ namespace skygfx
 		void setTopology(Topology topology);
 		void setViewport(std::optional<Viewport> viewport);
 		void setScissor(std::optional<Scissor> scissor);
-		void setTexture(const Texture& texture, uint32_t slot = 0);
+		void setTexture(uint32_t binding, const Texture& texture);
 		void setRenderTarget(const RenderTarget& value);
 		void setRenderTarget(std::nullptr_t value);
 		void setShader(const Shader& shader);
 		void setVertexBuffer(const Buffer& buffer);
 		void setIndexBuffer(const Buffer& buffer);
 		
-		void setUniformBuffer(int slot, void* memory, size_t size);
+		void setUniformBuffer(uint32_t binding, void* memory, size_t size);
 		
 		template <class T> 
-		void setUniformBuffer(int slot, T buffer) { setUniformBuffer(slot, &buffer, sizeof(T)); }
+		void setUniformBuffer(uint32_t binding, T buffer) { setUniformBuffer(binding, &buffer, sizeof(T)); }
 		
 		void setBlendMode(const BlendMode& value);
 		void setDepthMode(std::optional<DepthMode> depth_mode);
