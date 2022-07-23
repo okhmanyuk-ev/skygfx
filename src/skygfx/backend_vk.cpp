@@ -664,6 +664,7 @@ BackendVK::~BackendVK()
 
 void BackendVK::resize(uint32_t width, uint32_t height)
 {
+	createSwapchain(width, height);
 }
 
 void BackendVK::setTopology(Topology topology)
