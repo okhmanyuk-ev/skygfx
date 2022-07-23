@@ -18,7 +18,7 @@ const Layout PositionColor::Layout = {
 const Layout PositionTexture::Layout = { 
 	sizeof(PositionTexture), {
 		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionTexture, pos) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTexture, tex) } 
+		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTexture, texcoord) }
 	}
 };
 
@@ -41,14 +41,14 @@ const Layout PositionColorTexture::Layout = {
 	sizeof(PositionColorTexture), {
 		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorTexture, pos) },
 		{ Attribute::Type::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorTexture, col) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTexture, tex) } 
+		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTexture, texcoord) }
 	}
 };
 
 const Layout PositionTextureNormal::Layout = { 
 	sizeof(PositionTextureNormal), {
 		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionTextureNormal, pos) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTextureNormal, tex) },
+		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTextureNormal, texcoord) },
 		{ Attribute::Type::Normal, Attribute::Format::R32G32B32F, offsetof(PositionTextureNormal, normal) } 
 	}
 };
@@ -57,7 +57,7 @@ const Layout PositionColorTextureNormal::Layout = {
 	sizeof(PositionColorTextureNormal), {
 		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorTextureNormal, pos) },
 		{ Attribute::Type::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorTextureNormal, col) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTextureNormal, tex) },
+		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTextureNormal, texcoord) },
 		{ Attribute::Type::Normal, Attribute::Format::R32G32B32F, offsetof(PositionColorTextureNormal, normal) } 
 	}
 };

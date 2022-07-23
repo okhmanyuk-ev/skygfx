@@ -65,7 +65,7 @@ namespace skygfx::Vertex
 	struct PositionTexture 
 	{
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
-		glm::vec2 tex = { 0.0f, 0.0f };
+		glm::vec2 texcoord = { 0.0f, 0.0f };
 	
 		static const Layout Layout;
 	};
@@ -91,7 +91,7 @@ namespace skygfx::Vertex
 	{
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
 		glm::vec4 col = { 0.0f, 0.0f, 0.0f, 0.0f };
-		glm::vec2 tex = { 0.0f, 0.0f };
+		glm::vec2 texcoord = { 0.0f, 0.0f };
 
 		static const Layout Layout;
 	};
@@ -99,7 +99,7 @@ namespace skygfx::Vertex
 	struct PositionTextureNormal
 	{
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
-		glm::vec2 tex = { 0.0f, 0.0f };
+		glm::vec2 texcoord = { 0.0f, 0.0f };
 		glm::vec3 normal = { 0.0f, 0.0f, 0.0f };
 
 		static const Layout Layout;
@@ -109,7 +109,7 @@ namespace skygfx::Vertex
 	{
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
 		glm::vec4 col = { 0.0f, 0.0f, 0.0f, 0.0f };
-		glm::vec2 tex = { 0.0f, 0.0f };
+		glm::vec2 texcoord = { 0.0f, 0.0f };
 		glm::vec3 normal = { 0.0f, 0.0f, 0.0f };
 
 		static const Layout Layout;
