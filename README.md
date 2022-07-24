@@ -49,3 +49,7 @@ target_link_libraries(YOUR_TARGET sky-gfx)
 ## [Render Target](examples/render_target)
 
 ![](https://user-images.githubusercontent.com/3295141/174523347-3e8f54bb-db2f-48e1-ab59-ef39c274915d.gif)
+
+## [Sponza](https://github.com/okhmanyuk-ev/sky-gfx-sponza-demo)
+
+![](https://github.com/okhmanyuk-ev/sky-gfx-sponza-demo/blob/master/assets/screenshot.png)
