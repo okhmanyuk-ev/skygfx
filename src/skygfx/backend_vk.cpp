@@ -885,11 +885,11 @@ void BackendVK::setCullMode(CullMode cull_mode)
 	gCullModeDirty = true;
 }
 
-void BackendVK::setSampler(const Sampler& value)
+void BackendVK::setSampler(Sampler value)
 {
 }
 
-void BackendVK::setTextureAddressMode(const TextureAddress& value)
+void BackendVK::setTextureAddress(TextureAddress value)
 {
 }
 

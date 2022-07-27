@@ -599,13 +599,13 @@ void BackendGL44::setCullMode(CullMode cull_mode)
 	glCullFace(CullMap.at(cull_mode));
 }
 
-void BackendGL44::setSampler(const Sampler& value)
+void BackendGL44::setSampler(Sampler value)
 {
 	mSampler = value;
 	mTexParametersDirty = true;
 }
 
-void BackendGL44::setTextureAddressMode(const TextureAddress& value)
+void BackendGL44::setTextureAddress(TextureAddress value)
 {
 	mTextureAddress = value;
 	mTexParametersDirty = true;

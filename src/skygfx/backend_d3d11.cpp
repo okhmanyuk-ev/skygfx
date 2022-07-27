@@ -614,13 +614,13 @@ void BackendD3D11::setCullMode(CullMode cull_mode)
 	D3D11RasterizerStateDirty = true;
 }
 
-void BackendD3D11::setSampler(const Sampler& value)
+void BackendD3D11::setSampler(Sampler value)
 {
 	D3D11SamplerState.sampler = value;
 	D3D11SamplerStateDirty = true;
 }
 
-void BackendD3D11::setTextureAddressMode(const TextureAddress& value)
+void BackendD3D11::setTextureAddress(TextureAddress value)
 {
 	D3D11SamplerState.textureAddress = value;
 	D3D11SamplerStateDirty = true;
