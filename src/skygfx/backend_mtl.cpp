@@ -25,8 +25,8 @@ static MTL::RenderCommandEncoder* gRenderCommandEncoder = nullptr;
 static MTL::PrimitiveType gPrimitiveType = MTL::PrimitiveType::PrimitiveTypeTriangle;
 static MTL::IndexType gIndexType = MTL::IndexType::IndexTypeUInt16;
 static MTL::Buffer* gIndexBuffer = nullptr;
-static Buffer gVertexBuffer;
-static MTL::Texture* gTexture = nullptr;
+static MTL::Buffer* gVertexBuffer = nullptr;
+static std::unordered_map<uint32_t, MTL::Texture*> gTextures;
 static MTL::SamplerState* gSamplerState = nullptr;
 static std::unordered_map<uint32_t, MTL::Buffer*> gUniformBuffers;
 static CullMode gCullMode = CullMode::None;
@@ -84,7 +84,7 @@ public:
 			//{ Vertex::Attribute::Format::R8UN, },
 			//{ Vertex::Attribute::Format::R8G8UN, },
 			//{ Vertex::Attribute::Format::R8G8B8UN, },
-			//{ Vertex::Attribute::Format::R8G8B8A8UN, }
+			{ Vertex::Attribute::Format::R8G8B8A8UN, MTL::VertexFormat::VertexFormatUChar4Normalized }
 		};
 
 		auto vertex_descriptor = MTL::VertexDescriptor::alloc()->init();
@@ -242,7 +242,7 @@ BackendMetal::~BackendMetal()
 {
 	end();
 	
-	for (auto [slot, buffer] : gUniformBuffers)
+	for (auto [binding, buffer] : gUniformBuffers)
 	{
 		buffer->release();
 	}
@@ -282,7 +282,7 @@ void BackendMetal::setScissor(std::optional<Scissor> scissor)
 void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureDataMetal*)handle;
-	gTexture = texture->texture;
+	gTextures[binding] = texture->texture;
 }
 
 void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
@@ -301,7 +301,19 @@ void BackendMetal::setShader(ShaderHandle* handle)
 
 void BackendMetal::setVertexBuffer(const Buffer& buffer)
 {
-	gVertexBuffer = buffer;
+	if (gVertexBuffer == nullptr)
+	{
+		gVertexBuffer = gDevice->newBuffer(buffer.size, MTL::ResourceStorageModeManaged);
+	}
+	
+	if (gVertexBuffer->length() < buffer.size)
+	{
+		gVertexBuffer->release();
+		gVertexBuffer = gDevice->newBuffer(buffer.size, MTL::ResourceStorageModeManaged);
+	}
+
+	memcpy(gVertexBuffer->contents(), buffer.data, buffer.size);
+	gVertexBuffer->didModifyRange(NS::Range::Make(0, buffer.size));
 }
 
 void BackendMetal::setIndexBuffer(const Buffer& buffer)
@@ -445,23 +457,19 @@ void BackendMetal::destroyShader(ShaderHandle* handle)
 
 void BackendMetal::prepareForDrawing()
 {
-	if (gTexture)
+	for (auto [binding, texture] : gTextures)
 	{
-		gRenderCommandEncoder->setFragmentTexture(gTexture, 0);
+		gRenderCommandEncoder->setFragmentTexture(texture, binding);
+		gRenderCommandEncoder->setFragmentSamplerState(gSamplerState, binding);
 	}
-	
-	if (gSamplerState)
-	{
-		gRenderCommandEncoder->setFragmentSamplerState(gSamplerState, 0);
-	}
-	
-	gRenderCommandEncoder->setVertexBytes(gVertexBuffer.data, gVertexBuffer.size, gVertexBufferStageBinding);
+
+	gRenderCommandEncoder->setVertexBuffer(gVertexBuffer, 0, gVertexBufferStageBinding);
 	gRenderCommandEncoder->setRenderPipelineState(gShader->pso);
 
-	for (auto [slot, buffer] : gUniformBuffers)
+	for (auto [binding, buffer] : gUniformBuffers)
 	{
-		gRenderCommandEncoder->setVertexBuffer(buffer, 0, slot);
-		gRenderCommandEncoder->setFragmentBuffer(buffer, 0, slot);
+		gRenderCommandEncoder->setVertexBuffer(buffer, 0, binding);
+		gRenderCommandEncoder->setFragmentBuffer(buffer, 0, binding);
 	}
 	
 	static const std::unordered_map<CullMode, MTL::CullMode> CullModes = {
