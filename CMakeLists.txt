@@ -39,17 +39,19 @@ endif()
 
 # glew
 
-if (NOT TARGET glew)
-	file(GLOB GLEW_SRC 
-		lib/glew/src/glew.c
-		lib/glew/include/GL/glew.h
-	)
-	add_library(glew STATIC ${GLEW_SRC})
-	target_include_directories(glew PUBLIC lib/glew/include)
-	target_compile_definitions(glew PRIVATE -DGLEW_STATIC)
-	set_property(TARGET glew PROPERTY FOLDER ${LIBS_FOLDER})
+if (NOT ANDROID)
+	if (NOT TARGET glew)
+		file(GLOB GLEW_SRC 
+			lib/glew/src/glew.c
+			lib/glew/include/GL/glew.h
+		)
+		add_library(glew STATIC ${GLEW_SRC})
+		target_include_directories(glew PUBLIC lib/glew/include)
+		target_compile_definitions(glew PRIVATE -DGLEW_STATIC)
+		set_property(TARGET glew PROPERTY FOLDER ${LIBS_FOLDER})
+	endif()
+	target_link_libraries(${PROJECT_NAME} glew)
 endif()
-target_link_libraries(${PROJECT_NAME} glew)
 
 # glslang
 
