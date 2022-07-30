@@ -28,7 +28,7 @@ static MTL::Buffer* gIndexBuffer = nullptr;
 static Buffer gVertexBuffer;
 static MTL::Texture* gTexture = nullptr;
 static MTL::SamplerState* gSamplerState = nullptr;
-static std::unordered_map<int, MTL::Buffer*> gUniformBuffers;
+static std::unordered_map<uint32_t, MTL::Buffer*> gUniformBuffers;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
 
@@ -271,19 +271,15 @@ void BackendMetal::setTopology(Topology topology)
 	gPrimitiveType = TopologyMap.at(topology);
 }
 
-void BackendMetal::setViewport(const Viewport& viewport)
+void BackendMetal::setViewport(std::optional<Viewport> viewport)
 {
 }
 
-void BackendMetal::setScissor(const Scissor& value)
+void BackendMetal::setScissor(std::optional<Scissor> scissor)
 {
 }
 
-void BackendMetal::setScissor(std::nullptr_t value)
-{
-}
-
-void BackendMetal::setTexture(TextureHandle* handle)
+void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureDataMetal*)handle;
 	gTexture = texture->texture;
@@ -327,24 +323,24 @@ void BackendMetal::setIndexBuffer(const Buffer& buffer)
 	gIndexType = buffer.stride == 2 ? MTL::IndexType::IndexTypeUInt16 : MTL::IndexType::IndexTypeUInt32;
 }
 
-void BackendMetal::setUniformBuffer(int slot, void* memory, size_t size)
+void BackendMetal::setUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	auto createBuffer = [&] {
 		return gDevice->newBuffer(size, MTL::ResourceStorageModeManaged);
 	};
 	
-	if (!gUniformBuffers.contains(slot))
+	if (!gUniformBuffers.contains(binding))
 	{
-		gUniformBuffers.insert({ slot, createBuffer() });
+		gUniformBuffers.insert({ binding, createBuffer() });
 	}
 	
-	auto uniform_buffer = gUniformBuffers.at(slot);
+	auto uniform_buffer = gUniformBuffers.at(binding);
 	
 	if (uniform_buffer->length() < size)
 	{
 		uniform_buffer->release();
 		uniform_buffer = createBuffer();
-		gUniformBuffers[slot] = uniform_buffer;
+		gUniformBuffers[binding] = uniform_buffer;
 	}
 
 	memcpy(uniform_buffer->contents(), memory, size);
@@ -355,24 +351,24 @@ void BackendMetal::setBlendMode(const BlendMode& value)
 {
 }
 
-void BackendMetal::setDepthMode(const DepthMode& value)
+void BackendMetal::setDepthMode(std::optional<DepthMode> depth_mode)
 {
 }
 
-void BackendMetal::setStencilMode(const StencilMode& value)
+void BackendMetal::setStencilMode(std::optional<StencilMode> stencil_mode)
 {
 }
 
-void BackendMetal::setCullMode(const CullMode& value)
+void BackendMetal::setCullMode(CullMode cull_mode)
 {
-	gCullMode = value;
+	gCullMode = cull_mode;
 }
 
-void BackendMetal::setSampler(const Sampler& value)
+void BackendMetal::setSampler(Sampler value)
 {
 }
 
-void BackendMetal::setTextureAddressMode(const TextureAddress& value)
+void BackendMetal::setTextureAddress(TextureAddress value)
 {
 }
 

@@ -15,22 +15,21 @@ namespace skygfx
 		void resize(uint32_t width, uint32_t height) override;
 
 		void setTopology(Topology topology) override;
-		void setViewport(const Viewport& viewport) override;
-		void setScissor(const Scissor& value) override;
-		void setScissor(std::nullptr_t value) override;
-		void setTexture(TextureHandle* handle) override;
+		void setViewport(std::optional<Viewport> viewport) override;
+		void setScissor(std::optional<Scissor> scissor) override;
+		void setTexture(uint32_t binding, TextureHandle* handle) override;
 		void setRenderTarget(RenderTargetHandle* handle) override;
 		void setRenderTarget(std::nullptr_t value) override;
 		void setShader(ShaderHandle* handle) override;
 		void setVertexBuffer(const Buffer& buffer) override;
 		void setIndexBuffer(const Buffer& buffer) override;
-		void setUniformBuffer(int slot, void* memory, size_t size) override;
+		void setUniformBuffer(uint32_t binding, void* memory, size_t size) override;
 		void setBlendMode(const BlendMode& value) override;
-		void setDepthMode(const DepthMode& value) override;
-		void setStencilMode(const StencilMode& value) override;
-		void setCullMode(const CullMode& value) override;
-		void setSampler(const Sampler& value) override;
-		void setTextureAddressMode(const TextureAddress& value) override;
+		void setDepthMode(std::optional<DepthMode> depth_mode) override;
+		void setStencilMode(std::optional<StencilMode> stencil_mode) override;
+		void setCullMode(CullMode cull_mode) override;
+		void setSampler(Sampler value) override;
+		void setTextureAddress(TextureAddress value) override;
 
 		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) override;
