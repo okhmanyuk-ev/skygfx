@@ -181,13 +181,39 @@ std::string skygfx::CompileSpirvToHlsl(const std::vector<uint32_t>& spirv)
 	return compiler.compile();
 }
 
-std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv)
+std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool es, uint32_t version)
 {
 	auto compiler = spirv_cross::CompilerGLSL(spirv);
 
 	spirv_cross::CompilerGLSL::Options options;
+	options.es = es;
+	options.version = version;
 	compiler.set_common_options(options);
+	
+	if (es && version <= 300)
+	{
+		// https://github.com/KhronosGroup/SPIRV-Cross/issues/1104
+		
+		auto stage = compiler.get_entry_points_and_stages()[0].execution_model;
 
+		auto resources = compiler.get_shader_resources();
+		
+		if (stage == spv::ExecutionModelFragment)
+		{
+			for (const auto& input : resources.stage_inputs)
+			{
+				compiler.set_name(input.id, "varying");
+			}
+		}
+		else if (stage == spv::ExecutionModelVertex)
+		{
+			for (const auto& output : resources.stage_outputs)
+			{
+				compiler.set_name(output.id, "varying");
+			}
+		}
+	}
+	
 	return compiler.compile();
 }
 
