@@ -277,9 +277,16 @@ ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 
 	for (const auto& binding : bindings)
 	{
+		auto type = DescriptorTypeMap.at(binding->descriptor_type);
+		
 		ShaderReflection::DescriptorSet descriptor_set;
+		descriptor_set.type = type;
 		descriptor_set.binding = binding->binding;
-		descriptor_set.type = DescriptorTypeMap.at(binding->descriptor_type);
+		descriptor_set.name = binding->name;
+		
+		if (type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
+			descriptor_set.type_name = binding->block.type_description->type_name;
+
 		result.descriptor_sets.push_back(descriptor_set);
 	}
 

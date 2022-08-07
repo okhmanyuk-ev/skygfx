@@ -30,6 +30,8 @@ namespace skygfx
 			};
 
 			int binding;
+			std::string name;
+			std::string type_name;
 			Type type;
 		};
 
