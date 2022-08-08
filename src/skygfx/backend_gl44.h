@@ -3,6 +3,7 @@
 #ifdef SKYGFX_HAS_OPENGL
 
 #include "backend.h"
+#include <unordered_map>
 
 namespace skygfx
 {

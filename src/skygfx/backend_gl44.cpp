@@ -6,16 +6,24 @@
 #include <stdexcept>
 #include <iostream>
 
-#define GLEW_STATIC
-#include <GL/glew.h>
-#include <GL/GL.h>
-#include <GL/wglew.h>
-
-#pragma comment(lib, "opengl32")
-#pragma comment(lib, "glu32")
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+	#define GLEW_STATIC
+	#include <GL/glew.h>
+	#include <GL/GL.h>
+	#include <GL/wglew.h>
+	#pragma comment(lib, "opengl32")
+	#pragma comment(lib, "glu32")
+#elif defined(SKYGFX_PLATFORM_APPLE)
+	#include <OpenGLES/ES3/gl.h>
+	#include <OpenGLES/ES3/glext.h>
+	#import <Foundation/Foundation.h>
+	#import <UIKit/UIKit.h>
+	#import <GLKit/GLKit.h>
+#endif
 
 using namespace skygfx;
 
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
 	const GLchar* message, const void* userParam)
 {
@@ -68,6 +76,23 @@ void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id, GLenum se
 		", id: " << id <<
 		", severity: " << severity_str << 
 		", msg: " << message << std::endl;
+}
+#endif
+
+void CheckErrors()
+{
+	auto error = glGetError();
+	/*
+	 GL_NO_ERROR	0	No user error reported since the last call to glGetError.
+	 GL_INVALID_ENUM	1280	Set when an enumeration parameter is not legal.
+	 GL_INVALID_VALUE	1281	Set when a value parameter is not legal.
+	 GL_INVALID_OPERATION	1282	Set when the state for a command is not legal for its given parameters.
+	 GL_STACK_OVERFLOW	1283	Set when a stack pushing operation causes a stack overflow.
+	 GL_STACK_UNDERFLOW	1284	Set when a stack popping operation occurs while the stack is at its lowest point.
+	 GL_OUT_OF_MEMORY	1285	Set when a memory allocation operation cannot allocate (enough) memory.
+	 GL_INVALID_FRAMEBUFFER_OPERATION	1286	Set when reading or writing to a framebuffer that is not complete.
+	 */
+	assert(error == GL_NO_ERROR);
 }
 
 static const std::unordered_map<Vertex::Attribute::Format, GLint> SizeMap = {
@@ -131,8 +156,18 @@ public:
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
-		auto glsl_vert = CompileSpirvToGlsl(vertex_shader_spirv);
-		auto glsl_frag = CompileSpirvToGlsl(fragment_shader_spirv);
+#if defined(SKYGFX_PLATFORM_APPLE)
+		bool es = true;
+		uint32_t version = 300;
+		// TODO: android can be 320
+		// TODO: since 310 we have uniform(std140, binding = 1), 300 have uniform(std140)
+#elif defined(SKYGFX_PLATFORM_WINDOWS)
+		bool es = false;
+		uint32_t version = 450;
+#endif
+
+		auto glsl_vert = skygfx::CompileSpirvToGlsl(vertex_shader_spirv, es, version);
+		auto glsl_frag = skygfx::CompileSpirvToGlsl(fragment_shader_spirv, es, version);
 
 		auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
 		auto v = glsl_vert.c_str();
@@ -168,6 +203,18 @@ public:
 			throw std::runtime_error(errorLog);
 		}
 
+		GLint link_status = 0;
+		glGetProgramiv(program, GL_LINK_STATUS, &link_status);
+		if (link_status == GL_FALSE)
+		{
+			GLint maxLength = 0;
+			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
+			std::string errorLog;
+			errorLog.resize(maxLength);
+			glGetProgramInfoLog(program, maxLength, &maxLength, &errorLog[0]);
+			throw std::runtime_error(errorLog);
+		}
+		
 		program = glCreateProgram();
 		glAttachShader(program, vertexShader);
 		glAttachShader(program, fragmentShader);
@@ -183,9 +230,27 @@ public:
 			const auto& attrib = layout.attributes.at(i);
 
 			glEnableVertexAttribArray(i);
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 			glVertexAttribFormat(i, SizeMap.at(attrib.format), TypeMap.at(attrib.format), 
 				NormalizeMap.at(attrib.format), (GLuint)attrib.offset);
 			glVertexAttribBinding(i, 0);
+#endif
+		}
+		
+		if (es && version <= 300)
+		{
+			auto fix_bindings = [&](const ShaderReflection& reflection) {
+				for (const auto& descriptor_set : reflection.descriptor_sets)
+				{
+					if (descriptor_set.type != ShaderReflection::DescriptorSet::Type::UniformBuffer)
+						continue;
+					
+					auto block_index = glGetUniformBlockIndex(program, descriptor_set.type_name.c_str());
+					glUniformBlockBinding(program, block_index, descriptor_set.binding);
+				}
+			};
+			fix_bindings(MakeSpirvReflection(vertex_shader_spirv));
+			fix_bindings(MakeSpirvReflection(fragment_shader_spirv));
 		}
 	}
 
@@ -199,6 +264,16 @@ public:
 	{
 		glUseProgram(program);
 		glBindVertexArray(vao);
+#if defined(SKYGFX_PLATFORM_APPLE)
+		for (int i = 0; i < layout.attributes.size(); i++)
+		{
+			const auto& attrib = layout.attributes.at(i);
+
+			glVertexAttribPointer(i, SizeMap.at(attrib.format),
+				TypeMap.at(attrib.format), NormalizeMap.at(attrib.format),
+				(GLsizei)layout.stride, (void*)attrib.offset);
+		}
+#endif
 	}
 };
 
@@ -306,8 +381,12 @@ public:
 	}
 };
 
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 static HGLRC WglContext;
 static HDC gHDC;
+#elif defined(SKYGFX_PLATFORM_APPLE)
+static GLKView* gGLKView = nullptr;
+#endif
 
 static GLenum GLTopology;
 static GLenum GLIndexType;
@@ -319,6 +398,7 @@ static RenderTargetDataGL44* GLCurrentRenderTarget = nullptr;
 
 BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 {
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 	gHDC = GetDC((HWND)window);
 
 	PIXELFORMATDESCRIPTOR pfd;
@@ -381,7 +461,19 @@ BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 
 	glEnable(GL_DEBUG_OUTPUT);
 	glDebugMessageCallback(MessageCallback, 0);
-
+#elif defined(SKYGFX_PLATFORM_APPLE)
+	auto _window = (UIWindow*)window;
+	auto rootView = [[_window rootViewController] view];
+	gGLKView = [[GLKView alloc] initWithFrame:[_window frame]];
+	[gGLKView setContext:[[EAGLContext alloc]initWithAPI:kEAGLRenderingAPIOpenGLES3]];
+	[gGLKView setDrawableColorFormat:GLKViewDrawableColorFormatRGBA8888];
+	[gGLKView setDrawableDepthFormat:GLKViewDrawableDepthFormat24];
+	[gGLKView setDrawableStencilFormat:GLKViewDrawableStencilFormat8];
+	[gGLKView setDrawableMultisample:GLKViewDrawableMultisampleNone];
+	[gGLKView setAutoresizingMask:UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight];
+	[EAGLContext setCurrentContext:gGLKView.context];
+	[rootView addSubview:gGLKView];
+#endif
 	glGenBuffers(1, &GLVertexBuffer);
 	glGenBuffers(1, &GLIndexBuffer);
 	glGenBuffers(1, &GLPixelBuffer);
@@ -401,7 +493,9 @@ BackendGL44::~BackendGL44()
 		glDeleteBuffers(1, &buffer);
 	}
 	
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 	wglDeleteContext(WglContext);
+#endif
 }
 
 void BackendGL44::resize(uint32_t width, uint32_t height)
@@ -476,7 +570,11 @@ void BackendGL44::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendGL44::setRenderTarget(std::nullptr_t value)
 {
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#elif defined(SKYGFX_PLATFORM_APPLE)
+	[gGLKView bindDrawable];
+#endif
 	GLCurrentRenderTarget = nullptr;
 
 	if (!mViewport.has_value())
@@ -696,7 +794,12 @@ void BackendGL44::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Text
 
 void BackendGL44::present()
 {
+	CheckErrors();
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 	SwapBuffers(gHDC);
+#elif defined(SKYGFX_PLATFORM_APPLE)
+	[gGLKView display];
+#endif
 }
 
 TextureHandle* BackendGL44::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
@@ -783,8 +886,11 @@ void BackendGL44::prepareForDrawing()
 			(GLint)viewport.size.x,
 			(GLint)viewport.size.y);
 
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 		glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
-
+#elif defined(SKYGFX_PLATFORM_APPLE)
+		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
+#endif
 	}
 }
 
@@ -806,7 +912,9 @@ void BackendGL44::setInternalVertexBuffer(const Buffer& value)
 		glUnmapBuffer(GL_ARRAY_BUFFER);
 	}
 
+#if defined(PLATFORM_WINDOWS)
 	glBindVertexBuffer(0, GLVertexBuffer, 0, (GLsizei)value.stride);
+#endif
 }
 
 void BackendGL44::setInternalIndexBuffer(const Buffer& value)
