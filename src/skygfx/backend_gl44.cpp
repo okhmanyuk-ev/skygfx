@@ -265,7 +265,11 @@ public:
 	{
 		glUseProgram(program);
 		glBindVertexArray(vao);
+	}
+	
 #if defined(SKYGFX_PLATFORM_APPLE)
+	void applyLayout()
+	{
 		for (int i = 0; i < layout.attributes.size(); i++)
 		{
 			const auto& attrib = layout.attributes.at(i);
@@ -274,8 +278,8 @@ public:
 				TypeMap.at(attrib.format), NormalizeMap.at(attrib.format),
 				(GLsizei)layout.stride, (void*)attrib.offset);
 		}
-#endif
 	}
+#endif
 };
 
 class TextureDataGL44
@@ -850,6 +854,8 @@ void BackendGL44::destroyShader(ShaderHandle* handle)
 
 void BackendGL44::prepareForDrawing()
 {
+	assert(gShader);
+	
 	if (gShaderDirty)
 	{
 		gShader->apply();
@@ -865,6 +871,9 @@ void BackendGL44::prepareForDrawing()
 	if (mVertexBufferDirty)
 	{
 		setInternalVertexBuffer(mVertexBuffer);
+#if defined(SKYGFX_PLATFORM_APPLE)
+		gShader->applyLayout();
+#endif
 		mVertexBufferDirty = false;
 	}
 	
