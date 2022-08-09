@@ -850,6 +850,12 @@ void BackendGL44::destroyShader(ShaderHandle* handle)
 
 void BackendGL44::prepareForDrawing()
 {
+	if (gShaderDirty)
+	{
+		gShader->apply();
+		gShaderDirty = false;
+	}
+
 	if (mIndexBufferDirty)
 	{
 		setInternalIndexBuffer(mIndexBuffer);
@@ -860,12 +866,6 @@ void BackendGL44::prepareForDrawing()
 	{
 		setInternalVertexBuffer(mVertexBuffer);
 		mVertexBufferDirty = false;
-	}
-
-	if (gShaderDirty)
-	{
-		gShader->apply();
-		gShaderDirty = false;
 	}
 	
 	if (mTexParametersDirty)
@@ -924,7 +924,7 @@ void BackendGL44::setInternalVertexBuffer(const Buffer& value)
 		glUnmapBuffer(GL_ARRAY_BUFFER);
 	}
 
-#if defined(PLATFORM_WINDOWS)
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 	glBindVertexBuffer(0, GLVertexBuffer, 0, (GLsizei)value.stride);
 #endif
 }
