@@ -147,8 +147,8 @@ private:
 	GLuint vao;
 
 public:
-	ShaderDataGL44(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
-		std::vector<std::string> defines)
+	ShaderDataGL44(const Vertex::Layout& _layout, const std::string& vertex_code, const std::string& fragment_code,
+		std::vector<std::string> defines) : layout(_layout)
 	{
 		AddShaderLocationDefines(layout, defines);
 		defines.push_back("FLIP_TEXCOORD_Y");
@@ -202,7 +202,12 @@ public:
 			glGetShaderInfoLog(fragmentShader, maxLength, &maxLength, &errorLog[0]);
 			throw std::runtime_error(errorLog);
 		}
-
+		
+		program = glCreateProgram();
+		glAttachShader(program, vertexShader);
+		glAttachShader(program, fragmentShader);
+		glLinkProgram(program);
+		
 		GLint link_status = 0;
 		glGetProgramiv(program, GL_LINK_STATUS, &link_status);
 		if (link_status == GL_FALSE)
@@ -215,10 +220,6 @@ public:
 			throw std::runtime_error(errorLog);
 		}
 		
-		program = glCreateProgram();
-		glAttachShader(program, vertexShader);
-		glAttachShader(program, fragmentShader);
-		glLinkProgram(program);
 		glDeleteShader(vertexShader);
 		glDeleteShader(fragmentShader);
 
@@ -395,6 +396,8 @@ static GLuint GLIndexBuffer;
 static std::unordered_map<uint32_t, GLuint> GLUniformBuffers;
 static GLuint GLPixelBuffer;
 static RenderTargetDataGL44* GLCurrentRenderTarget = nullptr;
+static ShaderDataGL44* gShader = nullptr;
+static bool gShaderDirty = false;
 
 BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 {
@@ -584,7 +587,12 @@ void BackendGL44::setRenderTarget(std::nullptr_t value)
 void BackendGL44::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderDataGL44*)handle;
-	shader->apply();
+
+	if (shader == gShader)
+		return;
+	
+	gShader = shader;
+	gShaderDirty = true;
 }
 
 void BackendGL44::setVertexBuffer(const Buffer& buffer)
@@ -842,8 +850,6 @@ void BackendGL44::destroyShader(ShaderHandle* handle)
 
 void BackendGL44::prepareForDrawing()
 {
-	// opengl crashes when index or vertex buffers are binded before VAO from shader classes 
-
 	if (mIndexBufferDirty)
 	{
 		setInternalIndexBuffer(mIndexBuffer);
@@ -856,6 +862,12 @@ void BackendGL44::prepareForDrawing()
 		mVertexBufferDirty = false;
 	}
 
+	if (gShaderDirty)
+	{
+		gShader->apply();
+		gShaderDirty = false;
+	}
+	
 	if (mTexParametersDirty)
 	{
 		refreshTexParameters();
