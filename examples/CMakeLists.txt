@@ -14,10 +14,10 @@ set(RESOURCES
 
 set(LIBS_FOLDER "libs")
 
-# sky-gfx
+# skygfx
 
 add_subdirectory(../ ${CMAKE_CURRENT_BINARY_DIR}/skygfx)
-set_property(TARGET sky-gfx PROPERTY FOLDER ${LIBS_FOLDER})
+set_property(TARGET skygfx PROPERTY FOLDER ${LIBS_FOLDER})
 
 # glfw
 
@@ -30,12 +30,12 @@ set_property(TARGET update_mappings PROPERTY FOLDER ${LIBS_FOLDER}/glfw)
 # triangle
 
 add_executable(triangle triangle/main.cpp)
-target_link_libraries(triangle glfw sky-gfx)
+target_link_libraries(triangle glfw skygfx)
 
 # texture
 
 add_executable(texture texture/main.cpp ${RESOURCES})
-target_link_libraries(texture glfw sky-gfx)
+target_link_libraries(texture glfw skygfx)
 target_include_directories(texture PUBLIC lib/stb)
 set_target_properties(texture PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
@@ -43,7 +43,7 @@ set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
 # uniform_buffer
 
 add_executable(uniform_buffer uniform/main.cpp ${RESOURCES})
-target_link_libraries(uniform_buffer glfw sky-gfx)
+target_link_libraries(uniform_buffer glfw skygfx)
 target_include_directories(uniform_buffer PUBLIC lib/stb)
 set_target_properties(uniform_buffer PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(uniform_buffer PROPERTIES RESOURCE ${RESOURCES})
@@ -51,12 +51,12 @@ set_target_properties(uniform_buffer PROPERTIES RESOURCE ${RESOURCES})
 # cube
 
 add_executable(cube cube/main.cpp)
-target_link_libraries(cube glfw sky-gfx)
+target_link_libraries(cube glfw skygfx)
 
 # textured cube
 
 add_executable(textured_cube textured_cube/main.cpp ${RESOURCES})
-target_link_libraries(textured_cube glfw sky-gfx)
+target_link_libraries(textured_cube glfw skygfx)
 target_include_directories(textured_cube PUBLIC lib/stb)
 set_target_properties(textured_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(textured_cube PROPERTIES RESOURCE ${RESOURCES})
@@ -64,7 +64,7 @@ set_target_properties(textured_cube PROPERTIES RESOURCE ${RESOURCES})
 # light
 
 add_executable(light light/main.cpp ${RESOURCES})
-target_link_libraries(light glfw sky-gfx)
+target_link_libraries(light glfw skygfx)
 target_include_directories(light PUBLIC lib/stb)
 set_target_properties(light PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(light PROPERTIES RESOURCE ${RESOURCES})
@@ -72,4 +72,4 @@ set_target_properties(light PROPERTIES RESOURCE ${RESOURCES})
 # render target
 
 add_executable(render_target render_target/main.cpp)
-target_link_libraries(render_target glfw sky-gfx)
+target_link_libraries(render_target glfw skygfx)
