@@ -224,6 +224,9 @@ namespace skygfx
 
 	struct DepthMode
 	{
+		DepthMode() {}
+		DepthMode(ComparisonFunc _func) : func(_func) {}
+
 		ComparisonFunc func = ComparisonFunc::Always;
 	};
 
