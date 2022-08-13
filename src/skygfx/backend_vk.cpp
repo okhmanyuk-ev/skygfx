@@ -22,6 +22,7 @@ static bool gWorking = false;
 static uint32_t gWidth = 0;
 static uint32_t gHeight = 0;
 static const uint32_t gMinImageCount = 2; // TODO: https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
+static ExecuteList gExecuteAfterPresent;
 
 struct FrameVK
 {
@@ -43,13 +44,14 @@ static struct
 
 static std::vector<FrameVK> gFrames;
 
-static int gUniformBufferIndex = 0;
-
 static uint32_t gSemaphoreIndex = 0;
 static uint32_t gFrameIndex = 0;
 
-static std::unordered_map<uint32_t, vk::ImageView> gTexturesPushQueue;
-static std::unordered_map<uint32_t, vk::Buffer> gUniformBuffersPushQueue;
+class UniformBufferDataVK;
+class TextureDataVK;
+
+static std::unordered_map<uint32_t, TextureDataVK*> gTextures;
+static std::unordered_map<uint32_t, UniformBufferDataVK*> gUniformBuffers;
 
 static std::optional<Scissor> gScissor;
 static bool gScissorDirty = true;
@@ -211,6 +213,7 @@ private:
 	vk::raii::ShaderModule fragment_shader_module = nullptr;
 	vk::VertexInputBindingDescription vertex_input_binding_description;
 	std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
+	std::vector<vk::DescriptorSetLayoutBinding> required_bindings;
 
 public:
 	ShaderDataVK(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -233,8 +236,6 @@ public:
 			{ ShaderReflection::DescriptorSet::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
 			{ ShaderReflection::DescriptorSet::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer }
 		};
-		
-		std::vector<vk::DescriptorSetLayoutBinding> bindings;
 
 		for (const auto& reflection : { vertex_shader_reflection, fragment_shader_reflection })
 		{
@@ -242,7 +243,7 @@ public:
 			{
 				bool overwritten = false;
 
-				for (auto& binding : bindings)
+				for (auto& binding : required_bindings)
 				{
 					if (binding.binding == descriptor_set.binding)
 					{
@@ -261,13 +262,13 @@ public:
 					.setBinding(descriptor_set.binding)
 					.setStageFlags(StageMap.at(reflection.stage));
 
-				bindings.push_back(binding);
+				required_bindings.push_back(binding);
 			}
 		}
 
 		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
 			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
-			.setBindings(bindings);
+			.setBindings(required_bindings);
 
 		descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
@@ -548,6 +549,8 @@ public:
 
 class UniformBufferDataVK : public BufferDataVK
 {
+	friend class BackendVK;
+
 public:
 	UniformBufferDataVK(void* memory, size_t size) :
 		BufferDataVK(memory, size, vk::BufferUsageFlagBits::eUniformBuffer)
@@ -725,6 +728,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 BackendVK::~BackendVK()
 {
 	end();
+	gExecuteAfterPresent.flush();
 }
 
 void BackendVK::resize(uint32_t width, uint32_t height)
@@ -760,7 +764,7 @@ void BackendVK::setScissor(std::optional<Scissor> scissor)
 void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureDataVK*)handle;
-	gTexturesPushQueue[binding] = *texture->image_view;
+	gTextures[binding] = texture;
 }
 
 void BackendVK::setRenderTarget(RenderTargetHandle* handle)
@@ -792,8 +796,7 @@ void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferDataVK*)handle;
 
-	gUniformBuffersPushQueue[binding] = *buffer->buffer;
-	gUniformBufferIndex += 1;
+	gUniformBuffers[binding] = buffer;
 }
 
 void BackendVK::setBlendMode(const BlendMode& value)
@@ -972,6 +975,8 @@ void BackendVK::present()
 
 	gQueue.waitIdle();
 
+	gExecuteAfterPresent.flush();
+	
 	gSemaphoreIndex = (gSemaphoreIndex + 1) % gFrames.size(); // TODO: maybe gFrameIndex can be used for both
 
 	begin();
@@ -985,8 +990,26 @@ TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, uint32_
 
 void BackendVK::destroyTexture(TextureHandle* handle)
 {
-	auto texture = (TextureDataVK*)handle;
-	delete texture;
+	gExecuteAfterPresent.add([handle] {
+		auto texture = (TextureDataVK*)handle;
+
+		auto remove_from_global = [&] {
+			for (const auto& [binding, _texture] : gTextures)
+			{
+				if (texture == _texture)
+				{
+					gTextures.erase(binding);
+					return false;
+				}
+			}
+
+			return true;
+		};
+
+		while (!remove_from_global()) {}
+
+		delete texture;
+	});
 }
 
 RenderTargetHandle* BackendVK::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
@@ -1025,8 +1048,10 @@ VertexBufferHandle* BackendVK::createVertexBuffer(void* memory, size_t size, siz
 
 void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferDataVK*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (VertexBufferDataVK*)handle;
+		delete buffer;
+	});
 }
 
 IndexBufferHandle* BackendVK::createIndexBuffer(void* memory, size_t size, size_t stride)
@@ -1037,8 +1062,10 @@ IndexBufferHandle* BackendVK::createIndexBuffer(void* memory, size_t size, size_
 
 void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferDataVK*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (IndexBufferDataVK*)handle;
+		delete buffer;
+	});
 }
 
 UniformBufferHandle* BackendVK::createUniformBuffer(void* memory, size_t size)
@@ -1049,8 +1076,26 @@ UniformBufferHandle* BackendVK::createUniformBuffer(void* memory, size_t size)
 
 void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferDataVK*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (UniformBufferDataVK*)handle;
+
+		auto remove_from_global = [&] {
+			for (const auto& [binding, _buffer] : gUniformBuffers)
+			{
+				if (buffer == _buffer)
+				{
+					gUniformBuffers.erase(binding);
+					return false;
+				}
+			}
+
+			return true;
+		};
+
+		while (!remove_from_global()) {}
+
+		delete buffer;
+	});
 }
 
 void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
@@ -1182,8 +1227,6 @@ void BackendVK::begin()
 {
 	assert(!gWorking);
 	gWorking = true;
-
-	gUniformBufferIndex = 0;
 
 	gViewportDirty = true;
 	gScissorDirty = true;
@@ -1331,40 +1374,44 @@ void BackendVK::prepareForDrawing()
 
 	auto pipeline_layout = *gShader->pipeline_layout;
 
-	for (const auto& [binding, image_view] : gTexturesPushQueue)
+	for (const auto& required_binding : gShader->required_bindings)
 	{
-		auto descriptor_image_info = vk::DescriptorImageInfo()
-			.setSampler(*gSampler)
-			.setImageView(image_view)
-			.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+		auto binding = required_binding.binding;
 
-		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDescriptorCount(1)
-			.setDstBinding(binding)
-			.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-			.setPImageInfo(&descriptor_image_info);
+		if (required_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
+		{
+			auto texture = gTextures.at(binding);
 
-		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+			auto descriptor_image_info = vk::DescriptorImageInfo()
+				.setSampler(*gSampler)
+				.setImageView(*texture->image_view)
+				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+
+			auto write_descriptor_set = vk::WriteDescriptorSet()
+				.setDescriptorCount(1)
+				.setDstBinding(binding)
+				.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+				.setPImageInfo(&descriptor_image_info);
+
+			gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+		}
+		else if (required_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
+		{
+			auto buffer = gUniformBuffers.at(binding);
+
+			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
+				.setBuffer(*buffer->buffer)
+				.setRange(VK_WHOLE_SIZE);
+
+			auto write_descriptor_set = vk::WriteDescriptorSet()
+				.setDescriptorCount(1)
+				.setDstBinding(binding)
+				.setDescriptorType(vk::DescriptorType::eUniformBuffer)
+				.setPBufferInfo(&descriptor_buffer_info);
+
+			gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+		}
 	}
-
-	gTexturesPushQueue.clear();
-
-	for (const auto& [binding, buffer] : gUniformBuffersPushQueue)
-	{
-		auto descriptor_buffer_info = vk::DescriptorBufferInfo()
-			.setBuffer(buffer)
-			.setRange(VK_WHOLE_SIZE);
-
-		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDescriptorCount(1)
-			.setDstBinding(binding)
-			.setDescriptorType(vk::DescriptorType::eUniformBuffer)
-			.setPBufferInfo(&descriptor_buffer_info);
-
-		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
-	}
-
-	gUniformBuffersPushQueue.clear();
 
 	if (gViewportDirty)
 	{

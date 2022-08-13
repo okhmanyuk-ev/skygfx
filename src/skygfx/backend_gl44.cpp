@@ -485,6 +485,8 @@ static IndexBufferDataGL* gIndexBuffer = nullptr;
 static bool gIndexBufferDirty = false;
 static GLenum gIndexType;
 
+static ExecuteList gExecuteAfterPresent;
+
 BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 {
 #if defined(SKYGFX_PLATFORM_WINDOWS)
@@ -550,6 +552,9 @@ BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 
 	glEnable(GL_DEBUG_OUTPUT);
 	glDebugMessageCallback(MessageCallback, 0);
+
+	bool vsync = false;
+	wglSwapIntervalEXT(vsync ? 1 : 0);
 #elif defined(SKYGFX_PLATFORM_APPLE)
 	auto _window = (UIWindow*)window;
 	auto rootView = [[_window rootViewController] view];
@@ -573,6 +578,8 @@ BackendGL44::~BackendGL44()
 {
 	glDeleteBuffers(1, &GLPixelBuffer);
 	
+	gExecuteAfterPresent.flush();
+
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	wglDeleteContext(WglContext);
 #endif
@@ -848,6 +855,7 @@ void BackendGL44::draw(uint32_t vertex_count, uint32_t vertex_offset)
 
 void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
+	assert(gIndexBuffer);
 	prepareForDrawing();
 	uint32_t index_size = gIndexType == GL_UNSIGNED_INT ? 4 : 2;
 	glDrawElements(gTopology, (GLsizei)index_count, gIndexType, (void*)(size_t)(index_offset * index_size));
@@ -892,6 +900,8 @@ void BackendGL44::present()
 #elif defined(SKYGFX_PLATFORM_APPLE)
 	[gGLKView display];
 #endif
+
+	gExecuteAfterPresent.flush();
 }
 
 TextureHandle* BackendGL44::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
@@ -940,8 +950,14 @@ VertexBufferHandle* BackendGL44::createVertexBuffer(void* memory, size_t size, s
 
 void BackendGL44::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferDataGL*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (VertexBufferDataGL*)handle;
+
+		if (gVertexBuffer == buffer)
+			gVertexBuffer = nullptr;
+
+		delete buffer;
+	});
 }
 
 IndexBufferHandle* BackendGL44::createIndexBuffer(void* memory, size_t size, size_t stride)
@@ -952,8 +968,14 @@ IndexBufferHandle* BackendGL44::createIndexBuffer(void* memory, size_t size, siz
 
 void BackendGL44::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferDataGL*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (IndexBufferDataGL*)handle;
+
+		if (gIndexBuffer == buffer)
+			gIndexBuffer = nullptr;
+
+		delete buffer;
+	});
 }
 
 UniformBufferHandle* BackendGL44::createUniformBuffer(void* memory, size_t size)
@@ -964,8 +986,10 @@ UniformBufferHandle* BackendGL44::createUniformBuffer(void* memory, size_t size)
 
 void BackendGL44::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferDataGL*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (UniformBufferDataGL*)handle;
+		delete buffer;
+	});
 }
 
 void BackendGL44::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
@@ -977,7 +1001,8 @@ void BackendGL44::writeUniformBufferMemory(UniformBufferHandle* handle, void* me
 void BackendGL44::prepareForDrawing()
 {
 	assert(gShader);
-	
+	assert(gVertexBuffer);
+
 	if (gShaderDirty)
 	{
 		gShader->apply();
