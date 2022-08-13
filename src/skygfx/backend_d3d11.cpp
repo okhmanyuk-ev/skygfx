@@ -302,9 +302,10 @@ class BufferDataD3D11
 
 private:
 	ID3D11Buffer* buffer;
+	size_t size;
 
 public:
-	BufferDataD3D11(void* memory, size_t size, D3D11_BIND_FLAG bind_flags)
+	BufferDataD3D11(void* memory, size_t _size, D3D11_BIND_FLAG bind_flags) : size(_size)
 	{
 		D3D11_BUFFER_DESC desc = {};
 		desc.ByteWidth = static_cast<UINT>(size);
@@ -321,11 +322,12 @@ public:
 		D3D11Release(buffer);
 	}
 
-	void write(void* memory, size_t size)
+	void write(void* memory, size_t _size)
 	{
+		assert(_size <= size);
 		D3D11_MAPPED_SUBRESOURCE resource;
 		D3D11Context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-		memcpy(resource.pData, memory, size);
+		memcpy(resource.pData, memory, _size);
 		D3D11Context->Unmap(buffer, 0);
 	}
 };
@@ -422,7 +424,9 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	D3D11SwapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
 	createMainRenderTarget(width, height);
 	setRenderTarget(nullptr); // TODO: do it when nullptr was before
-	mViewportDirty = true;
+
+	if (!mViewport.has_value())
+		mViewportDirty = true;
 }
 
 void BackendD3D11::setTopology(Topology topology)
@@ -805,10 +809,24 @@ void BackendD3D11::destroyVertexBuffer(VertexBufferHandle* handle)
 	delete buffer;
 }
 
+void BackendD3D11::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+{
+	auto buffer = (VertexBufferDataD3D11*)handle;
+	buffer->write(memory, size);
+	buffer->stride = stride;
+}
+
 IndexBufferHandle* BackendD3D11::createIndexBuffer(void* memory, size_t size, size_t stride)
 {
 	auto buffer = new IndexBufferDataD3D11(memory, size, stride);
 	return (IndexBufferHandle*)buffer;
+}
+
+void BackendD3D11::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
+{
+	auto buffer = (IndexBufferDataD3D11*)handle;
+	buffer->write(memory, size);
+	buffer->stride = stride;
 }
 
 void BackendD3D11::destroyIndexBuffer(IndexBufferHandle* handle)

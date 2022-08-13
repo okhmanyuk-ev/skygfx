@@ -54,9 +54,11 @@ namespace skygfx
 
 		VertexBufferHandle* createVertexBuffer(void* memory, size_t size, size_t stride) override;
 		void destroyVertexBuffer(VertexBufferHandle* handle) override;
+		void writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride) override;
 
 		IndexBufferHandle* createIndexBuffer(void* memory, size_t size, size_t stride) override;
 		void destroyIndexBuffer(IndexBufferHandle* handle) override;
+		void writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride) override;
 
 		UniformBufferHandle* createUniformBuffer(void* memory, size_t size) override;
 		void destroyUniformBuffer(UniformBufferHandle* handle) override;

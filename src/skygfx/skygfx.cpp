@@ -48,9 +48,15 @@ Shader::~Shader()
 	gBackend->destroyShader(mShaderHandle);
 }
 
+// buffer
+
+Buffer::Buffer(size_t size) : mSize(size)
+{
+}
+
 // vertex buffer
 
-VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride)
+VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride) : Buffer(size)
 {
 	mVertexBufferHandle = gBackend->createVertexBuffer(memory, size, stride);
 }
@@ -60,9 +66,14 @@ VertexBuffer::~VertexBuffer()
 	gBackend->destroyVertexBuffer(mVertexBufferHandle);
 }
 
+void VertexBuffer::write(void* memory, size_t size, size_t stride)
+{
+	gBackend->writeVertexBufferMemory(mVertexBufferHandle, memory, size, stride);
+}
+
 // index buffer
 
-IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride)
+IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride) : Buffer(size)
 {
 	mIndexBufferHandle = gBackend->createIndexBuffer(memory, size, stride);
 }
@@ -72,9 +83,14 @@ IndexBuffer::~IndexBuffer()
 	gBackend->destroyIndexBuffer(mIndexBufferHandle);
 }
 
+void IndexBuffer::write(void* memory, size_t size, size_t stride)
+{
+	gBackend->writeIndexBufferMemory(mIndexBufferHandle, memory, size, stride);
+}
+
 // uniform buffer
 
-UniformBuffer::UniformBuffer(void* memory, size_t size)
+UniformBuffer::UniformBuffer(void* memory, size_t size) : Buffer(size)
 {
 	mUniformBufferHandle = gBackend->createUniformBuffer(memory, size);
 }

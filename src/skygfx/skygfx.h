@@ -79,7 +79,18 @@ namespace skygfx
 		ShaderHandle* mShaderHandle = nullptr;
 	};
 
-	class VertexBuffer : private noncopyable
+	class Buffer : private noncopyable
+	{
+	public:
+		Buffer(size_t size);
+
+		auto getSize() const { return mSize; }
+
+	private:
+		size_t mSize = 0;
+	};
+
+	class VertexBuffer : public Buffer
 	{
 	public:
 		VertexBuffer(void* memory, size_t size, size_t stride);
@@ -88,13 +99,15 @@ namespace skygfx
 		template<class T> VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
 		template<class T> VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
 
+		void write(void* memory, size_t size, size_t stride);
+
 		operator VertexBufferHandle* () { return mVertexBufferHandle; }
 
 	private:
 		VertexBufferHandle* mVertexBufferHandle = nullptr;
 	};
 
-	class IndexBuffer : private noncopyable
+	class IndexBuffer : public Buffer
 	{
 	public:
 		IndexBuffer(void* memory, size_t size, size_t stride);
@@ -103,13 +116,15 @@ namespace skygfx
 		template<class T> IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
 		template<class T> IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
 
+		void write(void* memory, size_t size, size_t stride);
+
 		operator IndexBufferHandle* () { return mIndexBufferHandle; }
 
 	private:
 		IndexBufferHandle* mIndexBufferHandle = nullptr;
 	};
 
-	class UniformBuffer : private noncopyable
+	class UniformBuffer : public Buffer
 	{
 	public:
 		UniformBuffer(void* memory, size_t size);
@@ -118,7 +133,6 @@ namespace skygfx
 		template <class T> UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
 
 		void write(void* memory, size_t size);
-
 		template <class T> void write(T value) { write(&value, sizeof(T)); }
 
 		operator UniformBufferHandle* () { return mUniformBufferHandle; }

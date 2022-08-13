@@ -427,6 +427,11 @@ private:
 public:
 	VertexBufferDataGL(void* memory, size_t size, size_t _stride) : stride(_stride)
 	{
+		write(memory, size);
+	}
+
+	void write(void* memory, size_t size)
+	{
 		glBindBuffer(GL_ARRAY_BUFFER, buffer);
 		glBufferData(GL_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 	}
@@ -441,6 +446,11 @@ private:
 
 public:
 	IndexBufferDataGL(void* memory, size_t size, size_t _stride) : stride(_stride)
+	{
+		write(memory, size);
+	}
+
+	void write(void* memory, size_t size)
 	{
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
@@ -683,10 +693,6 @@ void BackendGL44::setShader(ShaderHandle* handle)
 void BackendGL44::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferDataGL*)handle;
-
-	if (buffer == gVertexBuffer)
-		return;
-
 	gVertexBuffer = buffer;
 	gVertexBufferDirty = true;
 }
@@ -694,10 +700,6 @@ void BackendGL44::setVertexBuffer(VertexBufferHandle* handle)
 void BackendGL44::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferDataGL*)handle;
-
-	if (buffer == gIndexBuffer)
-		return;
-
 	gIndexBuffer = buffer;
 	gIndexBufferDirty = true;
 }
@@ -960,6 +962,13 @@ void BackendGL44::destroyVertexBuffer(VertexBufferHandle* handle)
 	});
 }
 
+void BackendGL44::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+{
+	auto buffer = (VertexBufferDataGL*)handle;
+	buffer->write(memory, size);
+	buffer->stride = stride;
+}
+
 IndexBufferHandle* BackendGL44::createIndexBuffer(void* memory, size_t size, size_t stride)
 {
 	auto buffer = new IndexBufferDataGL(memory, size, stride);
@@ -976,6 +985,13 @@ void BackendGL44::destroyIndexBuffer(IndexBufferHandle* handle)
 
 		delete buffer;
 	});
+}
+
+void BackendGL44::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
+{
+	auto buffer = (VertexBufferDataGL*)handle;
+	buffer->write(memory, size);
+	buffer->stride = stride;
 }
 
 UniformBufferHandle* BackendGL44::createUniformBuffer(void* memory, size_t size)
