@@ -24,7 +24,8 @@ namespace skygfx
 	using RenderTargetHandle = struct RenderTargetHandle;
 	using ShaderHandle = struct ShaderHandle;
 	using VertexBufferHandle = struct VertexBufferHandle;
-	using IndexBufferHandle = struct VertexBufferHandle;
+	using IndexBufferHandle = struct IndexBufferHandle;
+	using UniformBufferHandle = struct UniformBufferHandle;
 
 	class noncopyable
 	{
@@ -84,8 +85,8 @@ namespace skygfx
 		VertexBuffer(void* memory, size_t size, size_t stride);
 		~VertexBuffer();
 
-		template<typename T> VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
-		template<typename T> VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
+		template<class T> VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		template<class T> VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
 
 		operator VertexBufferHandle* () { return mVertexBufferHandle; }
 
@@ -99,13 +100,31 @@ namespace skygfx
 		IndexBuffer(void* memory, size_t size, size_t stride);
 		~IndexBuffer();
 
-		template<typename T> IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
-		template<typename T> IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
+		template<class T> IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		template<class T> IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
 
 		operator IndexBufferHandle* () { return mIndexBufferHandle; }
 
 	private:
 		IndexBufferHandle* mIndexBufferHandle = nullptr;
+	};
+
+	class UniformBuffer : private noncopyable
+	{
+	public:
+		UniformBuffer(void* memory, size_t size);
+		~UniformBuffer();
+
+		template <class T> UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
+
+		void write(void* memory, size_t size);
+
+		template <class T> void write(T value) { write(&value, sizeof(T)); }
+
+		operator UniformBufferHandle* () { return mUniformBufferHandle; }
+
+	private:
+		UniformBufferHandle* mUniformBufferHandle = nullptr;
 	};
 
 	enum class Topology
@@ -359,12 +378,7 @@ namespace skygfx
 		void setShader(const Shader& shader);
 		void setVertexBuffer(const VertexBuffer& value);
 		void setIndexBuffer(const IndexBuffer& value);
-		
-		void setUniformBuffer(uint32_t binding, void* memory, size_t size);
-		
-		template <class T> 
-		void setUniformBuffer(uint32_t binding, T buffer) { setUniformBuffer(binding, &buffer, sizeof(T)); }
-		
+		void setUniformBuffer(uint32_t binding, const UniformBuffer& value);
 		void setBlendMode(const BlendMode& value);
 		void setDepthMode(std::optional<DepthMode> depth_mode);
 		void setStencilMode(std::optional<StencilMode> stencil_mode);

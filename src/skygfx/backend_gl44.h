@@ -24,7 +24,7 @@ namespace skygfx
 		void setShader(ShaderHandle* handle) override;
 		void setVertexBuffer(VertexBufferHandle* handle) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
-		void setUniformBuffer(uint32_t binding, void* memory, size_t size) override;
+		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(std::optional<DepthMode> depth_mode) override;
 		void setStencilMode(std::optional<StencilMode> stencil_mode) override;
@@ -57,6 +57,10 @@ namespace skygfx
 
 		IndexBufferHandle* createIndexBuffer(void* memory, size_t size, size_t stride) override;
 		void destroyIndexBuffer(IndexBufferHandle* handle) override;
+
+		UniformBufferHandle* createUniformBuffer(void* memory, size_t size) override;
+		void destroyUniformBuffer(UniformBufferHandle* handle) override;
+		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
 
 	private:
 		void prepareForDrawing();

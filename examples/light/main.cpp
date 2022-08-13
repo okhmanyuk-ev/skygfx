@@ -118,12 +118,12 @@ static std::vector<uint32_t> indices = {
 	20, 21, 22, 21, 23, 22, // right
 };
 
-static struct alignas(16) UniformBuffer
+static struct alignas(16) Matrices
 {
 	glm::mat4 projection = glm::mat4(1.0f);
 	glm::mat4 view = glm::mat4(1.0f);
 	glm::mat4 model = glm::mat4(1.0f);
-} ubo;
+} matrices;
 
 static struct alignas(16) Light
 {
@@ -176,7 +176,7 @@ int main()
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
 
-	std::tie(ubo.view, ubo.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position, width, height);
+	std::tie(matrices.view, matrices.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position, width, height);
 
 	const auto scale = 100.0f;
 
@@ -187,21 +187,26 @@ int main()
 	light.direction = { 1.0f, 0.5f, 0.5f };
 	light.shininess = 32.0f;
 
+	auto ubo_matrices = skygfx::UniformBuffer(matrices);
+	auto ubo_light = skygfx::UniformBuffer(light);
+
 	while (!glfwWindowShouldClose(window))
 	{
 		auto time = (float)glfwGetTime();
 
-		ubo.model = glm::mat4(1.0f);
-		ubo.model = glm::scale(ubo.model, { scale, scale, scale });
-		ubo.model = glm::rotate(ubo.model, time, { 0.0f, 1.0f, 0.0f });
+		matrices.model = glm::mat4(1.0f);
+		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
+		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
+
+		ubo_matrices.write(matrices);
 
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
 		device.setShader(shader);
 		device.setVertexBuffer(vertex_buffer);
 		device.setIndexBuffer(index_buffer);
-		device.setUniformBuffer(1, ubo);
-		device.setUniformBuffer(2, light);
+		device.setUniformBuffer(1, ubo_matrices);
+		device.setUniformBuffer(2, ubo_light);
 		device.setCullMode(skygfx::CullMode::Back);
 		device.setTexture(0, texture);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));

@@ -48,15 +48,6 @@ static int gUniformBufferIndex = 0;
 static uint32_t gSemaphoreIndex = 0;
 static uint32_t gFrameIndex = 0;
 
-struct DeviceBufferVK
-{
-	vk::raii::Buffer buffer = nullptr;
-	vk::raii::DeviceMemory memory = nullptr;
-	vk::DeviceSize size = 0;
-};
-
-static std::vector<DeviceBufferVK> gUniformBuffers;
-
 static std::unordered_map<uint32_t, vk::ImageView> gTexturesPushQueue;
 static std::unordered_map<uint32_t, vk::Buffer> gUniformBuffersPushQueue;
 
@@ -493,10 +484,9 @@ class BufferDataVK
 private:
 	vk::raii::Buffer buffer = nullptr;
 	vk::raii::DeviceMemory device_memory = nullptr;
-	size_t stride = 0;
 
 public:
-	BufferDataVK(void* memory, size_t size, size_t _stride, vk::BufferUsageFlags usage) : stride(_stride)
+	BufferDataVK(void* memory, size_t size, vk::BufferUsageFlags usage)
 	{		
 		auto buffer_create_info = vk::BufferCreateInfo()
 			.setSize(size)
@@ -515,6 +505,11 @@ public:
 		
 		buffer.bindMemory(*device_memory, 0);
 
+		write(memory, size);
+	}
+
+	void write(void* memory, size_t size)
+	{
 		auto mem = device_memory.mapMemory(0, VK_WHOLE_SIZE);
 		memcpy(mem, memory, size);
 		device_memory.unmapMemory();
@@ -523,18 +518,39 @@ public:
 
 class VertexBufferDataVK : public BufferDataVK
 {
+	friend class BackendVK;
+
+private:
+	size_t stride = 0;
+
 public:
-	VertexBufferDataVK(void* memory, size_t size, size_t stride) :
-		BufferDataVK(memory, size, stride, vk::BufferUsageFlagBits::eVertexBuffer)
+	VertexBufferDataVK(void* memory, size_t size, size_t _stride) :
+		BufferDataVK(memory, size, vk::BufferUsageFlagBits::eVertexBuffer),
+		stride(_stride)
 	{
 	}
 };
 
 class IndexBufferDataVK : public BufferDataVK
 {
+	friend class BackendVK;
+
+private:
+	size_t stride = 0;
+
 public:
-	IndexBufferDataVK(void* memory, size_t size, size_t stride) :
-		BufferDataVK(memory, size, stride, vk::BufferUsageFlagBits::eIndexBuffer)
+	IndexBufferDataVK(void* memory, size_t size, size_t _stride) :
+		BufferDataVK(memory, size, vk::BufferUsageFlagBits::eIndexBuffer),
+		stride(_stride)
+	{
+	}
+};
+
+class UniformBufferDataVK : public BufferDataVK
+{
+public:
+	UniformBufferDataVK(void* memory, size_t size) :
+		BufferDataVK(memory, size, vk::BufferUsageFlagBits::eUniformBuffer)
 	{
 	}
 };
@@ -772,52 +788,11 @@ void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 	gCommandBuffer.bindIndexBuffer(*buffer->buffer, 0, buffer->stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
 }
 
-void BackendVK::setUniformBuffer(uint32_t binding, void* memory, size_t size)
+void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	assert(size > 0);
+	auto buffer = (UniformBufferDataVK*)handle;
 
-	auto create_buffer = [&] {
-		DeviceBufferVK buffer;
-
-		auto buffer_create_info = vk::BufferCreateInfo()
-			.setSize(size)
-			.setUsage(vk::BufferUsageFlagBits::eUniformBuffer)
-			.setSharingMode(vk::SharingMode::eExclusive);
-
-		buffer.buffer = gDevice.createBuffer(buffer_create_info);
-
-		auto memory_requirements = buffer.buffer.getMemoryRequirements();
-
-		auto memory_allocate_info = vk::MemoryAllocateInfo()
-			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
-
-		buffer.memory = gDevice.allocateMemory(memory_allocate_info);
-		buffer.size = memory_requirements.size;
-
-		buffer.buffer.bindMemory(*buffer.memory, 0);
-
-		return buffer;
-	};
-
-	if (gUniformBuffers.size() < gUniformBufferIndex + 1)
-	{
-		assert(gUniformBuffers.size() == gUniformBufferIndex);
-		gUniformBuffers.push_back(create_buffer());
-	}
-
-	auto& buffer = gUniformBuffers[gUniformBufferIndex];
-
-	if (buffer.size < size)
-	{
-		buffer = create_buffer();
-	}
-
-	auto mem = buffer.memory.mapMemory(0, VK_WHOLE_SIZE);
-	memcpy(mem, memory, size);
-	buffer.memory.unmapMemory();
-
-	gUniformBuffersPushQueue[binding] = *buffer.buffer;
+	gUniformBuffersPushQueue[binding] = *buffer->buffer;
 	gUniformBufferIndex += 1;
 }
 
@@ -1064,6 +1039,24 @@ void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferDataVK*)handle;
 	delete buffer;
+}
+
+UniformBufferHandle* BackendVK::createUniformBuffer(void* memory, size_t size)
+{
+	auto buffer = new UniformBufferDataVK(memory, size);
+	return (UniformBufferHandle*)buffer;
+}
+
+void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
+{
+	auto buffer = (UniformBufferDataVK*)handle;
+	delete buffer;
+}
+
+void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+{
+	auto buffer = (UniformBufferDataVK*)handle;
+	buffer->write(memory, size);
 }
 
 void BackendVK::createSwapchain(uint32_t width, uint32_t height)

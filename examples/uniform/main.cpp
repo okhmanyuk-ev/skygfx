@@ -56,10 +56,10 @@ static std::vector<Vertex> vertices = {
 
 static std::vector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
-static struct alignas(16) UniformBuffer
+static struct alignas(16) Settings
 {
 	float mipmap_bias = 0.0f;
-} ubo;
+} settings;
 
 int main()
 {
@@ -94,12 +94,16 @@ int main()
 	void* tex_memory = stbi_load("assets/bricks.png", &tex_width, &tex_height, nullptr, 4); // TODO: this image has 3 channels, we must can load that type of images
 
 	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory, true);
+
 	auto vertex_buffer = skygfx::VertexBuffer(vertices);
 	auto index_buffer = skygfx::IndexBuffer(indices);
+	auto uniform_buffer = skygfx::UniformBuffer(settings);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		ubo.mipmap_bias = glm::abs(glm::mod(static_cast<float>(glfwGetTime() * 4.0f), 16.0f) - 8.0f);
+		settings.mipmap_bias = glm::abs(glm::mod(static_cast<float>(glfwGetTime() * 4.0f), 16.0f) - 8.0f);
+
+		uniform_buffer.write(settings);
 
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
@@ -107,7 +111,7 @@ int main()
 		device.setTexture(0, texture);
 		device.setVertexBuffer(vertex_buffer);
 		device.setIndexBuffer(index_buffer);
-		device.setUniformBuffer(1, ubo); 
+		device.setUniformBuffer(1, uniform_buffer); 
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 

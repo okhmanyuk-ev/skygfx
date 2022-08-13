@@ -392,10 +392,9 @@ class BufferDataGL
 
 protected:
 	GLuint buffer;
-	size_t stride = 0;
 
 public:
-	BufferDataGL(size_t _stride) : stride(_stride)
+	BufferDataGL()
 	{
 		glGenBuffers(1, &buffer);
 
@@ -422,8 +421,11 @@ class VertexBufferDataGL : public BufferDataGL
 {
 	friend class BackendGL44;
 
+private:
+	size_t stride = 0;
+
 public:
-	VertexBufferDataGL(void* memory, size_t size, size_t stride) : BufferDataGL(stride)
+	VertexBufferDataGL(void* memory, size_t size, size_t _stride) : stride(_stride)
 	{
 		glBindBuffer(GL_ARRAY_BUFFER, buffer);
 		glBufferData(GL_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
@@ -434,11 +436,32 @@ class IndexBufferDataGL : public BufferDataGL
 {
 	friend class BackendGL44;
 
+private:
+	size_t stride = 0;
+
 public:
-	IndexBufferDataGL(void* memory, size_t size, size_t stride) : BufferDataGL(stride)
+	IndexBufferDataGL(void* memory, size_t size, size_t _stride) : stride(_stride)
 	{
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
+	}
+};
+
+class UniformBufferDataGL : public BufferDataGL
+{
+	friend class BackendGL44;
+
+public:
+	UniformBufferDataGL(void* memory, size_t size)
+	{
+		write(memory, size);
+	}
+
+	void write(void* memory, size_t size)
+	{
+		assert(size % 16 == 0);
+		glBindBuffer(GL_UNIFORM_BUFFER, buffer);
+		glBufferData(GL_UNIFORM_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 	}
 };
 
@@ -450,7 +473,6 @@ static GLKView* gGLKView = nullptr;
 #endif
 
 static GLenum gTopology;
-static std::unordered_map<uint32_t, GLuint> GLUniformBuffers;
 static GLuint GLPixelBuffer;
 static RenderTargetDataGL44* GLCurrentRenderTarget = nullptr;
 static ShaderDataGL44* gShader = nullptr;
@@ -550,11 +572,6 @@ BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 BackendGL44::~BackendGL44()
 {
 	glDeleteBuffers(1, &GLPixelBuffer);
-
-	for (auto [_, buffer] : GLUniformBuffers)
-	{
-		glDeleteBuffers(1, &buffer);
-	}
 	
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	wglDeleteContext(WglContext);
@@ -667,7 +684,7 @@ void BackendGL44::setVertexBuffer(VertexBufferHandle* handle)
 	gVertexBufferDirty = true;
 }
 
-void BackendGL44::setIndexBuffer(VertexBufferHandle* handle)
+void BackendGL44::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferDataGL*)handle;
 
@@ -678,15 +695,11 @@ void BackendGL44::setIndexBuffer(VertexBufferHandle* handle)
 	gIndexBufferDirty = true;
 }
 
-void BackendGL44::setUniformBuffer(uint32_t binding, void* memory, size_t size)
+void BackendGL44::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	assert(size % 16 == 0);
+	auto buffer = (UniformBufferDataGL*)handle;
 
-	if (!GLUniformBuffers.contains(binding))
-		glGenBuffers(1, &GLUniformBuffers[binding]);
-	
-	glBindBufferBase(GL_UNIFORM_BUFFER, binding, GLUniformBuffers.at(binding));
-	glBufferData(GL_UNIFORM_BUFFER, size, memory, GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->buffer);
 }
 
 void BackendGL44::setBlendMode(const BlendMode& value)
@@ -941,6 +954,24 @@ void BackendGL44::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferDataGL*)handle;
 	delete buffer;
+}
+
+UniformBufferHandle* BackendGL44::createUniformBuffer(void* memory, size_t size)
+{
+	auto buffer = new UniformBufferDataGL(memory, size);
+	return (UniformBufferHandle*)buffer;
+}
+
+void BackendGL44::destroyUniformBuffer(UniformBufferHandle* handle)
+{
+	auto buffer = (UniformBufferDataGL*)handle;
+	delete buffer;
+}
+
+void BackendGL44::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+{
+	auto buffer = (UniformBufferDataGL*)handle;
+	buffer->write(memory, size);
 }
 
 void BackendGL44::prepareForDrawing()

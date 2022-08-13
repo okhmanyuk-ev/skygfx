@@ -35,8 +35,6 @@ static struct
 	ID3D11DepthStencilView* depth_stencil_view;
 } MainRenderTarget;
 
-static std::unordered_map<uint32_t, ID3D11Buffer*> D3D11ConstantBuffers;
-
 using namespace skygfx;
 
 static std::unordered_map<BlendMode, ID3D11BlendState*> D3D11BlendModes;
@@ -315,10 +313,7 @@ public:
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		D3D11Device->CreateBuffer(&desc, nullptr, &buffer);
 
-		D3D11_MAPPED_SUBRESOURCE resource;
-		D3D11Context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-		memcpy(resource.pData, memory, size);
-		D3D11Context->Unmap(buffer, 0);
+		write(memory, size);
 	}
 
 	~BufferDataD3D11()
@@ -326,6 +321,13 @@ public:
 		D3D11Release(buffer);
 	}
 
+	void write(void* memory, size_t size)
+	{
+		D3D11_MAPPED_SUBRESOURCE resource;
+		D3D11Context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+		memcpy(resource.pData, memory, size);
+		D3D11Context->Unmap(buffer, 0);
+	}
 };
 
 class VertexBufferDataD3D11 : public BufferDataD3D11
@@ -355,6 +357,18 @@ public:
 		BufferDataD3D11(memory, size, D3D11_BIND_INDEX_BUFFER),
 		stride(_stride)
 	{
+	}
+};
+
+class UniformBufferDataD3D11 : public BufferDataD3D11
+{
+	friend class BackendD3D11;
+
+public:
+	UniformBufferDataD3D11(void* memory, size_t size) :
+		BufferDataD3D11(memory, size, D3D11_BIND_CONSTANT_BUFFER)
+	{
+		assert(size % 16 == 0);
 	}
 };
 
@@ -395,11 +409,6 @@ BackendD3D11::~BackendD3D11()
 	D3D11Release(D3D11SwapChain);
 	D3D11Release(D3D11Context);
 	D3D11Release(D3D11Device);
-
-	for (auto [_, buffer] : D3D11ConstantBuffers)
-	{
-		D3D11Release(buffer);
-	}
 
 	for (const auto& [_, blend_state] : D3D11BlendModes)
 	{
@@ -525,36 +534,12 @@ void BackendD3D11::setIndexBuffer(IndexBufferHandle* handle)
 	D3D11Context->IASetIndexBuffer(buffer->buffer, buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
 }
 
-void BackendD3D11::setUniformBuffer(uint32_t binding, void* memory, size_t size)
+void BackendD3D11::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	assert(size % 16 == 0);
+	auto buffer = (UniformBufferDataD3D11*)handle;
 
-	D3D11_BUFFER_DESC desc = {};
-
-	if (D3D11ConstantBuffers.contains(binding))
-		D3D11ConstantBuffers.at(binding)->GetDesc(&desc);
-
-	if (desc.ByteWidth < size)
-	{
-		if (D3D11ConstantBuffers.contains(binding))
-			D3D11Release(D3D11ConstantBuffers.at(binding));
-
-		desc.ByteWidth = static_cast<UINT>(size);
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11ConstantBuffers[binding]);
-	}
-
-	auto constant_buffer = D3D11ConstantBuffers.at(binding);
-
-	D3D11_MAPPED_SUBRESOURCE resource;
-	D3D11Context->Map(constant_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-	memcpy(resource.pData, memory, size);
-	D3D11Context->Unmap(constant_buffer, 0);
-
-	D3D11Context->VSSetConstantBuffers(binding, 1, &constant_buffer);
-	D3D11Context->PSSetConstantBuffers(binding, 1, &constant_buffer);
+	D3D11Context->VSSetConstantBuffers(binding, 1, &buffer->buffer);
+	D3D11Context->PSSetConstantBuffers(binding, 1, &buffer->buffer);
 }
 
 void BackendD3D11::setBlendMode(const BlendMode& value)
@@ -830,6 +815,24 @@ void BackendD3D11::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferDataD3D11*)handle;
 	delete buffer;
+}
+
+UniformBufferHandle* BackendD3D11::createUniformBuffer(void* memory, size_t size)
+{
+	auto buffer = new UniformBufferDataD3D11(memory, size);
+	return (UniformBufferHandle*)buffer;
+}
+
+void BackendD3D11::destroyUniformBuffer(UniformBufferHandle* handle)
+{
+	auto buffer = (UniformBufferDataD3D11*)handle;
+	delete buffer;
+}
+
+void BackendD3D11::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+{
+	auto buffer = (UniformBufferDataD3D11*)handle;
+	buffer->write(memory, size);
 }
 
 void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)

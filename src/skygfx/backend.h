@@ -20,7 +20,7 @@ namespace skygfx
 		virtual void setShader(ShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
-		virtual void setUniformBuffer(uint32_t binding, void* memory, size_t size) = 0;
+		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
 		virtual void setBlendMode(const BlendMode& value) = 0;
 		virtual void setDepthMode(std::optional<DepthMode> depth_mode) = 0;
 		virtual void setStencilMode(std::optional<StencilMode> stencil_mode) = 0;
@@ -53,5 +53,9 @@ namespace skygfx
 
 		virtual IndexBufferHandle* createIndexBuffer(void* memory, size_t size, size_t stride) = 0;
 		virtual void destroyIndexBuffer(IndexBufferHandle* handle) = 0;
+
+		virtual UniformBufferHandle* createUniformBuffer(void* memory, size_t size) = 0;
+		virtual void destroyUniformBuffer(UniformBufferHandle* handle) = 0;
+		virtual void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) = 0;
 	};
 }

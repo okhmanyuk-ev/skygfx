@@ -72,6 +72,23 @@ IndexBuffer::~IndexBuffer()
 	gBackend->destroyIndexBuffer(mIndexBufferHandle);
 }
 
+// uniform buffer
+
+UniformBuffer::UniformBuffer(void* memory, size_t size)
+{
+	mUniformBufferHandle = gBackend->createUniformBuffer(memory, size);
+}
+
+UniformBuffer::~UniformBuffer()
+{
+	gBackend->destroyUniformBuffer(mUniformBufferHandle);
+}
+
+void UniformBuffer::write(void* memory, size_t size)
+{
+	gBackend->writeUniformBufferMemory(mUniformBufferHandle, memory, size);
+}
+
 // device
 
 Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
@@ -155,9 +172,9 @@ void Device::setIndexBuffer(const IndexBuffer& value)
 	gBackend->setIndexBuffer(const_cast<IndexBuffer&>(value));
 }
 
-void Device::setUniformBuffer(uint32_t binding, void* memory, size_t size)
+void Device::setUniformBuffer(uint32_t binding, const UniformBuffer& value)
 {
-	gBackend->setUniformBuffer(binding, memory, size);
+	gBackend->setUniformBuffer(binding, const_cast<UniformBuffer&>(value));
 }
 
 void Device::setBlendMode(const BlendMode& value)
