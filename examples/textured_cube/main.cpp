@@ -134,6 +134,9 @@ int main()
 
 	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory, true);
 
+	auto vertex_buffer = skygfx::VertexBuffer(vertices);
+	auto index_buffer = skygfx::IndexBuffer(indices);
+
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
@@ -153,8 +156,8 @@ int main()
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
 		device.setShader(shader);
-		device.setVertexBuffer(vertices);
-		device.setIndexBuffer(indices);
+		device.setVertexBuffer(vertex_buffer);
+		device.setIndexBuffer(index_buffer);
 		device.setUniformBuffer(1, ubo);
 		device.setCullMode(skygfx::CullMode::Back);
 		device.setTexture(0, texture);

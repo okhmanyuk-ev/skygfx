@@ -48,6 +48,30 @@ Shader::~Shader()
 	gBackend->destroyShader(mShaderHandle);
 }
 
+// vertex buffer
+
+VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride)
+{
+	mVertexBufferHandle = gBackend->createVertexBuffer(memory, size, stride);
+}
+
+VertexBuffer::~VertexBuffer()
+{
+	gBackend->destroyVertexBuffer(mVertexBufferHandle);
+}
+
+// index buffer
+
+IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride)
+{
+	mIndexBufferHandle = gBackend->createIndexBuffer(memory, size, stride);
+}
+
+IndexBuffer::~IndexBuffer()
+{
+	gBackend->destroyIndexBuffer(mIndexBufferHandle);
+}
+
 // device
 
 Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
@@ -121,14 +145,14 @@ void Device::setShader(const Shader& shader)
 	gBackend->setShader(const_cast<Shader&>(shader));
 }
 
-void Device::setVertexBuffer(const Buffer& buffer)
+void Device::setVertexBuffer(const VertexBuffer& value)
 {
-	gBackend->setVertexBuffer(buffer);
+	gBackend->setVertexBuffer(const_cast<VertexBuffer&>(value));
 }
 
-void Device::setIndexBuffer(const Buffer& buffer)
+void Device::setIndexBuffer(const IndexBuffer& value)
 {
-	gBackend->setIndexBuffer(buffer);
+	gBackend->setIndexBuffer(const_cast<IndexBuffer&>(value));
 }
 
 void Device::setUniformBuffer(uint32_t binding, void* memory, size_t size)

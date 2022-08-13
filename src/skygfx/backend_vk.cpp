@@ -43,8 +43,6 @@ static struct
 
 static std::vector<FrameVK> gFrames;
 
-static int gVertexBufferIndex = 0;
-static int gIndexBufferIndex = 0;
 static int gUniformBufferIndex = 0;
 
 static uint32_t gSemaphoreIndex = 0;
@@ -57,8 +55,6 @@ struct DeviceBufferVK
 	vk::DeviceSize size = 0;
 };
 
-static std::vector<DeviceBufferVK> gVertexBuffers;
-static std::vector<DeviceBufferVK> gIndexBuffers;
 static std::vector<DeviceBufferVK> gUniformBuffers;
 
 static std::unordered_map<uint32_t, vk::ImageView> gTexturesPushQueue;
@@ -490,6 +486,59 @@ public:
 	}
 };
 
+class BufferDataVK
+{
+	friend class BackendVK;
+
+private:
+	vk::raii::Buffer buffer = nullptr;
+	vk::raii::DeviceMemory device_memory = nullptr;
+	size_t stride = 0;
+
+public:
+	BufferDataVK(void* memory, size_t size, size_t _stride, vk::BufferUsageFlags usage) : stride(_stride)
+	{		
+		auto buffer_create_info = vk::BufferCreateInfo()
+			.setSize(size)
+			.setUsage(usage)
+			.setSharingMode(vk::SharingMode::eExclusive);
+
+		buffer = gDevice.createBuffer(buffer_create_info);
+
+		auto memory_requirements = buffer.getMemoryRequirements();
+
+		auto memory_allocate_info = vk::MemoryAllocateInfo()
+			.setAllocationSize(memory_requirements.size)
+			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
+
+		device_memory = gDevice.allocateMemory(memory_allocate_info);
+		
+		buffer.bindMemory(*device_memory, 0);
+
+		auto mem = device_memory.mapMemory(0, VK_WHOLE_SIZE);
+		memcpy(mem, memory, size);
+		device_memory.unmapMemory();
+	}
+};
+
+class VertexBufferDataVK : public BufferDataVK
+{
+public:
+	VertexBufferDataVK(void* memory, size_t size, size_t stride) :
+		BufferDataVK(memory, size, stride, vk::BufferUsageFlagBits::eVertexBuffer)
+	{
+	}
+};
+
+class IndexBufferDataVK : public BufferDataVK
+{
+public:
+	IndexBufferDataVK(void* memory, size_t size, size_t stride) :
+		BufferDataVK(memory, size, stride, vk::BufferUsageFlagBits::eIndexBuffer)
+	{
+	}
+};
+
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
 	auto all_extensions = gContext.enumerateInstanceExtensionProperties();
@@ -711,104 +760,16 @@ void BackendVK::setShader(ShaderHandle* handle)
 	gShader = (ShaderDataVK*)handle;
 }
 
-void BackendVK::setVertexBuffer(const Buffer& value)
+void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
 {
-	assert(value.size > 0);
-
-	auto create_buffer = [&] {
-		DeviceBufferVK buffer;
-
-		auto buffer_create_info = vk::BufferCreateInfo()
-			.setSize(value.size)
-			.setUsage(vk::BufferUsageFlagBits::eVertexBuffer)
-			.setSharingMode(vk::SharingMode::eExclusive);
-
-		buffer.buffer = gDevice.createBuffer(buffer_create_info);
-
-		auto memory_requirements = buffer.buffer.getMemoryRequirements();
-
-		auto memory_allocate_info = vk::MemoryAllocateInfo()
-			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
-
-		buffer.memory = gDevice.allocateMemory(memory_allocate_info);
-		buffer.size = memory_requirements.size;
-
-		buffer.buffer.bindMemory(*buffer.memory, 0);
-
-		return buffer;
-	};
-
-	if (gVertexBuffers.size() < gVertexBufferIndex + 1)
-	{
-		assert(gVertexBuffers.size() == gVertexBufferIndex);
-		gVertexBuffers.push_back(create_buffer());
-	}
-
-	auto& buffer = gVertexBuffers[gVertexBufferIndex];
-
-	if (buffer.size < value.size)
-	{
-		buffer = create_buffer();
-	}
-
-	auto mem = buffer.memory.mapMemory(0, VK_WHOLE_SIZE);
-	memcpy(mem, value.data, value.size);
-	buffer.memory.unmapMemory();
-
-	gCommandBuffer.bindVertexBuffers2(0, { *buffer.buffer }, { 0 }, nullptr, { value.stride });
-
-	gVertexBufferIndex += 1;
+	auto buffer = (VertexBufferDataVK*)handle;
+	gCommandBuffer.bindVertexBuffers2(0, { *buffer->buffer }, { 0 }, nullptr, { buffer->stride });
 }
 
-void BackendVK::setIndexBuffer(const Buffer& value)
+void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 {
-	assert(value.size > 0);
-
-	auto create_buffer = [&] {
-		DeviceBufferVK buffer;
-
-		auto buffer_create_info = vk::BufferCreateInfo()
-			.setSize(value.size)
-			.setUsage(vk::BufferUsageFlagBits::eIndexBuffer)
-			.setSharingMode(vk::SharingMode::eExclusive);
-
-		buffer.buffer = gDevice.createBuffer(buffer_create_info);
-
-		auto memory_requirements = buffer.buffer.getMemoryRequirements();
-
-		auto memory_allocate_info = vk::MemoryAllocateInfo()
-			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
-
-		buffer.memory = gDevice.allocateMemory(memory_allocate_info);
-		buffer.size = memory_requirements.size;
-
-		buffer.buffer.bindMemory(*buffer.memory, 0);
-
-		return buffer;
-	};
-
-	if (gIndexBuffers.size() < gIndexBufferIndex + 1)
-	{
-		assert(gIndexBuffers.size() == gIndexBufferIndex);
-		gIndexBuffers.push_back(create_buffer());
-	}
-
-	auto& buffer = gIndexBuffers[gIndexBufferIndex];
-
-	if (buffer.size < value.size)
-	{
-		buffer = create_buffer();
-	}
-
-	auto mem = buffer.memory.mapMemory(0, VK_WHOLE_SIZE);
-	memcpy(mem, value.data, value.size);
-	buffer.memory.unmapMemory();
-
-	gCommandBuffer.bindIndexBuffer(*buffer.buffer, 0, value.stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
-
-	gIndexBufferIndex += 1;
+	auto buffer = (IndexBufferDataVK*)handle;
+	gCommandBuffer.bindIndexBuffer(*buffer->buffer, 0, buffer->stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
 }
 
 void BackendVK::setUniformBuffer(uint32_t binding, void* memory, size_t size)
@@ -1081,6 +1042,30 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
+VertexBufferHandle* BackendVK::createVertexBuffer(void* memory, size_t size, size_t stride)
+{
+	auto buffer = new VertexBufferDataVK(memory, size, stride);
+	return (VertexBufferHandle*)buffer;
+}
+
+void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
+{
+	auto buffer = (VertexBufferDataVK*)handle;
+	delete buffer;
+}
+
+IndexBufferHandle* BackendVK::createIndexBuffer(void* memory, size_t size, size_t stride)
+{
+	auto buffer = new IndexBufferDataVK(memory, size, stride);
+	return (IndexBufferHandle*)buffer;
+}
+
+void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
+{
+	auto buffer = (IndexBufferDataVK*)handle;
+	delete buffer;
+}
+
 void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 {
 	gWidth = width;
@@ -1205,8 +1190,6 @@ void BackendVK::begin()
 	assert(!gWorking);
 	gWorking = true;
 
-	gVertexBufferIndex = 0;
-	gIndexBufferIndex = 0;
 	gUniformBufferIndex = 0;
 
 	gViewportDirty = true;

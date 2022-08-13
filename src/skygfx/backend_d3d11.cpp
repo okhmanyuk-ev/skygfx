@@ -35,8 +35,6 @@ static struct
 	ID3D11DepthStencilView* depth_stencil_view;
 } MainRenderTarget;
 
-static ID3D11Buffer* D3D11VertexBuffer = nullptr;
-static ID3D11Buffer* D3D11IndexBuffer = nullptr;
 static std::unordered_map<uint32_t, ID3D11Buffer*> D3D11ConstantBuffers;
 
 using namespace skygfx;
@@ -300,6 +298,66 @@ public:
 	}
 };
 
+class BufferDataD3D11
+{
+	friend class BackendD3D11;
+
+private:
+	ID3D11Buffer* buffer;
+
+public:
+	BufferDataD3D11(void* memory, size_t size, D3D11_BIND_FLAG bind_flags)
+	{
+		D3D11_BUFFER_DESC desc = {};
+		desc.ByteWidth = static_cast<UINT>(size);
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.BindFlags = bind_flags;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		D3D11Device->CreateBuffer(&desc, nullptr, &buffer);
+
+		D3D11_MAPPED_SUBRESOURCE resource;
+		D3D11Context->Map(buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+		memcpy(resource.pData, memory, size);
+		D3D11Context->Unmap(buffer, 0);
+	}
+
+	~BufferDataD3D11()
+	{
+		D3D11Release(buffer);
+	}
+
+};
+
+class VertexBufferDataD3D11 : public BufferDataD3D11
+{
+	friend class BackendD3D11;
+
+private:
+	size_t stride;
+
+public:
+	VertexBufferDataD3D11(void* memory, size_t size, size_t _stride) : 
+		BufferDataD3D11(memory, size, D3D11_BIND_VERTEX_BUFFER), 
+		stride(_stride)
+	{
+	}
+};
+
+class IndexBufferDataD3D11 : public BufferDataD3D11
+{
+	friend class BackendD3D11;
+
+private:
+	size_t stride;
+
+public:
+	IndexBufferDataD3D11(void* memory, size_t size, size_t _stride) :
+		BufferDataD3D11(memory, size, D3D11_BIND_INDEX_BUFFER),
+		stride(_stride)
+	{
+	}
+};
+
 static RenderTargetDataD3D11* D3D11CurrentRenderTarget = nullptr;
 
 BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
@@ -338,9 +396,6 @@ BackendD3D11::~BackendD3D11()
 	D3D11Release(D3D11Context);
 	D3D11Release(D3D11Device);
 
-	D3D11Release(D3D11VertexBuffer);
-	D3D11Release(D3D11IndexBuffer);
-	
 	for (auto [_, buffer] : D3D11ConstantBuffers)
 	{
 		D3D11Release(buffer);
@@ -357,7 +412,8 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	destroyMainRenderTarget();
 	D3D11SwapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
 	createMainRenderTarget(width, height);
-	setRenderTarget(nullptr);
+	setRenderTarget(nullptr); // TODO: do it when nullptr was before
+	mViewportDirty = true;
 }
 
 void BackendD3D11::setTopology(Topology topology)
@@ -450,59 +506,23 @@ void BackendD3D11::setShader(ShaderHandle* handle)
 	shader->apply();
 }
 
-void BackendD3D11::setVertexBuffer(const Buffer& buffer)
+void BackendD3D11::setVertexBuffer(VertexBufferHandle* handle)
 {
-	D3D11_BUFFER_DESC desc = {};
+	auto buffer = (VertexBufferDataD3D11*)handle;
 
-	if (D3D11VertexBuffer)
-		D3D11VertexBuffer->GetDesc(&desc);
-
-	if (desc.ByteWidth < buffer.size)
-	{
-		D3D11Release(D3D11VertexBuffer);
-
-		desc.ByteWidth = static_cast<UINT>(buffer.size);
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11VertexBuffer);
-	}
-
-	D3D11_MAPPED_SUBRESOURCE resource;
-	D3D11Context->Map(D3D11VertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-	memcpy(resource.pData, buffer.data, buffer.size);
-	D3D11Context->Unmap(D3D11VertexBuffer, 0);
-
-	auto stride = static_cast<UINT>(buffer.stride);
+	auto stride = static_cast<UINT>(buffer->stride);
 	auto offset = static_cast<UINT>(0);
 
-	D3D11Context->IASetVertexBuffers(0, 1, &D3D11VertexBuffer, &stride, &offset);
+	D3D11Context->IASetVertexBuffers(0, 1, &buffer->buffer, &stride, &offset);
 }
 
-void BackendD3D11::setIndexBuffer(const Buffer& buffer)
+void BackendD3D11::setIndexBuffer(IndexBufferHandle* handle)
 {
-	D3D11_BUFFER_DESC desc = {};
+	auto buffer = (IndexBufferDataD3D11*)handle;
 
-	if (D3D11IndexBuffer)
-		D3D11IndexBuffer->GetDesc(&desc);
+	auto stride = static_cast<UINT>(buffer->stride);
 
-	if (desc.ByteWidth < buffer.size)
-	{
-		D3D11Release(D3D11IndexBuffer);
-
-		desc.ByteWidth = static_cast<UINT>(buffer.size);
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-		D3D11Device->CreateBuffer(&desc, nullptr, &D3D11IndexBuffer);
-	}
-
-	D3D11_MAPPED_SUBRESOURCE resource;
-	D3D11Context->Map(D3D11IndexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-	memcpy(resource.pData, buffer.data, buffer.size);
-	D3D11Context->Unmap(D3D11IndexBuffer, 0);
-
-	D3D11Context->IASetIndexBuffer(D3D11IndexBuffer, buffer.stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
+	D3D11Context->IASetIndexBuffer(buffer->buffer, buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
 }
 
 void BackendD3D11::setUniformBuffer(uint32_t binding, void* memory, size_t size)
@@ -786,6 +806,30 @@ void BackendD3D11::destroyShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderDataD3D11*)handle;
 	delete shader;
+}
+
+VertexBufferHandle* BackendD3D11::createVertexBuffer(void* memory, size_t size, size_t stride)
+{
+	auto buffer = new VertexBufferDataD3D11(memory, size, stride);
+	return (VertexBufferHandle*)buffer;
+}
+
+void BackendD3D11::destroyVertexBuffer(VertexBufferHandle* handle)
+{
+	auto buffer = (VertexBufferDataD3D11*)handle;
+	delete buffer;
+}
+
+IndexBufferHandle* BackendD3D11::createIndexBuffer(void* memory, size_t size, size_t stride)
+{
+	auto buffer = new IndexBufferDataD3D11(memory, size, stride);
+	return (IndexBufferHandle*)buffer;
+}
+
+void BackendD3D11::destroyIndexBuffer(IndexBufferHandle* handle)
+{
+	auto buffer = (IndexBufferDataD3D11*)handle;
+	delete buffer;
 }
 
 void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)

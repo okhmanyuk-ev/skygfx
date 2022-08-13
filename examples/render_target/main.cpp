@@ -194,8 +194,15 @@ int main()
 	auto native_window = utils::GetNativeWindow(window);
 
 	auto device = skygfx::Device(backend_type, native_window, width, height);
+	
 	auto cube_shader = skygfx::Shader(CubeVertex::Layout, cube_vertex_shader_code, cube_fragment_shader_code);
 	auto triangle_shader = skygfx::Shader(TriangleVertex::Layout, triangle_vertex_shader_code, triangle_fragment_shader_code);
+
+	auto cube_vertex_buffer = skygfx::VertexBuffer(cube_vertices);
+	auto cube_index_buffer = skygfx::IndexBuffer(cube_indices);
+
+	auto triangle_vertex_buffer = skygfx::VertexBuffer(triangle_vertices);
+	auto triangle_index_buffer = skygfx::IndexBuffer(triangle_indices);
 
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
@@ -222,8 +229,8 @@ int main()
 		device.clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
 		device.setShader(triangle_shader);
-		device.setVertexBuffer(triangle_vertices);
-		device.setIndexBuffer(triangle_indices);
+		device.setVertexBuffer(triangle_vertex_buffer);
+		device.setIndexBuffer(triangle_index_buffer);
 		device.setCullMode(skygfx::CullMode::None);
 		device.drawIndexed(static_cast<uint32_t>(triangle_indices.size()));
 
@@ -239,8 +246,8 @@ int main()
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
 		device.setShader(cube_shader);
-		device.setVertexBuffer(cube_vertices);
-		device.setIndexBuffer(cube_indices);
+		device.setVertexBuffer(cube_vertex_buffer);
+		device.setIndexBuffer(cube_index_buffer);
 		device.setUniformBuffer(1, cube_ubo);
 		device.setUniformBuffer(2, cube_light);
 		device.setCullMode(skygfx::CullMode::Back);

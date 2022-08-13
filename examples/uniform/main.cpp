@@ -94,6 +94,8 @@ int main()
 	void* tex_memory = stbi_load("assets/bricks.png", &tex_width, &tex_height, nullptr, 4); // TODO: this image has 3 channels, we must can load that type of images
 
 	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory, true);
+	auto vertex_buffer = skygfx::VertexBuffer(vertices);
+	auto index_buffer = skygfx::IndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -103,8 +105,8 @@ int main()
 		device.setTopology(skygfx::Topology::TriangleList);
 		device.setShader(shader);
 		device.setTexture(0, texture);
-		device.setVertexBuffer(vertices);
-		device.setIndexBuffer(indices);
+		device.setVertexBuffer(vertex_buffer);
+		device.setIndexBuffer(index_buffer);
 		device.setUniformBuffer(1, ubo); 
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();

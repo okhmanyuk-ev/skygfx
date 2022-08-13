@@ -23,6 +23,8 @@ namespace skygfx
 	using TextureHandle = struct TextureHandle;
 	using RenderTargetHandle = struct RenderTargetHandle;
 	using ShaderHandle = struct ShaderHandle;
+	using VertexBufferHandle = struct VertexBufferHandle;
+	using IndexBufferHandle = struct VertexBufferHandle;
 
 	class noncopyable
 	{
@@ -73,18 +75,37 @@ namespace skygfx
 		operator ShaderHandle* () { return mShaderHandle; }
 
 	private:
-		ShaderHandle* mShaderHandle;
+		ShaderHandle* mShaderHandle = nullptr;
 	};
 
-	struct Buffer
+	class VertexBuffer : private noncopyable
 	{
-		Buffer() {}
-		template<typename T> Buffer(T* memory, size_t count) : data((void*)memory), size(count * sizeof(T)), stride(sizeof(T)) {}
-		template<typename T> Buffer(const std::vector<T>& values) : Buffer(values.data(), values.size()) {}
+	public:
+		VertexBuffer(void* memory, size_t size, size_t stride);
+		~VertexBuffer();
 
-		void* data = nullptr;
-		size_t size = 0;
-		size_t stride = 0;
+		template<typename T> VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		template<typename T> VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
+
+		operator VertexBufferHandle* () { return mVertexBufferHandle; }
+
+	private:
+		VertexBufferHandle* mVertexBufferHandle = nullptr;
+	};
+
+	class IndexBuffer : private noncopyable
+	{
+	public:
+		IndexBuffer(void* memory, size_t size, size_t stride);
+		~IndexBuffer();
+
+		template<typename T> IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		template<typename T> IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
+
+		operator IndexBufferHandle* () { return mIndexBufferHandle; }
+
+	private:
+		IndexBufferHandle* mIndexBufferHandle = nullptr;
 	};
 
 	enum class Topology
@@ -336,8 +357,8 @@ namespace skygfx
 		void setRenderTarget(const RenderTarget& value);
 		void setRenderTarget(std::nullptr_t value);
 		void setShader(const Shader& shader);
-		void setVertexBuffer(const Buffer& buffer);
-		void setIndexBuffer(const Buffer& buffer);
+		void setVertexBuffer(const VertexBuffer& value);
+		void setIndexBuffer(const IndexBuffer& value);
 		
 		void setUniformBuffer(uint32_t binding, void* memory, size_t size);
 		

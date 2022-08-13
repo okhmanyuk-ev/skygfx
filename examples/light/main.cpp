@@ -168,6 +168,9 @@ int main()
 	void* tex_memory = stbi_load("assets/bricks.png", &tex_width, &tex_height, nullptr, 4); // TODO: this image has 3 channels, we must can load that type of images
 
 	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory, true);
+	
+	auto vertex_buffer = skygfx::VertexBuffer(vertices);
+	auto index_buffer = skygfx::IndexBuffer(indices);
 
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
@@ -195,8 +198,8 @@ int main()
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
 		device.setShader(shader);
-		device.setVertexBuffer(vertices);
-		device.setIndexBuffer(indices);
+		device.setVertexBuffer(vertex_buffer);
+		device.setIndexBuffer(index_buffer);
 		device.setUniformBuffer(1, ubo);
 		device.setUniformBuffer(2, light);
 		device.setCullMode(skygfx::CullMode::Back);

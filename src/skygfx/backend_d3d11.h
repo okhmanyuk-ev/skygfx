@@ -21,8 +21,8 @@ namespace skygfx
 		void setRenderTarget(RenderTargetHandle* handle) override;
 		void setRenderTarget(std::nullptr_t value) override;
 		void setShader(ShaderHandle* handle) override;
-		void setVertexBuffer(const Buffer& buffer) override;
-		void setIndexBuffer(const Buffer& buffer) override;
+		void setVertexBuffer(VertexBufferHandle* handle) override;
+		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, void* memory, size_t size) override;
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(std::optional<DepthMode> depth_mode) override;
@@ -50,6 +50,12 @@ namespace skygfx
 		ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
+
+		VertexBufferHandle* createVertexBuffer(void* memory, size_t size, size_t stride) override;
+		void destroyVertexBuffer(VertexBufferHandle* handle) override;
+
+		IndexBufferHandle* createIndexBuffer(void* memory, size_t size, size_t stride) override;
+		void destroyIndexBuffer(IndexBufferHandle* handle) override;
 
 	private:
 		void createMainRenderTarget(uint32_t width, uint32_t height);

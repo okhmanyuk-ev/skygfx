@@ -386,6 +386,62 @@ public:
 	}
 };
 
+class BufferDataGL
+{
+	friend class BackendGL44;
+
+protected:
+	GLuint buffer;
+	size_t stride = 0;
+
+public:
+	BufferDataGL(size_t _stride) : stride(_stride)
+	{
+		glGenBuffers(1, &buffer);
+
+		// HOW TO DO MAPPING:
+		/*
+			auto ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+			memcpy(ptr, value.data, value.size);
+			glUnmapBuffer(GL_ARRAY_BUFFER);
+		*/
+
+		// HOW TO GET SIZE:
+		//GLint size = 0;
+		//glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
+
+	}
+
+	~BufferDataGL()
+	{
+		glDeleteBuffers(1, &buffer);
+	}
+};
+
+class VertexBufferDataGL : public BufferDataGL
+{
+	friend class BackendGL44;
+
+public:
+	VertexBufferDataGL(void* memory, size_t size, size_t stride) : BufferDataGL(stride)
+	{
+		glBindBuffer(GL_ARRAY_BUFFER, buffer);
+		glBufferData(GL_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
+	}
+};
+
+class IndexBufferDataGL : public BufferDataGL
+{
+	friend class BackendGL44;
+
+public:
+	IndexBufferDataGL(void* memory, size_t size, size_t stride) : BufferDataGL(stride)
+	{
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
+	}
+};
+
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 static HGLRC WglContext;
 static HDC gHDC;
@@ -393,15 +449,19 @@ static HDC gHDC;
 static GLKView* gGLKView = nullptr;
 #endif
 
-static GLenum GLTopology;
-static GLenum GLIndexType;
-static GLuint GLVertexBuffer;
-static GLuint GLIndexBuffer;
+static GLenum gTopology;
 static std::unordered_map<uint32_t, GLuint> GLUniformBuffers;
 static GLuint GLPixelBuffer;
 static RenderTargetDataGL44* GLCurrentRenderTarget = nullptr;
 static ShaderDataGL44* gShader = nullptr;
 static bool gShaderDirty = false;
+
+static VertexBufferDataGL* gVertexBuffer = nullptr;
+static bool gVertexBufferDirty = false;
+
+static IndexBufferDataGL* gIndexBuffer = nullptr;
+static bool gIndexBufferDirty = false;
+static GLenum gIndexType;
 
 BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 {
@@ -481,8 +541,6 @@ BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 	[EAGLContext setCurrentContext:gGLKView.context];
 	[rootView addSubview:gGLKView];
 #endif
-	glGenBuffers(1, &GLVertexBuffer);
-	glGenBuffers(1, &GLIndexBuffer);
 	glGenBuffers(1, &GLPixelBuffer);
 
 	mBackbufferWidth = width;
@@ -491,8 +549,6 @@ BackendGL44::BackendGL44(void* window, uint32_t width, uint32_t height)
 
 BackendGL44::~BackendGL44()
 {
-	glDeleteBuffers(1, &GLVertexBuffer);
-	glDeleteBuffers(1, &GLIndexBuffer);
 	glDeleteBuffers(1, &GLPixelBuffer);
 
 	for (auto [_, buffer] : GLUniformBuffers)
@@ -509,6 +565,7 @@ void BackendGL44::resize(uint32_t width, uint32_t height)
 {
 	mBackbufferWidth = width;
 	mBackbufferHeight = height;
+	mViewportDirty = true;
 }
 
 void BackendGL44::setTopology(Topology topology)
@@ -521,7 +578,7 @@ void BackendGL44::setTopology(Topology topology)
 		{ Topology::TriangleStrip, GL_TRIANGLE_STRIP }
 	};
 
-	GLTopology = TopologyMap.at(topology);
+	gTopology = TopologyMap.at(topology);
 }
 
 void BackendGL44::setViewport(std::optional<Viewport> viewport)
@@ -599,16 +656,26 @@ void BackendGL44::setShader(ShaderHandle* handle)
 	gShaderDirty = true;
 }
 
-void BackendGL44::setVertexBuffer(const Buffer& buffer)
+void BackendGL44::setVertexBuffer(VertexBufferHandle* handle)
 {
-	mVertexBufferDirty = true;
-	mVertexBuffer = buffer;
+	auto buffer = (VertexBufferDataGL*)handle;
+
+	if (buffer == gVertexBuffer)
+		return;
+
+	gVertexBuffer = buffer;
+	gVertexBufferDirty = true;
 }
 
-void BackendGL44::setIndexBuffer(const Buffer& buffer)
+void BackendGL44::setIndexBuffer(VertexBufferHandle* handle)
 {
-	mIndexBufferDirty = true;
-	mIndexBuffer = buffer;
+	auto buffer = (IndexBufferDataGL*)handle;
+
+	if (buffer == gIndexBuffer)
+		return;
+
+	gIndexBuffer = buffer;
+	gIndexBufferDirty = true;
 }
 
 void BackendGL44::setUniformBuffer(uint32_t binding, void* memory, size_t size)
@@ -763,14 +830,14 @@ void BackendGL44::clear(const std::optional<glm::vec4>& color, const std::option
 void BackendGL44::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
-	glDrawArrays(GLTopology, (GLint)vertex_offset, (GLsizei)vertex_count);
+	glDrawArrays(gTopology, (GLint)vertex_offset, (GLsizei)vertex_count);
 }
 
 void BackendGL44::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
-	uint32_t index_size = GLIndexType == GL_UNSIGNED_INT ? 4 : 2;
-	glDrawElements(GLTopology, (GLsizei)index_count, GLIndexType, (void*)(size_t)(index_offset * index_size));
+	uint32_t index_size = gIndexType == GL_UNSIGNED_INT ? 4 : 2;
+	glDrawElements(gTopology, (GLsizei)index_count, gIndexType, (void*)(size_t)(index_offset * index_size));
 }
 
 void BackendGL44::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
@@ -852,6 +919,30 @@ void BackendGL44::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
+VertexBufferHandle* BackendGL44::createVertexBuffer(void* memory, size_t size, size_t stride)
+{
+	auto buffer = new VertexBufferDataGL(memory, size, stride);
+	return (VertexBufferHandle*)buffer;
+}
+
+void BackendGL44::destroyVertexBuffer(VertexBufferHandle* handle)
+{
+	auto buffer = (VertexBufferDataGL*)handle;
+	delete buffer;
+}
+
+IndexBufferHandle* BackendGL44::createIndexBuffer(void* memory, size_t size, size_t stride)
+{
+	auto buffer = new IndexBufferDataGL(memory, size, stride);
+	return (IndexBufferHandle*)buffer;
+}
+
+void BackendGL44::destroyIndexBuffer(IndexBufferHandle* handle)
+{
+	auto buffer = (IndexBufferDataGL*)handle;
+	delete buffer;
+}
+
 void BackendGL44::prepareForDrawing()
 {
 	assert(gShader);
@@ -862,19 +953,22 @@ void BackendGL44::prepareForDrawing()
 		gShaderDirty = false;
 	}
 
-	if (mIndexBufferDirty)
+	if (gIndexBufferDirty)
 	{
-		setInternalIndexBuffer(mIndexBuffer);
-		mIndexBufferDirty = false;
+		gIndexBufferDirty = false;
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer->buffer);
+		gIndexType = gIndexBuffer->stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 	}
 
-	if (mVertexBufferDirty)
+	if (gVertexBufferDirty)
 	{
-		setInternalVertexBuffer(mVertexBuffer);
-#if defined(SKYGFX_PLATFORM_APPLE)
+		gVertexBufferDirty = false;
+		glBindBuffer(GL_ARRAY_BUFFER, gVertexBuffer->buffer);		
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+		glBindVertexBuffer(0, gVertexBuffer->buffer, 0, (GLsizei)gVertexBuffer->stride);
+#elif defined(SKYGFX_PLATFORM_APPLE)
 		gShader->applyLayout();
 #endif
-		mVertexBufferDirty = false;
 	}
 	
 	if (mTexParametersDirty)
@@ -885,6 +979,8 @@ void BackendGL44::prepareForDrawing()
 
 	if (mViewportDirty)
 	{
+		mViewportDirty = false;
+
 		float width;
 		float height;
 
@@ -913,51 +1009,6 @@ void BackendGL44::prepareForDrawing()
 		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
 #endif
 	}
-}
-
-void BackendGL44::setInternalVertexBuffer(const Buffer& value)
-{
-	glBindBuffer(GL_ARRAY_BUFFER, GLVertexBuffer);
-
-	GLint size = 0;
-	glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
-
-	if ((size_t)size < value.size)
-	{
-		glBufferData(GL_ARRAY_BUFFER, value.size, value.data, GL_DYNAMIC_DRAW);
-	}
-	else
-	{
-		auto ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-		memcpy(ptr, value.data, value.size);
-		glUnmapBuffer(GL_ARRAY_BUFFER);
-	}
-
-#if defined(SKYGFX_PLATFORM_WINDOWS)
-	glBindVertexBuffer(0, GLVertexBuffer, 0, (GLsizei)value.stride);
-#endif
-}
-
-void BackendGL44::setInternalIndexBuffer(const Buffer& value)
-{
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GLIndexBuffer);
-
-	GLint size = 0;
-	glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
-
-	if ((size_t)size < value.size)
-	{
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, value.size, value.data, GL_DYNAMIC_DRAW);
-	}
-	else
-	{
-		auto ptr = glMapBufferRange(GL_ELEMENT_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-		memcpy(ptr, value.data, value.size);
-		glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
-
-	}
-
-	GLIndexType = value.stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 }
 
 void BackendGL44::refreshTexParameters()

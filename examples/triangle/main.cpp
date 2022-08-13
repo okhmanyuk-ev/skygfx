@@ -67,13 +67,16 @@ int main()
 	auto device = skygfx::Device(backend_type, native_window, width, height);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
+	auto vertex_buffer = skygfx::VertexBuffer(vertices);
+	auto index_buffer = skygfx::IndexBuffer(indices);
+
 	while (!glfwWindowShouldClose(window))
 	{
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setTopology(skygfx::Topology::TriangleList);
 		device.setShader(shader);
-		device.setVertexBuffer(vertices);
-		device.setIndexBuffer(indices);
+		device.setVertexBuffer(vertex_buffer);
+		device.setIndexBuffer(index_buffer);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 
