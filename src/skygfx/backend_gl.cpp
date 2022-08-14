@@ -392,28 +392,27 @@ class BufferDataGL
 
 protected:
 	GLuint buffer;
+	GLenum type;
 
 public:
-	BufferDataGL()
+	BufferDataGL(void* memory, size_t size, GLenum _type) : type(_type)
 	{
 		glGenBuffers(1, &buffer);
-
-		// HOW TO DO MAPPING:
-		/*
-			auto ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-			memcpy(ptr, value.data, value.size);
-			glUnmapBuffer(GL_ARRAY_BUFFER);
-		*/
-
-		// HOW TO GET SIZE:
-		//GLint size = 0;
-		//glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
-
+		glBindBuffer(type, buffer);
+		glBufferData(type, size, memory, GL_DYNAMIC_DRAW);
 	}
 
 	~BufferDataGL()
 	{
 		glDeleteBuffers(1, &buffer);
+	}
+
+	void write(void* memory, size_t size)
+	{
+		glBindBuffer(type, buffer);
+		auto ptr = glMapBufferRange(type, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+		memcpy(ptr, memory, size);
+		glUnmapBuffer(type);
 	}
 };
 
@@ -425,15 +424,9 @@ private:
 	size_t stride = 0;
 
 public:
-	VertexBufferDataGL(void* memory, size_t size, size_t _stride) : stride(_stride)
+	VertexBufferDataGL(void* memory, size_t size, size_t _stride) : BufferDataGL(memory, size, GL_ARRAY_BUFFER),
+		stride(_stride)
 	{
-		write(memory, size);
-	}
-
-	void write(void* memory, size_t size)
-	{
-		glBindBuffer(GL_ARRAY_BUFFER, buffer);
-		glBufferData(GL_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 	}
 };
 
@@ -445,15 +438,9 @@ private:
 	size_t stride = 0;
 
 public:
-	IndexBufferDataGL(void* memory, size_t size, size_t _stride) : stride(_stride)
+	IndexBufferDataGL(void* memory, size_t size, size_t _stride) : BufferDataGL(memory, size, GL_ELEMENT_ARRAY_BUFFER),
+		stride(_stride)
 	{
-		write(memory, size);
-	}
-
-	void write(void* memory, size_t size)
-	{
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 	}
 };
 
@@ -462,16 +449,9 @@ class UniformBufferDataGL : public BufferDataGL
 	friend class BackendGL;
 
 public:
-	UniformBufferDataGL(void* memory, size_t size)
-	{
-		write(memory, size);
-	}
-
-	void write(void* memory, size_t size)
+	UniformBufferDataGL(void* memory, size_t size) : BufferDataGL(memory, size, GL_UNIFORM_BUFFER)
 	{
 		assert(size % 16 == 0);
-		glBindBuffer(GL_UNIFORM_BUFFER, buffer);
-		glBufferData(GL_UNIFORM_BUFFER, size, memory, GL_DYNAMIC_DRAW);
 	}
 };
 
