@@ -17,7 +17,7 @@ namespace utils
 	{
 		std::cout << "Choose backend type: " << std::endl;
 		std::cout << "1. D3D11" << std::endl;
-		std::cout << "2. OpenGL 4.4" << std::endl;
+		std::cout << "2. OpenGL" << std::endl;
 		std::cout << "3. Vulkan" << std::endl;
 		std::cout << "4. Metal" << std::endl;
 
@@ -27,7 +27,7 @@ namespace utils
 		if (value == 1)
 			return skygfx::BackendType::D3D11;
 		else if (value == 2)
-			return skygfx::BackendType::OpenGL44;
+			return skygfx::BackendType::OpenGL;
 		else if (value == 3)
 			return skygfx::BackendType::Vulkan;
 		else if (value == 4)
