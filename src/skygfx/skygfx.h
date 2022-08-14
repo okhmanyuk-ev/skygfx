@@ -15,7 +15,7 @@ namespace skygfx
 	enum class BackendType
 	{
 		D3D11,
-		OpenGL44,
+		OpenGL,
 		Vulkan,
 		Metal
 	};

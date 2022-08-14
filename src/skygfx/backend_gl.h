@@ -7,11 +7,11 @@
 
 namespace skygfx
 {
-	class BackendGL44 : public Backend
+	class BackendGL : public Backend
 	{
 	public:
-		BackendGL44(void* window, uint32_t width, uint32_t height);
-		~BackendGL44();
+		BackendGL(void* window, uint32_t width, uint32_t height);
+		~BackendGL();
 
 		void resize(uint32_t width, uint32_t height) override;
 

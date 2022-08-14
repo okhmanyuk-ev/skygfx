@@ -1,7 +1,7 @@
 #include "skygfx.h"
 #include "backend.h"
 #include "backend_d3d11.h"
-#include "backend_gl44.h"
+#include "backend_gl.h"
 #include "backend_vk.h"
 #include "backend_mtl.h"
 
@@ -116,8 +116,8 @@ Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 		gBackend = new BackendD3D11(window, width, height);
 #endif
 #ifdef SKYGFX_HAS_OPENGL
-	if (type == BackendType::OpenGL44)
-		gBackend = new BackendGL44(window, width, height);
+	if (type == BackendType::OpenGL)
+		gBackend = new BackendGL(window, width, height);
 #endif
 #ifdef SKYGFX_HAS_VULKAN
 	if (type == BackendType::Vulkan)
