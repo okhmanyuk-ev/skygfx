@@ -1,6 +1,7 @@
 #include "skygfx.h"
 #include "backend.h"
 #include "backend_d3d11.h"
+#include "backend_d3d12.h"
 #include "backend_gl.h"
 #include "backend_vk.h"
 #include "backend_mtl.h"
@@ -114,6 +115,10 @@ Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
 #ifdef SKYGFX_HAS_D3D11
 	if (type == BackendType::D3D11)
 		gBackend = new BackendD3D11(window, width, height);
+#endif
+#ifdef SKYGFX_HAS_D3D12
+	if (type == BackendType::D3D12)
+		gBackend = new BackendD3D12(window, width, height);
 #endif
 #ifdef SKYGFX_HAS_OPENGL
 	if (type == BackendType::OpenGL)

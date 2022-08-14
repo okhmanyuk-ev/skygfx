@@ -17,9 +17,10 @@ namespace utils
 	{
 		std::cout << "Choose backend type: " << std::endl;
 		std::cout << "1. D3D11" << std::endl;
-		std::cout << "2. OpenGL" << std::endl;
-		std::cout << "3. Vulkan" << std::endl;
-		std::cout << "4. Metal" << std::endl;
+		std::cout << "2. D3D12" << std::endl;
+		std::cout << "3. OpenGL" << std::endl;
+		std::cout << "4. Vulkan" << std::endl;
+		std::cout << "5. Metal" << std::endl;
 
 		int value = 0;
 		std::cin >> value;
@@ -27,10 +28,12 @@ namespace utils
 		if (value == 1)
 			return skygfx::BackendType::D3D11;
 		else if (value == 2)
-			return skygfx::BackendType::OpenGL;
+			return skygfx::BackendType::D3D12;
 		else if (value == 3)
-			return skygfx::BackendType::Vulkan;
+			return skygfx::BackendType::OpenGL;
 		else if (value == 4)
+			return skygfx::BackendType::Vulkan;
+		else if (value == 5)
 			return skygfx::BackendType::Metal;
 		else
 			throw std::runtime_error("unknown type");
