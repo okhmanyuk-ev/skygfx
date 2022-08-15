@@ -429,6 +429,14 @@ public:
 	}
 };
 
+class UniformBufferD3D12 : public BufferD3D12
+{
+public:
+	UniformBufferD3D12(void* memory, size_t size) : BufferD3D12(memory, size)
+	{
+	}
+};
+
 BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 {
 	ID3D12Debug* D3D12Debug = NULL;
@@ -718,6 +726,10 @@ void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
+	auto buffer = (UniformBufferD3D12*)handle;
+
+	//gContext->VSSetConstantBuffers(binding, 1, &buffer->buffer);
+	//gContext->PSSetConstantBuffers(binding, 1, &buffer->buffer);
 }
 
 void BackendD3D12::setBlendMode(const BlendMode& value)
@@ -923,6 +935,9 @@ void BackendD3D12::destroyVertexBuffer(VertexBufferHandle* handle)
 
 void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
+	auto buffer = (VertexBufferD3D12*)handle;
+	buffer->write(memory, size);
+	buffer->stride = stride;
 }
 
 IndexBufferHandle* BackendD3D12::createIndexBuffer(void* memory, size_t size, size_t stride)
@@ -933,6 +948,9 @@ IndexBufferHandle* BackendD3D12::createIndexBuffer(void* memory, size_t size, si
 
 void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
+	auto buffer = (IndexBufferD3D12*)handle;
+	buffer->write(memory, size);
+	buffer->stride = stride;
 }
 
 void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
@@ -943,15 +961,20 @@ void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
 
 UniformBufferHandle* BackendD3D12::createUniformBuffer(void* memory, size_t size)
 {
-	return nullptr;
+	auto buffer = new UniformBufferD3D12(memory, size);
+	return (UniformBufferHandle*)buffer;
 }
 
 void BackendD3D12::destroyUniformBuffer(UniformBufferHandle* handle)
 {
+	auto buffer = (UniformBufferD3D12*)handle;
+	delete buffer;
 }
 
 void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
 {
+	auto buffer = (UniformBufferD3D12*)handle;
+	buffer->write(memory, size);
 }
 
 #endif
