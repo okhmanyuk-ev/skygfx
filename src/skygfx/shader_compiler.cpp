@@ -170,12 +170,17 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 	return result;
 }
 
-std::string skygfx::CompileSpirvToHlsl(const std::vector<uint32_t>& spirv)
+std::string skygfx::CompileSpirvToHlsl(const std::vector<uint32_t>& spirv, HlslVersion hlsl_version)
 {
 	auto compiler = spirv_cross::CompilerHLSL(spirv);
 
 	spirv_cross::CompilerHLSL::Options options;
-	options.shader_model = 40;
+
+	if (hlsl_version == HlslVersion::v4_0)
+		options.shader_model = 40;
+	else if (hlsl_version == HlslVersion::v5_0)
+		options.shader_model = 50;
+
 	compiler.set_hlsl_options(options);
 
 	return compiler.compile();
