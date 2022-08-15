@@ -139,7 +139,7 @@ static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
 	{ ComparisonFunc::GreaterEqual, GL_GEQUAL }
 };
 
-class ShaderDataGL
+class ShaderGL
 {
 private:
 	Vertex::Layout layout;
@@ -147,7 +147,7 @@ private:
 	GLuint vao;
 
 public:
-	ShaderDataGL(const Vertex::Layout& _layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderGL(const Vertex::Layout& _layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines) : layout(_layout)
 	{
 		AddShaderLocationDefines(layout, defines);
@@ -255,7 +255,7 @@ public:
 		}
 	}
 
-	~ShaderDataGL()
+	~ShaderGL()
 	{
 		glDeleteVertexArrays(1, &vao);
 		glDeleteProgram(program);
@@ -282,9 +282,9 @@ public:
 #endif
 };
 
-class TextureDataGL
+class TextureGL
 {
-	friend class RenderTargetDataGL;
+	friend class RenderTargetGL;
 	friend class BackendGL;
 
 private:
@@ -294,7 +294,7 @@ private:
 	uint32_t height;
 
 public:
-	TextureDataGL(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) : 
+	TextureGL(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) : 
 		mipmap(_mipmap),
 		width(_width),
 		height(_height)
@@ -329,7 +329,7 @@ public:
 		glBindTexture(GL_TEXTURE_2D, last_texture);
 	}
 
-	~TextureDataGL()
+	~TextureGL()
 	{
 		glDeleteTextures(1, &texture);
 	}
@@ -341,19 +341,19 @@ public:
 	}
 };
 
-class RenderTargetDataGL
+class RenderTargetGL
 {
 	friend class BackendGL;
 
 private:
 	GLuint framebuffer;
 	GLuint depth_stencil_renderbuffer;
-	TextureDataGL* texture_data;
+	TextureGL* texture_data;
 	uint32_t width;
 	uint32_t height;
 
 public:
-	RenderTargetDataGL(uint32_t _width, uint32_t _height, TextureDataGL* _texture_data) : 
+	RenderTargetGL(uint32_t _width, uint32_t _height, TextureGL* _texture_data) : 
 		texture_data(_texture_data), width(_width), height(_height)
 	{
 		GLint last_fbo;
@@ -379,14 +379,14 @@ public:
 		glBindRenderbuffer(GL_RENDERBUFFER, last_rbo);
 	}
 
-	~RenderTargetDataGL()
+	~RenderTargetGL()
 	{
 		glDeleteFramebuffers(1, &framebuffer);
 		glDeleteRenderbuffers(1, &depth_stencil_renderbuffer);
 	}
 };
 
-class BufferDataGL
+class BufferGL
 {
 	friend class BackendGL;
 
@@ -395,14 +395,14 @@ protected:
 	GLenum type;
 
 public:
-	BufferDataGL(void* memory, size_t size, GLenum _type) : type(_type)
+	BufferGL(void* memory, size_t size, GLenum _type) : type(_type)
 	{
 		glGenBuffers(1, &buffer);
 		glBindBuffer(type, buffer);
 		glBufferData(type, size, memory, GL_DYNAMIC_DRAW);
 	}
 
-	~BufferDataGL()
+	~BufferGL()
 	{
 		glDeleteBuffers(1, &buffer);
 	}
@@ -416,7 +416,7 @@ public:
 	}
 };
 
-class VertexBufferDataGL : public BufferDataGL
+class VertexBufferGL : public BufferGL
 {
 	friend class BackendGL;
 
@@ -424,13 +424,13 @@ private:
 	size_t stride = 0;
 
 public:
-	VertexBufferDataGL(void* memory, size_t size, size_t _stride) : BufferDataGL(memory, size, GL_ARRAY_BUFFER),
+	VertexBufferGL(void* memory, size_t size, size_t _stride) : BufferGL(memory, size, GL_ARRAY_BUFFER),
 		stride(_stride)
 	{
 	}
 };
 
-class IndexBufferDataGL : public BufferDataGL
+class IndexBufferGL : public BufferGL
 {
 	friend class BackendGL;
 
@@ -438,18 +438,18 @@ private:
 	size_t stride = 0;
 
 public:
-	IndexBufferDataGL(void* memory, size_t size, size_t _stride) : BufferDataGL(memory, size, GL_ELEMENT_ARRAY_BUFFER),
+	IndexBufferGL(void* memory, size_t size, size_t _stride) : BufferGL(memory, size, GL_ELEMENT_ARRAY_BUFFER),
 		stride(_stride)
 	{
 	}
 };
 
-class UniformBufferDataGL : public BufferDataGL
+class UniformBufferGL : public BufferGL
 {
 	friend class BackendGL;
 
 public:
-	UniformBufferDataGL(void* memory, size_t size) : BufferDataGL(memory, size, GL_UNIFORM_BUFFER)
+	UniformBufferGL(void* memory, size_t size) : BufferGL(memory, size, GL_UNIFORM_BUFFER)
 	{
 		assert(size % 16 == 0);
 	}
@@ -464,18 +464,27 @@ static GLKView* gGLKView = nullptr;
 
 static GLenum gTopology;
 static GLuint gPixelBuffer;
-static RenderTargetDataGL* gRenderTarget = nullptr;
-static ShaderDataGL* gShader = nullptr;
+static RenderTargetGL* gRenderTarget = nullptr;
+static ShaderGL* gShader = nullptr;
 static bool gShaderDirty = false;
 
-static VertexBufferDataGL* gVertexBuffer = nullptr;
+static VertexBufferGL* gVertexBuffer = nullptr;
 static bool gVertexBufferDirty = false;
 
-static IndexBufferDataGL* gIndexBuffer = nullptr;
+static IndexBufferGL* gIndexBuffer = nullptr;
 static bool gIndexBufferDirty = false;
 static GLenum gIndexType;
 
 static ExecuteList gExecuteAfterPresent;
+
+static bool gTexParametersDirty = true;
+static bool gViewportDirty = true;
+static Sampler gSampler = Sampler::Linear;
+static TextureAddress gTextureAddress = TextureAddress::Wrap;
+static std::unordered_map<uint32_t, TextureHandle*> gCurrentTextures;
+static std::optional<Viewport> gViewport;
+static uint32_t gBackbufferWidth = 0;
+static uint32_t gBackbufferHeight = 0;
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 {
@@ -560,8 +569,8 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 #endif
 	glGenBuffers(1, &gPixelBuffer);
 
-	mBackbufferWidth = width;
-	mBackbufferHeight = height;
+	gBackbufferWidth = width;
+	gBackbufferHeight = height;
 }
 
 BackendGL::~BackendGL()
@@ -577,9 +586,9 @@ BackendGL::~BackendGL()
 
 void BackendGL::resize(uint32_t width, uint32_t height)
 {
-	mBackbufferWidth = width;
-	mBackbufferHeight = height;
-	mViewportDirty = true;
+	gBackbufferWidth = width;
+	gBackbufferHeight = height;
+	gViewportDirty = true;
 }
 
 void BackendGL::setTopology(Topology topology)
@@ -597,8 +606,8 @@ void BackendGL::setTopology(Topology topology)
 
 void BackendGL::setViewport(std::optional<Viewport> viewport)
 {
-	mViewport = viewport;
-	mViewportDirty = true;
+	gViewport = viewport;
+	gViewportDirty = true;
 }
 
 void BackendGL::setScissor(std::optional<Scissor> scissor)
@@ -610,7 +619,7 @@ void BackendGL::setScissor(std::optional<Scissor> scissor)
 		glEnable(GL_SCISSOR_TEST);
 		glScissor(
 			(GLint)glm::round(value.position.x),
-			(GLint)glm::round(mBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
+			(GLint)glm::round(gBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
 			(GLint)glm::round(value.size.x),
 			(GLint)glm::round(value.size.y));
 	}
@@ -622,28 +631,28 @@ void BackendGL::setScissor(std::optional<Scissor> scissor)
 
 void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	auto texture = (TextureDataGL*)handle;
+	auto texture = (TextureGL*)handle;
 	texture->bind(binding);
 	
 	TextureHandle* prev_texture = nullptr;
 	
-	if (mCurrentTextures.contains(binding))
-		prev_texture = mCurrentTextures.at(binding);
+	if (gCurrentTextures.contains(binding))
+		prev_texture = gCurrentTextures.at(binding);
 
-	mCurrentTextures[binding] = handle;
+	gCurrentTextures[binding] = handle;
 	
 	if (prev_texture != handle)
-		mTexParametersDirty = true;
+		gTexParametersDirty = true;
 }
 
 void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetDataGL*)handle;
+	auto render_target = (RenderTargetGL*)handle;
 	glBindFramebuffer(GL_FRAMEBUFFER, render_target->framebuffer);
 	gRenderTarget = render_target;
 
-	if (!mViewport.has_value())
-		mViewportDirty = true;
+	if (!gViewport.has_value())
+		gViewportDirty = true;
 }
 
 void BackendGL::setRenderTarget(std::nullptr_t value)
@@ -655,13 +664,13 @@ void BackendGL::setRenderTarget(std::nullptr_t value)
 #endif
 	gRenderTarget = nullptr;
 
-	if (!mViewport.has_value())
-		mViewportDirty = true;
+	if (!gViewport.has_value())
+		gViewportDirty = true;
 }
 
 void BackendGL::setShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderDataGL*)handle;
+	auto shader = (ShaderGL*)handle;
 
 	if (shader == gShader)
 		return;
@@ -672,21 +681,21 @@ void BackendGL::setShader(ShaderHandle* handle)
 
 void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferDataGL*)handle;
+	auto buffer = (VertexBufferGL*)handle;
 	gVertexBuffer = buffer;
 	gVertexBufferDirty = true;
 }
 
 void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferDataGL*)handle;
+	auto buffer = (IndexBufferGL*)handle;
 	gIndexBuffer = buffer;
 	gIndexBufferDirty = true;
 }
 
 void BackendGL::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferDataGL*)handle;
+	auto buffer = (UniformBufferGL*)handle;
 
 	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->buffer);
 }
@@ -780,14 +789,14 @@ void BackendGL::setCullMode(CullMode cull_mode)
 
 void BackendGL::setSampler(Sampler value)
 {
-	mSampler = value;
-	mTexParametersDirty = true;
+	gSampler = value;
+	gTexParametersDirty = true;
 }
 
 void BackendGL::setTextureAddress(TextureAddress value)
 {
-	mTextureAddress = value;
-	mTexParametersDirty = true;
+	gTextureAddress = value;
+	gTexParametersDirty = true;
 }
 
 void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -845,7 +854,7 @@ void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset)
 
 void BackendGL::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
 {
-	auto dst_texture = (TextureDataGL*)dst_texture_handle;
+	auto dst_texture = (TextureGL*)dst_texture_handle;
 
 	assert(dst_texture->width == size.x);
 	assert(dst_texture->height == size.y);
@@ -854,7 +863,7 @@ void BackendGL::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Textur
 		return;
 
 	auto x = (GLint)pos.x;
-	auto y = (GLint)(mBackbufferHeight - pos.y - size.y); // TODO: need different calculations when render target
+	auto y = (GLint)(gBackbufferHeight - pos.y - size.y); // TODO: need different calculations when render target
 	auto w = (GLint)size.x;
 	auto h = (GLint)size.y;
 
@@ -888,52 +897,52 @@ void BackendGL::present()
 
 TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 {
-	auto texture = new TextureDataGL(width, height, channels, memory, mipmap);
+	auto texture = new TextureGL(width, height, channels, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
 void BackendGL::destroyTexture(TextureHandle* handle)
 {
-	auto texture = (TextureDataGL*)handle;
+	auto texture = (TextureGL*)handle;
 	delete texture;
 }
 
 RenderTargetHandle* BackendGL::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
-	auto texture = (TextureDataGL*)texture_handle;
-	auto render_target = new RenderTargetDataGL(width, height, texture);
+	auto texture = (TextureGL*)texture_handle;
+	auto render_target = new RenderTargetGL(width, height, texture);
 	return (RenderTargetHandle*)render_target;
 }
 
 void BackendGL::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetDataGL*)handle;
+	auto render_target = (RenderTargetGL*)handle;
 	delete render_target;
 }
 
 ShaderHandle* BackendGL::createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderDataGL(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderGL(layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 
 void BackendGL::destroyShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderDataGL*)handle;
+	auto shader = (ShaderGL*)handle;
 	delete shader;
 }
 
 VertexBufferHandle* BackendGL::createVertexBuffer(void* memory, size_t size, size_t stride)
 {
-	auto buffer = new VertexBufferDataGL(memory, size, stride);
+	auto buffer = new VertexBufferGL(memory, size, stride);
 	return (VertexBufferHandle*)buffer;
 }
 
 void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto buffer = (VertexBufferDataGL*)handle;
+		auto buffer = (VertexBufferGL*)handle;
 
 		if (gVertexBuffer == buffer)
 			gVertexBuffer = nullptr;
@@ -944,21 +953,21 @@ void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 
 void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
-	auto buffer = (VertexBufferDataGL*)handle;
+	auto buffer = (VertexBufferGL*)handle;
 	buffer->write(memory, size);
 	buffer->stride = stride;
 }
 
 IndexBufferHandle* BackendGL::createIndexBuffer(void* memory, size_t size, size_t stride)
 {
-	auto buffer = new IndexBufferDataGL(memory, size, stride);
+	auto buffer = new IndexBufferGL(memory, size, stride);
 	return (IndexBufferHandle*)buffer;
 }
 
 void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto buffer = (IndexBufferDataGL*)handle;
+		auto buffer = (IndexBufferGL*)handle;
 
 		if (gIndexBuffer == buffer)
 			gIndexBuffer = nullptr;
@@ -969,28 +978,28 @@ void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 
 void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
-	auto buffer = (VertexBufferDataGL*)handle;
+	auto buffer = (VertexBufferGL*)handle;
 	buffer->write(memory, size);
 	buffer->stride = stride;
 }
 
 UniformBufferHandle* BackendGL::createUniformBuffer(void* memory, size_t size)
 {
-	auto buffer = new UniformBufferDataGL(memory, size);
+	auto buffer = new UniformBufferGL(memory, size);
 	return (UniformBufferHandle*)buffer;
 }
 
 void BackendGL::destroyUniformBuffer(UniformBufferHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto buffer = (UniformBufferDataGL*)handle;
+		auto buffer = (UniformBufferGL*)handle;
 		delete buffer;
 	});
 }
 
 void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
 {
-	auto buffer = (UniformBufferDataGL*)handle;
+	auto buffer = (UniformBufferGL*)handle;
 	buffer->write(memory, size);
 }
 
@@ -1023,23 +1032,55 @@ void BackendGL::prepareForDrawing()
 #endif
 	}
 	
-	if (mTexParametersDirty)
+	if (gTexParametersDirty)
 	{
-		refreshTexParameters();
-		mTexParametersDirty = false;
+		for (auto [binding, texture_handle] : gCurrentTextures)
+		{
+			glActiveTexture(GL_TEXTURE0 + binding);
+
+			bool texture_has_mipmap = ((TextureGL*)texture_handle)->mipmap;
+
+			if (gSampler == Sampler::Linear)
+			{
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			}
+			else if (gSampler == Sampler::Nearest)
+			{
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			}
+
+			if (gTextureAddress == TextureAddress::Clamp)
+			{
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			}
+			else if (gTextureAddress == TextureAddress::Wrap)
+			{
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			}
+			else if (gTextureAddress == TextureAddress::MirrorWrap)
+			{
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+			}
+		}
+		gTexParametersDirty = false;
 	}
 
-	if (mViewportDirty)
+	if (gViewportDirty)
 	{
-		mViewportDirty = false;
+		gViewportDirty = false;
 
 		float width;
 		float height;
 
 		if (gRenderTarget == nullptr)
 		{
-			width = static_cast<float>(mBackbufferWidth);
-			height = static_cast<float>(mBackbufferHeight);
+			width = static_cast<float>(gBackbufferWidth);
+			height = static_cast<float>(gBackbufferHeight);
 		}
 		else
 		{
@@ -1047,7 +1088,7 @@ void BackendGL::prepareForDrawing()
 			height = static_cast<float>(gRenderTarget->height);
 		}
 
-		auto viewport = mViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
 		glViewport(
 			(GLint)viewport.position.x,
@@ -1060,43 +1101,6 @@ void BackendGL::prepareForDrawing()
 #elif defined(SKYGFX_PLATFORM_APPLE)
 		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
 #endif
-	}
-}
-
-void BackendGL::refreshTexParameters()
-{
-	for (auto [binding, texture_handle] : mCurrentTextures)
-	{
-		glActiveTexture(GL_TEXTURE0 + binding);
-	
-		bool texture_has_mipmap = ((TextureDataGL*)texture_handle)->mipmap;
-
-		if (mSampler == Sampler::Linear)
-		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		}
-		else if (mSampler == Sampler::Nearest)
-		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		}
-
-		if (mTextureAddress == TextureAddress::Clamp)
-		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		}
-		else if (mTextureAddress == TextureAddress::Wrap)
-		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		}
-		else if (mTextureAddress == TextureAddress::MirrorWrap)
-		{
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-		}
 	}
 }
 

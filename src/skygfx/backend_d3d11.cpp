@@ -77,6 +77,11 @@ static std::unordered_map<SamplerState, ID3D11SamplerState*> gSamplerStates;
 static SamplerState gSamplerState;
 static bool gSamplerStateDirty = true;
 static RenderTargetD3D11* gCurrentRenderTarget = nullptr;
+static std::optional<Viewport> gViewport;
+static bool gViewportDirty = true;
+static uint32_t gBackbufferWidth = 0;
+static uint32_t gBackbufferHeight = 0;
+static std::unordered_map<uint32_t, TextureHandle*> gCurrentTextures;
 
 static struct
 {
@@ -422,8 +427,8 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	createMainRenderTarget(width, height);
 	setRenderTarget(nullptr); // TODO: do it when nullptr was before
 
-	if (!mViewport.has_value())
-		mViewportDirty = true;
+	if (!gViewport.has_value())
+		gViewportDirty = true;
 }
 
 void BackendD3D11::setTopology(Topology topology)
@@ -441,10 +446,10 @@ void BackendD3D11::setTopology(Topology topology)
 
 void BackendD3D11::setViewport(std::optional<Viewport> viewport)
 {
-	if (mViewport != viewport)
-		mViewportDirty = true;
+	if (gViewport != viewport)
+		gViewportDirty = true;
 
-	mViewport = viewport;
+	gViewport = viewport;
 }
 
 void BackendD3D11::setScissor(std::optional<Scissor> scissor)
@@ -475,7 +480,7 @@ void BackendD3D11::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureD3D11*)handle;
 	texture->bind(binding);
-	mCurrentTextures[binding] = handle;
+	gCurrentTextures[binding] = handle;
 }
 
 void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
@@ -497,8 +502,8 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 
 	gCurrentRenderTarget = render_target;
 	
-	if (!mViewport.has_value())
-		mViewportDirty = true;
+	if (!gViewport.has_value())
+		gViewportDirty = true;
 }
 
 void BackendD3D11::setRenderTarget(std::nullptr_t value)
@@ -506,8 +511,8 @@ void BackendD3D11::setRenderTarget(std::nullptr_t value)
 	gContext->OMSetRenderTargets(1, &gMainRenderTarget.render_taget_view, gMainRenderTarget.depth_stencil_view);
 	gCurrentRenderTarget = nullptr;
 
-	if (!mViewport.has_value())
-		mViewportDirty = true;
+	if (!gViewport.has_value())
+		gViewportDirty = true;
 }
 
 void BackendD3D11::setShader(ShaderHandle* handle)
@@ -877,8 +882,8 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 	gDevice->CreateRenderTargetView(pBackBuffer, nullptr, &gMainRenderTarget.render_taget_view);
 	SafeRelease(pBackBuffer);
 
-	mBackbufferWidth = width;
-	mBackbufferHeight = height;
+	gBackbufferWidth = width;
+	gBackbufferHeight = height;
 }
 
 void BackendD3D11::destroyMainRenderTarget()
@@ -1010,7 +1015,7 @@ void BackendD3D11::prepareForDrawing()
 			gDevice->CreateSamplerState(&desc, &gSamplerStates[value]);
 		}
 
-		for (auto [binding, texture_handle] : mCurrentTextures)
+		for (auto [binding, texture_handle] : gCurrentTextures)
 		{
 			gContext->PSSetSamplers(binding, 1, &gSamplerStates.at(value));
 		}
@@ -1018,15 +1023,15 @@ void BackendD3D11::prepareForDrawing()
 
 	// viewport
 
-	if (mViewportDirty)
+	if (gViewportDirty)
 	{
 		float width;
 		float height;
 
 		if (gCurrentRenderTarget == nullptr)
 		{
-			width = static_cast<float>(mBackbufferWidth);
-			height = static_cast<float>(mBackbufferHeight);
+			width = static_cast<float>(gBackbufferWidth);
+			height = static_cast<float>(gBackbufferHeight);
 		}
 		else
 		{
@@ -1034,7 +1039,7 @@ void BackendD3D11::prepareForDrawing()
 			height = static_cast<float>(gCurrentRenderTarget->height);
 		}
 
-		auto viewport = mViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
 		D3D11_VIEWPORT vp;
 		vp.Width = viewport.size.x;
@@ -1045,7 +1050,7 @@ void BackendD3D11::prepareForDrawing()
 		vp.TopLeftY = viewport.position.y;
 		gContext->RSSetViewports(1, &vp);
 
-		mViewportDirty = false;
+		gViewportDirty = false;
 	}
 }
 

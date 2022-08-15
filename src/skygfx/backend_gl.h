@@ -66,17 +66,6 @@ namespace skygfx
 
 	private:
 		void prepareForDrawing();
-		void refreshTexParameters();
-
-	private:
-		bool mTexParametersDirty = true;
-		bool mViewportDirty = true;
-		Sampler mSampler = Sampler::Linear;
-		TextureAddress mTextureAddress = TextureAddress::Wrap;
-		std::unordered_map<uint32_t, TextureHandle*> mCurrentTextures;
-		std::optional<Viewport> mViewport;
-		uint32_t mBackbufferWidth = 0;
-		uint32_t mBackbufferHeight = 0;
 	};
 }
 
