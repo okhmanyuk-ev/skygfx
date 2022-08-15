@@ -481,7 +481,7 @@ static bool gTexParametersDirty = true;
 static bool gViewportDirty = true;
 static Sampler gSampler = Sampler::Linear;
 static TextureAddress gTextureAddress = TextureAddress::Wrap;
-static std::unordered_map<uint32_t, TextureHandle*> gCurrentTextures;
+static std::unordered_map<uint32_t, TextureHandle*> gTextures;
 static std::optional<Viewport> gViewport;
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
@@ -636,10 +636,10 @@ void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 	
 	TextureHandle* prev_texture = nullptr;
 	
-	if (gCurrentTextures.contains(binding))
-		prev_texture = gCurrentTextures.at(binding);
+	if (gTextures.contains(binding))
+		prev_texture = gTextures.at(binding);
 
-	gCurrentTextures[binding] = handle;
+	gTextures[binding] = handle;
 	
 	if (prev_texture != handle)
 		gTexParametersDirty = true;
@@ -1034,7 +1034,7 @@ void BackendGL::prepareForDrawing()
 	
 	if (gTexParametersDirty)
 	{
-		for (auto [binding, texture_handle] : gCurrentTextures)
+		for (auto [binding, texture_handle] : gTextures)
 		{
 			glActiveTexture(GL_TEXTURE0 + binding);
 

@@ -61,6 +61,7 @@ SKYGFX_MAKE_HASHABLE(SamplerState,
 	t.sampler,
 	t.textureAddress);
 
+class TextureD3D11;
 class RenderTargetD3D11;
 
 static IDXGISwapChain* gSwapChain = nullptr;
@@ -76,12 +77,12 @@ static bool gRasterizerStateDirty = true;
 static std::unordered_map<SamplerState, ID3D11SamplerState*> gSamplerStates;
 static SamplerState gSamplerState;
 static bool gSamplerStateDirty = true;
-static RenderTargetD3D11* gCurrentRenderTarget = nullptr;
+static RenderTargetD3D11* gRenderTarget = nullptr;
 static std::optional<Viewport> gViewport;
 static bool gViewportDirty = true;
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
-static std::unordered_map<uint32_t, TextureHandle*> gCurrentTextures;
+static std::unordered_map<uint32_t, TextureD3D11*> gTextures;
 
 static struct
 {
@@ -480,7 +481,7 @@ void BackendD3D11::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureD3D11*)handle;
 	texture->bind(binding);
-	gCurrentTextures[binding] = handle;
+	gTextures[binding] = texture;
 }
 
 void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
@@ -500,7 +501,7 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 
 	gContext->OMSetRenderTargets(1, &render_target->render_target_view, render_target->depth_stencil_view);
 
-	gCurrentRenderTarget = render_target;
+	gRenderTarget = render_target;
 	
 	if (!gViewport.has_value())
 		gViewportDirty = true;
@@ -509,7 +510,7 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 void BackendD3D11::setRenderTarget(std::nullptr_t value)
 {
 	gContext->OMSetRenderTargets(1, &gMainRenderTarget.render_taget_view, gMainRenderTarget.depth_stencil_view);
-	gCurrentRenderTarget = nullptr;
+	gRenderTarget = nullptr;
 
 	if (!gViewport.has_value())
 		gViewportDirty = true;
@@ -643,10 +644,10 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 	auto rtv = gMainRenderTarget.render_taget_view;
 	auto dsv = gMainRenderTarget.depth_stencil_view;
 
-	if (gCurrentRenderTarget != nullptr)
+	if (gRenderTarget != nullptr)
 	{
-		rtv = gCurrentRenderTarget->render_target_view;
-		dsv = gCurrentRenderTarget->depth_stencil_view;
+		rtv = gRenderTarget->render_target_view;
+		dsv = gRenderTarget->depth_stencil_view;
 	}
 
 	if (color.has_value())
@@ -692,8 +693,8 @@ void BackendD3D11::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 
 	ID3D11Resource* resource = NULL;
 
-	if (gCurrentRenderTarget)
-		gCurrentRenderTarget->render_target_view->GetResource(&resource);
+	if (gRenderTarget)
+		gRenderTarget->render_target_view->GetResource(&resource);
 	else
 		gMainRenderTarget.render_taget_view->GetResource(&resource);
 
@@ -1015,7 +1016,7 @@ void BackendD3D11::prepareForDrawing()
 			gDevice->CreateSamplerState(&desc, &gSamplerStates[value]);
 		}
 
-		for (auto [binding, texture_handle] : gCurrentTextures)
+		for (auto [binding, _] : gTextures)
 		{
 			gContext->PSSetSamplers(binding, 1, &gSamplerStates.at(value));
 		}
@@ -1028,15 +1029,15 @@ void BackendD3D11::prepareForDrawing()
 		float width;
 		float height;
 
-		if (gCurrentRenderTarget == nullptr)
+		if (gRenderTarget == nullptr)
 		{
 			width = static_cast<float>(gBackbufferWidth);
 			height = static_cast<float>(gBackbufferHeight);
 		}
 		else
 		{
-			width = static_cast<float>(gCurrentRenderTarget->width);
-			height = static_cast<float>(gCurrentRenderTarget->height);
+			width = static_cast<float>(gRenderTarget->width);
+			height = static_cast<float>(gRenderTarget->height);
 		}
 
 		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
