@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <stack>
+#include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include "vertex.h"
@@ -410,6 +412,95 @@ namespace skygfx
 
 		void present();
 	};
+
+	class StackDevice : private noncopyable
+	{
+	public:
+		struct State
+		{
+			Topology topology = Topology::TriangleList;
+			std::optional<Viewport> viewport;
+			std::optional<Scissor> scissor;
+			std::unordered_map<uint32_t, std::shared_ptr<Texture>> textures;
+			std::shared_ptr<RenderTarget> render_target;
+			std::shared_ptr<Shader> shader;
+			std::shared_ptr<VertexBuffer> vertex_buffer;
+			std::shared_ptr<IndexBuffer> index_buffer;
+			std::unordered_map<uint32_t, std::shared_ptr<UniformBuffer>> uniform_buffers;
+			BlendMode blend_mode = BlendStates::AlphaBlend;
+			std::optional<DepthMode> depth_mode;
+			std::optional<StencilMode> stencil_mode;
+			CullMode cull_mode = CullMode::None;
+			Sampler sampler = Sampler::Linear;
+			TextureAddress texture_address = TextureAddress::Clamp;
+		};
+
+	public:
+		StackDevice(std::shared_ptr<Device> device);
+		~StackDevice();
+
+		void resize(uint32_t width, uint32_t height);
+
+		void applyState(bool clearing = false);
+
+		void push(const State& state);
+		void pop(size_t count);
+
+		void pushTopology(Topology topology);
+		void pushViewport(std::optional<Viewport> viewport);
+		void pushScissor(std::optional<Scissor> scissor);
+		void pushTexture(uint32_t binding, std::shared_ptr<Texture> texture);
+		void pushRenderTarget(std::shared_ptr<RenderTarget> value);
+		void pushShader(std::shared_ptr<Shader> shader);
+		void pushVertexBuffer(std::shared_ptr<VertexBuffer> value);
+		void pushIndexBuffer(std::shared_ptr<IndexBuffer> value);
+		void pushUniformBuffer(uint32_t binding, std::shared_ptr<UniformBuffer> value);
+		void pushBlendMode(const BlendMode& value);
+		void pushDepthMode(std::optional<DepthMode> depth_mode);
+		void pushStencilMode(std::optional<StencilMode> stencil_mode);
+		void pushCullMode(CullMode cull_mode);
+		void pushSampler(Sampler value);
+		void pushTextureAddress(TextureAddress value);
+
+		void clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
+			const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
+		void draw(uint32_t vertex_count, uint32_t vertex_offset = 0);
+		void drawIndexed(uint32_t index_count, uint32_t index_offset = 0);
+
+		void readPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture);
+
+		void present();
+
+	private:
+		std::stack<State> mStates;
+		std::optional<State> mAppliedState;
+		std::shared_ptr<Device> mDevice = nullptr;
+	};
+
+	inline bool operator==(const StackDevice::State& left, const StackDevice::State& right)
+	{
+		return
+			left.topology == right.topology &&
+			left.viewport == right.viewport &&
+			left.scissor == right.scissor &&
+			left.textures == right.textures &&
+			left.render_target == right.render_target &&
+			left.shader == right.shader &&
+			left.vertex_buffer == right.vertex_buffer &&
+			left.index_buffer == right.index_buffer &&
+			left.uniform_buffers == right.uniform_buffers &&
+			left.blend_mode == right.blend_mode &&
+			left.depth_mode == right.depth_mode &&
+			left.stencil_mode == right.stencil_mode &&
+			left.cull_mode == right.cull_mode &&
+			left.sampler == right.sampler &&
+			left.texture_address == right.texture_address;
+	}
+
+	inline bool operator!=(const StackDevice::State& left, const StackDevice::State& right)
+	{
+		return !(left == right);
+	}
 }
 
 SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
