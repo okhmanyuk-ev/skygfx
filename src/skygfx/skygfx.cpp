@@ -108,9 +108,11 @@ void UniformBuffer::write(void* memory, size_t size)
 
 // device
 
-Device::Device(BackendType type, void* window, uint32_t width, uint32_t height)
+Device::Device(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type)
 {
 	assert(gBackend == nullptr);
+
+	auto type = _type.value_or(GetBackendTypeBasedOnPlatform());
 
 #ifdef SKYGFX_HAS_D3D11
 	if (type == BackendType::D3D11)
@@ -252,4 +254,24 @@ void Device::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& 
 void Device::present()
 {
 	gBackend->present();
+}
+
+BackendType Device::GetBackendTypeBasedOnPlatform()
+{
+#ifdef SKYGFX_HAS_D3D11
+	return BackendType::D3D11;
+#endif
+#ifdef SKYGFX_HAS_D3D12
+	return BackendType::D3D12;
+#endif
+#ifdef SKYGFX_HAS_OPENGL
+	return BackendType::OpenGL;
+#endif
+#ifdef SKYGFX_HAS_VULKAN
+	return BackendType::Vulkan;
+#endif
+#ifdef SKYGFX_HAS_METAL
+	return BackendType::Metal;
+#endif
+	throw std::runtime_error("no available backends");
 }

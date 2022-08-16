@@ -379,7 +379,7 @@ namespace skygfx
 	class Device : private noncopyable
 	{
 	public:
-		Device(BackendType type, void* window, uint32_t width, uint32_t height);
+		Device(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt);
 		~Device();
 
 		void resize(uint32_t width, uint32_t height);
@@ -409,6 +409,9 @@ namespace skygfx
 		void readPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture);
 
 		void present();
+
+	public:
+		static BackendType GetBackendTypeBasedOnPlatform();
 	};
 }
 
