@@ -160,7 +160,7 @@ int main()
 
 	auto native_window = utils::GetNativeWindow(window);
 
-	auto device = skygfx::Device(backend_type, native_window, width, height);
+	auto device = skygfx::Device(native_window, width, height, backend_type);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
 	int tex_width = 0;
