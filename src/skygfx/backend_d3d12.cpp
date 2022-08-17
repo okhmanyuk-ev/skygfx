@@ -8,37 +8,28 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <dxgidebug.h>
+#include <d3dx12.h>
 
 #pragma comment(lib, "d3d12")
 #pragma comment(lib, "d3dcompiler")
 #pragma comment(lib, "dxgi")
 #pragma comment(lib, "dxguid.lib")
 
-struct FrameContext
-{
-	ID3D12CommandAllocator* CommandAllocator;
-	UINT64 FenceValue;
-};
+static int const NUM_BACK_BUFFERS = 2;
 
-static int const NUM_BACK_BUFFERS = 3;
-static int const NUM_FRAMES_IN_FLIGHT = 3;
-
-static FrameContext g_frameContext[NUM_FRAMES_IN_FLIGHT] = {};
 static UINT g_frameIndex = 0;
 static ID3D12Device* D3D12Device = NULL;
+static ID3D12CommandAllocator* D3D12CommandAllocator;
 static ID3D12CommandQueue* D3D12CommandQueue = NULL;
 static IDXGISwapChain3* D3D12SwapChain = NULL;
 static HANDLE g_hSwapChainWaitableObject = NULL;
 static ID3D12GraphicsCommandList* D3D12CommandList = NULL;
 
-static ID3D12Fence* g_fence = NULL;
-static HANDLE g_fenceEvent = NULL;
-
-static UINT64 g_fenceLastSignaledValue = 0;
-
 static ID3D12Resource* g_mainRenderTargetResource[NUM_BACK_BUFFERS] = {};
-static FrameContext* gFrameCtx = NULL;
-static UINT gBackBufferIdx = 0;
+static UINT gFrameIndex = 0;
+static HANDLE gFenceEvent = NULL;
+static ID3D12Fence* gFence = NULL;
+static UINT64 gFenceValue;
 
 static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = {};
 
@@ -94,8 +85,17 @@ public:
 		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, HlslVersion::v5_0);
 		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, HlslVersion::v5_0);
 
-		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_5_0", 0, 0, &vertexShaderBlob, &vertex_shader_error);
-		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_5_0", 0, 0, &pixelShaderBlob, &pixel_shader_error);
+#if defined(_DEBUG)
+		// Enable better shader debugging with the graphics debugging tools.
+		UINT compile_flags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+		UINT compile_flags = 0;
+#endif
+
+		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_5_0", compile_flags, 0, 
+			&vertexShaderBlob, &vertex_shader_error);
+		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_5_0", compile_flags, 0, 
+			&pixelShaderBlob, &pixel_shader_error);
 
 		std::string vertex_shader_error_string = "";
 		std::string pixel_shader_error_string = "";
@@ -111,22 +111,6 @@ public:
 
 		if (pixelShaderBlob == nullptr)
 			throw std::runtime_error(pixel_shader_error_string);
-
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.NodeMask = 1;
-		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pso_desc.pRootSignature = g_pRootSignature;
-		pso_desc.SampleMask = UINT_MAX;
-		pso_desc.NumRenderTargets = 1;
-		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-		pso_desc.SampleDesc.Count = 1;
-		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-
-		pso_desc.VS = { vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize() };
-		pso_desc.PS = { pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize() };
-
-		//D3D12Device->CreateVertexShader(vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), nullptr, &vertex_shader);
-		//D3D12Device->CreatePixelShader(pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize(), nullptr, &pixel_shader);
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
 			{ Vertex::Attribute::Format::R32F, DXGI_FORMAT_R32_FLOAT },
@@ -150,48 +134,22 @@ public:
 			i++;
 		}
 
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
+		pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob);
+		pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob);
 		pso_desc.InputLayout = { input.data(), (UINT)input.size() };
-
-		{
-			D3D12_BLEND_DESC& desc = pso_desc.BlendState;
-			desc.AlphaToCoverageEnable = false;
-			desc.RenderTarget[0].BlendEnable = true;
-			desc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-			desc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-			desc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-			desc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-			desc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ZERO;
-			desc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-			desc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-		}
-
-		// Create the rasterizer state
-		{
-			D3D12_RASTERIZER_DESC& desc = pso_desc.RasterizerState;
-			desc.FillMode = D3D12_FILL_MODE_SOLID;
-			desc.CullMode = D3D12_CULL_MODE_NONE;
-			desc.FrontCounterClockwise = FALSE;
-			desc.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
-			desc.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
-			desc.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
-			desc.DepthClipEnable = true;
-			desc.MultisampleEnable = FALSE;
-			desc.AntialiasedLineEnable = FALSE;
-			desc.ForcedSampleCount = 0;
-			desc.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
-		}
-
-		// Create depth-stencil State
-		{
-			D3D12_DEPTH_STENCIL_DESC& desc = pso_desc.DepthStencilState;
-			desc.DepthEnable = false;
-			desc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-			desc.DepthFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-			desc.StencilEnable = false;
-			desc.FrontFace.StencilFailOp = desc.FrontFace.StencilDepthFailOp = desc.FrontFace.StencilPassOp = D3D12_STENCIL_OP_KEEP;
-			desc.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-			desc.BackFace = desc.FrontFace;
-		}
+		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		pso_desc.NodeMask = 1;
+		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		pso_desc.pRootSignature = g_pRootSignature;
+		pso_desc.SampleMask = UINT_MAX;
+		pso_desc.NumRenderTargets = 1;
+		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		pso_desc.SampleDesc.Count = 1;
+		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+		pso_desc.DepthStencilState.DepthEnable = FALSE;
+		pso_desc.DepthStencilState.StencilEnable = FALSE;
 
 		D3D12Device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_state));
 		vertexShaderBlob->Release();
@@ -437,6 +395,28 @@ public:
 	}
 };
 
+void WaitForPreviousFrame()
+{
+	// WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
+	// This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
+	// sample illustrates how to use fences for efficient resource usage and to
+	// maximize GPU utilization.
+
+	// Signal and increment the fence value.
+	const UINT64 fence = gFenceValue;
+	D3D12CommandQueue->Signal(gFence, fence);
+	gFenceValue++;
+
+	// Wait until the previous frame is finished.
+	if (gFence->GetCompletedValue() < fence)
+	{
+		gFence->SetEventOnCompletion(fence, gFenceEvent);
+		WaitForSingleObject(gFenceEvent, INFINITE);
+	}
+
+	gFrameIndex = D3D12SwapChain->GetCurrentBackBufferIndex();
+}
+
 BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 {
 	ID3D12Debug* D3D12Debug = NULL;
@@ -493,23 +473,16 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 		D3D12Device->CreateCommandQueue(&desc, IID_PPV_ARGS(&D3D12CommandQueue));
 	}
 
-	for (UINT i = 0; i < NUM_FRAMES_IN_FLIGHT; i++)
-	{
-		D3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frameContext[i].CommandAllocator));
-	}
+	D3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&D3D12CommandAllocator));
 
-	D3D12Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frameContext[0].CommandAllocator, NULL, IID_PPV_ARGS(&D3D12CommandList));
+	D3D12Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12CommandAllocator, NULL, IID_PPV_ARGS(&D3D12CommandList));
 	D3D12CommandList->Close();
-
-	D3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence));
-
-	g_fenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 
 	{
 		DXGI_SWAP_CHAIN_DESC1 sd = {};
 		sd.BufferCount = NUM_BACK_BUFFERS;
-		sd.Width = 0;
-		sd.Height = 0;
+		sd.Width = width;
+		sd.Height = height;
 		sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 		sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -524,16 +497,30 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 		IDXGISwapChain1* swapChain1 = NULL;
 		CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory)) != S_OK ||
 			dxgiFactory->CreateSwapChainForHwnd(D3D12CommandQueue, (HWND)window, &sd, NULL, NULL, &swapChain1) != S_OK ||
-			swapChain1->QueryInterface(IID_PPV_ARGS(&D3D12SwapChain));
+			swapChain1->QueryInterface(IID_PPV_ARGS(&D3D12SwapChain)); // TODO: wtf is this line
 		
 		swapChain1->Release();
 		dxgiFactory->Release();
 		D3D12SwapChain->SetMaximumFrameLatency(NUM_BACK_BUFFERS);
 		g_hSwapChainWaitableObject = D3D12SwapChain->GetFrameLatencyWaitableObject();
+
+		gFrameIndex = D3D12SwapChain->GetCurrentBackBufferIndex();
 	}
 
 
+	{
+		D3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&gFence));
+		gFenceValue = 1;
 
+		// Create an event handle to use for frame synchronization.
+		gFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+		assert(gFenceEvent != nullptr);
+
+		// Wait for the command list to execute; we are reusing the same command 
+		// list in our main loop but for now, we just want to wait for setup to 
+		// complete before continuing.
+		WaitForPreviousFrame();
+	}
 
 
 
@@ -618,22 +605,6 @@ BackendD3D12::~BackendD3D12()
 	destroyMainRenderTarget();
 }
 
-void WaitForLastSubmittedFrame()
-{
-	FrameContext* frameCtx = &g_frameContext[g_frameIndex % NUM_FRAMES_IN_FLIGHT];
-
-	UINT64 fenceValue = frameCtx->FenceValue;
-	if (fenceValue == 0)
-		return; // No fence was signaled
-
-	frameCtx->FenceValue = 0;
-	if (g_fence->GetCompletedValue() >= fenceValue)
-		return;
-
-	g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
-	WaitForSingleObject(g_fenceEvent, INFINITE);
-}
-
 void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
@@ -647,7 +618,7 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 
 void BackendD3D12::destroyMainRenderTarget()
 {
-	WaitForLastSubmittedFrame();
+	WaitForPreviousFrame();
 
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 		if (g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = NULL; }
@@ -760,7 +731,7 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 	const std::optional<uint8_t>& stencil)
 {
 	if (color.has_value())
-		D3D12CommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[gBackBufferIdx], (float*)&color.value(), 0, NULL);
+		D3D12CommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[gFrameIndex], (float*)&color.value(), 0, NULL);
 }
 
 void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset)
@@ -779,34 +750,11 @@ void BackendD3D12::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 {
 }
 
-FrameContext* WaitForNextFrameResources()
-{
-	UINT nextFrameIndex = g_frameIndex + 1;
-	g_frameIndex = nextFrameIndex;
-
-	HANDLE waitableObjects[] = { g_hSwapChainWaitableObject, NULL };
-	DWORD numWaitableObjects = 1;
-
-	FrameContext* frameCtx = &g_frameContext[nextFrameIndex % NUM_FRAMES_IN_FLIGHT];
-	UINT64 fenceValue = frameCtx->FenceValue;
-	if (fenceValue != 0) // means no fence was signaled
-	{
-		frameCtx->FenceValue = 0;
-		g_fence->SetEventOnCompletion(fenceValue, g_fenceEvent);
-		waitableObjects[1] = g_fenceEvent;
-		numWaitableObjects = 2;
-	}
-
-	WaitForMultipleObjects(numWaitableObjects, waitableObjects, TRUE, INFINITE);
-
-	return frameCtx;
-}
-
 void BackendD3D12::prepareForDrawing()
 {
 	assert(gShader);
 
-	D3D12CommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[gBackBufferIdx], FALSE, NULL);
+	D3D12CommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[gFrameIndex], FALSE, NULL);
 	D3D12CommandList->SetDescriptorHeaps(1, &g_pd3dSrvDescHeap);
 	D3D12CommandList->SetPipelineState(gShader->pipeline_state);
 	D3D12CommandList->SetGraphicsRootSignature(g_pRootSignature);
@@ -841,41 +789,32 @@ void BackendD3D12::present()
 
 	D3D12SwapChain->Present(vsync ? 1 : 0, 0);
 
-	UINT64 fenceValue = g_fenceLastSignaledValue + 1;
-	D3D12CommandQueue->Signal(g_fence, fenceValue);
-	g_fenceLastSignaledValue = fenceValue;
-	gFrameCtx->FenceValue = fenceValue;
+	WaitForPreviousFrame();
 
 	begin();
 }
 
 void BackendD3D12::begin()
 {
-	gFrameCtx = WaitForNextFrameResources();
-	gBackBufferIdx = D3D12SwapChain->GetCurrentBackBufferIndex();
-	gFrameCtx->CommandAllocator->Reset();
+	D3D12CommandAllocator->Reset();
 
-	D3D12_RESOURCE_BARRIER barrier = {};
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = g_mainRenderTargetResource[gBackBufferIdx];
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		g_mainRenderTargetResource[gFrameIndex],
+		D3D12_RESOURCE_STATE_PRESENT, 
+		D3D12_RESOURCE_STATE_RENDER_TARGET
+	);
 
-	D3D12CommandList->Reset(gFrameCtx->CommandAllocator, NULL);
+	D3D12CommandList->Reset(D3D12CommandAllocator, NULL);
 	D3D12CommandList->ResourceBarrier(1, &barrier);
 }
 
 void BackendD3D12::end()
 {
-	D3D12_RESOURCE_BARRIER barrier = {};
-	barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-	barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	barrier.Transition.pResource = g_mainRenderTargetResource[gBackBufferIdx];
-	barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		g_mainRenderTargetResource[gFrameIndex],
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT	
+	);
 
 	D3D12CommandList->ResourceBarrier(1, &barrier);
 	D3D12CommandList->Close();

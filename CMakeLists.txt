@@ -148,3 +148,9 @@ target_link_libraries(${PROJECT_NAME} vulkan)
 
 target_include_directories(${PROJECT_NAME} PUBLIC lib/metal-cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC lib/metal-cpp-extensions)
+
+# d3d12
+
+if(WIN32)
+	target_include_directories(${PROJECT_NAME} PUBLIC lib/d3d12)
+endif()
