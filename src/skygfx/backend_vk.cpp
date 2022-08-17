@@ -82,12 +82,12 @@ static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_
 }
 
 template <typename Func>
-static void OneTimeSubmit(const vk::raii::CommandBuffer& cmd, const vk::raii::Queue& queue, const Func& func)
+static void OneTimeSubmit(const vk::raii::CommandBuffer& cmdbuf, const vk::raii::Queue& queue, const Func& func)
 {
-	cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-	func(cmd);
-	cmd.end();
-	vk::SubmitInfo submitInfo(nullptr, nullptr, *cmd);
+	cmdbuf.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+	func(cmdbuf);
+	cmdbuf.end();
+	vk::SubmitInfo submitInfo(nullptr, nullptr, *cmdbuf);
 	queue.submit(submitInfo, nullptr);
 	queue.waitIdle();
 }
@@ -100,10 +100,10 @@ static void OneTimeSubmit(const vk::raii::Device& device, const vk::raii::Comman
 		.setCommandPool(*command_pool)
 		.setLevel(vk::CommandBufferLevel::ePrimary);
 
-	auto command_buffers = gDevice.allocateCommandBuffers(command_buffer_allocate_info);
-	auto cmd = std::move(command_buffers.at(0));
+	auto command_buffers = device.allocateCommandBuffers(command_buffer_allocate_info);
+	auto cmdbuf = std::move(command_buffers.at(0));
 
-	OneTimeSubmit(cmd, queue, func);
+	OneTimeSubmit(cmdbuf, queue, func);
 }
 
 static void SetImageLayout(const vk::raii::CommandBuffer& cmd, vk::Image image,
@@ -403,8 +403,8 @@ public:
 			memcpy(map, data, size);
 			upload_buffer_memory.unmapMemory();
 
-			OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmd) {
-				SetImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+			OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+				SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
 					vk::ImageLayout::eTransferDstOptimal);
 
 				auto image_subresource_layers = vk::ImageSubresourceLayers()
@@ -415,9 +415,9 @@ public:
 					.setImageSubresource(image_subresource_layers)
 					.setImageExtent({ width, height, 1 });
 
-				cmd.copyBufferToImage(*upload_buffer, *image, vk::ImageLayout::eTransferDstOptimal, { region });
+				cmdbuf.copyBufferToImage(*upload_buffer, *image, vk::ImageLayout::eTransferDstOptimal, { region });
 
-				SetImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+				SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
 					vk::ImageLayout::eTransferSrcOptimal);
 
 				for (uint32_t i = 1; i < mip_levels; i++)
@@ -428,7 +428,7 @@ public:
 						.setLayerCount(1)
 						.setLevelCount(1);
 
-					SetImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+					SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
 						vk::ImageLayout::eTransferDstOptimal, mip_subresource_range);
 
 					auto src_subresource = vk::ImageSubresourceLayers()
@@ -447,10 +447,10 @@ public:
 						.setSrcOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(width >> (i - 1)), int32_t(height >> (i - 1)), 1 } })
 						.setDstOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(width >> i), int32_t(height >> i), 1 } });
 
-					cmd.blitImage(*image, vk::ImageLayout::eTransferSrcOptimal, *image,
+					cmdbuf.blitImage(*image, vk::ImageLayout::eTransferSrcOptimal, *image,
 						vk::ImageLayout::eTransferDstOptimal, { mip_region }, vk::Filter::eLinear);
 
-					SetImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+					SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
 						vk::ImageLayout::eTransferSrcOptimal, mip_subresource_range);
 				}
 
@@ -459,7 +459,7 @@ public:
 					.setLayerCount(1)
 					.setLevelCount(mip_levels);
 
-				SetImageLayout(cmd, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferSrcOptimal,
+				SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferSrcOptimal,
 					vk::ImageLayout::eShaderReadOnlyOptimal, subresource_range);
 			});
 		}
@@ -1185,8 +1185,8 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 
 		frame.backbuffer_color_image_view = gDevice.createImageView(image_view_info);
 
-		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmd) {
-			SetImageLayout(cmd, backbuffer, gSurfaceFormat.format, vk::ImageLayout::eUndefined,
+		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+			SetImageLayout(cmdbuf, backbuffer, gSurfaceFormat.format, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::ePresentSrcKHR);
 		});
 
@@ -1230,8 +1230,8 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 
 	gDepthStencil.view = gDevice.createImageView(depth_stencil_view_create_info);
 
-	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmd) {
-		SetImageLayout(cmd, *gDepthStencil.image, gDepthStencil.format, vk::ImageLayout::eUndefined,
+	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+		SetImageLayout(cmdbuf, *gDepthStencil.image, gDepthStencil.format, vk::ImageLayout::eUndefined,
 			vk::ImageLayout::eDepthStencilAttachmentOptimal);
 	});
 }
