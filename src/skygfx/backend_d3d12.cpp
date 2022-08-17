@@ -38,9 +38,11 @@ static ID3D12RootSignature* g_pRootSignature = NULL;
 
 class ShaderD3D12;
 class TextureD3D12;
+class UniformBufferD3D12;
 
 static ShaderD3D12* gShader = nullptr;
 static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
+static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
 
 template <typename T>
 inline void SafeRelease(T& a)
@@ -314,7 +316,7 @@ private:
 	size_t stride = 0;
 
 public:
-	VertexBufferD3D12(void* memory, size_t size, size_t _stride) : BufferD3D12(memory, size),
+	VertexBufferD3D12(void* memory, size_t _size, size_t _stride) : BufferD3D12(memory, _size),
 		stride(_stride)
 	{
 	}
@@ -328,11 +330,16 @@ private:
 	size_t stride = 0;
 
 public:
-	IndexBufferD3D12(void* memory, size_t size, size_t _stride) : BufferD3D12(memory, size),
+	IndexBufferD3D12(void* memory, size_t _size, size_t _stride) : BufferD3D12(memory, _size),
 		stride(_stride)
 	{
 	}
 };
+
+int round_up(int num, int factor)
+{
+	return num + factor - 1 - (num + factor - 1) % factor;
+}
 
 class UniformBufferD3D12 : public BufferD3D12
 {
@@ -342,7 +349,7 @@ private:
 	ID3D12DescriptorHeap* heap = nullptr;
 
 public:
-	UniformBufferD3D12(void* memory, size_t size) : BufferD3D12(memory, size)
+	UniformBufferD3D12(void* memory, size_t _size) : BufferD3D12(memory, round_up(_size, 256))
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
 		heap_desc.NumDescriptors = 1;
@@ -364,23 +371,14 @@ public:
 
 void WaitForPreviousFrame()
 {
-	// WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-	// This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-	// sample illustrates how to use fences for efficient resource usage and to
-	// maximize GPU utilization.
-
-	// Signal and increment the fence value.
 	const UINT64 fence = gFenceValue;
 	D3D12CommandQueue->Signal(gFence, fence);
 	gFenceValue++;
-
-	// Wait until the previous frame is finished.
 	if (gFence->GetCompletedValue() < fence)
 	{
 		gFence->SetEventOnCompletion(fence, gFenceEvent);
 		WaitForSingleObject(gFenceEvent, INFINITE);
 	}
-
 	gFrameIndex = D3D12SwapChain->GetCurrentBackBufferIndex();
 }
 
@@ -463,78 +461,38 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 		gFrameIndex = D3D12SwapChain->GetCurrentBackBufferIndex();
 	}
 
-
 	{
 		D3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&gFence));
 		gFenceValue = 1;
-
-		// Create an event handle to use for frame synchronization.
 		gFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		assert(gFenceEvent != nullptr);
-
-		// Wait for the command list to execute; we are reusing the same command 
-		// list in our main loop but for now, we just want to wait for setup to 
-		// complete before continuing.
 		WaitForPreviousFrame();
 	}
 
-
-
-
-
-
-
-	// Create the root signature
 	{
-		D3D12_DESCRIPTOR_RANGE descRange = {};
-		descRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-		descRange.NumDescriptors = 1;
-		descRange.BaseShaderRegister = 0;
-		descRange.RegisterSpace = 0;
-		descRange.OffsetInDescriptorsFromTableStart = 0;
+		std::vector<CD3DX12_ROOT_PARAMETER> params;
 
-		D3D12_ROOT_PARAMETER param[1] = {};
+		{
+			CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+			CD3DX12_ROOT_PARAMETER param;
+			param.InitAsDescriptorTable(1, &desc_range);
+			params.push_back(param);
+		}
+		{
+			CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0);
+			CD3DX12_ROOT_PARAMETER param;
+			param.InitAsDescriptorTable(1, &desc_range);
+			params.push_back(param);
+		}
 
-		/*param[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-		param[0].Constants.ShaderRegister = 0;
-		param[0].Constants.RegisterSpace = 0;
-		param[0].Constants.Num32BitValues = 16;
-		param[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;*/
+		CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
 
-		param[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		param[0].DescriptorTable.NumDescriptorRanges = 1;
-		param[0].DescriptorTable.pDescriptorRanges = &descRange;
-		param[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-
-		D3D12_STATIC_SAMPLER_DESC staticSampler = {};
-		staticSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-		staticSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		staticSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		staticSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		staticSampler.MipLODBias = 0.f;
-		staticSampler.MaxAnisotropy = 0;
-		staticSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-		staticSampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-		staticSampler.MinLOD = 0.f;
-		staticSampler.MaxLOD = 0.f;
-		staticSampler.ShaderRegister = 0;
-		staticSampler.RegisterSpace = 0;
-		staticSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-
-		D3D12_ROOT_SIGNATURE_DESC desc = {};
-		desc.NumParameters = _countof(param);
-		desc.pParameters = param;
-		desc.NumStaticSamplers = 1;
-		desc.pStaticSamplers = &staticSampler;
-		desc.Flags =
-			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
-			D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc(params.size(), params.data(), 1,
+			&staticSampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ID3DBlob* blob = NULL;
-		D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, NULL);
 
+		D3DX12SerializeVersionedRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, NULL);
 		D3D12Device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&g_pRootSignature));
 		blob->Release();
 	}
@@ -644,9 +602,7 @@ void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferD3D12*)handle;
-
-	//gContext->VSSetConstantBuffers(binding, 1, &buffer->buffer);
-	//gContext->PSSetConstantBuffers(binding, 1, &buffer->buffer);
+	gUniformBuffers[binding] = buffer;
 }
 
 void BackendD3D12::setBlendMode(const BlendMode& value)
@@ -707,8 +663,15 @@ void BackendD3D12::prepareForDrawing()
 	for (auto [binding, texture] : gTextures)
 	{
 		assert(gTextures.size() == 1); 
-		D3D12CommandList->SetDescriptorHeaps(1, &texture->heap); // TODO: array of heaps when texture + ubo ?
-		D3D12CommandList->SetGraphicsRootDescriptorTable(binding, texture->heap->GetGPUDescriptorHandleForHeapStart());
+		D3D12CommandList->SetDescriptorHeaps(1, &texture->heap);
+		D3D12CommandList->SetGraphicsRootDescriptorTable(0, texture->heap->GetGPUDescriptorHandleForHeapStart());
+	}
+
+	for (auto [binding, buffer] : gUniformBuffers)
+	{
+		assert(gUniformBuffers.size() == 1);
+		D3D12CommandList->SetDescriptorHeaps(1, &buffer->heap);
+		D3D12CommandList->SetGraphicsRootDescriptorTable(1, buffer->heap->GetGPUDescriptorHandleForHeapStart());
 	}
 
 	D3D12_VIEWPORT vp = {};
