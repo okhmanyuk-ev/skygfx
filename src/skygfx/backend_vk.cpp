@@ -1391,6 +1391,11 @@ void BackendVK::prepareForDrawing()
 	{
 		auto binding = required_binding.binding;
 
+		auto write_descriptor_set = vk::WriteDescriptorSet()
+			.setDescriptorCount(1)
+			.setDstBinding(binding)
+			.setDescriptorType(required_binding.descriptorType);
+
 		if (required_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
 		{
 			auto texture = gTextures.at(binding);
@@ -1400,13 +1405,7 @@ void BackendVK::prepareForDrawing()
 				.setImageView(*texture->image_view)
 				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 
-			auto write_descriptor_set = vk::WriteDescriptorSet()
-				.setDescriptorCount(1)
-				.setDstBinding(binding)
-				.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
-				.setPImageInfo(&descriptor_image_info);
-
-			gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+			write_descriptor_set.setPImageInfo(&descriptor_image_info);
 		}
 		else if (required_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
 		{
@@ -1416,14 +1415,10 @@ void BackendVK::prepareForDrawing()
 				.setBuffer(*buffer->buffer)
 				.setRange(VK_WHOLE_SIZE);
 
-			auto write_descriptor_set = vk::WriteDescriptorSet()
-				.setDescriptorCount(1)
-				.setDstBinding(binding)
-				.setDescriptorType(vk::DescriptorType::eUniformBuffer)
-				.setPBufferInfo(&descriptor_buffer_info);
-
-			gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
 		}
+
+		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
 	if (gViewportDirty)
