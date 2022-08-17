@@ -26,11 +26,14 @@ target_link_libraries(YOUR_TARGET sky-gfx)
 
 ![](https://user-images.githubusercontent.com/3295141/173175376-c33d287d-4cc5-4070-9f08-d1379b6b4374.png)
 
+## [Uniform Buffer](examples/uniform)
+![](https://user-images.githubusercontent.com/3295141/185045316-e3aff95c-f5e8-44a0-ae11-d435676b88e4.gif)
+
 ## [Texture](examples/texture)
 
 ![](https://user-images.githubusercontent.com/3295141/173175982-79d1f92f-76bf-4dea-adf2-973f66db4b02.png)
 
-## [Uniform Buffer](examples/uniform)
+## [Texture Mipmap](examples/texture_mipmap)
 
 ![](https://user-images.githubusercontent.com/3295141/173176075-7fdb9759-e3ca-4447-b439-2acd27f7ced9.gif)
 
