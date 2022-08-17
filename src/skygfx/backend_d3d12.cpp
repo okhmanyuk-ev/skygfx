@@ -15,6 +15,10 @@
 #pragma comment(lib, "dxgi")
 #pragma comment(lib, "dxguid.lib")
 
+#include <wrl.h>
+
+using Microsoft::WRL::ComPtr;
+
 static int const NUM_BACK_BUFFERS = 2;
 
 static UINT g_frameIndex = 0;
@@ -34,7 +38,6 @@ static UINT64 gFenceValue;
 static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = {};
 
 static ID3D12DescriptorHeap* g_pd3dRtvDescHeap = NULL;
-static ID3D12RootSignature* g_pRootSignature = NULL;
 
 class ShaderD3D12;
 class TextureD3D12;
@@ -64,16 +67,16 @@ void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12Graphics
 	queue_desc.NodeMask = 1;
 
 	ID3D12CommandQueue* cmd_queue = NULL;
-	D3D12Device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&cmd_queue));
+	device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(&cmd_queue));
 
 	ID3D12CommandAllocator* cmd_alloc = NULL;
-	D3D12Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc));
+	device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc));
 
 	ID3D12GraphicsCommandList* cmd_list = NULL;
 	device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc, NULL, IID_PPV_ARGS(&cmd_list));
 
 	ID3D12Fence* fence = NULL;
-	D3D12Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+	device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
 
 	HANDLE event = CreateEvent(0, 0, 0, 0);
 
@@ -98,18 +101,14 @@ class ShaderD3D12
 	friend class BackendD3D12;
 
 private:
-	ID3D12PipelineState* pipeline_state; // TODO: this is bad place for it
+	ComPtr<ID3D12PipelineState> pipeline_state;
+	ComPtr<ID3D12RootSignature> root_signature;
+	std::vector<ShaderReflection::DescriptorSet> required_descriptor_sets;
 
 public:
 	ShaderD3D12(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		ID3DBlob* vertexShaderBlob;
-		ID3DBlob* pixelShaderBlob;
-
-		ID3DBlob* vertex_shader_error;
-		ID3DBlob* pixel_shader_error;
-		
 		AddShaderLocationDefines(layout, defines);
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
@@ -118,13 +117,18 @@ public:
 		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, HlslVersion::v5_0);
 		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, HlslVersion::v5_0);
 
+		ComPtr<ID3DBlob> vertexShaderBlob;
+		ComPtr<ID3DBlob> pixelShaderBlob;
+
+		ComPtr<ID3DBlob> vertex_shader_error;
+		ComPtr<ID3DBlob> pixel_shader_error;
+
 #if defined(_DEBUG)
 		// Enable better shader debugging with the graphics debugging tools.
 		UINT compile_flags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
 		UINT compile_flags = 0;
 #endif
-
 		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_5_0", compile_flags, 0, 
 			&vertexShaderBlob, &vertex_shader_error);
 		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_5_0", compile_flags, 0, 
@@ -167,15 +171,85 @@ public:
 			i++;
 		}
 
+		auto vertex_shader_reflection = MakeSpirvReflection(vertex_shader_spirv);
+		auto fragment_shader_reflection = MakeSpirvReflection(fragment_shader_spirv);
+
+		for (const auto& reflection : { vertex_shader_reflection, fragment_shader_reflection })
+		{
+			for (const auto& descriptor_set : reflection.descriptor_sets)
+			{
+				bool overwritten = false;
+
+				for (auto& existing_descriptor_set : required_descriptor_sets)
+				{
+					if (existing_descriptor_set.binding == descriptor_set.binding)
+					{
+						overwritten = true;
+						break;
+					}
+				}
+
+				if (overwritten)
+					continue;
+
+				required_descriptor_sets.push_back(descriptor_set);
+			}
+		}
+
+		{
+			std::vector<CD3DX12_ROOT_PARAMETER> params;
+
+			for (const auto& descriptor_set : required_descriptor_sets)
+			{
+				if (descriptor_set.type == ShaderReflection::DescriptorSet::Type::CombinedImageSampler)
+				{
+					CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1,
+						descriptor_set.binding, 0);
+					CD3DX12_ROOT_PARAMETER param;
+					param.InitAsDescriptorTable(1, &desc_range);
+					params.push_back(param);
+				}
+				else if (descriptor_set.type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
+				{
+					CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1,
+						descriptor_set.binding, 0);
+					CD3DX12_ROOT_PARAMETER param;
+					param.InitAsDescriptorTable(1, &desc_range);
+					params.push_back(param);
+				}
+				else
+				{
+					assert(false);
+				}
+			}
+
+			CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // TODO: does not need when no texture?
+
+			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc(params.size(), params.data(), 1,
+				&staticSampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+			ComPtr<ID3DBlob> blob;
+			ComPtr<ID3DBlob> error;
+
+			D3DX12SerializeVersionedRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error);
+
+			std::string error_string;
+
+			if (error != nullptr)
+				error_string = std::string((char*)error->GetBufferPointer(), error->GetBufferSize());
+
+			D3D12Device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&root_signature));
+		}
+
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob);
-		pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob);
+		pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
+		pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
 		pso_desc.InputLayout = { input.data(), (UINT)input.size() };
 		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 		pso_desc.NodeMask = 1;
 		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pso_desc.pRootSignature = g_pRootSignature;
+		pso_desc.pRootSignature = root_signature.Get();
 		pso_desc.SampleMask = UINT_MAX;
 		pso_desc.NumRenderTargets = 1;
 		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -185,8 +259,6 @@ public:
 		pso_desc.DepthStencilState.StencilEnable = FALSE;
 
 		D3D12Device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_state));
-		vertexShaderBlob->Release();
-		pixelShaderBlob->Release();
 	}
 };
 
@@ -469,34 +541,6 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 		WaitForPreviousFrame();
 	}
 
-	{
-		std::vector<CD3DX12_ROOT_PARAMETER> params;
-
-		{
-			CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
-			CD3DX12_ROOT_PARAMETER param;
-			param.InitAsDescriptorTable(1, &desc_range);
-			params.push_back(param);
-		}
-		{
-			CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0);
-			CD3DX12_ROOT_PARAMETER param;
-			param.InitAsDescriptorTable(1, &desc_range);
-			params.push_back(param);
-		}
-
-		CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR);
-
-		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc(params.size(), params.data(), 1,
-			&staticSampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
-
-		ID3DBlob* blob = NULL;
-
-		D3DX12SerializeVersionedRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, NULL);
-		D3D12Device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&g_pRootSignature));
-		blob->Release();
-	}
-
 	createMainRenderTarget(width, height);
 
 	begin();
@@ -657,21 +701,31 @@ void BackendD3D12::prepareForDrawing()
 	assert(gShader);
 
 	D3D12CommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[gFrameIndex], FALSE, NULL);
-	D3D12CommandList->SetPipelineState(gShader->pipeline_state);
-	D3D12CommandList->SetGraphicsRootSignature(g_pRootSignature);
+	D3D12CommandList->SetPipelineState(gShader->pipeline_state.Get());
+	D3D12CommandList->SetGraphicsRootSignature(gShader->root_signature.Get());
 
-	for (auto [binding, texture] : gTextures)
-	{
-		assert(gTextures.size() == 1); 
-		D3D12CommandList->SetDescriptorHeaps(1, &texture->heap);
-		D3D12CommandList->SetGraphicsRootDescriptorTable(0, texture->heap->GetGPUDescriptorHandleForHeapStart());
-	}
+	int i = 0;
 
-	for (auto [binding, buffer] : gUniformBuffers)
+	for (const auto& required_descriptor_set : gShader->required_descriptor_sets)
 	{
-		assert(gUniformBuffers.size() == 1);
-		D3D12CommandList->SetDescriptorHeaps(1, &buffer->heap);
-		D3D12CommandList->SetGraphicsRootDescriptorTable(1, buffer->heap->GetGPUDescriptorHandleForHeapStart());
+		if (required_descriptor_set.type == ShaderReflection::DescriptorSet::Type::CombinedImageSampler)
+		{
+			const auto& texture = gTextures.at(required_descriptor_set.binding);
+			D3D12CommandList->SetDescriptorHeaps(1, &texture->heap);
+			D3D12CommandList->SetGraphicsRootDescriptorTable(i, texture->heap->GetGPUDescriptorHandleForHeapStart());
+		}
+		else if (required_descriptor_set.type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
+		{
+			const auto& buffer = gUniformBuffers.at(required_descriptor_set.binding);
+			D3D12CommandList->SetDescriptorHeaps(1, &buffer->heap);
+			D3D12CommandList->SetGraphicsRootDescriptorTable(i, buffer->heap->GetGPUDescriptorHandleForHeapStart());
+		}
+		else
+		{
+			assert(false);
+		}
+
+		i++;
 	}
 
 	D3D12_VIEWPORT vp = {};

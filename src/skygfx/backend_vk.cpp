@@ -213,7 +213,7 @@ private:
 	vk::raii::ShaderModule fragment_shader_module = nullptr;
 	vk::VertexInputBindingDescription vertex_input_binding_description;
 	std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
-	std::vector<vk::DescriptorSetLayoutBinding> required_bindings;
+	std::vector<vk::DescriptorSetLayoutBinding> required_descriptor_sets;
 
 public:
 	ShaderDataVK(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -243,7 +243,7 @@ public:
 			{
 				bool overwritten = false;
 
-				for (auto& binding : required_bindings)
+				for (auto& binding : required_descriptor_sets)
 				{
 					if (binding.binding == descriptor_set.binding)
 					{
@@ -256,19 +256,19 @@ public:
 				if (overwritten)
 					continue;
 
-				auto binding = vk::DescriptorSetLayoutBinding()
+				auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding()
 					.setDescriptorType(TypeMap.at(descriptor_set.type))
 					.setDescriptorCount(1)
 					.setBinding(descriptor_set.binding)
 					.setStageFlags(StageMap.at(reflection.stage));
 
-				required_bindings.push_back(binding);
+				required_descriptor_sets.push_back(descriptor_set_layout_binding);
 			}
 		}
 
 		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
 			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
-			.setBindings(required_bindings);
+			.setBindings(required_descriptor_sets);
 
 		descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
@@ -1387,16 +1387,16 @@ void BackendVK::prepareForDrawing()
 
 	auto pipeline_layout = *gShader->pipeline_layout;
 
-	for (const auto& required_binding : gShader->required_bindings)
+	for (const auto& required_descriptor_set : gShader->required_descriptor_sets)
 	{
-		auto binding = required_binding.binding;
+		auto binding = required_descriptor_set.binding;
 
 		auto write_descriptor_set = vk::WriteDescriptorSet()
 			.setDescriptorCount(1)
 			.setDstBinding(binding)
-			.setDescriptorType(required_binding.descriptorType);
+			.setDescriptorType(required_descriptor_set.descriptorType);
 
-		if (required_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
+		if (required_descriptor_set.descriptorType == vk::DescriptorType::eCombinedImageSampler)
 		{
 			auto texture = gTextures.at(binding);
 
@@ -1407,7 +1407,7 @@ void BackendVK::prepareForDrawing()
 
 			write_descriptor_set.setPImageInfo(&descriptor_image_info);
 		}
-		else if (required_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
+		else if (required_descriptor_set.descriptorType == vk::DescriptorType::eUniformBuffer)
 		{
 			auto buffer = gUniformBuffers.at(binding);
 
@@ -1416,6 +1416,10 @@ void BackendVK::prepareForDrawing()
 				.setRange(VK_WHOLE_SIZE);
 
 			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
+		}
+		else
+		{
+			assert(false);
 		}
 
 		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
