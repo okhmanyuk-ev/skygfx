@@ -32,6 +32,11 @@ set_property(TARGET update_mappings PROPERTY FOLDER ${LIBS_FOLDER}/glfw)
 add_executable(triangle triangle/main.cpp)
 target_link_libraries(triangle glfw skygfx)
 
+# uniform_buffer
+
+add_executable(uniform_buffer uniform/main.cpp)
+target_link_libraries(uniform_buffer glfw skygfx)
+
 # texture
 
 add_executable(texture texture/main.cpp ${RESOURCES})
@@ -40,13 +45,13 @@ target_include_directories(texture PUBLIC lib/stb)
 set_target_properties(texture PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
 
-# uniform_buffer
+# texture_mipmap
 
-add_executable(uniform_buffer uniform/main.cpp ${RESOURCES})
-target_link_libraries(uniform_buffer glfw skygfx)
-target_include_directories(uniform_buffer PUBLIC lib/stb)
-set_target_properties(uniform_buffer PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(uniform_buffer PROPERTIES RESOURCE ${RESOURCES})
+add_executable(texture_mipmap texture_mipmap/main.cpp ${RESOURCES})
+target_link_libraries(texture_mipmap glfw skygfx)
+target_include_directories(texture_mipmap PUBLIC lib/stb)
+set_target_properties(texture_mipmap PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(texture_mipmap PROPERTIES RESOURCE ${RESOURCES})
 
 # cube
 
