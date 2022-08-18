@@ -125,8 +125,8 @@ public:
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
-		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, HlslVersion::v4_0);
-		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, HlslVersion::v4_0);
+		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, 40);
+		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, 40);
 
 		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_4_0", 0, 0, &vertexShaderBlob, &vertex_shader_error);
 		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_4_0", 0, 0, &pixelShaderBlob, &pixel_shader_error);

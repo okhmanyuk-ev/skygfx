@@ -114,8 +114,8 @@ public:
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
-		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, HlslVersion::v5_0);
-		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, HlslVersion::v5_0);
+		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, 50);
+		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, 50);
 
 		ComPtr<ID3DBlob> vertexShaderBlob;
 		ComPtr<ID3DBlob> pixelShaderBlob;

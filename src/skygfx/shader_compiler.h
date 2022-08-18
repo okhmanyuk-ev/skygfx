@@ -12,14 +12,8 @@ namespace skygfx
 		Fragment
 	};
 
-	enum class HlslVersion
-	{
-		v4_0,
-		v5_0
-	};
-
 	std::vector<uint32_t> CompileGlslToSpirv(ShaderStage stage, const std::string& code, const std::vector<std::string>& defines = {});
-	std::string CompileSpirvToHlsl(const std::vector<uint32_t>& spirv, HlslVersion hlsl_version);
+	std::string CompileSpirvToHlsl(const std::vector<uint32_t>& spirv, uint32_t version);
 	std::string CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool es = false, uint32_t version = 450);
 	std::string CompileSpirvToMsl(const std::vector<uint32_t>& spirv);
 
