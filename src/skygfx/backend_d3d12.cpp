@@ -211,10 +211,8 @@ public:
 				}
 				else if (descriptor_set.type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
 				{
-					CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1,
-						descriptor_set.binding, 0);
 					CD3DX12_ROOT_PARAMETER param;
-					param.InitAsDescriptorTable(1, &desc_range);
+					param.InitAsConstantBufferView(descriptor_set.binding);
 					params.push_back(param);
 				}
 				else
@@ -408,36 +406,13 @@ public:
 	}
 };
 
-int round_up(int num, int factor)
-{
-	return num + factor - 1 - (num + factor - 1) % factor;
-}
-
 class UniformBufferD3D12 : public BufferD3D12
 {
 	friend class BackendD3D12;
 
-private:
-	ID3D12DescriptorHeap* heap = nullptr;
-
 public:
-	UniformBufferD3D12(void* memory, size_t _size) : BufferD3D12(memory, round_up(_size, 256))
+	UniformBufferD3D12(void* memory, size_t _size) : BufferD3D12(memory, _size)
 	{
-		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-		heap_desc.NumDescriptors = 1;
-		heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		D3D12Device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(&heap));
-
-		D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc = {};
-		cbv_desc.BufferLocation = buffer->GetGPUVirtualAddress();
-		cbv_desc.SizeInBytes = size;
-		D3D12Device->CreateConstantBufferView(&cbv_desc, heap->GetCPUDescriptorHandleForHeapStart());
-	}
-
-	~UniformBufferD3D12()
-	{
-		SafeRelease(heap);
 	}
 };
 
@@ -717,8 +692,7 @@ void BackendD3D12::prepareForDrawing()
 		else if (required_descriptor_set.type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
 		{
 			const auto& buffer = gUniformBuffers.at(required_descriptor_set.binding);
-			D3D12CommandList->SetDescriptorHeaps(1, &buffer->heap);
-			D3D12CommandList->SetGraphicsRootDescriptorTable(i, buffer->heap->GetGPUDescriptorHandleForHeapStart());
+			D3D12CommandList->SetGraphicsRootConstantBufferView(i, buffer->buffer->GetGPUVirtualAddress());
 		}
 		else
 		{
