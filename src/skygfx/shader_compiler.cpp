@@ -307,7 +307,7 @@ ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 			auto descriptor_binding = descriptor_set->bindings[i];
 			auto binding = descriptor_binding->binding;
 
-			result.descriptor_sets[set].push_back(binding);
+			result.descriptor_sets[set].insert(binding);
 		}
 	}
 

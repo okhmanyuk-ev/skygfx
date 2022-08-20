@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <set>
 #include "vertex.h"
 
 namespace skygfx
@@ -36,7 +37,7 @@ namespace skygfx
 		};
 
 		std::map<uint32_t, Descriptor> descriptor_bindings;
-		std::map<uint32_t/*set*/, std::vector<uint32_t>/*bindings*/> descriptor_sets;
+		std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/> descriptor_sets;
 		ShaderStage stage;
 	};
 

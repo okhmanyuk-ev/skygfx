@@ -104,7 +104,7 @@ private:
 	ComPtr<ID3D12PipelineState> pipeline_state;
 	ComPtr<ID3D12RootSignature> root_signature;
 	std::map<uint32_t, ShaderReflection::Descriptor> required_descriptor_bindings; // TODO: del
-	std::map<ShaderStage, std::map<uint32_t/*set*/, std::vector<uint32_t>/*bindings*/>> required_descriptor_sets;
+	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> required_descriptor_sets;
 
 
 public:
