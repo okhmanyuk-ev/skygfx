@@ -103,7 +103,9 @@ class ShaderD3D12
 private:
 	ComPtr<ID3D12PipelineState> pipeline_state;
 	ComPtr<ID3D12RootSignature> root_signature;
-	std::vector<ShaderReflection::DescriptorSet> required_descriptor_sets;
+	std::map<uint32_t, ShaderReflection::Descriptor> required_descriptor_bindings; // TODO: del
+	std::map<ShaderStage, std::map<uint32_t/*set*/, std::vector<uint32_t>/*bindings*/>> required_descriptor_sets;
+
 
 public:
 	ShaderD3D12(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -117,8 +119,8 @@ public:
 		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, 50);
 		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, 50);
 
-		ComPtr<ID3DBlob> vertexShaderBlob;
-		ComPtr<ID3DBlob> pixelShaderBlob;
+		ComPtr<ID3DBlob> vertex_shader_blob;
+		ComPtr<ID3DBlob> pixel_shader_blob;
 
 		ComPtr<ID3DBlob> vertex_shader_error;
 		ComPtr<ID3DBlob> pixel_shader_error;
@@ -130,9 +132,9 @@ public:
 		UINT compile_flags = 0;
 #endif
 		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_5_0", compile_flags, 0, 
-			&vertexShaderBlob, &vertex_shader_error);
+			&vertex_shader_blob, &vertex_shader_error);
 		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_5_0", compile_flags, 0, 
-			&pixelShaderBlob, &pixel_shader_error);
+			&pixel_shader_blob, &pixel_shader_error);
 
 		std::string vertex_shader_error_string = "";
 		std::string pixel_shader_error_string = "";
@@ -143,10 +145,10 @@ public:
 		if (pixel_shader_error != nullptr)
 			pixel_shader_error_string = std::string((char*)pixel_shader_error->GetBufferPointer(), pixel_shader_error->GetBufferSize());
 
-		if (vertexShaderBlob == nullptr)
+		if (vertex_shader_blob == nullptr)
 			throw std::runtime_error(vertex_shader_error_string);
 
-		if (pixelShaderBlob == nullptr)
+		if (pixel_shader_blob == nullptr)
 			throw std::runtime_error(pixel_shader_error_string);
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
@@ -176,43 +178,36 @@ public:
 
 		for (const auto& reflection : { vertex_shader_reflection, fragment_shader_reflection })
 		{
-			for (const auto& descriptor_set : reflection.descriptor_sets)
+			for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
 			{
-				bool overwritten = false;
-
-				for (auto& existing_descriptor_set : required_descriptor_sets)
-				{
-					if (existing_descriptor_set.binding == descriptor_set.binding)
-					{
-						overwritten = true;
-						break;
-					}
-				}
-
-				if (overwritten)
+				if (required_descriptor_bindings.contains(binding))
 					continue;
 
-				required_descriptor_sets.push_back(descriptor_set);
+				required_descriptor_bindings.insert({ binding, descriptor });
+			}
+
+			for (const auto& [set, bindings] : reflection.descriptor_sets)
+			{
+				required_descriptor_sets[reflection.stage][set] = bindings;
 			}
 		}
 
 		{
 			std::vector<CD3DX12_ROOT_PARAMETER> params;
 
-			for (const auto& descriptor_set : required_descriptor_sets)
+			for (const auto& [binding, descriptor] : required_descriptor_bindings)
 			{
-				if (descriptor_set.type == ShaderReflection::DescriptorSet::Type::CombinedImageSampler)
+				if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 				{
-					CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1,
-						descriptor_set.binding, 0);
+					CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, binding, 0);
 					CD3DX12_ROOT_PARAMETER param;
 					param.InitAsDescriptorTable(1, &desc_range);
 					params.push_back(param);
 				}
-				else if (descriptor_set.type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
+				else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 				{
 					CD3DX12_ROOT_PARAMETER param;
-					param.InitAsConstantBufferView(descriptor_set.binding);
+					param.InitAsConstantBufferView(binding);
 					params.push_back(param);
 				}
 				else
@@ -220,6 +215,43 @@ public:
 					assert(false);
 				}
 			}
+
+			/*std::vector<std::vector<CD3DX12_DESCRIPTOR_RANGE>> ranges_vector;
+
+			for (const auto& [stage, sets] : required_descriptor_sets)
+			{
+				for (const auto& [set, bindings] : sets)
+				{
+					ranges_vector.push_back({});
+					auto& ranges = ranges_vector[ranges_vector.size() - 1];
+
+					for (const auto& binding : bindings)
+					{
+						const auto& descriptor = required_descriptor_bindings.at(binding);
+
+						static const std::unordered_map<ShaderReflection::Descriptor::Type, D3D12_DESCRIPTOR_RANGE_TYPE> RangeTypeMap = {
+							{ ShaderReflection::Descriptor::Type::CombinedImageSampler, D3D12_DESCRIPTOR_RANGE_TYPE_SRV },
+							{ ShaderReflection::Descriptor::Type::UniformBuffer, D3D12_DESCRIPTOR_RANGE_TYPE_CBV },
+						};
+
+						auto range_type = RangeTypeMap.at(descriptor.type);
+						auto range = CD3DX12_DESCRIPTOR_RANGE(range_type, 1, binding);
+
+						ranges.push_back(range);
+					}
+
+					static const std::unordered_map<ShaderStage, D3D12_SHADER_VISIBILITY> VisibilityMap = {
+						{ ShaderStage::Vertex, D3D12_SHADER_VISIBILITY_VERTEX },
+						{ ShaderStage::Fragment, D3D12_SHADER_VISIBILITY_PIXEL },
+					};
+
+					auto visibility = VisibilityMap.at(stage);
+
+					CD3DX12_ROOT_PARAMETER param;
+					param.InitAsDescriptorTable(ranges.size(), ranges.data(), visibility);
+					params.push_back(param);
+				}
+			}*/
 
 			CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // TODO: does not need when no texture?
 
@@ -240,8 +272,8 @@ public:
 		}
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderBlob.Get());
-		pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderBlob.Get());
+		pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertex_shader_blob.Get());
+		pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixel_shader_blob.Get());
 		pso_desc.InputLayout = { input.data(), (UINT)input.size() };
 		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -681,17 +713,17 @@ void BackendD3D12::prepareForDrawing()
 
 	int i = 0;
 
-	for (const auto& required_descriptor_set : gShader->required_descriptor_sets)
+	for (const auto& [binding, descriptor] : gShader->required_descriptor_bindings)
 	{
-		if (required_descriptor_set.type == ShaderReflection::DescriptorSet::Type::CombinedImageSampler)
+		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
-			const auto& texture = gTextures.at(required_descriptor_set.binding);
+			const auto& texture = gTextures.at(binding);
 			D3D12CommandList->SetDescriptorHeaps(1, &texture->heap);
 			D3D12CommandList->SetGraphicsRootDescriptorTable(i, texture->heap->GetGPUDescriptorHandleForHeapStart());
 		}
-		else if (required_descriptor_set.type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
+		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
-			const auto& buffer = gUniformBuffers.at(required_descriptor_set.binding);
+			const auto& buffer = gUniformBuffers.at(binding);
 			D3D12CommandList->SetGraphicsRootConstantBufferView(i, buffer->buffer->GetGPUVirtualAddress());
 		}
 		else

@@ -241,13 +241,13 @@ public:
 		if (es && version <= 300)
 		{
 			auto fix_bindings = [&](const ShaderReflection& reflection) {
-				for (const auto& descriptor_set : reflection.descriptor_sets)
+				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
 				{
-					if (descriptor_set.type != ShaderReflection::DescriptorSet::Type::UniformBuffer)
+					if (descriptor.type != ShaderReflection::Descriptor::Type::UniformBuffer)
 						continue;
 					
-					auto block_index = glGetUniformBlockIndex(program, descriptor_set.type_name.c_str());
-					glUniformBlockBinding(program, block_index, descriptor_set.binding);
+					auto block_index = glGetUniformBlockIndex(program, descriptor.type_name.c_str());
+					glUniformBlockBinding(program, block_index, binding);
 				}
 			};
 			fix_bindings(MakeSpirvReflection(vertex_shader_spirv));

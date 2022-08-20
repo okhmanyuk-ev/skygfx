@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <map>
 #include "vertex.h"
 
 namespace skygfx
@@ -21,7 +22,7 @@ namespace skygfx
 
 	struct ShaderReflection
 	{
-		struct DescriptorSet
+		struct Descriptor
 		{
 			enum class Type
 			{
@@ -29,13 +30,13 @@ namespace skygfx
 				UniformBuffer
 			};
 
-			int binding;
 			std::string name;
 			std::string type_name;
 			Type type;
 		};
 
-		std::vector<DescriptorSet> descriptor_sets;
+		std::map<uint32_t, Descriptor> descriptor_bindings;
+		std::map<uint32_t/*set*/, std::vector<uint32_t>/*bindings*/> descriptor_sets;
 		ShaderStage stage;
 	};
 

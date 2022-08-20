@@ -213,7 +213,7 @@ private:
 	vk::raii::ShaderModule fragment_shader_module = nullptr;
 	vk::VertexInputBindingDescription vertex_input_binding_description;
 	std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
-	std::vector<vk::DescriptorSetLayoutBinding> required_descriptor_sets;
+	std::vector<vk::DescriptorSetLayoutBinding> required_descriptor_bindings;
 
 public:
 	ShaderDataVK(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -232,20 +232,20 @@ public:
 			{ ShaderStage::Fragment, vk::ShaderStageFlagBits::eFragment }
 		};
 
-		static const std::unordered_map<ShaderReflection::DescriptorSet::Type, vk::DescriptorType> TypeMap = {
-			{ ShaderReflection::DescriptorSet::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
-			{ ShaderReflection::DescriptorSet::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer }
+		static const std::unordered_map<ShaderReflection::Descriptor::Type, vk::DescriptorType> TypeMap = {
+			{ ShaderReflection::Descriptor::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
+			{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer }
 		};
 
 		for (const auto& reflection : { vertex_shader_reflection, fragment_shader_reflection })
 		{
-			for (const auto& descriptor_set : reflection.descriptor_sets)
+			for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
 			{
 				bool overwritten = false;
 
-				for (auto& binding : required_descriptor_sets)
+				for (auto& binding : required_descriptor_bindings)
 				{
-					if (binding.binding == descriptor_set.binding)
+					if (binding.binding == binding)
 					{
 						binding.stageFlags |= StageMap.at(reflection.stage);
 						overwritten = true;
@@ -257,18 +257,18 @@ public:
 					continue;
 
 				auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding()
-					.setDescriptorType(TypeMap.at(descriptor_set.type))
+					.setDescriptorType(TypeMap.at(descriptor.type))
 					.setDescriptorCount(1)
-					.setBinding(descriptor_set.binding)
+					.setBinding(binding)
 					.setStageFlags(StageMap.at(reflection.stage));
 
-				required_descriptor_sets.push_back(descriptor_set_layout_binding);
+				required_descriptor_bindings.push_back(descriptor_set_layout_binding);
 			}
 		}
 
 		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
 			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
-			.setBindings(required_descriptor_sets);
+			.setBindings(required_descriptor_bindings);
 
 		descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
@@ -1387,16 +1387,17 @@ void BackendVK::prepareForDrawing()
 
 	auto pipeline_layout = *gShader->pipeline_layout;
 
-	for (const auto& required_descriptor_set : gShader->required_descriptor_sets)
+	for (const auto& required_descriptor_binding : gShader->required_descriptor_bindings)
 	{
-		auto binding = required_descriptor_set.binding;
+		auto binding = required_descriptor_binding.binding;
 
 		auto write_descriptor_set = vk::WriteDescriptorSet()
 			.setDescriptorCount(1)
 			.setDstBinding(binding)
-			.setDescriptorType(required_descriptor_set.descriptorType);
+			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
+			.setDescriptorType(required_descriptor_binding.descriptorType);
 
-		if (required_descriptor_set.descriptorType == vk::DescriptorType::eCombinedImageSampler)
+		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
 		{
 			auto texture = gTextures.at(binding);
 
@@ -1407,7 +1408,7 @@ void BackendVK::prepareForDrawing()
 
 			write_descriptor_set.setPImageInfo(&descriptor_image_info);
 		}
-		else if (required_descriptor_set.descriptorType == vk::DescriptorType::eUniformBuffer)
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
 		{
 			auto buffer = gUniformBuffers.at(binding);
 

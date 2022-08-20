@@ -248,9 +248,9 @@ void skygfx::AddShaderLocationDefines(const Vertex::Layout& layout, std::vector<
 
 ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 {
-	static const std::unordered_map<SpvReflectDescriptorType, ShaderReflection::DescriptorSet::Type> DescriptorTypeMap = {
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ShaderReflection::DescriptorSet::Type::CombinedImageSampler },
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ShaderReflection::DescriptorSet::Type::UniformBuffer },
+	static const std::unordered_map<SpvReflectDescriptorType, ShaderReflection::Descriptor::Type> DescriptorTypeMap = {
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ShaderReflection::Descriptor::Type::CombinedImageSampler },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ShaderReflection::Descriptor::Type::UniformBuffer },
 	};
 
 	static const std::unordered_map<SpvReflectShaderStageFlagBits, ShaderStage> StageMap = {
@@ -262,12 +262,20 @@ ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 
 	SpvReflectResult r;
 
-	uint32_t count = 0;
-	r = refl.EnumerateDescriptorBindings(&count, nullptr);
+	uint32_t descriptor_bindings_count = 0;
+	r = refl.EnumerateDescriptorBindings(&descriptor_bindings_count, nullptr);
 	assert(r == SPV_REFLECT_RESULT_SUCCESS);
 
-	std::vector<SpvReflectDescriptorBinding*> bindings(count);
-	r = refl.EnumerateDescriptorBindings(&count, bindings.data());
+	std::vector<SpvReflectDescriptorBinding*> descriptor_bindings(descriptor_bindings_count);
+	r = refl.EnumerateDescriptorBindings(&descriptor_bindings_count, descriptor_bindings.data());
+	assert(r == SPV_REFLECT_RESULT_SUCCESS);
+
+	uint32_t descriptor_sets_count = 0;
+	r = refl.EnumerateDescriptorSets(&descriptor_sets_count, nullptr);
+	assert(r == SPV_REFLECT_RESULT_SUCCESS);
+
+	std::vector<SpvReflectDescriptorSet*> descriptor_sets(descriptor_sets_count);
+	r = refl.EnumerateDescriptorSets(&descriptor_sets_count, descriptor_sets.data());
 	assert(r == SPV_REFLECT_RESULT_SUCCESS);
 
 	ShaderReflection result;
@@ -275,19 +283,32 @@ ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 	auto stage = refl.GetShaderStage();
 	result.stage = StageMap.at(stage);
 
-	for (const auto& binding : bindings)
+	for (const auto& descriptor_binding : descriptor_bindings)
 	{
-		auto type = DescriptorTypeMap.at(binding->descriptor_type);
-		
-		ShaderReflection::DescriptorSet descriptor_set;
-		descriptor_set.type = type;
-		descriptor_set.binding = binding->binding;
-		descriptor_set.name = binding->name;
-		
-		if (type == ShaderReflection::DescriptorSet::Type::UniformBuffer)
-			descriptor_set.type_name = binding->block.type_description->type_name;
+		auto binding = descriptor_binding->binding;
+		auto type = DescriptorTypeMap.at(descriptor_binding->descriptor_type);
 
-		result.descriptor_sets.push_back(descriptor_set);
+		assert(!result.descriptor_bindings.contains(binding));
+
+		auto& descriptor = result.descriptor_bindings[binding];
+		descriptor.type = type;
+		descriptor.name = descriptor_binding->name;
+
+		if (type == ShaderReflection::Descriptor::Type::UniformBuffer)
+			descriptor.type_name = descriptor_binding->block.type_description->type_name;
+	}
+
+	for (const auto& descriptor_set : descriptor_sets)
+	{
+		auto set = descriptor_set->set;
+
+		for (uint32_t i = 0; i < descriptor_set->binding_count; i++)
+		{
+			auto descriptor_binding = descriptor_set->bindings[i];
+			auto binding = descriptor_binding->binding;
+
+			result.descriptor_sets[set].push_back(binding);
+		}
 	}
 
 	return result;

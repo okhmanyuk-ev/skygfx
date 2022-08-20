@@ -114,8 +114,8 @@ public:
 	ShaderD3D11(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		ID3DBlob* vertexShaderBlob;
-		ID3DBlob* pixelShaderBlob;
+		ID3DBlob* vertex_shader_blob;
+		ID3DBlob* pixel_shader_blob;
 
 		ID3DBlob* vertex_shader_error;
 		ID3DBlob* pixel_shader_error;
@@ -128,8 +128,8 @@ public:
 		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, 40);
 		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, 40);
 
-		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_4_0", 0, 0, &vertexShaderBlob, &vertex_shader_error);
-		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_4_0", 0, 0, &pixelShaderBlob, &pixel_shader_error);
+		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_4_0", 0, 0, &vertex_shader_blob, &vertex_shader_error);
+		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_4_0", 0, 0, &pixel_shader_blob, &pixel_shader_error);
 
 		std::string vertex_shader_error_string = "";
 		std::string pixel_shader_error_string = "";
@@ -140,14 +140,14 @@ public:
 		if (pixel_shader_error != nullptr)
 			pixel_shader_error_string = std::string((char*)pixel_shader_error->GetBufferPointer(), pixel_shader_error->GetBufferSize());
 
-		if (vertexShaderBlob == nullptr)
+		if (vertex_shader_blob == nullptr)
 			throw std::runtime_error(vertex_shader_error_string);
 
-		if (pixelShaderBlob == nullptr)
+		if (pixel_shader_blob == nullptr)
 			throw std::runtime_error(pixel_shader_error_string);
 
-		gDevice->CreateVertexShader(vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), nullptr, &vertex_shader);
-		gDevice->CreatePixelShader(pixelShaderBlob->GetBufferPointer(), pixelShaderBlob->GetBufferSize(), nullptr, &pixel_shader);
+		gDevice->CreateVertexShader(vertex_shader_blob->GetBufferPointer(), vertex_shader_blob->GetBufferSize(), nullptr, &vertex_shader);
+		gDevice->CreatePixelShader(pixel_shader_blob->GetBufferPointer(), pixel_shader_blob->GetBufferSize(), nullptr, &pixel_shader);
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
 			{ Vertex::Attribute::Format::R32F, DXGI_FORMAT_R32_FLOAT },
@@ -171,7 +171,7 @@ public:
 			i++;
 		}
 
-		gDevice->CreateInputLayout(input.data(), static_cast<UINT>(input.size()), vertexShaderBlob->GetBufferPointer(), vertexShaderBlob->GetBufferSize(), &input_layout);
+		gDevice->CreateInputLayout(input.data(), static_cast<UINT>(input.size()), vertex_shader_blob->GetBufferPointer(), vertex_shader_blob->GetBufferSize(), &input_layout);
 	}
 
 	~ShaderD3D11()
