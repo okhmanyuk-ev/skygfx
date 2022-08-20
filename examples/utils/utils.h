@@ -15,28 +15,31 @@ namespace utils
 {
 	skygfx::BackendType ChooseBackendTypeViaConsole()
 	{
-		std::cout << "Choose backend type: " << std::endl;
-		std::cout << "1. D3D11" << std::endl;
-		std::cout << "2. D3D12" << std::endl;
-		std::cout << "3. OpenGL" << std::endl;
-		std::cout << "4. Vulkan" << std::endl;
-		std::cout << "5. Metal" << std::endl;
+		struct Backend
+		{
+			std::string name;
+			skygfx::BackendType type;
+		};
 
+		static const std::vector<Backend> backends = {
+			{ "D3D11", skygfx::BackendType::D3D11 },
+			{ "D3D12", skygfx::BackendType::D3D12 },
+			{ "OpenGL", skygfx::BackendType::OpenGL },
+			{ "Vulkan", skygfx::BackendType::Vulkan },
+			{ "Metal", skygfx::BackendType::Metal },
+		};
+
+		std::cout << "Choose backend type: " << std::endl;
+
+		for (int i = 0; i < backends.size(); i++)
+		{
+			std::cout << i + 1 << ". " << backends.at(i).name << std::endl;
+		}
+		
 		int value = 0;
 		std::cin >> value;
 
-		if (value == 1)
-			return skygfx::BackendType::D3D11;
-		else if (value == 2)
-			return skygfx::BackendType::D3D12;
-		else if (value == 3)
-			return skygfx::BackendType::OpenGL;
-		else if (value == 4)
-			return skygfx::BackendType::Vulkan;
-		else if (value == 5)
-			return skygfx::BackendType::Metal;
-		else
-			throw std::runtime_error("unknown type");
+		return backends.at(value - 1).type;
 	}
 
 	void* GetNativeWindow(GLFWwindow* window)
