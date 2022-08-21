@@ -9,8 +9,8 @@
 # Integration
 
 ```cmake
-add_subdirectory(sky-gfx)
-target_link_libraries(YOUR_TARGET sky-gfx)
+add_subdirectory(skygfx)
+target_link_libraries(YOUR_TARGET skygfx)
 ```
 
 # Building Examples
