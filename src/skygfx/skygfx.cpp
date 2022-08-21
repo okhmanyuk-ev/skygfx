@@ -137,6 +137,9 @@ Device::Device(void* window, uint32_t width, uint32_t height, std::optional<Back
 
 	if (gBackend == nullptr)
 		throw std::runtime_error("backend not implemented");
+
+	mBackbufferWidth = width;
+	mBackbufferHeight = height;
 }
 
 Device::~Device()
@@ -148,6 +151,8 @@ Device::~Device()
 void Device::resize(uint32_t width, uint32_t height)
 {
 	gBackend->resize(width, height);
+	mBackbufferWidth = width;
+	mBackbufferHeight = height;
 }
 
 void Device::setTopology(Topology topology)
@@ -254,6 +259,16 @@ void Device::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& 
 void Device::present()
 {
 	gBackend->present();
+}
+
+uint32_t Device::getBackbufferWidth() const
+{
+	return mBackbufferWidth;
+}
+
+uint32_t Device::getBackbufferHeight() const
+{
+	return mBackbufferHeight;
 }
 
 BackendType Device::GetBackendTypeBasedOnPlatform()

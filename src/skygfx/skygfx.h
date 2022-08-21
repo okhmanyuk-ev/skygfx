@@ -410,6 +410,13 @@ namespace skygfx
 
 		void present();
 
+		uint32_t getBackbufferWidth() const;
+		uint32_t getBackbufferHeight() const;
+
+	private:
+		uint32_t mBackbufferWidth = 0;
+		uint32_t mBackbufferHeight = 0;
+
 	public:
 		static BackendType GetBackendTypeBasedOnPlatform();
 	};
