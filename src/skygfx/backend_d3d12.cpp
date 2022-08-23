@@ -47,6 +47,8 @@ static ShaderD3D12* gShader = nullptr;
 static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
 static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
 
+static ExecuteList gExecuteAfterPresent;
+
 template <typename T>
 inline void SafeRelease(T& a)
 {
@@ -105,6 +107,7 @@ private:
 	ComPtr<ID3D12RootSignature> root_signature;
 	std::map<uint32_t, ShaderReflection::Descriptor> required_descriptor_bindings; // TODO: del
 	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> required_descriptor_sets;
+	std::map<uint32_t, uint32_t> binding_to_root_index;
 
 
 public:
@@ -194,29 +197,8 @@ public:
 
 		{
 			std::vector<CD3DX12_ROOT_PARAMETER> params;
-
-			for (const auto& [binding, descriptor] : required_descriptor_bindings)
-			{
-				if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
-				{
-					CD3DX12_DESCRIPTOR_RANGE desc_range(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, binding, 0);
-					CD3DX12_ROOT_PARAMETER param;
-					param.InitAsDescriptorTable(1, &desc_range);
-					params.push_back(param);
-				}
-				else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
-				{
-					CD3DX12_ROOT_PARAMETER param;
-					param.InitAsConstantBufferView(binding);
-					params.push_back(param);
-				}
-				else
-				{
-					assert(false);
-				}
-			}
-
-			/*std::vector<std::vector<CD3DX12_DESCRIPTOR_RANGE>> ranges_vector;
+			std::vector<D3D12_STATIC_SAMPLER_DESC> static_samplers;
+			std::vector<std::vector<CD3DX12_DESCRIPTOR_RANGE>> ranges_vector;
 
 			for (const auto& [stage, sets] : required_descriptor_sets)
 			{
@@ -229,6 +211,9 @@ public:
 					{
 						const auto& descriptor = required_descriptor_bindings.at(binding);
 
+						if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
+							continue;
+						
 						static const std::unordered_map<ShaderReflection::Descriptor::Type, D3D12_DESCRIPTOR_RANGE_TYPE> RangeTypeMap = {
 							{ ShaderReflection::Descriptor::Type::CombinedImageSampler, D3D12_DESCRIPTOR_RANGE_TYPE_SRV },
 							{ ShaderReflection::Descriptor::Type::UniformBuffer, D3D12_DESCRIPTOR_RANGE_TYPE_CBV },
@@ -236,8 +221,14 @@ public:
 
 						auto range_type = RangeTypeMap.at(descriptor.type);
 						auto range = CD3DX12_DESCRIPTOR_RANGE(range_type, 1, binding);
-
 						ranges.push_back(range);
+
+						binding_to_root_index.insert({ binding, params.size() });
+
+						if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
+						{
+							static_samplers.push_back(CD3DX12_STATIC_SAMPLER_DESC(binding, D3D12_FILTER_MIN_MAG_MIP_LINEAR));
+						}
 					}
 
 					static const std::unordered_map<ShaderStage, D3D12_SHADER_VISIBILITY> VisibilityMap = {
@@ -251,12 +242,22 @@ public:
 					param.InitAsDescriptorTable(ranges.size(), ranges.data(), visibility);
 					params.push_back(param);
 				}
-			}*/
+			}
 
-			CD3DX12_STATIC_SAMPLER_DESC staticSampler(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR); // TODO: does not need when no texture?
+			for (const auto& [binding, descriptor] : required_descriptor_bindings)
+			{
+				if (descriptor.type != ShaderReflection::Descriptor::Type::UniformBuffer)
+					continue;
 
-			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc(params.size(), params.data(), 1,
-				&staticSampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+				binding_to_root_index.insert({ binding, params.size() });
+
+				CD3DX12_ROOT_PARAMETER param;
+				param.InitAsConstantBufferView(binding);
+				params.push_back(param);
+			}
+
+			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc(params.size(), params.data(), static_samplers.size(),
+				static_samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 			ComPtr<ID3DBlob> blob;
 			ComPtr<ID3DBlob> error;
@@ -557,6 +558,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 BackendD3D12::~BackendD3D12()
 {
 	end();
+	gExecuteAfterPresent.flush();
 	destroyMainRenderTarget();
 }
 
@@ -711,27 +713,25 @@ void BackendD3D12::prepareForDrawing()
 	D3D12CommandList->SetPipelineState(gShader->pipeline_state.Get());
 	D3D12CommandList->SetGraphicsRootSignature(gShader->root_signature.Get());
 
-	int i = 0;
-
 	for (const auto& [binding, descriptor] : gShader->required_descriptor_bindings)
 	{
+		auto root_index = gShader->binding_to_root_index.at(binding);
+
 		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
 			const auto& texture = gTextures.at(binding);
 			D3D12CommandList->SetDescriptorHeaps(1, &texture->heap);
-			D3D12CommandList->SetGraphicsRootDescriptorTable(i, texture->heap->GetGPUDescriptorHandleForHeapStart());
+			D3D12CommandList->SetGraphicsRootDescriptorTable(root_index, texture->heap->GetGPUDescriptorHandleForHeapStart());
 		}
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
 			const auto& buffer = gUniformBuffers.at(binding);
-			D3D12CommandList->SetGraphicsRootConstantBufferView(i, buffer->buffer->GetGPUVirtualAddress());
+			D3D12CommandList->SetGraphicsRootConstantBufferView(root_index, buffer->buffer->GetGPUVirtualAddress());
 		}
 		else
 		{
 			assert(false);
 		}
-
-		i++;
 	}
 
 	D3D12_VIEWPORT vp = {};
@@ -760,6 +760,8 @@ void BackendD3D12::present()
 	D3D12SwapChain->Present(vsync ? 1 : 0, 0);
 
 	WaitForPreviousFrame();
+
+	gExecuteAfterPresent.flush();
 
 	begin();
 }
@@ -832,8 +834,10 @@ VertexBufferHandle* BackendD3D12::createVertexBuffer(void* memory, size_t size, 
 
 void BackendD3D12::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferD3D12*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (VertexBufferD3D12*)handle;
+		delete buffer;
+	});
 }
 
 void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
@@ -858,8 +862,10 @@ void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, void* memor
 
 void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferD3D12*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (IndexBufferD3D12*)handle;
+		delete buffer;
+	});
 }
 
 UniformBufferHandle* BackendD3D12::createUniformBuffer(void* memory, size_t size)
@@ -870,8 +876,10 @@ UniformBufferHandle* BackendD3D12::createUniformBuffer(void* memory, size_t size
 
 void BackendD3D12::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferD3D12*)handle;
-	delete buffer;
+	gExecuteAfterPresent.add([handle] {
+		auto buffer = (UniformBufferD3D12*)handle;
+		delete buffer;
+	});
 }
 
 void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
