@@ -387,15 +387,13 @@ protected:
 	size_t size = 0;
 
 public:
-	BufferD3D12(void* memory, size_t _size) : size(_size)
+	BufferD3D12(size_t _size) : size(_size)
 	{
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 		auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
 
 		D3D12Device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc, 
 			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&buffer));
-
-		write(memory, size);
 	}
 
 	~BufferD3D12()
@@ -422,7 +420,7 @@ private:
 	size_t stride = 0;
 
 public:
-	VertexBufferD3D12(void* memory, size_t _size, size_t _stride) : BufferD3D12(memory, _size),
+	VertexBufferD3D12(size_t _size, size_t _stride) : BufferD3D12(_size),
 		stride(_stride)
 	{
 	}
@@ -436,7 +434,7 @@ private:
 	size_t stride = 0;
 
 public:
-	IndexBufferD3D12(void* memory, size_t _size, size_t _stride) : BufferD3D12(memory, _size),
+	IndexBufferD3D12(size_t _size, size_t _stride) : BufferD3D12(_size),
 		stride(_stride)
 	{
 	}
@@ -447,7 +445,7 @@ class UniformBufferD3D12 : public BufferD3D12
 	friend class BackendD3D12;
 
 public:
-	UniformBufferD3D12(void* memory, size_t _size) : BufferD3D12(memory, _size)
+	UniformBufferD3D12(size_t _size) : BufferD3D12(_size)
 	{
 	}
 };
@@ -829,9 +827,9 @@ void BackendD3D12::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
-VertexBufferHandle* BackendD3D12::createVertexBuffer(void* memory, size_t size, size_t stride)
+VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new VertexBufferD3D12(memory, size, stride);
+	auto buffer = new VertexBufferD3D12(size, stride);
 	return (VertexBufferHandle*)buffer;
 }
 
@@ -850,9 +848,9 @@ void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* mem
 	buffer->stride = stride;
 }
 
-IndexBufferHandle* BackendD3D12::createIndexBuffer(void* memory, size_t size, size_t stride)
+IndexBufferHandle* BackendD3D12::createIndexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new IndexBufferD3D12(memory, size, stride);
+	auto buffer = new IndexBufferD3D12(size, stride);
 	return (IndexBufferHandle*)buffer;
 }
 
@@ -871,9 +869,9 @@ void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
 	});
 }
 
-UniformBufferHandle* BackendD3D12::createUniformBuffer(void* memory, size_t size)
+UniformBufferHandle* BackendD3D12::createUniformBuffer(size_t size)
 {
-	auto buffer = new UniformBufferD3D12(memory, size);
+	auto buffer = new UniformBufferD3D12(size);
 	return (UniformBufferHandle*)buffer;
 }
 

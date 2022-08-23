@@ -487,7 +487,7 @@ private:
 	vk::raii::DeviceMemory device_memory = nullptr;
 
 public:
-	BufferDataVK(void* memory, size_t size, vk::BufferUsageFlags usage)
+	BufferDataVK(size_t size, vk::BufferUsageFlags usage)
 	{		
 		auto buffer_create_info = vk::BufferCreateInfo()
 			.setSize(size)
@@ -505,8 +505,6 @@ public:
 		device_memory = gDevice.allocateMemory(memory_allocate_info);
 		
 		buffer.bindMemory(*device_memory, 0);
-
-		write(memory, size);
 	}
 
 	void write(void* memory, size_t size)
@@ -525,8 +523,8 @@ private:
 	size_t stride = 0;
 
 public:
-	VertexBufferDataVK(void* memory, size_t size, size_t _stride) :
-		BufferDataVK(memory, size, vk::BufferUsageFlagBits::eVertexBuffer),
+	VertexBufferDataVK(size_t size, size_t _stride) :
+		BufferDataVK(size, vk::BufferUsageFlagBits::eVertexBuffer),
 		stride(_stride)
 	{
 	}
@@ -540,8 +538,8 @@ private:
 	size_t stride = 0;
 
 public:
-	IndexBufferDataVK(void* memory, size_t size, size_t _stride) :
-		BufferDataVK(memory, size, vk::BufferUsageFlagBits::eIndexBuffer),
+	IndexBufferDataVK(size_t size, size_t _stride) :
+		BufferDataVK(size, vk::BufferUsageFlagBits::eIndexBuffer),
 		stride(_stride)
 	{
 	}
@@ -552,8 +550,8 @@ class UniformBufferDataVK : public BufferDataVK
 	friend class BackendVK;
 
 public:
-	UniformBufferDataVK(void* memory, size_t size) :
-		BufferDataVK(memory, size, vk::BufferUsageFlagBits::eUniformBuffer)
+	UniformBufferDataVK(size_t size) :
+		BufferDataVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
 	{
 	}
 };
@@ -1040,9 +1038,9 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
-VertexBufferHandle* BackendVK::createVertexBuffer(void* memory, size_t size, size_t stride)
+VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new VertexBufferDataVK(memory, size, stride);
+	auto buffer = new VertexBufferDataVK(size, stride);
 	return (VertexBufferHandle*)buffer;
 }
 
@@ -1061,9 +1059,9 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 	buffer->stride = stride;
 }
 
-IndexBufferHandle* BackendVK::createIndexBuffer(void* memory, size_t size, size_t stride)
+IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new IndexBufferDataVK(memory, size, stride);
+	auto buffer = new IndexBufferDataVK(size, stride);
 	return (IndexBufferHandle*)buffer;
 }
 
@@ -1081,9 +1079,9 @@ void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 	buffer->stride = stride;
 }
 
-UniformBufferHandle* BackendVK::createUniformBuffer(void* memory, size_t size)
+UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
 {
-	auto buffer = new UniformBufferDataVK(memory, size);
+	auto buffer = new UniformBufferDataVK(size);
 	return (UniformBufferHandle*)buffer;
 }
 

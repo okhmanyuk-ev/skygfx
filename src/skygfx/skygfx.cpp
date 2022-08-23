@@ -59,7 +59,8 @@ Buffer::Buffer(size_t size) : mSize(size)
 
 VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride) : Buffer(size)
 {
-	mVertexBufferHandle = gBackend->createVertexBuffer(memory, size, stride);
+	mVertexBufferHandle = gBackend->createVertexBuffer(size, stride);
+	write(memory, size, stride);
 }
 
 VertexBuffer::~VertexBuffer()
@@ -76,7 +77,8 @@ void VertexBuffer::write(void* memory, size_t size, size_t stride)
 
 IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride) : Buffer(size)
 {
-	mIndexBufferHandle = gBackend->createIndexBuffer(memory, size, stride);
+	mIndexBufferHandle = gBackend->createIndexBuffer(size, stride);
+	write(memory, size, stride);
 }
 
 IndexBuffer::~IndexBuffer()
@@ -93,7 +95,8 @@ void IndexBuffer::write(void* memory, size_t size, size_t stride)
 
 UniformBuffer::UniformBuffer(void* memory, size_t size) : Buffer(size)
 {
-	mUniformBufferHandle = gBackend->createUniformBuffer(memory, size);
+	mUniformBufferHandle = gBackend->createUniformBuffer(size);
+	write(memory, size);
 }
 
 UniformBuffer::~UniformBuffer()

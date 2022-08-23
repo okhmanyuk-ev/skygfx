@@ -395,11 +395,11 @@ protected:
 	GLenum type;
 
 public:
-	BufferGL(void* memory, size_t size, GLenum _type) : type(_type)
+	BufferGL(size_t size, GLenum _type) : type(_type)
 	{
 		glGenBuffers(1, &buffer);
 		glBindBuffer(type, buffer);
-		glBufferData(type, size, memory, GL_DYNAMIC_DRAW);
+		glBufferData(type, size, nullptr, GL_DYNAMIC_DRAW);
 	}
 
 	~BufferGL()
@@ -409,10 +409,12 @@ public:
 
 	void write(void* memory, size_t size)
 	{
-		glBindBuffer(type, buffer);
+		/*glBindBuffer(type, buffer);
 		auto ptr = glMapBufferRange(type, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
 		memcpy(ptr, memory, size);
-		glUnmapBuffer(type);
+		glUnmapBuffer(type);*/
+		glBindBuffer(type, buffer);
+		glBufferData(type, size, memory, GL_DYNAMIC_DRAW);
 	}
 };
 
@@ -424,7 +426,7 @@ private:
 	size_t stride = 0;
 
 public:
-	VertexBufferGL(void* memory, size_t size, size_t _stride) : BufferGL(memory, size, GL_ARRAY_BUFFER),
+	VertexBufferGL(size_t size, size_t _stride) : BufferGL(size, GL_ARRAY_BUFFER),
 		stride(_stride)
 	{
 	}
@@ -438,7 +440,7 @@ private:
 	size_t stride = 0;
 
 public:
-	IndexBufferGL(void* memory, size_t size, size_t _stride) : BufferGL(memory, size, GL_ELEMENT_ARRAY_BUFFER),
+	IndexBufferGL(size_t size, size_t _stride) : BufferGL(size, GL_ELEMENT_ARRAY_BUFFER),
 		stride(_stride)
 	{
 	}
@@ -449,7 +451,7 @@ class UniformBufferGL : public BufferGL
 	friend class BackendGL;
 
 public:
-	UniformBufferGL(void* memory, size_t size) : BufferGL(memory, size, GL_UNIFORM_BUFFER)
+	UniformBufferGL(size_t size) : BufferGL(size, GL_UNIFORM_BUFFER)
 	{
 		assert(size % 16 == 0);
 	}
@@ -933,9 +935,9 @@ void BackendGL::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
-VertexBufferHandle* BackendGL::createVertexBuffer(void* memory, size_t size, size_t stride)
+VertexBufferHandle* BackendGL::createVertexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new VertexBufferGL(memory, size, stride);
+	auto buffer = new VertexBufferGL(size, stride);
 	return (VertexBufferHandle*)buffer;
 }
 
@@ -958,9 +960,9 @@ void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 	buffer->stride = stride;
 }
 
-IndexBufferHandle* BackendGL::createIndexBuffer(void* memory, size_t size, size_t stride)
+IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new IndexBufferGL(memory, size, stride);
+	auto buffer = new IndexBufferGL(size, stride);
 	return (IndexBufferHandle*)buffer;
 }
 
@@ -983,9 +985,9 @@ void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 	buffer->stride = stride;
 }
 
-UniformBufferHandle* BackendGL::createUniformBuffer(void* memory, size_t size)
+UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
 {
-	auto buffer = new UniformBufferGL(memory, size);
+	auto buffer = new UniformBufferGL(size);
 	return (UniformBufferHandle*)buffer;
 }
 

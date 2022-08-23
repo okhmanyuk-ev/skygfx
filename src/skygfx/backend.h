@@ -48,15 +48,15 @@ namespace skygfx
 			const std::string& fragment_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyShader(ShaderHandle* handle) = 0;
 
-		virtual VertexBufferHandle* createVertexBuffer(void* memory, size_t size, size_t stride) = 0;
+		virtual VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) = 0;
 		virtual void destroyVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride) = 0;
 
-		virtual IndexBufferHandle* createIndexBuffer(void* memory, size_t size, size_t stride) = 0;
+		virtual IndexBufferHandle* createIndexBuffer(size_t size, size_t stride) = 0;
 		virtual void destroyIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride) = 0;
 
-		virtual UniformBufferHandle* createUniformBuffer(void* memory, size_t size) = 0;
+		virtual UniformBufferHandle* createUniformBuffer(size_t size) = 0;
 		virtual void destroyUniformBuffer(UniformBufferHandle* handle) = 0;
 		virtual void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) = 0;
 	};

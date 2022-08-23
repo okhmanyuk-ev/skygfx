@@ -310,7 +310,7 @@ private:
 	size_t size;
 
 public:
-	BufferD3D11(void* memory, size_t _size, D3D11_BIND_FLAG bind_flags) : size(_size)
+	BufferD3D11(size_t _size, D3D11_BIND_FLAG bind_flags) : size(_size)
 	{
 		D3D11_BUFFER_DESC desc = {};
 		desc.ByteWidth = static_cast<UINT>(size);
@@ -318,8 +318,6 @@ public:
 		desc.BindFlags = bind_flags;
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		gDevice->CreateBuffer(&desc, nullptr, &buffer);
-
-		write(memory, size);
 	}
 
 	~BufferD3D11()
@@ -345,8 +343,8 @@ private:
 	size_t stride;
 
 public:
-	VertexBufferD3D11(void* memory, size_t size, size_t _stride) :
-		BufferD3D11(memory, size, D3D11_BIND_VERTEX_BUFFER),
+	VertexBufferD3D11(size_t size, size_t _stride) :
+		BufferD3D11(size, D3D11_BIND_VERTEX_BUFFER),
 		stride(_stride)
 	{
 	}
@@ -360,8 +358,8 @@ private:
 	size_t stride;
 
 public:
-	IndexBufferD3D11(void* memory, size_t size, size_t _stride) :
-		BufferD3D11(memory, size, D3D11_BIND_INDEX_BUFFER),
+	IndexBufferD3D11(size_t size, size_t _stride) :
+		BufferD3D11(size, D3D11_BIND_INDEX_BUFFER),
 		stride(_stride)
 	{
 	}
@@ -372,8 +370,8 @@ class UniformBufferD3D11 : public BufferD3D11
 	friend class BackendD3D11;
 
 public:
-	UniformBufferD3D11(void* memory, size_t size) :
-		BufferD3D11(memory, size, D3D11_BIND_CONSTANT_BUFFER)
+	UniformBufferD3D11(size_t size) :
+		BufferD3D11(size, D3D11_BIND_CONSTANT_BUFFER)
 	{
 		assert(size % 16 == 0);
 	}
@@ -800,9 +798,9 @@ void BackendD3D11::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
-VertexBufferHandle* BackendD3D11::createVertexBuffer(void* memory, size_t size, size_t stride)
+VertexBufferHandle* BackendD3D11::createVertexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new VertexBufferD3D11(memory, size, stride);
+	auto buffer = new VertexBufferD3D11(size, stride);
 	return (VertexBufferHandle*)buffer;
 }
 
@@ -819,9 +817,9 @@ void BackendD3D11::writeVertexBufferMemory(VertexBufferHandle* handle, void* mem
 	buffer->stride = stride;
 }
 
-IndexBufferHandle* BackendD3D11::createIndexBuffer(void* memory, size_t size, size_t stride)
+IndexBufferHandle* BackendD3D11::createIndexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new IndexBufferD3D11(memory, size, stride);
+	auto buffer = new IndexBufferD3D11(size, stride);
 	return (IndexBufferHandle*)buffer;
 }
 
@@ -838,9 +836,9 @@ void BackendD3D11::destroyIndexBuffer(IndexBufferHandle* handle)
 	delete buffer;
 }
 
-UniformBufferHandle* BackendD3D11::createUniformBuffer(void* memory, size_t size)
+UniformBufferHandle* BackendD3D11::createUniformBuffer(size_t size)
 {
-	auto buffer = new UniformBufferD3D11(memory, size);
+	auto buffer = new UniformBufferD3D11(size);
 	return (UniformBufferHandle*)buffer;
 }
 
