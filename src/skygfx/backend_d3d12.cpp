@@ -231,6 +231,9 @@ public:
 						}
 					}
 
+					if (ranges.empty())
+						continue;
+
 					static const std::unordered_map<ShaderStage, D3D12_SHADER_VISIBILITY> VisibilityMap = {
 						{ ShaderStage::Vertex, D3D12_SHADER_VISIBILITY_VERTEX },
 						{ ShaderStage::Fragment, D3D12_SHADER_VISIBILITY_PIXEL },
