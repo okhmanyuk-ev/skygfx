@@ -42,20 +42,23 @@ struct PipelineState
 	ShaderD3D12* shader = nullptr;
 	RasterizerState rasterizer_state;
 	std::optional<DepthMode> depth_mode;
+	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
 	
 	bool operator==(const PipelineState& value) const
 	{
 		return 
 			shader == value.shader &&
 			rasterizer_state == value.rasterizer_state &&
-			depth_mode == value.depth_mode;
+			depth_mode == value.depth_mode &&
+			blend_mode == value.blend_mode;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineState,
 	t.shader,
 	t.rasterizer_state,
-	t.depth_mode);
+	t.depth_mode,
+	t.blend_mode);
 
 static int const NUM_BACK_BUFFERS = 2;
 
@@ -751,13 +754,34 @@ void BackendD3D12::prepareForDrawing()
 			{ ComparisonFunc::GreaterEqual, D3D12_COMPARISON_FUNC_EQUAL }
 		};
 
+		const static std::unordered_map<Blend, D3D12_BLEND> BlendMap = {
+			{ Blend::One, D3D12_BLEND_ONE },
+			{ Blend::Zero, D3D12_BLEND_ZERO },
+			{ Blend::SrcColor, D3D12_BLEND_SRC_COLOR },
+			{ Blend::InvSrcColor, D3D12_BLEND_INV_SRC_COLOR },
+			{ Blend::SrcAlpha, D3D12_BLEND_SRC_ALPHA },
+			{ Blend::InvSrcAlpha, D3D12_BLEND_INV_SRC_ALPHA },
+			{ Blend::DstColor, D3D12_BLEND_DEST_COLOR },
+			{ Blend::InvDstColor, D3D12_BLEND_INV_DEST_COLOR },
+			{ Blend::DstAlpha, D3D12_BLEND_DEST_ALPHA },
+			{ Blend::InvDstAlpha, D3D12_BLEND_INV_DEST_ALPHA }
+		};
+
+		const static std::unordered_map<BlendFunction, D3D12_BLEND_OP> BlendOpMap = {
+			{ BlendFunction::Add, D3D12_BLEND_OP_ADD },
+			{ BlendFunction::Subtract, D3D12_BLEND_OP_SUBTRACT },
+			{ BlendFunction::ReverseSubtract, D3D12_BLEND_OP_REV_SUBTRACT },
+			{ BlendFunction::Min, D3D12_BLEND_OP_MIN },
+			{ BlendFunction::Max, D3D12_BLEND_OP_MAX },
+		};
+
 		auto depth_mode = gPipelineState.depth_mode.value_or(DepthMode());
+		const auto& blend_mode = gPipelineState.blend_mode;
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
 		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->vertex_shader_blob.Get());
 		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->pixel_shader_blob.Get());
 		pso_desc.InputLayout = { shader->input.data(), (UINT)shader->input.size() };
-		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 		pso_desc.NodeMask = 1;
 		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 		pso_desc.pRootSignature = shader->root_signature.Get();
@@ -775,6 +799,33 @@ void BackendD3D12::prepareForDrawing()
 		//pso_desc.DepthStencilState.DepthEnable = gPipelineState.depth_mode.has_value();
 		//pso_desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 		//pso_desc.DepthStencilState.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
+
+		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		pso_desc.BlendState.AlphaToCoverageEnable = false;
+
+		auto& blend = pso_desc.BlendState.RenderTarget[0];
+
+		if (blend_mode.color_mask.red)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
+
+		if (blend_mode.color_mask.green)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_GREEN;
+
+		if (blend_mode.color_mask.blue)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_BLUE;
+
+		if (blend_mode.color_mask.alpha)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
+
+		blend.BlendEnable = true;
+
+		blend.SrcBlend = BlendMap.at(blend_mode.color_src_blend);
+		blend.DestBlend = BlendMap.at(blend_mode.color_dst_blend);
+		blend.BlendOp = BlendOpMap.at(blend_mode.color_blend_func);
+
+		blend.SrcBlendAlpha = BlendMap.at(blend_mode.alpha_src_blend);
+		blend.DestBlendAlpha = BlendMap.at(blend_mode.alpha_dst_blend);
+		blend.BlendOpAlpha = BlendOpMap.at(blend_mode.alpha_blend_func);
 
 		D3D12Device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
 	}
