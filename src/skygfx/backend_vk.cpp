@@ -6,6 +6,40 @@
 
 using namespace skygfx;
 
+class ShaderDataVK;
+
+struct PipelineState
+{
+	ShaderDataVK* shader = nullptr;
+	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
+
+	bool operator==(const PipelineState& value) const
+	{
+		return shader == value.shader && blend_mode == value.blend_mode;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(PipelineState,
+	t.shader,
+	t.blend_mode);
+
+struct SamplerState
+{
+	Sampler sampler = Sampler::Linear;
+	TextureAddress texture_address = TextureAddress::Clamp;
+
+	bool operator==(const SamplerState& value) const
+	{
+		return
+			sampler == value.sampler &&
+			texture_address == value.texture_address;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(SamplerState,
+	t.sampler,
+	t.texture_address);
+
 static vk::raii::Context gContext;
 static vk::raii::Instance gInstance = nullptr;
 static vk::raii::PhysicalDevice gPhysicalDevice = nullptr;
@@ -17,7 +51,6 @@ static vk::raii::SurfaceKHR gSurface = nullptr;
 static vk::raii::SwapchainKHR gSwapchain = nullptr;
 static vk::raii::CommandPool gCommandPool = nullptr;
 static vk::raii::CommandBuffer gCommandBuffer = nullptr;
-static vk::raii::Sampler gSampler = nullptr;
 static bool gWorking = false;
 static uint32_t gWidth = 0;
 static uint32_t gHeight = 0;
@@ -42,24 +75,6 @@ static struct
 	vk::raii::DeviceMemory memory = nullptr;
 } gDepthStencil;
 
-
-class ShaderDataVK;
-
-struct PipelineState
-{
-	ShaderDataVK* shader = nullptr;
-	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
-
-	bool operator==(const PipelineState& value) const
-	{
-		return shader == value.shader && blend_mode == value.blend_mode;
-	}
-};
-
-SKYGFX_MAKE_HASHABLE(PipelineState,
-	t.shader,
-	t.blend_mode);
-
 static std::vector<FrameVK> gFrames;
 
 static uint32_t gSemaphoreIndex = 0;
@@ -79,6 +94,9 @@ static bool gViewportDirty = true;
 
 static PipelineState gPipelineState;
 static std::unordered_map<PipelineState, vk::raii::Pipeline> gPipelines;
+
+static SamplerState gSamplerState;
+static std::unordered_map<SamplerState, vk::raii::Sampler> gSamplers;
 
 static std::optional<DepthMode> gDepthMode = DepthMode();
 static bool gDepthModeDirty = true;
@@ -721,19 +739,6 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	auto command_buffers = gDevice.allocateCommandBuffers(command_buffer_allocate_info);
 	gCommandBuffer = std::move(command_buffers.at(0));
 
-	auto sampler_create_info = vk::SamplerCreateInfo()
-		.setMagFilter(vk::Filter::eLinear)
-		.setMinFilter(vk::Filter::eLinear)
-		.setMipmapMode(vk::SamplerMipmapMode::eLinear)
-		.setAddressModeU(vk::SamplerAddressMode::eRepeat)
-		.setAddressModeV(vk::SamplerAddressMode::eRepeat)
-		.setAddressModeW(vk::SamplerAddressMode::eRepeat)
-		.setMinLod(-1000)
-		.setMaxLod(1000)
-		.setMaxAnisotropy(1.0f);
-
-	gSampler = gDevice.createSampler(sampler_create_info);
-
 	createSwapchain(width, height);
 
 	begin();
@@ -841,10 +846,12 @@ void BackendVK::setCullMode(CullMode cull_mode)
 
 void BackendVK::setSampler(Sampler value)
 {
+	gSamplerState.sampler = value;
 }
 
 void BackendVK::setTextureAddress(TextureAddress value)
 {
+	gSamplerState.texture_address = value;
 }
 
 void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -1436,6 +1443,35 @@ void BackendVK::prepareForDrawing()
 
 	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 
+	if (!gSamplers.contains(gSamplerState))
+	{
+		static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
+			{ Sampler::Linear, vk::Filter::eLinear },
+			{ Sampler::Nearest, vk::Filter::eNearest },
+		};
+
+		static const std::unordered_map<TextureAddress, vk::SamplerAddressMode> AddressModeMap = {
+			{ TextureAddress::Clamp, vk::SamplerAddressMode::eClampToEdge },
+			{ TextureAddress::Wrap, vk::SamplerAddressMode::eRepeat },
+			{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
+		};
+
+		auto sampler_create_info = vk::SamplerCreateInfo()
+			.setMagFilter(FilterMap.at(gSamplerState.sampler))
+			.setMinFilter(FilterMap.at(gSamplerState.sampler))
+			.setMipmapMode(vk::SamplerMipmapMode::eLinear)
+			.setAddressModeU(AddressModeMap.at(gSamplerState.texture_address))
+			.setAddressModeV(AddressModeMap.at(gSamplerState.texture_address))
+			.setAddressModeW(AddressModeMap.at(gSamplerState.texture_address))
+			.setMinLod(-1000)
+			.setMaxLod(1000)
+			.setMaxAnisotropy(1.0f);
+
+		gSamplers.insert({ gSamplerState, gDevice.createSampler(sampler_create_info) });
+	}
+
+	const auto& sampler = gSamplers.at(gSamplerState);
+
 	auto pipeline_layout = *shader->pipeline_layout;
 
 	for (const auto& required_descriptor_binding : shader->required_descriptor_bindings)
@@ -1453,7 +1489,7 @@ void BackendVK::prepareForDrawing()
 			auto texture = gTextures.at(binding);
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
-				.setSampler(*gSampler)
+				.setSampler(*sampler)
 				.setImageView(*texture->image_view)
 				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 
