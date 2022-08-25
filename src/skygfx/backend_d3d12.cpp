@@ -24,20 +24,17 @@ class ShaderD3D12;
 
 struct RasterizerStateD3D12
 {
-	bool scissor_enabled = false;
 	CullMode cull_mode = CullMode::None;
 
 	bool operator==(const RasterizerStateD3D12& value) const
 	{
 		return 
-			scissor_enabled == value.scissor_enabled && 
 			cull_mode == value.cull_mode;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(RasterizerStateD3D12,
-	t.cull_mode,
-	t.scissor_enabled);
+	t.cull_mode);
 
 struct PipelineStateD3D12
 {
@@ -92,6 +89,15 @@ static PipelineStateD3D12 gPipelineState;
 static std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> gPipelineStates;
 
 static ExecuteList gExecuteAfterPresent;
+
+static std::optional<Viewport> gViewport;
+static bool gViewportDirty = true;
+
+static std::optional<Scissor> gScissor;
+static bool gScissorDirty = true;
+
+static uint32_t gBackbufferWidth = 0;
+static uint32_t gBackbufferHeight = 0;
 
 template <typename T>
 inline void SafeRelease(T& a)
@@ -592,6 +598,9 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 		
 		g_mainRenderTargetResource[i] = pBackBuffer; // TODO: in d3d11 pBackbuffer released here
 	}
+
+	gBackbufferWidth = width;
+	gBackbufferHeight = height;
 }
 
 void BackendD3D12::destroyMainRenderTarget()
@@ -610,7 +619,13 @@ void BackendD3D12::resize(uint32_t width, uint32_t height)
 {
 	destroyMainRenderTarget();
 	D3D12SwapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
-	createMainRenderTarget(width, height);
+	createMainRenderTarget(width, height);	
+
+	if (!gViewport.has_value())
+		gViewportDirty = true;
+	
+	if (!gScissor.has_value())
+		gScissorDirty = true;
 }
 
 void BackendD3D12::setTopology(Topology topology)
@@ -628,10 +643,18 @@ void BackendD3D12::setTopology(Topology topology)
 
 void BackendD3D12::setViewport(std::optional<Viewport> viewport)
 {
+	if (gViewport != viewport)
+		gViewportDirty = true;
+
+	gViewport = viewport;
 }
 
 void BackendD3D12::setScissor(std::optional<Scissor> scissor)
 {
+	if (gScissor != scissor)
+		gScissorDirty = true;
+
+	gScissor = scissor;
 }
 
 void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
@@ -642,10 +665,20 @@ void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 
 void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 {
+	if (!gViewport.has_value())
+		gViewportDirty = true;
+
+	if (!gScissor.has_value())
+		gScissorDirty = true;
 }
 
 void BackendD3D12::setRenderTarget(std::nullptr_t value)
 {
+	if (!gViewport.has_value())
+		gViewportDirty = true;
+
+	if (!gScissor.has_value())
+		gScissorDirty = true;
 }
 
 void BackendD3D12::setShader(ShaderHandle* handle)
@@ -795,7 +828,7 @@ void BackendD3D12::prepareForDrawing()
 
 		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		pso_desc.RasterizerState.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
-		
+
 		pso_desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 		pso_desc.DepthStencilState.DepthEnable = FALSE;
 		//pso_desc.DepthStencilState.DepthEnable = gPipelineState.depth_mode.has_value();
@@ -859,21 +892,57 @@ void BackendD3D12::prepareForDrawing()
 		}
 	}
 
-	D3D12_VIEWPORT vp = {};
-	vp.Width = 800;
-	vp.Height = 600;
-	vp.MinDepth = 0.0f;
-	vp.MaxDepth = 1.0f;
-	vp.TopLeftX = 0.0f;
-	vp.TopLeftY = 0.0f;
-	D3D12CommandList->RSSetViewports(1, &vp);
+	gViewportDirty = true; // TODO: everything should work without this two lines
+	gScissorDirty = true;
 
-	D3D12_RECT rect;
-	rect.left = static_cast<LONG>(0);
-	rect.top = static_cast<LONG>(0);
-	rect.right = static_cast<LONG>(800);
-	rect.bottom = static_cast<LONG>(600);
-	D3D12CommandList->RSSetScissorRects(1, &rect);
+	if (gViewportDirty || gScissorDirty)
+	{
+		float width;
+		float height;
+
+		// TODO: uncomment when render targets are ready
+		// 
+		//if (gRenderTarget == nullptr)
+		{
+			width = static_cast<float>(gBackbufferWidth);
+			height = static_cast<float>(gBackbufferHeight);
+		}
+		//else
+		//{
+		//	width = static_cast<float>(gRenderTarget->width);
+		//	height = static_cast<float>(gRenderTarget->height);
+		//}
+
+		if (gViewportDirty)
+		{
+			auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+
+			D3D12_VIEWPORT vp = {};
+			vp.Width = viewport.size.x;
+			vp.Height = viewport.size.y;
+			vp.MinDepth = viewport.min_depth;
+			vp.MaxDepth = viewport.max_depth;
+			vp.TopLeftX = viewport.position.x;
+			vp.TopLeftY = viewport.position.y;
+			D3D12CommandList->RSSetViewports(1, &vp);
+
+			gViewportDirty = false;
+		}
+
+		if (gScissorDirty)
+		{
+			auto scissor = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+
+			D3D12_RECT rect;
+			rect.left = static_cast<LONG>(scissor.position.x);
+			rect.top = static_cast<LONG>(scissor.position.y);
+			rect.right = static_cast<LONG>(scissor.position.x + scissor.size.x);
+			rect.bottom = static_cast<LONG>(scissor.position.y + scissor.size.y);
+			D3D12CommandList->RSSetScissorRects(1, &rect);
+
+			gScissorDirty = false;
+		}
+	}
 }
 
 void BackendD3D12::present()

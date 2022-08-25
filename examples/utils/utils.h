@@ -39,7 +39,11 @@ namespace utils
 		int value = 0;
 		std::cin >> value;
 
-		return backends.at(value - 1).type;
+		const auto& backend = backends.at(value - 1);
+
+		std::cout << "Backend is " << backend.name << std::endl;
+
+		return backend.type;
 	}
 
 	void* GetNativeWindow(GLFWwindow* window)
