@@ -14,42 +14,46 @@
 
 using namespace skygfx;
 
-struct DepthStencilState
+struct DepthStencilStateD3D11
 {
 	std::optional<DepthMode> depth_mode;
 	std::optional<StencilMode> stencil_mode;
 
-	bool operator==(const DepthStencilState& value) const
+	bool operator==(const DepthStencilStateD3D11& value) const
 	{
-		return depth_mode == value.depth_mode && stencil_mode == value.stencil_mode;
+		return 
+			depth_mode == value.depth_mode && 
+			stencil_mode == value.stencil_mode;
 	}
 };
 
-SKYGFX_MAKE_HASHABLE(DepthStencilState,
+SKYGFX_MAKE_HASHABLE(DepthStencilStateD3D11,
 	t.depth_mode,
 	t.stencil_mode);
 
-struct RasterizerState
+struct RasterizerStateD3D11
 {
 	bool scissor_enabled = false;
 	CullMode cull_mode = CullMode::None;
 
-	bool operator==(const RasterizerState& value) const
+	bool operator==(const RasterizerStateD3D11& value) const
 	{
-		return scissor_enabled == value.scissor_enabled && cull_mode == value.cull_mode;
+		return 
+			scissor_enabled == value.scissor_enabled && 
+			cull_mode == value.cull_mode;
 	}
 };
 
-SKYGFX_MAKE_HASHABLE(RasterizerState,
+SKYGFX_MAKE_HASHABLE(RasterizerStateD3D11,
 	t.cull_mode,
 	t.scissor_enabled);
 
-struct SamplerState
+struct SamplerStateD3D11
 {
 	Sampler sampler = Sampler::Linear;
 	TextureAddress textureAddress = TextureAddress::Clamp;
 
-	bool operator==(const SamplerState& value) const
+	bool operator==(const SamplerStateD3D11& value) const
 	{
 		return
 			sampler == value.sampler &&
@@ -57,7 +61,7 @@ struct SamplerState
 	}
 };
 
-SKYGFX_MAKE_HASHABLE(SamplerState,
+SKYGFX_MAKE_HASHABLE(SamplerStateD3D11,
 	t.sampler,
 	t.textureAddress);
 
@@ -68,14 +72,14 @@ static IDXGISwapChain* gSwapChain = nullptr;
 static ID3D11Device* gDevice = nullptr;
 static ID3D11DeviceContext* gContext = nullptr;
 static std::unordered_map<BlendMode, ID3D11BlendState*> gBlendModes;
-static DepthStencilState gDepthStencilState;
+static DepthStencilStateD3D11 gDepthStencilState;
 static bool gDepthStencilStateDirty = true;
-static std::unordered_map<DepthStencilState, ID3D11DepthStencilState*> gDepthStencilStates;
-static std::unordered_map<RasterizerState, ID3D11RasterizerState*> gRasterizerStates;
-static RasterizerState gRasterizerState;
+static std::unordered_map<DepthStencilStateD3D11, ID3D11DepthStencilState*> gDepthStencilStates;
+static std::unordered_map<RasterizerStateD3D11, ID3D11RasterizerState*> gRasterizerStates;
+static RasterizerStateD3D11 gRasterizerState;
 static bool gRasterizerStateDirty = true;
-static std::unordered_map<SamplerState, ID3D11SamplerState*> gSamplerStates;
-static SamplerState gSamplerState;
+static std::unordered_map<SamplerStateD3D11, ID3D11SamplerState*> gSamplerStates;
+static SamplerStateD3D11 gSamplerState;
 static bool gSamplerStateDirty = true;
 static RenderTargetD3D11* gRenderTarget = nullptr;
 static std::optional<Viewport> gViewport;

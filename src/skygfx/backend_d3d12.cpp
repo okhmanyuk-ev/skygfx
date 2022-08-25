@@ -22,29 +22,31 @@ using namespace skygfx;
 
 class ShaderD3D12;
 
-struct RasterizerState
+struct RasterizerStateD3D12
 {
 	bool scissor_enabled = false;
 	CullMode cull_mode = CullMode::None;
 
-	bool operator==(const RasterizerState& value) const
+	bool operator==(const RasterizerStateD3D12& value) const
 	{
-		return scissor_enabled == value.scissor_enabled && cull_mode == value.cull_mode;
+		return 
+			scissor_enabled == value.scissor_enabled && 
+			cull_mode == value.cull_mode;
 	}
 };
 
-SKYGFX_MAKE_HASHABLE(RasterizerState,
+SKYGFX_MAKE_HASHABLE(RasterizerStateD3D12,
 	t.cull_mode,
 	t.scissor_enabled);
 
-struct PipelineState
+struct PipelineStateD3D12
 {
 	ShaderD3D12* shader = nullptr;
-	RasterizerState rasterizer_state;
+	RasterizerStateD3D12 rasterizer_state;
 	std::optional<DepthMode> depth_mode;
 	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
 	
-	bool operator==(const PipelineState& value) const
+	bool operator==(const PipelineStateD3D12& value) const
 	{
 		return 
 			shader == value.shader &&
@@ -54,7 +56,7 @@ struct PipelineState
 	}
 };
 
-SKYGFX_MAKE_HASHABLE(PipelineState,
+SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
 	t.shader,
 	t.rasterizer_state,
 	t.depth_mode,
@@ -86,8 +88,8 @@ class UniformBufferD3D12;
 static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
 static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
 
-static PipelineState gPipelineState;
-static std::unordered_map<PipelineState, ComPtr<ID3D12PipelineState>> gPipelineStates;
+static PipelineStateD3D12 gPipelineState;
+static std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> gPipelineStates;
 
 static ExecuteList gExecuteAfterPresent;
 
