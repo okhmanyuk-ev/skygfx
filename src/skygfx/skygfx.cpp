@@ -264,6 +264,67 @@ void Device::present()
 	gBackend->present();
 }
 
+void Device::setDynamicVertexBuffer(void* memory, size_t size, size_t stride)
+{
+	assert(size > 0);
+	
+	size_t vertex_buffer_size = 0;
+
+	if (mDynamicVertexBuffer)
+		vertex_buffer_size = mDynamicVertexBuffer->getSize();
+
+	if (vertex_buffer_size < size)
+		mDynamicVertexBuffer = std::make_shared<skygfx::VertexBuffer>(memory, size, stride);
+	else
+		mDynamicVertexBuffer->write(memory, size, stride);
+
+	setVertexBuffer(*mDynamicVertexBuffer);
+}
+
+void Device::setDynamicIndexBuffer(void* memory, size_t size, size_t stride)
+{
+	assert(size > 0);
+
+	size_t index_buffer_size = 0;
+
+	if (mDynamicIndexBuffer)
+		index_buffer_size = mDynamicIndexBuffer->getSize();
+
+	if (index_buffer_size < size)
+		mDynamicIndexBuffer = std::make_shared<skygfx::IndexBuffer>(memory, size, stride);
+	else
+		mDynamicIndexBuffer->write(memory, size, stride);
+
+	setIndexBuffer(*mDynamicIndexBuffer);
+}
+
+void Device::setDynamicUniformBuffer(uint32_t binding, void* memory, size_t size)
+{
+	assert(size > 0);
+
+	std::shared_ptr<skygfx::UniformBuffer> uniform_buffer = nullptr;
+
+	if (mDynamicUniformBuffers.contains(binding))
+		uniform_buffer = mDynamicUniformBuffers.at(binding);
+
+	size_t uniform_buffer_size = 0;
+
+	if (uniform_buffer)
+		uniform_buffer_size = uniform_buffer->getSize();
+
+	if (uniform_buffer_size < size)
+	{
+		uniform_buffer = std::make_shared<skygfx::UniformBuffer>(memory, size);
+		mDynamicUniformBuffers[binding] = uniform_buffer;
+	}
+	else
+	{
+		uniform_buffer->write(memory, size);
+	}
+
+	setUniformBuffer(binding, *uniform_buffer);
+}
+
 uint32_t Device::getBackbufferWidth() const
 {
 	return mBackbufferWidth;

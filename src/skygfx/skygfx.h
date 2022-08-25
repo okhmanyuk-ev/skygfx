@@ -97,8 +97,8 @@ namespace skygfx
 		VertexBuffer(void* memory, size_t size, size_t stride);
 		~VertexBuffer();
 
-		template<class T> VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
-		template<class T> VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
+		template<class T> explicit VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		template<class T> explicit VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
 
 		void write(void* memory, size_t size, size_t stride);
 
@@ -114,8 +114,8 @@ namespace skygfx
 		IndexBuffer(void* memory, size_t size, size_t stride);
 		~IndexBuffer();
 
-		template<class T> IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
-		template<class T> IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
+		template<class T> explicit IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		template<class T> explicit IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
 
 		void write(void* memory, size_t size, size_t stride);
 
@@ -131,7 +131,7 @@ namespace skygfx
 		UniformBuffer(void* memory, size_t size);
 		~UniformBuffer();
 
-		template <class T> UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
+		template <class T> explicit UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
 
 		void write(void* memory, size_t size);
 		template <class T> void write(T value) { write(&value, sizeof(T)); }
@@ -410,12 +410,53 @@ namespace skygfx
 
 		void present();
 
+	public: // helpers
+		void setDynamicVertexBuffer(void* memory, size_t size, size_t stride);
+
+		template<class T>
+		void setDynamicVertexBuffer(T* memory, size_t count)
+		{
+			setDynamicVertexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+		}
+
+		template<class T>
+		void setDynamicVertexBuffer(const std::vector<T>& values)
+		{
+			setDynamicVertexBuffer(values.data(), values.size());
+		}
+
+		void setDynamicIndexBuffer(void* memory, size_t size, size_t stride);
+
+		template<class T>
+		void setDynamicIndexBuffer(T* memory, size_t count)
+		{
+			setDynamicIndexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+		}
+
+		template<class T>
+		void setDynamicIndexBuffer(const std::vector<T>& values)
+		{
+			setDynamicIndexBuffer(values.data(), values.size());
+		}
+
+		void setDynamicUniformBuffer(uint32_t binding, void* memory, size_t size);
+
+		template <class T>
+		void setDynamicUniformBuffer(uint32_t binding, T value)
+		{ 
+			setDynamicUniformBuffer(binding, &value, sizeof(T));
+		}
+
 		uint32_t getBackbufferWidth() const;
 		uint32_t getBackbufferHeight() const;
 
 	private:
 		uint32_t mBackbufferWidth = 0;
 		uint32_t mBackbufferHeight = 0;
+
+		std::shared_ptr<VertexBuffer> mDynamicVertexBuffer;
+		std::shared_ptr<IndexBuffer> mDynamicIndexBuffer;
+		std::unordered_map<uint32_t, std::shared_ptr<UniformBuffer>> mDynamicUniformBuffers;
 
 	public:
 		static BackendType GetBackendTypeBasedOnPlatform();
