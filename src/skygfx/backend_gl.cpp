@@ -409,12 +409,10 @@ public:
 
 	void write(void* memory, size_t size)
 	{
-		/*glBindBuffer(type, buffer);
+		glBindBuffer(type, buffer);
 		auto ptr = glMapBufferRange(type, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
 		memcpy(ptr, memory, size);
-		glUnmapBuffer(type);*/
-		glBindBuffer(type, buffer);
-		glBufferData(type, size, memory, GL_DYNAMIC_DRAW);
+		glUnmapBuffer(type);
 	}
 };
 
