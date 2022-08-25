@@ -18,6 +18,41 @@
 #include <wrl.h>
 
 using Microsoft::WRL::ComPtr;
+using namespace skygfx;
+
+class ShaderD3D12;
+
+struct RasterizerState
+{
+	bool scissor_enabled = false;
+	CullMode cull_mode = CullMode::None;
+
+	bool operator==(const RasterizerState& value) const
+	{
+		return scissor_enabled == value.scissor_enabled && cull_mode == value.cull_mode;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(RasterizerState,
+	t.cull_mode,
+	t.scissor_enabled);
+
+struct PipelineState
+{
+	ShaderD3D12* shader = nullptr;
+	RasterizerState rasterizer_state;
+	
+	bool operator==(const PipelineState& value) const
+	{
+		return 
+			shader == value.shader &&
+			rasterizer_state == value.rasterizer_state;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(PipelineState,
+	t.shader,
+	t.rasterizer_state);
 
 static int const NUM_BACK_BUFFERS = 2;
 
@@ -39,13 +74,14 @@ static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS
 
 static ID3D12DescriptorHeap* g_pd3dRtvDescHeap = NULL;
 
-class ShaderD3D12;
 class TextureD3D12;
 class UniformBufferD3D12;
 
-static ShaderD3D12* gShader = nullptr;
 static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
 static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
+
+static PipelineState gPipelineState;
+static std::unordered_map<PipelineState, ComPtr<ID3D12PipelineState>> gPipelineStates;
 
 static ExecuteList gExecuteAfterPresent;
 
@@ -96,19 +132,18 @@ void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12Graphics
 	cmd_queue->Release();
 }
 
-using namespace skygfx;
-
 class ShaderD3D12
 {
 	friend class BackendD3D12;
 
 private:
-	ComPtr<ID3D12PipelineState> pipeline_state;
 	ComPtr<ID3D12RootSignature> root_signature;
 	std::map<uint32_t, ShaderReflection::Descriptor> required_descriptor_bindings; // TODO: del
 	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> required_descriptor_sets;
 	std::map<uint32_t, uint32_t> binding_to_root_index;
-
+	ComPtr<ID3DBlob> vertex_shader_blob;
+	ComPtr<ID3DBlob> pixel_shader_blob;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> input;
 
 public:
 	ShaderD3D12(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -121,9 +156,6 @@ public:
 
 		auto hlsl_vert = CompileSpirvToHlsl(vertex_shader_spirv, 50);
 		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, 50);
-
-		ComPtr<ID3DBlob> vertex_shader_blob;
-		ComPtr<ID3DBlob> pixel_shader_blob;
 
 		ComPtr<ID3DBlob> vertex_shader_error;
 		ComPtr<ID3DBlob> pixel_shader_error;
@@ -164,8 +196,6 @@ public:
 			//	{ Vertex::Attribute::Format::R8G8B8UN, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
 			{ Vertex::Attribute::Format::R8G8B8A8UN, DXGI_FORMAT_R8G8B8A8_UNORM }
 		};
-
-		std::vector<D3D12_INPUT_ELEMENT_DESC> input;
 
 		UINT i = 0;
 
@@ -274,25 +304,6 @@ public:
 
 			D3D12Device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&root_signature));
 		}
-
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.VS = CD3DX12_SHADER_BYTECODE(vertex_shader_blob.Get());
-		pso_desc.PS = CD3DX12_SHADER_BYTECODE(pixel_shader_blob.Get());
-		pso_desc.InputLayout = { input.data(), (UINT)input.size() };
-		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-		pso_desc.NodeMask = 1;
-		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pso_desc.pRootSignature = root_signature.Get();
-		pso_desc.SampleMask = UINT_MAX;
-		pso_desc.NumRenderTargets = 1;
-		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-		pso_desc.SampleDesc.Count = 1;
-		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-		pso_desc.DepthStencilState.DepthEnable = FALSE;
-		pso_desc.DepthStencilState.StencilEnable = FALSE;
-
-		D3D12Device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&pipeline_state));
 	}
 };
 
@@ -626,7 +637,7 @@ void BackendD3D12::setRenderTarget(std::nullptr_t value)
 
 void BackendD3D12::setShader(ShaderHandle* handle)
 {
-	gShader = (ShaderD3D12*)handle;
+	gPipelineState.shader = (ShaderD3D12*)handle;
 }
 
 void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
@@ -673,6 +684,7 @@ void BackendD3D12::setStencilMode(std::optional<StencilMode> stencil_mode)
 
 void BackendD3D12::setCullMode(CullMode cull_mode)
 {
+	gPipelineState.rasterizer_state.cull_mode = cull_mode;;
 }
 
 void BackendD3D12::setSampler(Sampler value)
@@ -708,15 +720,49 @@ void BackendD3D12::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 
 void BackendD3D12::prepareForDrawing()
 {
-	assert(gShader);
+	auto shader = gPipelineState.shader;
+	assert(shader);
+
+	if (!gPipelineStates.contains(gPipelineState))
+	{
+		const static std::unordered_map<CullMode, D3D12_CULL_MODE> CullMap = {
+			{ CullMode::None, D3D12_CULL_MODE_NONE },
+			{ CullMode::Front, D3D12_CULL_MODE_FRONT },
+			{ CullMode::Back, D3D12_CULL_MODE_BACK }
+		};
+
+		auto desc_rasterizer = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		desc_rasterizer.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
+
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
+		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->vertex_shader_blob.Get());
+		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->pixel_shader_blob.Get());
+		pso_desc.InputLayout = { shader->input.data(), (UINT)shader->input.size() };
+		pso_desc.RasterizerState = desc_rasterizer;
+		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		pso_desc.NodeMask = 1;
+		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		pso_desc.pRootSignature = shader->root_signature.Get();
+		pso_desc.SampleMask = UINT_MAX;
+		pso_desc.NumRenderTargets = 1;
+		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		pso_desc.SampleDesc.Count = 1;
+		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+		pso_desc.DepthStencilState.DepthEnable = FALSE;
+		pso_desc.DepthStencilState.StencilEnable = FALSE;
+
+		D3D12Device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
+	}
+
+	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
 
 	D3D12CommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[gFrameIndex], FALSE, NULL);
-	D3D12CommandList->SetPipelineState(gShader->pipeline_state.Get());
-	D3D12CommandList->SetGraphicsRootSignature(gShader->root_signature.Get());
+	D3D12CommandList->SetPipelineState(pipeline_state);
+	D3D12CommandList->SetGraphicsRootSignature(shader->root_signature.Get());
 
-	for (const auto& [binding, descriptor] : gShader->required_descriptor_bindings)
+	for (const auto& [binding, descriptor] : shader->required_descriptor_bindings)
 	{
-		auto root_index = gShader->binding_to_root_index.at(binding);
+		auto root_index = shader->binding_to_root_index.at(binding);
 
 		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
