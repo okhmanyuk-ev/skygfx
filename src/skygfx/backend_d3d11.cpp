@@ -577,27 +577,27 @@ void BackendD3D11::setBlendMode(const BlendMode& value)
 
 		auto& blend = desc.RenderTarget[0];
 
-		if (value.colorMask.red)
+		if (value.color_mask.red)
 			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
 
-		if (value.colorMask.green)
+		if (value.color_mask.green)
 			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
 
-		if (value.colorMask.blue)
+		if (value.color_mask.blue)
 			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
 
-		if (value.colorMask.alpha)
+		if (value.color_mask.alpha)
 			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
 
 		blend.BlendEnable = true;
 
-		blend.SrcBlend = BlendMap.at(value.colorSrcBlend);
-		blend.DestBlend = BlendMap.at(value.colorDstBlend);
-		blend.BlendOp = BlendOpMap.at(value.colorBlendFunction);
+		blend.SrcBlend = BlendMap.at(value.color_src_blend);
+		blend.DestBlend = BlendMap.at(value.color_dst_blend);
+		blend.BlendOp = BlendOpMap.at(value.color_blend_func);
 
-		blend.SrcBlendAlpha = BlendMap.at(value.alphaSrcBlend);
-		blend.DestBlendAlpha = BlendMap.at(value.alphaDstBlend);
-		blend.BlendOpAlpha = BlendOpMap.at(value.alphaBlendFunction);
+		blend.SrcBlendAlpha = BlendMap.at(value.alpha_src_blend);
+		blend.DestBlendAlpha = BlendMap.at(value.alpha_dst_blend);
+		blend.BlendOpAlpha = BlendOpMap.at(value.alpha_blend_func);
 
 		gDevice->CreateBlendState(&desc, &gBlendModes[value]);
 	}

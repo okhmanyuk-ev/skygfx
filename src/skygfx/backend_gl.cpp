@@ -726,9 +726,10 @@ void BackendGL::setBlendMode(const BlendMode& value)
 	};
 
 	glEnable(GL_BLEND);
-	glBlendEquationSeparate(BlendOpMap.at(value.colorBlendFunction), BlendOpMap.at(value.alphaBlendFunction));
-	glBlendFuncSeparate(BlendMap.at(value.colorSrcBlend), BlendMap.at(value.colorDstBlend), BlendMap.at(value.alphaSrcBlend), BlendMap.at(value.alphaDstBlend));
-	glColorMask(value.colorMask.red, value.colorMask.green, value.colorMask.blue, value.colorMask.alpha);
+	glBlendEquationSeparate(BlendOpMap.at(value.color_blend_func), BlendOpMap.at(value.alpha_blend_func));
+	glBlendFuncSeparate(BlendMap.at(value.color_src_blend), BlendMap.at(value.color_dst_blend), 
+		BlendMap.at(value.alpha_src_blend), BlendMap.at(value.alpha_dst_blend));
+	glColorMask(value.color_mask.red, value.color_mask.green, value.color_mask.blue, value.color_mask.alpha);
 }
 
 void BackendGL::setDepthMode(std::optional<DepthMode> depth_mode)

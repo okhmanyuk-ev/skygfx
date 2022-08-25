@@ -42,6 +42,24 @@ static struct
 	vk::raii::DeviceMemory memory = nullptr;
 } gDepthStencil;
 
+
+class ShaderDataVK;
+
+struct PipelineState
+{
+	ShaderDataVK* shader = nullptr;
+	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
+
+	bool operator==(const PipelineState& value) const
+	{
+		return shader == value.shader && blend_mode == value.blend_mode;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(PipelineState,
+	t.shader,
+	t.blend_mode);
+
 static std::vector<FrameVK> gFrames;
 
 static uint32_t gSemaphoreIndex = 0;
@@ -59,10 +77,8 @@ static bool gScissorDirty = true;
 static std::optional<Viewport> gViewport;
 static bool gViewportDirty = true;
 
-class ShaderDataVK;
-
-static ShaderDataVK* gShader = nullptr;
-static std::unordered_map<ShaderDataVK*, vk::raii::Pipeline> gPipelines;
+static PipelineState gPipelineState;
+static std::unordered_map<PipelineState, vk::raii::Pipeline> gPipelines;
 
 static std::optional<DepthMode> gDepthMode = DepthMode();
 static bool gDepthModeDirty = true;
@@ -775,7 +791,7 @@ void BackendVK::setRenderTarget(std::nullptr_t value)
 
 void BackendVK::setShader(ShaderHandle* handle)
 {
-	gShader = (ShaderDataVK*)handle;
+	gPipelineState.shader = (ShaderDataVK*)handle;
 }
 
 void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
@@ -799,6 +815,7 @@ void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 
 void BackendVK::setBlendMode(const BlendMode& value)
 {
+	gPipelineState.blend_mode = value;
 }
 
 void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
@@ -1269,8 +1286,6 @@ void BackendVK::end()
 
 void BackendVK::prepareForDrawing()
 {
-	assert(gShader);
-
 	if (gDepthModeDirty)
 	{
 		// TODO: this depth options should work only when dynamic state enabled, 
@@ -1292,17 +1307,21 @@ void BackendVK::prepareForDrawing()
 		gDepthModeDirty = false;
 	}
 
-	if (!gPipelines.contains(gShader))
+	auto shader = gPipelineState.shader;
+	const auto& blend_mode = gPipelineState.blend_mode;
+	assert(shader);
+
+	if (!gPipelines.contains(gPipelineState))
 	{
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eVertex)
-				.setModule(*gShader->vertex_shader_module)
+				.setModule(*shader->vertex_shader_module)
 				.setPName("main"),
 
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eFragment)
-				.setModule(*gShader->fragment_shader_module)
+				.setModule(*shader->fragment_shader_module)
 				.setPName("main")
 		};
 
@@ -1321,16 +1340,50 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
 
+		static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
+			{ Blend::One, vk::BlendFactor::eOne },
+			{ Blend::Zero, vk::BlendFactor::eZero },
+			{ Blend::SrcColor, vk::BlendFactor::eSrcColor },
+			{ Blend::InvSrcColor, vk::BlendFactor::eOneMinusSrcColor },
+			{ Blend::SrcAlpha, vk::BlendFactor::eSrcAlpha },
+			{ Blend::InvSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha },
+			{ Blend::DstColor, vk::BlendFactor::eDstColor },
+			{ Blend::InvDstColor, vk::BlendFactor::eOneMinusDstColor },
+			{ Blend::DstAlpha, vk::BlendFactor::eDstAlpha },
+			{ Blend::InvDstAlpha, vk::BlendFactor::eOneMinusDstAlpha }
+		};
+
+		static const std::unordered_map<BlendFunction, vk::BlendOp> BlendFuncMap = {
+			{ BlendFunction::Add, vk::BlendOp::eAdd },
+			{ BlendFunction::Subtract, vk::BlendOp::eSubtract },
+			{ BlendFunction::ReverseSubtract, vk::BlendOp::eReverseSubtract },
+			{ BlendFunction::Min, vk::BlendOp::eMin },
+			{ BlendFunction::Max, vk::BlendOp::eMax },
+		};
+
+		auto color_mask = vk::ColorComponentFlags();
+
+		if (blend_mode.color_mask.red)
+			color_mask |= vk::ColorComponentFlagBits::eR;
+
+		if (blend_mode.color_mask.green)
+			color_mask |= vk::ColorComponentFlagBits::eG;
+
+		if (blend_mode.color_mask.blue)
+			color_mask |= vk::ColorComponentFlagBits::eB;
+
+		if (blend_mode.color_mask.alpha)
+			color_mask |= vk::ColorComponentFlagBits::eA;
+
 		auto pipeline_color_blent_attachment_state = vk::PipelineColorBlendAttachmentState()
 			.setBlendEnable(true)
-			.setSrcColorBlendFactor(vk::BlendFactor::eSrcAlpha)
-			.setDstColorBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha)
-			.setColorBlendOp(vk::BlendOp::eAdd)
-			.setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
-			.setDstAlphaBlendFactor(vk::BlendFactor::eOneMinusSrcAlpha)
-			.setAlphaBlendOp(vk::BlendOp::eAdd)
-			.setColorWriteMask(vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-				vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src_blend))
+			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst_blend))
+			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_blend_func))
+			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src_blend))
+			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst_blend))
+			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_blend_func))
+			.setColorWriteMask(color_mask);
 
 		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
 			.setAttachmentCount(1)
@@ -1338,8 +1391,8 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 			.setVertexBindingDescriptionCount(1)
-			.setPVertexBindingDescriptions(&gShader->vertex_input_binding_description)
-			.setVertexAttributeDescriptions(gShader->vertex_input_attribute_descriptions);
+			.setPVertexBindingDescriptions(&shader->vertex_input_binding_description)
+			.setVertexAttributeDescriptions(shader->vertex_input_attribute_descriptions);
 
 		auto dynamic_states = {
 			vk::DynamicState::eViewport,
@@ -1362,7 +1415,7 @@ void BackendVK::prepareForDrawing()
 			.setColorAttachmentFormats(gSurfaceFormat.format);
 
 		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
-			.setLayout(*gShader->pipeline_layout)
+			.setLayout(*shader->pipeline_layout)
 			.setFlags(vk::PipelineCreateFlagBits())
 			.setStages(pipeline_shader_stage_create_info)
 			.setPVertexInputState(&pipeline_vertex_input_state_create_info)
@@ -1376,16 +1429,16 @@ void BackendVK::prepareForDrawing()
 			.setRenderPass(nullptr)
 			.setPNext(&pipeline_rendering_create_info);
 
-		gPipelines.insert({ gShader, gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info) });
+		gPipelines.insert({ gPipelineState, gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info) });
 	}
 
-	auto pipeline = *gPipelines.at(gShader);
+	const auto& pipeline = gPipelines.at(gPipelineState);
 
-	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 
-	auto pipeline_layout = *gShader->pipeline_layout;
+	auto pipeline_layout = *shader->pipeline_layout;
 
-	for (const auto& required_descriptor_binding : gShader->required_descriptor_bindings)
+	for (const auto& required_descriptor_binding : shader->required_descriptor_bindings)
 	{
 		auto binding = required_descriptor_binding.binding;
 

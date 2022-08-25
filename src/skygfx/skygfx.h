@@ -209,21 +209,21 @@ namespace skygfx
 
 	struct BlendMode
 	{
-		BlendMode(Blend srcColorBlend, Blend dstColorBlend, Blend srcAlphaBlend, Blend dstAlphaBlend) :
-			colorSrcBlend(srcColorBlend), colorDstBlend(dstColorBlend), alphaSrcBlend(srcAlphaBlend), alphaDstBlend(dstAlphaBlend)
+		BlendMode(Blend _color_src_blend, Blend _color_dst_blend, Blend _alpha_src_blend, Blend _alpha_dst_blend) :
+			color_src_blend(_color_src_blend), color_dst_blend(_color_dst_blend), alpha_src_blend(_alpha_src_blend), alpha_dst_blend(_alpha_dst_blend)
 		{}
 
 		BlendMode(Blend srcBlend, Blend dstBlend) : BlendMode(srcBlend, dstBlend, srcBlend, dstBlend) { }
 
-		BlendFunction colorBlendFunction = BlendFunction::Add;
-		Blend colorSrcBlend;
-		Blend colorDstBlend;
+		BlendFunction color_blend_func = BlendFunction::Add;
+		Blend color_src_blend;
+		Blend color_dst_blend;
 
-		BlendFunction alphaBlendFunction = BlendFunction::Add;
-		Blend alphaSrcBlend;
-		Blend alphaDstBlend;
+		BlendFunction alpha_blend_func = BlendFunction::Add;
+		Blend alpha_src_blend;
+		Blend alpha_dst_blend;
 
-		ColorMask colorMask;
+		ColorMask color_mask;
 	};
 
 	inline bool operator==(const ColorMask& left, const ColorMask& right)
@@ -243,13 +243,13 @@ namespace skygfx
 	inline bool operator==(const BlendMode& left, const BlendMode& right)
 	{
 		return
-			left.colorBlendFunction == right.colorBlendFunction &&
-			left.colorSrcBlend == right.colorSrcBlend &&
-			left.colorDstBlend == right.colorDstBlend &&
-			left.alphaBlendFunction == right.alphaBlendFunction &&
-			left.alphaSrcBlend == right.alphaSrcBlend &&
-			left.alphaDstBlend == right.alphaDstBlend &&
-			left.colorMask == right.colorMask;
+			left.color_blend_func == right.color_blend_func &&
+			left.color_src_blend == right.color_src_blend &&
+			left.color_dst_blend == right.color_dst_blend &&
+			left.alpha_blend_func == right.alpha_blend_func &&
+			left.alpha_src_blend == right.alpha_src_blend &&
+			left.alpha_dst_blend == right.alpha_dst_blend &&
+			left.color_mask == right.color_mask;
 	}
 
 	inline bool operator!=(const BlendMode& left, const BlendMode& right)
@@ -422,13 +422,20 @@ namespace skygfx
 	};
 }
 
+SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,
+	t.red,
+	t.green,
+	t.blue,
+	t.alpha);
+
 SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
-	t.alphaBlendFunction,
-	t.alphaDstBlend,
-	t.alphaSrcBlend,
-	t.colorBlendFunction,
-	t.colorDstBlend,
-	t.colorSrcBlend);
+	t.alpha_blend_func,
+	t.alpha_dst_blend,
+	t.alpha_src_blend,
+	t.color_blend_func,
+	t.color_dst_blend,
+	t.color_src_blend,
+	t.color_mask);
 
 SKYGFX_MAKE_HASHABLE(skygfx::DepthMode,
 	t.func);
