@@ -147,6 +147,10 @@ Device::Device(void* window, uint32_t width, uint32_t height, std::optional<Back
 
 Device::~Device()
 {
+	mDynamicIndexBuffer.reset();
+	mDynamicVertexBuffer.reset();
+	mDynamicUniformBuffers.clear();
+
 	delete gBackend;
 	gBackend = nullptr;
 }
