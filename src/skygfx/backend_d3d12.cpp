@@ -41,18 +41,21 @@ struct PipelineState
 {
 	ShaderD3D12* shader = nullptr;
 	RasterizerState rasterizer_state;
+	std::optional<DepthMode> depth_mode;
 	
 	bool operator==(const PipelineState& value) const
 	{
 		return 
 			shader == value.shader &&
-			rasterizer_state == value.rasterizer_state;
+			rasterizer_state == value.rasterizer_state &&
+			depth_mode == value.depth_mode;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineState,
 	t.shader,
-	t.rasterizer_state);
+	t.rasterizer_state,
+	t.depth_mode);
 
 static int const NUM_BACK_BUFFERS = 2;
 
@@ -253,7 +256,7 @@ public:
 						auto range = CD3DX12_DESCRIPTOR_RANGE(range_type, 1, binding);
 						ranges.push_back(range);
 
-						binding_to_root_index.insert({ binding, params.size() });
+						binding_to_root_index.insert({ binding, (uint32_t)params.size() });
 
 						if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 						{
@@ -272,7 +275,7 @@ public:
 					auto visibility = VisibilityMap.at(stage);
 
 					CD3DX12_ROOT_PARAMETER param;
-					param.InitAsDescriptorTable(ranges.size(), ranges.data(), visibility);
+					param.InitAsDescriptorTable((UINT)ranges.size(), ranges.data(), visibility);
 					params.push_back(param);
 				}
 			}
@@ -282,14 +285,14 @@ public:
 				if (descriptor.type != ShaderReflection::Descriptor::Type::UniformBuffer)
 					continue;
 
-				binding_to_root_index.insert({ binding, params.size() });
+				binding_to_root_index.insert({ binding, (uint32_t)params.size() });
 
 				CD3DX12_ROOT_PARAMETER param;
 				param.InitAsConstantBufferView(binding);
 				params.push_back(param);
 			}
 
-			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc(params.size(), params.data(), static_samplers.size(),
+			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc((UINT)params.size(), params.data(), (UINT)static_samplers.size(),
 				static_samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 			ComPtr<ID3DBlob> blob;
@@ -581,7 +584,8 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 		ID3D12Resource* pBackBuffer = NULL;
 		D3D12SwapChain->GetBuffer(i, IID_PPV_ARGS(&pBackBuffer));
 		D3D12Device->CreateRenderTargetView(pBackBuffer, NULL, g_mainRenderTargetDescriptor[i]);
-		g_mainRenderTargetResource[i] = pBackBuffer;
+		
+		g_mainRenderTargetResource[i] = pBackBuffer; // TODO: in d3d11 pBackbuffer released here
 	}
 }
 
@@ -590,7 +594,11 @@ void BackendD3D12::destroyMainRenderTarget()
 	WaitForPreviousFrame();
 
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
-		if (g_mainRenderTargetResource[i]) { g_mainRenderTargetResource[i]->Release(); g_mainRenderTargetResource[i] = NULL; }
+		if (g_mainRenderTargetResource[i]) 
+		{ 
+			g_mainRenderTargetResource[i]->Release(); 
+			g_mainRenderTargetResource[i] = NULL; 
+		}
 }
 
 void BackendD3D12::resize(uint32_t width, uint32_t height)
@@ -646,8 +654,8 @@ void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 
 	D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
 	buffer_view.BufferLocation = buffer->buffer->GetGPUVirtualAddress();
-	buffer_view.SizeInBytes = buffer->size;
-	buffer_view.StrideInBytes = buffer->stride;
+	buffer_view.SizeInBytes = (UINT)buffer->size;
+	buffer_view.StrideInBytes = (UINT)buffer->stride;
 
 	D3D12CommandList->IASetVertexBuffers(0, 1, &buffer_view);
 }
@@ -658,7 +666,7 @@ void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 
 	D3D12_INDEX_BUFFER_VIEW buffer_view = {};
 	buffer_view.BufferLocation = buffer->buffer->GetGPUVirtualAddress();
-	buffer_view.SizeInBytes = buffer->size;
+	buffer_view.SizeInBytes = (UINT)buffer->size;
 	buffer_view.Format = buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 
 	D3D12CommandList->IASetIndexBuffer(&buffer_view);
@@ -676,6 +684,7 @@ void BackendD3D12::setBlendMode(const BlendMode& value)
 
 void BackendD3D12::setDepthMode(std::optional<DepthMode> depth_mode)
 {
+	gPipelineState.depth_mode = depth_mode;
 }
 
 void BackendD3D12::setStencilMode(std::optional<StencilMode> stencil_mode)
@@ -731,14 +740,23 @@ void BackendD3D12::prepareForDrawing()
 			{ CullMode::Back, D3D12_CULL_MODE_BACK }
 		};
 
-		auto desc_rasterizer = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		desc_rasterizer.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
+		const static std::unordered_map<ComparisonFunc, D3D12_COMPARISON_FUNC> ComparisonFuncMap = {
+			{ ComparisonFunc::Always, D3D12_COMPARISON_FUNC_ALWAYS },
+			{ ComparisonFunc::Never, D3D12_COMPARISON_FUNC_NEVER },
+			{ ComparisonFunc::Less, D3D12_COMPARISON_FUNC_LESS },
+			{ ComparisonFunc::Equal, D3D12_COMPARISON_FUNC_EQUAL },
+			{ ComparisonFunc::NotEqual, D3D12_COMPARISON_FUNC_EQUAL },
+			{ ComparisonFunc::LessEqual, D3D12_COMPARISON_FUNC_EQUAL },
+			{ ComparisonFunc::Greater, D3D12_COMPARISON_FUNC_GREATER },
+			{ ComparisonFunc::GreaterEqual, D3D12_COMPARISON_FUNC_EQUAL }
+		};
+
+		auto depth_mode = gPipelineState.depth_mode.value_or(DepthMode());
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
 		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->vertex_shader_blob.Get());
 		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->pixel_shader_blob.Get());
 		pso_desc.InputLayout = { shader->input.data(), (UINT)shader->input.size() };
-		pso_desc.RasterizerState = desc_rasterizer;
 		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 		pso_desc.NodeMask = 1;
 		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -748,8 +766,15 @@ void BackendD3D12::prepareForDrawing()
 		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 		pso_desc.SampleDesc.Count = 1;
 		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+
+		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		pso_desc.RasterizerState.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
+		
+		pso_desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 		pso_desc.DepthStencilState.DepthEnable = FALSE;
-		pso_desc.DepthStencilState.StencilEnable = FALSE;
+		//pso_desc.DepthStencilState.DepthEnable = gPipelineState.depth_mode.has_value();
+		//pso_desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+		//pso_desc.DepthStencilState.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
 
 		D3D12Device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
 	}
