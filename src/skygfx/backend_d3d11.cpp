@@ -256,9 +256,9 @@ class RenderTargetD3D11
 	friend class BackendD3D11;
 
 private:
-	ID3D11RenderTargetView* render_target_view;
-	ID3D11Texture2D* depth_stencil_texture;
-	ID3D11DepthStencilView* depth_stencil_view;
+	ID3D11RenderTargetView* render_target_view = nullptr;
+	ID3D11Texture2D* depth_stencil_texture = nullptr;
+	ID3D11DepthStencilView* depth_stencil_view = nullptr;
 	TextureD3D11* texture_data;
 	uint32_t width;
 	uint32_t height;
@@ -697,7 +697,7 @@ void BackendD3D11::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 		gMainRenderTarget.render_taget_view->GetResource(&resource);
 
 	ID3D11Texture2D* texture = NULL;
-	resource->QueryInterface(__uuidof(ID3D11Texture2D), (void**)&texture);
+	resource->QueryInterface(IID_PPV_ARGS(&texture));
 
 	D3D11_TEXTURE2D_DESC desc = { 0 };
 	texture->GetDesc(&desc);
@@ -875,9 +875,9 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 	descDSV.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
 
 	gDevice->CreateDepthStencilView(gMainRenderTarget.texture2d, &descDSV, &gMainRenderTarget.depth_stencil_view);
-
+	
 	ID3D11Texture2D* pBackBuffer;
-	gSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
+	gSwapChain->GetBuffer(0, IID_PPV_ARGS(&pBackBuffer));
 	gDevice->CreateRenderTargetView(pBackBuffer, nullptr, &gMainRenderTarget.render_taget_view);
 	SafeRelease(pBackBuffer);
 
