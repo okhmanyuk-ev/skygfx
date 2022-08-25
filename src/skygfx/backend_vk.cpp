@@ -258,9 +258,6 @@ public:
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
-		auto vertex_shader_reflection = MakeSpirvReflection(vertex_shader_spirv);
-		auto fragment_shader_reflection = MakeSpirvReflection(fragment_shader_spirv);
-
 		static const std::unordered_map<ShaderStage, vk::ShaderStageFlagBits> StageMap = {
 			{ ShaderStage::Vertex, vk::ShaderStageFlagBits::eVertex },
 			{ ShaderStage::Fragment, vk::ShaderStageFlagBits::eFragment }
@@ -271,8 +268,10 @@ public:
 			{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer }
 		};
 
-		for (const auto& reflection : { vertex_shader_reflection, fragment_shader_reflection })
+		for (const auto& spirv : { vertex_shader_spirv, fragment_shader_spirv })
 		{
+			auto reflection = MakeSpirvReflection(spirv);
+
 			for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
 			{
 				bool overwritten = false;
