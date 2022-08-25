@@ -6,29 +6,31 @@
 
 using namespace skygfx;
 
-class ShaderDataVK;
+class ShaderVK;
+class UniformBufferVK;
+class TextureVK;
 
-struct PipelineState
+struct PipelineStateVK
 {
-	ShaderDataVK* shader = nullptr;
+	ShaderVK* shader = nullptr;
 	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
 
-	bool operator==(const PipelineState& value) const
+	bool operator==(const PipelineStateVK& value) const
 	{
 		return shader == value.shader && blend_mode == value.blend_mode;
 	}
 };
 
-SKYGFX_MAKE_HASHABLE(PipelineState,
+SKYGFX_MAKE_HASHABLE(PipelineStateVK,
 	t.shader,
 	t.blend_mode);
 
-struct SamplerState
+struct SamplerStateVK
 {
 	Sampler sampler = Sampler::Linear;
 	TextureAddress texture_address = TextureAddress::Clamp;
 
-	bool operator==(const SamplerState& value) const
+	bool operator==(const SamplerStateVK& value) const
 	{
 		return
 			sampler == value.sampler &&
@@ -36,7 +38,7 @@ struct SamplerState
 	}
 };
 
-SKYGFX_MAKE_HASHABLE(SamplerState,
+SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 	t.sampler,
 	t.texture_address);
 
@@ -80,11 +82,8 @@ static std::vector<FrameVK> gFrames;
 static uint32_t gSemaphoreIndex = 0;
 static uint32_t gFrameIndex = 0;
 
-class UniformBufferDataVK;
-class TextureDataVK;
-
-static std::unordered_map<uint32_t, TextureDataVK*> gTextures;
-static std::unordered_map<uint32_t, UniformBufferDataVK*> gUniformBuffers;
+static std::unordered_map<uint32_t, TextureVK*> gTextures;
+static std::unordered_map<uint32_t, UniformBufferVK*> gUniformBuffers;
 
 static std::optional<Scissor> gScissor;
 static bool gScissorDirty = true;
@@ -92,11 +91,11 @@ static bool gScissorDirty = true;
 static std::optional<Viewport> gViewport;
 static bool gViewportDirty = true;
 
-static PipelineState gPipelineState;
-static std::unordered_map<PipelineState, vk::raii::Pipeline> gPipelineStates;
+static PipelineStateVK gPipelineState;
+static std::unordered_map<PipelineStateVK, vk::raii::Pipeline> gPipelineStates;
 
-static SamplerState gSamplerState;
-static std::unordered_map<SamplerState, vk::raii::Sampler> gSamplers;
+static SamplerStateVK gSamplerState;
+static std::unordered_map<SamplerStateVK, vk::raii::Sampler> gSamplers;
 
 static std::optional<DepthMode> gDepthMode = DepthMode();
 static bool gDepthModeDirty = true;
@@ -236,7 +235,7 @@ const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 	{ ComparisonFunc::GreaterEqual, vk::CompareOp::eGreaterOrEqual }
 };
 
-class ShaderDataVK
+class ShaderVK
 {
 	friend class BackendVK;
 
@@ -250,7 +249,7 @@ private:
 	std::vector<vk::DescriptorSetLayoutBinding> required_descriptor_bindings;
 
 public:
-	ShaderDataVK(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderVK(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
 		AddShaderLocationDefines(layout, defines);
@@ -351,17 +350,17 @@ public:
 	}
 };
 
-class TextureDataVK
+class TextureVK
 {
 	friend class BackendVK;
 
 private:
 	vk::raii::Image image = nullptr;
 	vk::raii::ImageView image_view = nullptr;
-	vk::raii::DeviceMemory memory = nullptr;
+	vk::raii::DeviceMemory device_memory = nullptr;
 
 public:
-	TextureDataVK(uint32_t width, uint32_t height, uint32_t channels, void* data, bool mipmap)
+	TextureVK(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 	{
 		uint32_t mip_levels = 1;
 
@@ -392,9 +391,9 @@ public:
 			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, 
 				memory_requirements.memoryTypeBits));
 
-		memory = gDevice.allocateMemory(memory_allocate_info);
+		device_memory = gDevice.allocateMemory(memory_allocate_info);
 	
-		image.bindMemory(*memory, 0);
+		image.bindMemory(*device_memory, 0);
 
 		auto image_subresource_range = vk::ImageSubresourceRange()
 			.setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -409,7 +408,7 @@ public:
 
 		image_view = gDevice.createImageView(image_view_create_info);
 
-		if (data)
+		if (memory)
 		{
 			auto size = width * height * channels;
 
@@ -433,7 +432,7 @@ public:
 			upload_buffer.bindMemory(*upload_buffer_memory, 0);
 
 			auto map = upload_buffer_memory.mapMemory(0, size);
-			memcpy(map, data, size);
+			memcpy(map, memory, size);
 			upload_buffer_memory.unmapMemory();
 
 			OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
@@ -499,19 +498,19 @@ public:
 	}
 };
 
-class RenderTargetDataVK
+class RenderTargetVK
 {
 public:
-	RenderTargetDataVK(uint32_t width, uint32_t height, TextureDataVK* _texture_data)
+	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture)
 	{
 	}
 
-	~RenderTargetDataVK()
+	~RenderTargetVK()
 	{
 	}
 };
 
-class BufferDataVK
+class BufferVK
 {
 	friend class BackendVK;
 
@@ -520,7 +519,7 @@ private:
 	vk::raii::DeviceMemory device_memory = nullptr;
 
 public:
-	BufferDataVK(size_t size, vk::BufferUsageFlags usage)
+	BufferVK(size_t size, vk::BufferUsageFlags usage)
 	{		
 		auto buffer_create_info = vk::BufferCreateInfo()
 			.setSize(size)
@@ -548,7 +547,7 @@ public:
 	}
 };
 
-class VertexBufferDataVK : public BufferDataVK
+class VertexBufferVK : public BufferVK
 {
 	friend class BackendVK;
 
@@ -556,14 +555,14 @@ private:
 	size_t stride = 0;
 
 public:
-	VertexBufferDataVK(size_t size, size_t _stride) :
-		BufferDataVK(size, vk::BufferUsageFlagBits::eVertexBuffer),
+	VertexBufferVK(size_t size, size_t _stride) :
+		BufferVK(size, vk::BufferUsageFlagBits::eVertexBuffer),
 		stride(_stride)
 	{
 	}
 };
 
-class IndexBufferDataVK : public BufferDataVK
+class IndexBufferVK : public BufferVK
 {
 	friend class BackendVK;
 
@@ -571,20 +570,20 @@ private:
 	size_t stride = 0;
 
 public:
-	IndexBufferDataVK(size_t size, size_t _stride) :
-		BufferDataVK(size, vk::BufferUsageFlagBits::eIndexBuffer),
+	IndexBufferVK(size_t size, size_t _stride) :
+		BufferVK(size, vk::BufferUsageFlagBits::eIndexBuffer),
 		stride(_stride)
 	{
 	}
 };
 
-class UniformBufferDataVK : public BufferDataVK
+class UniformBufferVK : public BufferVK
 {
 	friend class BackendVK;
 
 public:
-	UniformBufferDataVK(size_t size) :
-		BufferDataVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
+	UniformBufferVK(size_t size) :
+		BufferVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
 	{
 	}
 };
@@ -781,7 +780,7 @@ void BackendVK::setScissor(std::optional<Scissor> scissor)
 
 void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	auto texture = (TextureDataVK*)handle;
+	auto texture = (TextureVK*)handle;
 	gTextures[binding] = texture;
 }
 
@@ -795,24 +794,24 @@ void BackendVK::setRenderTarget(std::nullptr_t value)
 
 void BackendVK::setShader(ShaderHandle* handle)
 {
-	gPipelineState.shader = (ShaderDataVK*)handle;
+	gPipelineState.shader = (ShaderVK*)handle;
 }
 
 void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferDataVK*)handle;
+	auto buffer = (VertexBufferVK*)handle;
 	gCommandBuffer.bindVertexBuffers2(0, { *buffer->buffer }, { 0 }, nullptr, { buffer->stride });
 }
 
 void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferDataVK*)handle;
+	auto buffer = (IndexBufferVK*)handle;
 	gCommandBuffer.bindIndexBuffer(*buffer->buffer, 0, buffer->stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
 }
 
 void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferDataVK*)handle;
+	auto buffer = (UniformBufferVK*)handle;
 
 	gUniformBuffers[binding] = buffer;
 }
@@ -1005,14 +1004,14 @@ void BackendVK::present()
 
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 {
-	auto texture = new TextureDataVK(width, height, channels, memory, mipmap);
+	auto texture = new TextureVK(width, height, channels, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
 void BackendVK::destroyTexture(TextureHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto texture = (TextureDataVK*)handle;
+		auto texture = (TextureVK*)handle;
 
 		auto remove_from_global = [&] {
 			for (const auto& [binding, _texture] : gTextures)
@@ -1035,28 +1034,28 @@ void BackendVK::destroyTexture(TextureHandle* handle)
 
 RenderTargetHandle* BackendVK::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
-	auto texture = (TextureDataVK*)texture_handle;
-	auto render_target = new RenderTargetDataVK(width, height, texture);
+	auto texture = (TextureVK*)texture_handle;
+	auto render_target = new RenderTargetVK(width, height, texture);
 	return (RenderTargetHandle*)render_target;
 }
 
 void BackendVK::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetDataVK*)handle;
+	auto render_target = (RenderTargetVK*)handle;
 	delete render_target;
 }
 
 ShaderHandle* BackendVK::createShader(const Vertex::Layout& layout, const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderDataVK(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderVK(layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 
 void BackendVK::destroyShader(ShaderHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto shader = (ShaderDataVK*)handle;
+		auto shader = (ShaderVK*)handle;
 
 		for (const auto& [state, pipeline] : gPipelineStates)
 		{
@@ -1072,55 +1071,55 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 
 VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new VertexBufferDataVK(size, stride);
+	auto buffer = new VertexBufferVK(size, stride);
 	return (VertexBufferHandle*)buffer;
 }
 
 void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto buffer = (VertexBufferDataVK*)handle;
+		auto buffer = (VertexBufferVK*)handle;
 		delete buffer;
 	});
 }
 
 void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
-	auto buffer = (VertexBufferDataVK*)handle;
+	auto buffer = (VertexBufferVK*)handle;
 	buffer->write(memory, size);
 	buffer->stride = stride;
 }
 
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
 {
-	auto buffer = new IndexBufferDataVK(size, stride);
+	auto buffer = new IndexBufferVK(size, stride);
 	return (IndexBufferHandle*)buffer;
 }
 
 void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto buffer = (IndexBufferDataVK*)handle;
+		auto buffer = (IndexBufferVK*)handle;
 		delete buffer;
 	});
 }
 void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
-	auto buffer = (IndexBufferDataVK*)handle;
+	auto buffer = (IndexBufferVK*)handle;
 	buffer->write(memory, size);
 	buffer->stride = stride;
 }
 
 UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
 {
-	auto buffer = new UniformBufferDataVK(size);
+	auto buffer = new UniformBufferVK(size);
 	return (UniformBufferHandle*)buffer;
 }
 
 void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 {
 	gExecuteAfterPresent.add([handle] {
-		auto buffer = (UniformBufferDataVK*)handle;
+		auto buffer = (UniformBufferVK*)handle;
 
 		auto remove_from_global = [&] {
 			for (const auto& [binding, _buffer] : gUniformBuffers)
@@ -1143,7 +1142,7 @@ void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 
 void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
 {
-	auto buffer = (UniformBufferDataVK*)handle;
+	auto buffer = (UniformBufferVK*)handle;
 	buffer->write(memory, size);
 }
 
