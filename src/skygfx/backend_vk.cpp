@@ -93,7 +93,7 @@ static std::optional<Viewport> gViewport;
 static bool gViewportDirty = true;
 
 static PipelineState gPipelineState;
-static std::unordered_map<PipelineState, vk::raii::Pipeline> gPipelines;
+static std::unordered_map<PipelineState, vk::raii::Pipeline> gPipelineStates;
 
 static SamplerState gSamplerState;
 static std::unordered_map<SamplerState, vk::raii::Sampler> gSamplers;
@@ -1056,10 +1056,19 @@ ShaderHandle* BackendVK::createShader(const Vertex::Layout& layout, const std::s
 
 void BackendVK::destroyShader(ShaderHandle* handle)
 {
-	// TODO: remove pipeline connected with this shader
+	gExecuteAfterPresent.add([handle] {
+		auto shader = (ShaderDataVK*)handle;
 
-	auto shader = (ShaderDataVK*)handle;
-	delete shader;
+		for (const auto& [state, pipeline] : gPipelineStates)
+		{
+			if (state.shader != shader)
+				continue;
+
+			gPipelineStates.erase(state);
+		}
+
+		delete shader;
+	});
 }
 
 VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
@@ -1318,7 +1327,7 @@ void BackendVK::prepareForDrawing()
 	const auto& blend_mode = gPipelineState.blend_mode;
 	assert(shader);
 
-	if (!gPipelines.contains(gPipelineState))
+	if (!gPipelineStates.contains(gPipelineState))
 	{
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
@@ -1436,10 +1445,10 @@ void BackendVK::prepareForDrawing()
 			.setRenderPass(nullptr)
 			.setPNext(&pipeline_rendering_create_info);
 
-		gPipelines.insert({ gPipelineState, gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info) });
+		gPipelineStates.insert({ gPipelineState, gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info) });
 	}
 
-	const auto& pipeline = gPipelines.at(gPipelineState);
+	const auto& pipeline = gPipelineStates.at(gPipelineState);
 
 	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 
