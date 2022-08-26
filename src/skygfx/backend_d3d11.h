@@ -66,7 +66,6 @@ namespace skygfx
 	private:
 		void createMainRenderTarget(uint32_t width, uint32_t height);
 		void destroyMainRenderTarget();
-
 		void prepareForDrawing();
 	};
 }
