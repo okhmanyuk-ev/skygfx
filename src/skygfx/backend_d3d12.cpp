@@ -68,7 +68,6 @@ static ComPtr<ID3D12Device> gDevice;
 static ComPtr<ID3D12CommandAllocator> gCommandAllocator;
 static ComPtr<ID3D12CommandQueue> gCommandQueue;
 static ComPtr<IDXGISwapChain3> gSwapChain;
-static HANDLE gSwapChainWaitableObject = NULL;
 static ComPtr<ID3D12GraphicsCommandList> gCommandList;
 
 static struct 
@@ -561,31 +560,30 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	
 	gCommandList->Close();
 
-	DXGI_SWAP_CHAIN_DESC1 sd = {};
-	sd.BufferCount = NUM_BACK_BUFFERS;
-	sd.Width = width;
-	sd.Height = height;
-	sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	sd.SampleDesc.Count = 1;
-	sd.SampleDesc.Quality = 0;
-	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-	sd.Scaling = DXGI_SCALING_STRETCH;
-	sd.Stereo = FALSE;
+	DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {};
+	swapchain_desc.BufferCount = NUM_BACK_BUFFERS;
+	swapchain_desc.Width = width;
+	swapchain_desc.Height = height;
+	swapchain_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchain_desc.SampleDesc.Count = 1;
+	swapchain_desc.SampleDesc.Quality = 0;
+	swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapchain_desc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+	swapchain_desc.Scaling = DXGI_SCALING_NONE;
+	swapchain_desc.Stereo = FALSE;
+
+	DXGI_SWAP_CHAIN_FULLSCREEN_DESC fs_swapchain_desc = { 0 };
+	fs_swapchain_desc.Windowed = TRUE;
 
 	ComPtr<IDXGIFactory4> dxgi_factory;
 	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
 
-	ComPtr<IDXGISwapChain1> swap_chain_1;
+	ComPtr<IDXGISwapChain1> swapchain;
 	dxgi_factory->CreateSwapChainForHwnd(gCommandQueue.Get(), (HWND)window,
-		&sd, NULL, NULL, swap_chain_1.GetAddressOf());
-
-	swap_chain_1.As(&gSwapChain);
+		&swapchain_desc, &fs_swapchain_desc, NULL, swapchain.GetAddressOf());
 		
-	gSwapChain->SetMaximumFrameLatency(NUM_BACK_BUFFERS);
-	gSwapChainWaitableObject = gSwapChain->GetFrameLatencyWaitableObject();
+	swapchain.As(&gSwapChain);
 
 	gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gFence.GetAddressOf()));
 	gFenceValue = 1;
@@ -651,11 +649,12 @@ void BackendD3D12::destroyMainRenderTarget()
 
 void BackendD3D12::resize(uint32_t width, uint32_t height)
 {
+	end();
 	WaitForGpu();
-
 	destroyMainRenderTarget();
 	gSwapChain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
-	createMainRenderTarget(width, height);	
+	createMainRenderTarget(width, height);
+	begin();
 
 	if (!gViewport.has_value())
 		gViewportDirty = true;
