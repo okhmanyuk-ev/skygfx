@@ -517,7 +517,8 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	
 	std::vector<D3D12_MESSAGE_ID> filtered_messages = {
 		D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
-		D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE
+		D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+		D3D12_MESSAGE_ID_DRAW_EMPTY_SCISSOR_RECTANGLE
 	};
 
 	D3D12_INFO_QUEUE_FILTER filter = {};
@@ -929,20 +930,16 @@ void BackendD3D12::prepareForDrawing()
 		gDevice->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
 	}
 
-	if (gRenderTarget == nullptr)
-	{
-		const auto& rtv_cpu_descriptor = gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
-		auto dsv_cpu_descriptor = gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
+	auto rtv_cpu_descriptor = gRenderTarget ?
+		gRenderTarget->rtv_heap->GetCPUDescriptorHandleForHeapStart() :
+		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
 
-		gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
-	}
-	else
-	{
-		auto rtv_cpu_descriptor = gRenderTarget->rtv_heap->GetCPUDescriptorHandleForHeapStart();
-		auto dsv_cpu_descriptor = gRenderTarget->dsv_heap->GetCPUDescriptorHandleForHeapStart();
-		gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
-	}
+	auto dsv_cpu_descriptor = gRenderTarget ? 
+		gRenderTarget->dsv_heap->GetCPUDescriptorHandleForHeapStart() :
+		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
+	gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
+	
 	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
 	gCommandList->SetPipelineState(pipeline_state);
 
