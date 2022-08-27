@@ -61,23 +61,27 @@ SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
 
 static int const NUM_BACK_BUFFERS = 2;
 
-static UINT g_frameIndex = 0;
 static ComPtr<ID3D12Device> gDevice;
 static ComPtr<ID3D12CommandAllocator> gCommandAllocator;
 static ComPtr<ID3D12CommandQueue> gCommandQueue;
 static ComPtr<IDXGISwapChain3> gSwapChain;
-static HANDLE g_hSwapChainWaitableObject = NULL;
+static HANDLE gSwapChainWaitableObject = NULL;
 static ComPtr<ID3D12GraphicsCommandList> gCommandList;
 
-static ComPtr<ID3D12Resource> g_mainRenderTargetResource[NUM_BACK_BUFFERS] = {};
+static ComPtr<ID3D12DescriptorHeap> gRtvDescHeap;
+
+struct MainRenderTarget
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE descriptor;
+	ComPtr<ID3D12Resource> resource;
+};
+
+static MainRenderTarget gMainRenderTarget[NUM_BACK_BUFFERS];
+
 static UINT gFrameIndex = 0;
 static HANDLE gFenceEvent = NULL;
 static ComPtr<ID3D12Fence> gFence;
 static UINT64 gFenceValue;
-
-static D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[NUM_BACK_BUFFERS] = {};
-
-static ComPtr<ID3D12DescriptorHeap> g_pd3dRtvDescHeap;
 
 class TextureD3D12;
 class UniformBufferD3D12;
@@ -172,16 +176,16 @@ public:
 		std::string vertex_shader_error_string = "";
 		std::string pixel_shader_error_string = "";
 
-		if (vertex_shader_error != nullptr)
+		if (vertex_shader_error != NULL)
 			vertex_shader_error_string = std::string((char*)vertex_shader_error->GetBufferPointer(), vertex_shader_error->GetBufferSize());
 
-		if (pixel_shader_error != nullptr)
+		if (pixel_shader_error != NULL)
 			pixel_shader_error_string = std::string((char*)pixel_shader_error->GetBufferPointer(), pixel_shader_error->GetBufferSize());
 
-		if (vertex_shader_blob == nullptr)
+		if (vertex_shader_blob == NULL)
 			throw std::runtime_error(vertex_shader_error_string);
 
-		if (pixel_shader_blob == nullptr)
+		if (pixel_shader_blob == NULL)
 			throw std::runtime_error(pixel_shader_error_string);
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
@@ -297,7 +301,7 @@ public:
 
 			std::string error_string;
 
-			if (error != nullptr)
+			if (error != NULL)
 				error_string = std::string((char*)error->GetBufferPointer(), error->GetBufferSize());
 
 			gDevice->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&root_signature));
@@ -450,17 +454,26 @@ public:
 	}
 };
 
-void WaitForPreviousFrame()
+// Prepare to render the next frame.
+void MoveToNextFrame()
 {
-	auto fence = gFenceValue;
-	gCommandQueue->Signal(gFence.Get(), fence);
-	gFenceValue++;
-	if (gFence->GetCompletedValue() < fence)
+	gCommandQueue->Signal(gFence.Get(), gFenceValue);
+	gFrameIndex = gSwapChain->GetCurrentBackBufferIndex();
+	if (gFence->GetCompletedValue() < gFenceValue)
 	{
-		gFence->SetEventOnCompletion(fence, gFenceEvent);
+		gFence->SetEventOnCompletion(gFenceValue, gFenceEvent);
 		WaitForSingleObject(gFenceEvent, INFINITE);
 	}
-	gFrameIndex = gSwapChain->GetCurrentBackBufferIndex();
+	gFenceValue++;
+}
+
+// Wait for pending GPU work to complete.
+void WaitForGpu()
+{
+	gCommandQueue->Signal(gFence.Get(), gFenceValue);
+	gFence->SetEventOnCompletion(gFenceValue, gFenceEvent);
+	WaitForSingleObject(gFenceEvent, INFINITE);
+	gFenceValue++;
 }
 
 BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
@@ -478,32 +491,28 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
 	pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
 	
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		desc.NumDescriptors = NUM_BACK_BUFFERS;
-		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		desc.NodeMask = 1;
-		gDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(g_pd3dRtvDescHeap.GetAddressOf()));
+	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
+	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
+	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	heap_desc.NodeMask = 1;
+	gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gRtvDescHeap.GetAddressOf()));
 		
-		auto rtv_increment_size = gDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-		auto rtv_heap_start = g_pd3dRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
+	auto rtv_increment_size = gDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	auto rtv_heap_start = gRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
 
-		for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
-		{
-			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
-			g_mainRenderTargetDescriptor[i] = handle;
-		}
-	}
-
+	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		D3D12_COMMAND_QUEUE_DESC desc = {};
-		desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-		desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-		desc.NodeMask = 1;
-		gDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(gCommandQueue.GetAddressOf()));
+		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
+		gMainRenderTarget[i].descriptor = handle;
 	}
 
+	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
+	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	queue_desc.NodeMask = 1;
+	gDevice->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(gCommandQueue.GetAddressOf()));
+	
 	gDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, 
 		IID_PPV_ARGS(gCommandAllocator.GetAddressOf()));
 
@@ -512,44 +521,38 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	
 	gCommandList->Close();
 
-	{
-		DXGI_SWAP_CHAIN_DESC1 sd = {};
-		sd.BufferCount = NUM_BACK_BUFFERS;
-		sd.Width = width;
-		sd.Height = height;
-		sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-		sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		sd.SampleDesc.Count = 1;
-		sd.SampleDesc.Quality = 0;
-		sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-		sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-		sd.Scaling = DXGI_SCALING_STRETCH;
-		sd.Stereo = FALSE;
+	DXGI_SWAP_CHAIN_DESC1 sd = {};
+	sd.BufferCount = NUM_BACK_BUFFERS;
+	sd.Width = width;
+	sd.Height = height;
+	sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	sd.SampleDesc.Count = 1;
+	sd.SampleDesc.Quality = 0;
+	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+	sd.Scaling = DXGI_SCALING_STRETCH;
+	sd.Stereo = FALSE;
 
-		ComPtr<IDXGIFactory4> dxgiFactory;
-		CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.GetAddressOf()));
+	ComPtr<IDXGIFactory4> dxgiFactory;
+	CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.GetAddressOf()));
 
-		ComPtr<IDXGISwapChain1> swapChain1;
-		dxgiFactory->CreateSwapChainForHwnd(gCommandQueue.Get(), (HWND)window, 
-			&sd, NULL, NULL, swapChain1.GetAddressOf());
+	ComPtr<IDXGISwapChain1> swapChain1;
+	dxgiFactory->CreateSwapChainForHwnd(gCommandQueue.Get(), (HWND)window, 
+		&sd, NULL, NULL, swapChain1.GetAddressOf());
 		
-		swapChain1.As(&gSwapChain);
+	swapChain1.As(&gSwapChain);
 		
-		gSwapChain->SetMaximumFrameLatency(NUM_BACK_BUFFERS);
-		g_hSwapChainWaitableObject = gSwapChain->GetFrameLatencyWaitableObject();
-	}
+	gSwapChain->SetMaximumFrameLatency(NUM_BACK_BUFFERS);
+	gSwapChainWaitableObject = gSwapChain->GetFrameLatencyWaitableObject();
 
-	{
-		gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gFence.GetAddressOf()));
-		gFenceValue = 1;
-		gFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-		assert(gFenceEvent != nullptr);
-	}
-
+	gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gFence.GetAddressOf()));
+	gFenceValue = 1;
+	gFenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+	assert(gFenceEvent != NULL);
+	
 	createMainRenderTarget(width, height);
-
-	WaitForPreviousFrame();
 
 	begin();
 	setRenderTarget(nullptr);
@@ -558,6 +561,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 BackendD3D12::~BackendD3D12()
 {
 	end();
+	WaitForGpu();
 	gExecuteAfterPresent.flush();
 	destroyMainRenderTarget();
 	gSwapChain.Reset();
@@ -568,8 +572,8 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		gSwapChain->GetBuffer(i, IID_PPV_ARGS(g_mainRenderTargetResource[i].GetAddressOf()));
-		gDevice->CreateRenderTargetView(g_mainRenderTargetResource[i].Get(), NULL, g_mainRenderTargetDescriptor[i]);
+		gSwapChain->GetBuffer(i, IID_PPV_ARGS(gMainRenderTarget[i].resource.GetAddressOf()));
+		gDevice->CreateRenderTargetView(gMainRenderTarget[i].resource.Get(), NULL, gMainRenderTarget[i].descriptor);
 	}
 
 	gBackbufferWidth = width;
@@ -582,13 +586,13 @@ void BackendD3D12::destroyMainRenderTarget()
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		g_mainRenderTargetResource[i].Reset();
+		gMainRenderTarget[i].resource.Reset();
 	}
 }
 
 void BackendD3D12::resize(uint32_t width, uint32_t height)
 {
-	WaitForPreviousFrame();
+	WaitForGpu();
 
 	destroyMainRenderTarget();
 	gSwapChain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
@@ -691,6 +695,7 @@ void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 
 void BackendD3D12::setBlendMode(const BlendMode& value)
 {
+	gPipelineState.blend_mode = value;
 }
 
 void BackendD3D12::setDepthMode(std::optional<DepthMode> depth_mode)
@@ -719,7 +724,7 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 	const std::optional<uint8_t>& stencil)
 {
 	if (color.has_value())
-		gCommandList->ClearRenderTargetView(g_mainRenderTargetDescriptor[gFrameIndex], (float*)&color.value(), 0, NULL);
+		gCommandList->ClearRenderTargetView(gMainRenderTarget[gFrameIndex].descriptor, (float*)&color.value(), 0, NULL);
 }
 
 void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset)
@@ -840,7 +845,7 @@ void BackendD3D12::prepareForDrawing()
 
 	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
 
-	gCommandList->OMSetRenderTargets(1, &g_mainRenderTargetDescriptor[gFrameIndex], FALSE, NULL);
+	gCommandList->OMSetRenderTargets(1, &gMainRenderTarget[gFrameIndex].descriptor, FALSE, NULL);
 	gCommandList->SetPipelineState(pipeline_state);
 	gCommandList->SetGraphicsRootSignature(shader->root_signature.Get());
 
@@ -923,7 +928,7 @@ void BackendD3D12::present()
 	end();
 	bool vsync = true;
 	gSwapChain->Present(vsync ? 1 : 0, 0);
-	WaitForPreviousFrame();
+	MoveToNextFrame();
 	gExecuteAfterPresent.flush();
 	begin();
 }
@@ -932,7 +937,7 @@ void BackendD3D12::begin()
 {
 	gCommandAllocator->Reset();
 
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(g_mainRenderTargetResource[gFrameIndex].Get(),
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget[gFrameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	gCommandList->Reset(gCommandAllocator.Get(), NULL);
@@ -941,7 +946,7 @@ void BackendD3D12::begin()
 
 void BackendD3D12::end()
 {
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(g_mainRenderTargetResource[gFrameIndex].Get(),
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget[gFrameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
 	gCommandList->ResourceBarrier(1, &barrier);
