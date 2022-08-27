@@ -575,14 +575,14 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	sd.Scaling = DXGI_SCALING_STRETCH;
 	sd.Stereo = FALSE;
 
-	ComPtr<IDXGIFactory4> dxgiFactory;
-	CreateDXGIFactory1(IID_PPV_ARGS(dxgiFactory.GetAddressOf()));
+	ComPtr<IDXGIFactory4> dxgi_factory;
+	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
 
-	ComPtr<IDXGISwapChain1> swapChain1;
-	dxgiFactory->CreateSwapChainForHwnd(gCommandQueue.Get(), (HWND)window, 
-		&sd, NULL, NULL, swapChain1.GetAddressOf());
-		
-	swapChain1.As(&gSwapChain);
+	ComPtr<IDXGISwapChain1> swap_chain_1;
+	dxgi_factory->CreateSwapChainForHwnd(gCommandQueue.Get(), (HWND)window,
+		&sd, NULL, NULL, swap_chain_1.GetAddressOf());
+
+	swap_chain_1.As(&gSwapChain);
 		
 	gSwapChain->SetMaximumFrameLatency(NUM_BACK_BUFFERS);
 	gSwapChainWaitableObject = gSwapChain->GetFrameLatencyWaitableObject();
