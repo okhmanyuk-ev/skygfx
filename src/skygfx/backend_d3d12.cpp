@@ -71,17 +71,21 @@ static ComPtr<IDXGISwapChain3> gSwapChain;
 static HANDLE gSwapChainWaitableObject = NULL;
 static ComPtr<ID3D12GraphicsCommandList> gCommandList;
 
-struct MainRenderTarget
+static struct 
 {
-	D3D12_CPU_DESCRIPTOR_HANDLE descriptor;
-	ComPtr<ID3D12Resource> resource;
-};
+	struct Frame
+	{
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor;
+		ComPtr<ID3D12Resource> resource;
+	};
 
-static ComPtr<ID3D12DescriptorHeap> gRtvDescHeap; // main render target
-static ComPtr<ID3D12DescriptorHeap> gDsvDescHeap; // main render target
+	Frame frames[NUM_BACK_BUFFERS];
 
-static MainRenderTarget gMainRenderTarget[NUM_BACK_BUFFERS];
-static ComPtr<ID3D12Resource> gDepthStencilResource;
+	ComPtr<ID3D12DescriptorHeap> rtv_heap;
+	ComPtr<ID3D12DescriptorHeap> dsv_heap;
+	ComPtr<ID3D12Resource> depth_stencil_resource;
+} gMainRenderTarget;
+
 
 static UINT gFrameIndex = 0;
 static HANDLE gFenceEvent = NULL;
@@ -526,20 +530,20 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	rtv_heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
 	rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	rtv_heap_desc.NodeMask = 1;
-	gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gRtvDescHeap.GetAddressOf()));
+	gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gMainRenderTarget.rtv_heap.GetAddressOf()));
 
 	D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
 	dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsv_heap_desc.NumDescriptors = 1;
-	gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gDsvDescHeap.GetAddressOf()));
+	gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gMainRenderTarget.dsv_heap.GetAddressOf()));
 		
 	auto rtv_increment_size = gDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	auto rtv_heap_start = gRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
+	auto rtv_heap_start = gMainRenderTarget.rtv_heap->GetCPUDescriptorHandleForHeapStart();
 
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
 		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
-		gMainRenderTarget[i].descriptor = handle;
+		gMainRenderTarget.frames[i].rtv_descriptor = handle;
 	}
 
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
@@ -607,8 +611,9 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		gSwapChain->GetBuffer(i, IID_PPV_ARGS(gMainRenderTarget[i].resource.GetAddressOf()));
-		gDevice->CreateRenderTargetView(gMainRenderTarget[i].resource.Get(), NULL, gMainRenderTarget[i].descriptor);
+		gSwapChain->GetBuffer(i, IID_PPV_ARGS(gMainRenderTarget.frames[i].resource.GetAddressOf()));
+		gDevice->CreateRenderTargetView(gMainRenderTarget.frames[i].resource.Get(), NULL, 
+			gMainRenderTarget.frames[i].rtv_descriptor);
 	}
 
 	auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -618,14 +623,14 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 	depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	gDevice->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc, 
-		D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(gDepthStencilResource.GetAddressOf()));
+		D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(gMainRenderTarget.depth_stencil_resource.GetAddressOf()));
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
 	dsv_desc.Format = depth_desc.Format;
 	dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	
-	gDevice->CreateDepthStencilView(gDepthStencilResource.Get(), &dsv_desc, 
-		gDsvDescHeap->GetCPUDescriptorHandleForHeapStart());
+	gDevice->CreateDepthStencilView(gMainRenderTarget.depth_stencil_resource.Get(), &dsv_desc,
+		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart());
 
 	gBackbufferWidth = width;
 	gBackbufferHeight = height;
@@ -637,10 +642,10 @@ void BackendD3D12::destroyMainRenderTarget()
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		gMainRenderTarget[i].resource.Reset();
+		gMainRenderTarget.frames[i].resource.Reset();
 	}
 
-	gDepthStencilResource.Reset();
+	gMainRenderTarget.depth_stencil_resource.Reset();
 }
 
 void BackendD3D12::resize(uint32_t width, uint32_t height)
@@ -782,11 +787,11 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 {
 	const auto& rtv = gRenderTarget ? 
 		gRenderTarget->rtv_heap->GetCPUDescriptorHandleForHeapStart() : 
-		gMainRenderTarget[gFrameIndex].descriptor;
+		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
 
 	const auto& dsv = gRenderTarget ?
 		gRenderTarget->dsv_heap->GetCPUDescriptorHandleForHeapStart() :
-		gDsvDescHeap->GetCPUDescriptorHandleForHeapStart();
+		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
 	if (color.has_value())
 	{
@@ -926,8 +931,8 @@ void BackendD3D12::prepareForDrawing()
 
 	if (gRenderTarget == nullptr)
 	{
-		const auto& rtv_cpu_descriptor = gMainRenderTarget[gFrameIndex].descriptor;
-		auto dsv_cpu_descriptor = gDsvDescHeap->GetCPUDescriptorHandleForHeapStart();
+		const auto& rtv_cpu_descriptor = gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
+		auto dsv_cpu_descriptor = gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
 		gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
 	}
@@ -1029,7 +1034,7 @@ void BackendD3D12::begin()
 {
 	gCommandAllocator->Reset();
 
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget[gFrameIndex].resource.Get(),
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget.frames[gFrameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	gCommandList->Reset(gCommandAllocator.Get(), NULL);
@@ -1038,7 +1043,7 @@ void BackendD3D12::begin()
 
 void BackendD3D12::end()
 {
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget[gFrameIndex].resource.Get(),
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget.frames[gFrameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
 	gCommandList->ResourceBarrier(1, &barrier);
