@@ -21,6 +21,9 @@ using Microsoft::WRL::ComPtr;
 using namespace skygfx;
 
 class ShaderD3D12;
+class TextureD3D12;
+class RenderTargetD3D12;
+class UniformBufferD3D12;
 
 struct RasterizerStateD3D12
 {
@@ -74,8 +77,8 @@ struct MainRenderTarget
 	ComPtr<ID3D12Resource> resource;
 };
 
-static ComPtr<ID3D12DescriptorHeap> gRtvDescHeap;
-static ComPtr<ID3D12DescriptorHeap> gDsvDescHeap;
+static ComPtr<ID3D12DescriptorHeap> gRtvDescHeap; // main render target
+static ComPtr<ID3D12DescriptorHeap> gDsvDescHeap; // main render target
 
 static MainRenderTarget gMainRenderTarget[NUM_BACK_BUFFERS];
 static ComPtr<ID3D12Resource> gDepthStencilResource;
@@ -85,11 +88,9 @@ static HANDLE gFenceEvent = NULL;
 static ComPtr<ID3D12Fence> gFence;
 static UINT64 gFenceValue;
 
-class TextureD3D12;
-class UniformBufferD3D12;
-
 static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
 static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
+static RenderTargetD3D12* gRenderTarget = nullptr;
 
 static PipelineStateD3D12 gPipelineState;
 static std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> gPipelineStates;
@@ -142,7 +143,7 @@ class ShaderD3D12
 
 private:
 	ComPtr<ID3D12RootSignature> root_signature;
-	std::map<uint32_t, ShaderReflection::Descriptor> required_descriptor_bindings; // TODO: del
+	std::map<uint32_t, ShaderReflection::Descriptor> required_descriptor_bindings;
 	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> required_descriptor_sets;
 	std::map<uint32_t, uint32_t> binding_to_root_index;
 	ComPtr<ID3DBlob> vertex_shader_blob;
@@ -288,7 +289,7 @@ private:
 	uint32_t height;
 	bool mipmap;
 	ComPtr<ID3D12Resource> texture;
-	ComPtr<ID3D12DescriptorHeap> heap;
+	ComPtr<ID3D12DescriptorHeap> srv_heap;
 	
 public:
 	TextureD3D12(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) :
@@ -301,58 +302,109 @@ public:
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height);
 
+		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
 		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_COPY_DEST, NULL, IID_PPV_ARGS(texture.GetAddressOf()));
-
-		const UINT64 upload_size = GetRequiredIntermediateSize(texture.Get(), 0, 1);
-
-		desc = CD3DX12_RESOURCE_DESC::Buffer(upload_size);
-		prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-
-		ComPtr<ID3D12Resource> upload_buffer = NULL;
-		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
-
-		D3D12_SUBRESOURCE_DATA subersource_data = {};
-		subersource_data.pData = memory;
-		subersource_data.RowPitch = width * channels;
-		subersource_data.SlicePitch = width * height * channels;
-
-		OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-			UpdateSubresources(cmdlist, texture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
-
-			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(),
-				D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
-			cmdlist->ResourceBarrier(1, &barrier);
-		});
+			D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(texture.GetAddressOf()));
 
 		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
 		heap_desc.NumDescriptors = 1;
 		heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(heap.GetAddressOf()));
+		gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(srv_heap.GetAddressOf()));
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
 		srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srv_desc.Format = format;
 		srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srv_desc.Texture2D.MipLevels = 1;
-		gDevice->CreateShaderResourceView(texture.Get(), &srv_desc, heap->GetCPUDescriptorHandleForHeapStart());
+		gDevice->CreateShaderResourceView(texture.Get(), &srv_desc, srv_heap->GetCPUDescriptorHandleForHeapStart());
+
+		if (memory)
+		{
+			const UINT64 upload_size = GetRequiredIntermediateSize(texture.Get(), 0, 1);
+
+			auto upload_desc = CD3DX12_RESOURCE_DESC::Buffer(upload_size);
+			auto upload_prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+			ComPtr<ID3D12Resource> upload_buffer = NULL;
+			gDevice->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
+				D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
+
+			D3D12_SUBRESOURCE_DATA subersource_data = {};
+			subersource_data.pData = memory;
+			subersource_data.RowPitch = width * channels;
+			subersource_data.SlicePitch = width * height * channels;
+
+			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
+				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(),
+					D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
+
+				cmdlist->ResourceBarrier(1, &barrier);
+
+				UpdateSubresources(cmdlist, texture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
+
+				barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(),
+					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+
+				cmdlist->ResourceBarrier(1, &barrier);
+			});
+		}
 	}
 };
 
 class RenderTargetD3D12
 {
-	friend class BackendD3D11;
+	friend class BackendD3D12;
+
+private:
+	ComPtr<ID3D12DescriptorHeap> rtv_heap;
+	ComPtr<ID3D12DescriptorHeap> dsv_heap;
+	ComPtr<ID3D12Resource> depth_stencil_resource;
+	TextureD3D12* texture_data;
 
 public:
-	RenderTargetD3D12(uint32_t _width, uint32_t _height, TextureD3D12* _texture_data)
+	RenderTargetD3D12(uint32_t width, uint32_t height, TextureD3D12* _texture_data) : texture_data(_texture_data)
 	{
-	}
+		D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
+		rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+		rtv_heap_desc.NumDescriptors = 1;
+		gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(rtv_heap.GetAddressOf()));
 
-	~RenderTargetD3D12()
-	{
+		D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {};
+		rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+		gDevice->CreateRenderTargetView(texture_data->texture.Get(), &rtv_desc,
+			rtv_heap->GetCPUDescriptorHandleForHeapStart());
+			
+		auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+		auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT,
+			(UINT64)width, (UINT)height, 1, 1);
+
+		depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+		gDevice->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(depth_stencil_resource.GetAddressOf()));
+
+		D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
+		dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+		dsv_heap_desc.NumDescriptors = 1;
+		gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(dsv_heap.GetAddressOf()));
+
+		D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
+		dsv_desc.Format = depth_desc.Format;
+		dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+		
+		gDevice->CreateDepthStencilView(depth_stencil_resource.Get(), &dsv_desc,
+			dsv_heap->GetCPUDescriptorHandleForHeapStart());
+
+		OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
+			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture_data->texture.Get(),
+				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+			cmdlist->ResourceBarrier(1, &barrier);
+		});
 	}
 };
 
@@ -458,6 +510,16 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
 	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
 	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+	
+	std::vector<D3D12_MESSAGE_ID> filtered_messages = {
+		D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+		D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE
+	};
+
+	D3D12_INFO_QUEUE_FILTER filter = {};
+	filter.DenyList.NumIDs = filtered_messages.size();
+	filter.DenyList.pIDList = filtered_messages.data();
+	info_queue->AddStorageFilterEntries(&filter);
 
 	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
 	rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -552,13 +614,11 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 	auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 	auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT, 
 		(UINT64)width, (UINT)height, 1, 1);
-	auto depth_clear_value = CD3DX12_CLEAR_VALUE(depth_desc.Format, 1.0f, 0);
 
 	depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	gDevice->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc, 
-		D3D12_RESOURCE_STATE_DEPTH_WRITE, &depth_clear_value, 
-		IID_PPV_ARGS(gDepthStencilResource.GetAddressOf()));
+		D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(gDepthStencilResource.GetAddressOf()));
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
 	dsv_desc.Format = depth_desc.Format;
@@ -635,6 +695,8 @@ void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 
 void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 {
+	gRenderTarget = (RenderTargetD3D12*)handle;
+
 	if (!gViewport.has_value())
 		gViewportDirty = true;
 
@@ -644,6 +706,8 @@ void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendD3D12::setRenderTarget(std::nullptr_t value)
 {
+	gRenderTarget = nullptr;
+
 	if (!gViewport.has_value())
 		gViewportDirty = true;
 
@@ -716,9 +780,17 @@ void BackendD3D12::setTextureAddress(TextureAddress value)
 void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
+	const auto& rtv = gRenderTarget ? 
+		gRenderTarget->rtv_heap->GetCPUDescriptorHandleForHeapStart() : 
+		gMainRenderTarget[gFrameIndex].descriptor;
+
+	const auto& dsv = gRenderTarget ?
+		gRenderTarget->dsv_heap->GetCPUDescriptorHandleForHeapStart() :
+		gDsvDescHeap->GetCPUDescriptorHandleForHeapStart();
+
 	if (color.has_value())
 	{
-		gCommandList->ClearRenderTargetView(gMainRenderTarget[gFrameIndex].descriptor, (float*)&color.value(), 0, NULL);
+		gCommandList->ClearRenderTargetView(rtv, (float*)&color.value(), 0, NULL);
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -731,8 +803,7 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 		if (stencil.has_value())
 			flags |= D3D12_CLEAR_FLAG_STENCIL;
 
-		gCommandList->ClearDepthStencilView(gDsvDescHeap->GetCPUDescriptorHandleForHeapStart(), flags,
-			depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
+		gCommandList->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
 	}
 }
 
@@ -853,12 +924,23 @@ void BackendD3D12::prepareForDrawing()
 		gDevice->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
 	}
 
-	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
-	const auto& rtv_cpu_descriptor = gMainRenderTarget[gFrameIndex].descriptor;
-	auto dsv_cpu_descriptor = gDsvDescHeap->GetCPUDescriptorHandleForHeapStart();
+	if (gRenderTarget == nullptr)
+	{
+		const auto& rtv_cpu_descriptor = gMainRenderTarget[gFrameIndex].descriptor;
+		auto dsv_cpu_descriptor = gDsvDescHeap->GetCPUDescriptorHandleForHeapStart();
 
-	gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
+		gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
+	}
+	else
+	{
+		auto rtv_cpu_descriptor = gRenderTarget->rtv_heap->GetCPUDescriptorHandleForHeapStart();
+		auto dsv_cpu_descriptor = gRenderTarget->dsv_heap->GetCPUDescriptorHandleForHeapStart();
+		gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
+	}
+
+	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
 	gCommandList->SetPipelineState(pipeline_state);
+
 	gCommandList->SetGraphicsRootSignature(shader->root_signature.Get());
 
 	for (const auto& [binding, descriptor] : shader->required_descriptor_bindings)
@@ -868,8 +950,8 @@ void BackendD3D12::prepareForDrawing()
 		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
 			const auto& texture = gTextures.at(binding);
-			gCommandList->SetDescriptorHeaps(1, texture->heap.GetAddressOf());
-			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->heap->GetGPUDescriptorHandleForHeapStart());
+			gCommandList->SetDescriptorHeaps(1, texture->srv_heap.GetAddressOf());
+			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->srv_heap->GetGPUDescriptorHandleForHeapStart());
 		}
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
@@ -889,19 +971,17 @@ void BackendD3D12::prepareForDrawing()
 	{
 		float width;
 		float height;
-
-		// TODO: uncomment when render targets are ready
-		// 
-		//if (gRenderTarget == nullptr)
+ 
+		if (gRenderTarget == nullptr)
 		{
 			width = static_cast<float>(gBackbufferWidth);
 			height = static_cast<float>(gBackbufferHeight);
 		}
-		//else
-		//{
-		//	width = static_cast<float>(gRenderTarget->width);
-		//	height = static_cast<float>(gRenderTarget->height);
-		//}
+		else
+		{
+			width = static_cast<float>(gRenderTarget->texture_data->width);
+			height = static_cast<float>(gRenderTarget->texture_data->height);
+		}
 
 		if (gViewportDirty)
 		{

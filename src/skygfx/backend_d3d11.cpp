@@ -249,12 +249,10 @@ private:
 	ComPtr<ID3D11Texture2D> depth_stencil_texture;
 	ComPtr<ID3D11DepthStencilView> depth_stencil_view;
 	TextureD3D11* texture_data;
-	uint32_t width;
-	uint32_t height;
 
 public:
-	RenderTargetD3D11(uint32_t _width, uint32_t _height, TextureD3D11* _texture_data) :
-		texture_data(_texture_data), width(_width), height(_height)
+	RenderTargetD3D11(uint32_t width, uint32_t height, TextureD3D11* _texture_data) :
+		texture_data(_texture_data)
 	{
 		D3D11_RENDER_TARGET_VIEW_DESC rtv_desc = {};
 		rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -996,8 +994,8 @@ void BackendD3D11::prepareForDrawing()
 		}
 		else
 		{
-			width = static_cast<float>(gRenderTarget->width);
-			height = static_cast<float>(gRenderTarget->height);
+			width = static_cast<float>(gRenderTarget->texture_data->width);
+			height = static_cast<float>(gRenderTarget->texture_data->height);
 		}
 
 		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
