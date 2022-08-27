@@ -68,15 +68,17 @@ static ComPtr<IDXGISwapChain3> gSwapChain;
 static HANDLE gSwapChainWaitableObject = NULL;
 static ComPtr<ID3D12GraphicsCommandList> gCommandList;
 
-static ComPtr<ID3D12DescriptorHeap> gRtvDescHeap;
-
 struct MainRenderTarget
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE descriptor;
 	ComPtr<ID3D12Resource> resource;
 };
 
+static ComPtr<ID3D12DescriptorHeap> gRtvDescHeap;
+static ComPtr<ID3D12DescriptorHeap> gDsvDescHeap;
+
 static MainRenderTarget gMainRenderTarget[NUM_BACK_BUFFERS];
+static ComPtr<ID3D12Resource> gDepthStencilResource;
 
 static UINT gFrameIndex = 0;
 static HANDLE gFenceEvent = NULL;
@@ -478,25 +480,29 @@ void WaitForGpu()
 
 BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 {
-	ComPtr<ID3D12Debug> debugController;
-	D3D12GetDebugInterface(IID_PPV_ARGS(debugController.GetAddressOf()));
-	debugController->EnableDebugLayer();
+	ComPtr<ID3D12Debug> debug;
+	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
+	debug->EnableDebugLayer();
 
-	auto feature = D3D_FEATURE_LEVEL_12_1;
-	D3D12CreateDevice(NULL, feature, IID_PPV_ARGS(gDevice.GetAddressOf()));
+	D3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gDevice.GetAddressOf()));
 
-	ComPtr<ID3D12InfoQueue> pInfoQueue;
-	gDevice.As(&pInfoQueue);
-	pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
-	pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-	pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
-	
-	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
-	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	heap_desc.NodeMask = 1;
-	gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gRtvDescHeap.GetAddressOf()));
+	ComPtr<ID3D12InfoQueue> info_queue;
+	gDevice.As(&info_queue);
+	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+
+	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
+	rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtv_heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
+	rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtv_heap_desc.NodeMask = 1;
+	gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gRtvDescHeap.GetAddressOf()));
+
+	D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
+	dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsv_heap_desc.NumDescriptors = 1;
+	gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gDsvDescHeap.GetAddressOf()));
 		
 	auto rtv_increment_size = gDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	auto rtv_heap_start = gRtvDescHeap->GetCPUDescriptorHandleForHeapStart();
@@ -576,6 +582,24 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 		gDevice->CreateRenderTargetView(gMainRenderTarget[i].resource.Get(), NULL, gMainRenderTarget[i].descriptor);
 	}
 
+	auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT, 
+		(UINT64)width, (UINT)height, 1, 1);
+	auto depth_clear_value = CD3DX12_CLEAR_VALUE(depth_desc.Format, 1.0f, 0);
+
+	depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+	gDevice->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc, 
+		D3D12_RESOURCE_STATE_DEPTH_WRITE, &depth_clear_value, 
+		IID_PPV_ARGS(gDepthStencilResource.GetAddressOf()));
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
+	dsv_desc.Format = depth_desc.Format;
+	dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	
+	gDevice->CreateDepthStencilView(gDepthStencilResource.Get(), &dsv_desc, 
+		gDsvDescHeap->GetCPUDescriptorHandleForHeapStart());
+
 	gBackbufferWidth = width;
 	gBackbufferHeight = height;
 
@@ -588,6 +612,8 @@ void BackendD3D12::destroyMainRenderTarget()
 	{
 		gMainRenderTarget[i].resource.Reset();
 	}
+
+	gDepthStencilResource.Reset();
 }
 
 void BackendD3D12::resize(uint32_t width, uint32_t height)
@@ -724,7 +750,23 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 	const std::optional<uint8_t>& stencil)
 {
 	if (color.has_value())
+	{
 		gCommandList->ClearRenderTargetView(gMainRenderTarget[gFrameIndex].descriptor, (float*)&color.value(), 0, NULL);
+	}
+
+	if (depth.has_value() || stencil.has_value())
+	{
+		D3D12_CLEAR_FLAGS flags = {};
+
+		if (depth.has_value())
+			flags |= D3D12_CLEAR_FLAG_DEPTH;
+
+		if (stencil.has_value())
+			flags |= D3D12_CLEAR_FLAG_STENCIL;
+
+		gCommandList->ClearDepthStencilView(gDsvDescHeap->GetCPUDescriptorHandleForHeapStart(), flags,
+			depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
+	}
 }
 
 void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset)
@@ -761,10 +803,10 @@ void BackendD3D12::prepareForDrawing()
 			{ ComparisonFunc::Never, D3D12_COMPARISON_FUNC_NEVER },
 			{ ComparisonFunc::Less, D3D12_COMPARISON_FUNC_LESS },
 			{ ComparisonFunc::Equal, D3D12_COMPARISON_FUNC_EQUAL },
-			{ ComparisonFunc::NotEqual, D3D12_COMPARISON_FUNC_EQUAL },
-			{ ComparisonFunc::LessEqual, D3D12_COMPARISON_FUNC_EQUAL },
+			{ ComparisonFunc::NotEqual, D3D12_COMPARISON_FUNC_NOT_EQUAL },
+			{ ComparisonFunc::LessEqual, D3D12_COMPARISON_FUNC_LESS_EQUAL },
 			{ ComparisonFunc::Greater, D3D12_COMPARISON_FUNC_GREATER },
-			{ ComparisonFunc::GreaterEqual, D3D12_COMPARISON_FUNC_EQUAL }
+			{ ComparisonFunc::GreaterEqual, D3D12_COMPARISON_FUNC_GREATER_EQUAL }
 		};
 
 		const static std::unordered_map<Blend, D3D12_BLEND> BlendMap = {
@@ -801,17 +843,18 @@ void BackendD3D12::prepareForDrawing()
 		pso_desc.SampleMask = UINT_MAX;
 		pso_desc.NumRenderTargets = 1;
 		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		pso_desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 		pso_desc.SampleDesc.Count = 1;
 		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-
 		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		pso_desc.RasterizerState.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
 
 		pso_desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-		pso_desc.DepthStencilState.DepthEnable = FALSE;
-		//pso_desc.DepthStencilState.DepthEnable = gPipelineState.depth_mode.has_value();
-		//pso_desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-		//pso_desc.DepthStencilState.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
+		pso_desc.DepthStencilState.DepthEnable = gPipelineState.depth_mode.has_value();
+		pso_desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+		pso_desc.DepthStencilState.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
+
+		pso_desc.DepthStencilState.StencilEnable = false;
 
 		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 		pso_desc.BlendState.AlphaToCoverageEnable = false;
@@ -844,8 +887,10 @@ void BackendD3D12::prepareForDrawing()
 	}
 
 	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
+	const auto& rtv_cpu_descriptor = gMainRenderTarget[gFrameIndex].descriptor;
+	auto dsv_cpu_descriptor = gDsvDescHeap->GetCPUDescriptorHandleForHeapStart();
 
-	gCommandList->OMSetRenderTargets(1, &gMainRenderTarget[gFrameIndex].descriptor, FALSE, NULL);
+	gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
 	gCommandList->SetPipelineState(pipeline_state);
 	gCommandList->SetGraphicsRootSignature(shader->root_signature.Get());
 
