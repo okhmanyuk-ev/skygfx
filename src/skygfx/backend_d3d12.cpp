@@ -232,64 +232,31 @@ public:
 		{
 			std::vector<CD3DX12_ROOT_PARAMETER> params;
 			std::vector<D3D12_STATIC_SAMPLER_DESC> static_samplers;
-			std::vector<std::vector<CD3DX12_DESCRIPTOR_RANGE>> ranges_vector;
-
-			for (const auto& [stage, sets] : required_descriptor_sets)
-			{
-				for (const auto& [set, bindings] : sets)
-				{
-					ranges_vector.push_back({});
-					auto& ranges = ranges_vector[ranges_vector.size() - 1];
-
-					for (const auto& binding : bindings)
-					{
-						const auto& descriptor = required_descriptor_bindings.at(binding);
-
-						if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
-							continue;
-						
-						static const std::unordered_map<ShaderReflection::Descriptor::Type, D3D12_DESCRIPTOR_RANGE_TYPE> RangeTypeMap = {
-							{ ShaderReflection::Descriptor::Type::CombinedImageSampler, D3D12_DESCRIPTOR_RANGE_TYPE_SRV },
-							{ ShaderReflection::Descriptor::Type::UniformBuffer, D3D12_DESCRIPTOR_RANGE_TYPE_CBV },
-						};
-
-						auto range_type = RangeTypeMap.at(descriptor.type);
-						auto range = CD3DX12_DESCRIPTOR_RANGE(range_type, 1, binding);
-						ranges.push_back(range);
-
-						binding_to_root_index.insert({ binding, (uint32_t)params.size() });
-
-						if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
-						{
-							static_samplers.push_back(CD3DX12_STATIC_SAMPLER_DESC(binding, D3D12_FILTER_MIN_MAG_MIP_LINEAR));
-						}
-					}
-
-					if (ranges.empty())
-						continue;
-
-					static const std::unordered_map<ShaderStage, D3D12_SHADER_VISIBILITY> VisibilityMap = {
-						{ ShaderStage::Vertex, D3D12_SHADER_VISIBILITY_VERTEX },
-						{ ShaderStage::Fragment, D3D12_SHADER_VISIBILITY_PIXEL },
-					};
-
-					auto visibility = VisibilityMap.at(stage);
-
-					CD3DX12_ROOT_PARAMETER param;
-					param.InitAsDescriptorTable((UINT)ranges.size(), ranges.data(), visibility);
-					params.push_back(param);
-				}
-			}
+			std::vector<CD3DX12_DESCRIPTOR_RANGE> ranges(32);
 
 			for (const auto& [binding, descriptor] : required_descriptor_bindings)
 			{
-				if (descriptor.type != ShaderReflection::Descriptor::Type::UniformBuffer)
-					continue;
+				CD3DX12_ROOT_PARAMETER param;
+
+				if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
+				{
+					param.InitAsConstantBufferView(binding);
+				}
+				else if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
+				{
+					auto range = CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, binding);
+					ranges.push_back(range);
+
+					param.InitAsDescriptorTable(1, &ranges[ranges.size() - 1], D3D12_SHADER_VISIBILITY_ALL);
+
+					static_samplers.push_back(CD3DX12_STATIC_SAMPLER_DESC(binding, D3D12_FILTER_MIN_MAG_MIP_LINEAR));
+				}
+				else
+				{
+					assert(false);
+				}
 
 				binding_to_root_index.insert({ binding, (uint32_t)params.size() });
-
-				CD3DX12_ROOT_PARAMETER param;
-				param.InitAsConstantBufferView(binding);
 				params.push_back(param);
 			}
 
@@ -342,9 +309,9 @@ public:
 		desc = CD3DX12_RESOURCE_DESC::Buffer(upload_size);
 		prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
-		ID3D12Resource* upload_buffer = NULL;
+		ComPtr<ID3D12Resource> upload_buffer = NULL;
 		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(&upload_buffer));
+			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
 
 		D3D12_SUBRESOURCE_DATA subersource_data = {};
 		subersource_data.pData = memory;
@@ -352,7 +319,7 @@ public:
 		subersource_data.SlicePitch = width * height * channels;
 
 		OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-			UpdateSubresources(cmdlist, texture.Get(), upload_buffer, 0, 0, 1, &subersource_data);
+			UpdateSubresources(cmdlist, texture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
 
 			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(),
 				D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
