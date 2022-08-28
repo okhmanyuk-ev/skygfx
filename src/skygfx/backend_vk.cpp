@@ -1002,6 +1002,39 @@ void BackendVK::present()
 	begin();
 }
 
+void BackendVK::begin()
+{
+	assert(!gWorking);
+	gWorking = true;
+
+	gViewportDirty = true;
+	gScissorDirty = true;
+
+	auto inheritance_rendering_info = vk::CommandBufferInheritanceRenderingInfo()
+		.setColorAttachmentCount(1)
+		.setPColorAttachmentFormats(&gSurfaceFormat.format)
+		.setDepthAttachmentFormat(gDepthStencil.format)
+		.setStencilAttachmentFormat(gDepthStencil.format)
+		.setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+	auto inheritance_info = vk::CommandBufferInheritanceInfo()
+		.setPNext(&inheritance_rendering_info);
+
+	auto begin_info = vk::CommandBufferBeginInfo()
+		.setFlags(vk::CommandBufferUsageFlagBits::eRenderPassContinue)
+		.setPInheritanceInfo(&inheritance_info);
+
+	gCommandBuffer.begin(begin_info);
+}
+
+void BackendVK::end()
+{
+	assert(gWorking);
+	gWorking = false;
+
+	gCommandBuffer.end();
+}
+
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 {
 	auto texture = new TextureVK(width, height, channels, memory, mipmap);
@@ -1103,6 +1136,7 @@ void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 		delete buffer;
 	});
 }
+
 void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
 	auto buffer = (IndexBufferVK*)handle;
@@ -1263,39 +1297,6 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 		SetImageLayout(cmdbuf, *gDepthStencil.image, gDepthStencil.format, vk::ImageLayout::eUndefined,
 			vk::ImageLayout::eDepthStencilAttachmentOptimal);
 	});
-}
-
-void BackendVK::begin()
-{
-	assert(!gWorking);
-	gWorking = true;
-
-	gViewportDirty = true;
-	gScissorDirty = true;
-
-	auto inheritance_rendering_info = vk::CommandBufferInheritanceRenderingInfo()
-		.setColorAttachmentCount(1)
-		.setPColorAttachmentFormats(&gSurfaceFormat.format)
-		.setDepthAttachmentFormat(gDepthStencil.format)
-		.setStencilAttachmentFormat(gDepthStencil.format)
-		.setRasterizationSamples(vk::SampleCountFlagBits::e1);
-
-	auto inheritance_info = vk::CommandBufferInheritanceInfo()
-		.setPNext(&inheritance_rendering_info);
-
-	auto begin_info = vk::CommandBufferBeginInfo()
-		.setFlags(vk::CommandBufferUsageFlagBits::eRenderPassContinue)
-		.setPInheritanceInfo(&inheritance_info);
-
-	gCommandBuffer.begin(begin_info);
-}
-
-void BackendVK::end()
-{
-	assert(gWorking);
-	gWorking = false;
-
-	gCommandBuffer.end();
 }
 
 void BackendVK::prepareForDrawing()
