@@ -81,9 +81,10 @@ int main()
 	auto device = skygfx::Device(native_window, width, height, backend_type);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
-	auto vertex_buffer = skygfx::VertexBuffer(vertices);
-	auto index_buffer = skygfx::IndexBuffer(indices);
-	auto uniform_buffer = skygfx::UniformBuffer(matrices);
+	device.setTopology(skygfx::Topology::TriangleList);
+	device.setShader(shader);
+	device.setDynamicVertexBuffer(vertices);
+	device.setDynamicIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -92,14 +93,8 @@ int main()
 		matrices.model = glm::mat4(1.0f);
 		matrices.model = glm::translate(matrices.model, { glm::sin(time * 2.0f) * 0.5f, 0.0f, 0.0f });
 
-		uniform_buffer.write(matrices);
-
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.setTopology(skygfx::Topology::TriangleList);
-		device.setShader(shader);
-		device.setVertexBuffer(vertex_buffer);
-		device.setIndexBuffer(index_buffer);
-		device.setUniformBuffer(0, uniform_buffer);
+		device.setDynamicUniformBuffer(0, matrices);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 

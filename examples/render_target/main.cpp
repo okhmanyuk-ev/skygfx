@@ -198,12 +198,6 @@ int main()
 	auto cube_shader = skygfx::Shader(CubeVertex::Layout, cube_vertex_shader_code, cube_fragment_shader_code);
 	auto triangle_shader = skygfx::Shader(TriangleVertex::Layout, triangle_vertex_shader_code, triangle_fragment_shader_code);
 
-	auto cube_vertex_buffer = skygfx::VertexBuffer(cube_vertices);
-	auto cube_index_buffer = skygfx::IndexBuffer(cube_indices);
-
-	auto triangle_vertex_buffer = skygfx::VertexBuffer(triangle_vertices);
-	auto triangle_index_buffer = skygfx::IndexBuffer(triangle_indices);
-
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
@@ -219,44 +213,41 @@ int main()
 	light.direction = { 1.0f, 0.5f, 0.5f };
 	light.shininess = 32.0f;
 
-	auto matrices_ubo = skygfx::UniformBuffer(matrices);
-	auto light_ubo = skygfx::UniformBuffer(light);
-
 	auto target = skygfx::RenderTarget(800, 600);
+
+	// draw triangle to target
+
+	device.setRenderTarget(target);
+	device.setTopology(skygfx::Topology::TriangleList);
+	device.setCullMode(skygfx::CullMode::None);
+	device.setDynamicVertexBuffer(triangle_vertices);
+	device.setDynamicIndexBuffer(triangle_indices);
+	device.setShader(triangle_shader);
+	device.clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
+	device.drawIndexed(static_cast<uint32_t>(triangle_indices.size()));
+
+	// prepare steps for drawing target to cube and later to screen
+
+	device.setRenderTarget(nullptr);
+	device.setTopology(skygfx::Topology::TriangleList);
+	device.setCullMode(skygfx::CullMode::Back);
+	device.setDynamicVertexBuffer(cube_vertices);
+	device.setDynamicIndexBuffer(cube_indices);
+	device.setDynamicUniformBuffer(2, light);
+	device.setTexture(0, target); // render targets can be pushed as textures
+	device.setShader(cube_shader);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		// draw triangle to target
-
-		device.setRenderTarget(target);
-		device.clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
-		device.setTopology(skygfx::Topology::TriangleList);
-		device.setShader(triangle_shader);
-		device.setVertexBuffer(triangle_vertex_buffer);
-		device.setIndexBuffer(triangle_index_buffer);
-		device.setCullMode(skygfx::CullMode::None);
-		device.drawIndexed(static_cast<uint32_t>(triangle_indices.size()));
-
-		// draw cube textured by our 'target'
-
 		auto time = (float)glfwGetTime();
 
 		matrices.model = glm::mat4(1.0f);
 		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
 		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
 
-		matrices_ubo.write(matrices);
+		device.setDynamicUniformBuffer(1, matrices);
 
-		device.setRenderTarget(nullptr);
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.setTopology(skygfx::Topology::TriangleList);
-		device.setShader(cube_shader);
-		device.setVertexBuffer(cube_vertex_buffer);
-		device.setIndexBuffer(cube_index_buffer);
-		device.setUniformBuffer(1, matrices_ubo);
-		device.setUniformBuffer(2, light_ubo);
-		device.setCullMode(skygfx::CullMode::Back);
-		device.setTexture(0, target); // render targets can be pushed as textures
 		device.drawIndexed(static_cast<uint32_t>(cube_indices.size()));
 		device.present();
 

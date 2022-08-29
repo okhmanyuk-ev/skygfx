@@ -29,52 +29,52 @@ set_property(TARGET update_mappings PROPERTY FOLDER ${LIBS_FOLDER}/glfw)
 
 # triangle
 
-add_executable(triangle triangle/main.cpp)
-target_link_libraries(triangle glfw skygfx)
+add_executable(01_triangle triangle/main.cpp)
+target_link_libraries(01_triangle glfw skygfx)
 
 # uniform_buffer
 
-add_executable(uniform_buffer uniform/main.cpp)
-target_link_libraries(uniform_buffer glfw skygfx)
+add_executable(02_uniform_buffer uniform/main.cpp)
+target_link_libraries(02_uniform_buffer glfw skygfx)
 
 # texture
 
-add_executable(texture texture/main.cpp ${RESOURCES})
-target_link_libraries(texture glfw skygfx)
-target_include_directories(texture PUBLIC lib/stb)
-set_target_properties(texture PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(texture PROPERTIES RESOURCE ${RESOURCES})
+add_executable(03_texture texture/main.cpp ${RESOURCES})
+target_link_libraries(03_texture glfw skygfx)
+target_include_directories(03_texture PUBLIC lib/stb)
+set_target_properties(03_texture PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(03_texture PROPERTIES RESOURCE ${RESOURCES})
 
 # texture_mipmap
 
-add_executable(texture_mipmap texture_mipmap/main.cpp ${RESOURCES})
-target_link_libraries(texture_mipmap glfw skygfx)
-target_include_directories(texture_mipmap PUBLIC lib/stb)
-set_target_properties(texture_mipmap PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(texture_mipmap PROPERTIES RESOURCE ${RESOURCES})
+add_executable(04_texture_mipmap texture_mipmap/main.cpp ${RESOURCES})
+target_link_libraries(04_texture_mipmap glfw skygfx)
+target_include_directories(04_texture_mipmap PUBLIC lib/stb)
+set_target_properties(04_texture_mipmap PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(04_texture_mipmap PROPERTIES RESOURCE ${RESOURCES})
 
 # cube
 
-add_executable(cube cube/main.cpp)
-target_link_libraries(cube glfw skygfx)
+add_executable(05_cube cube/main.cpp)
+target_link_libraries(05_cube glfw skygfx)
 
 # textured cube
 
-add_executable(textured_cube textured_cube/main.cpp ${RESOURCES})
-target_link_libraries(textured_cube glfw skygfx)
-target_include_directories(textured_cube PUBLIC lib/stb)
-set_target_properties(textured_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(textured_cube PROPERTIES RESOURCE ${RESOURCES})
+add_executable(06_textured_cube textured_cube/main.cpp ${RESOURCES})
+target_link_libraries(06_textured_cube glfw skygfx)
+target_include_directories(06_textured_cube PUBLIC lib/stb)
+set_target_properties(06_textured_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(06_textured_cube PROPERTIES RESOURCE ${RESOURCES})
 
 # light
 
-add_executable(light light/main.cpp ${RESOURCES})
-target_link_libraries(light glfw skygfx)
-target_include_directories(light PUBLIC lib/stb)
-set_target_properties(light PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(light PROPERTIES RESOURCE ${RESOURCES})
+add_executable(07_light light/main.cpp ${RESOURCES})
+target_link_libraries(07_light glfw skygfx)
+target_include_directories(07_light PUBLIC lib/stb)
+set_target_properties(07_light PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(07_light PROPERTIES RESOURCE ${RESOURCES})
 
 # render target
 
-add_executable(render_target render_target/main.cpp)
-target_link_libraries(render_target glfw skygfx)
+add_executable(08_render_target render_target/main.cpp)
+target_link_libraries(08_render_target glfw skygfx)

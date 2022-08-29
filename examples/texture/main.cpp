@@ -85,17 +85,15 @@ int main()
 
 	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory);
 
-	auto vertex_buffer = skygfx::VertexBuffer(vertices);
-	auto index_buffer = skygfx::IndexBuffer(indices);
+	device.setTopology(skygfx::Topology::TriangleList);
+	device.setShader(shader);
+	device.setTexture(0, texture);
+	device.setDynamicVertexBuffer(vertices);
+	device.setDynamicIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.setTopology(skygfx::Topology::TriangleList);
-		device.setShader(shader);
-		device.setTexture(0, texture);
-		device.setVertexBuffer(vertex_buffer);
-		device.setIndexBuffer(index_buffer);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 

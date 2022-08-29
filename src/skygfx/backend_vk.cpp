@@ -503,6 +503,7 @@ class RenderTargetVK
 public:
 	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture)
 	{
+		assert(false); // render targets are not implemented in vulkan backend by now
 	}
 
 	~RenderTargetVK()

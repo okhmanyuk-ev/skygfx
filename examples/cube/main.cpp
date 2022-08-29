@@ -128,10 +128,6 @@ int main()
 	auto device = skygfx::Device(native_window, width, height, backend_type);
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 	
-	auto vertex_buffer = skygfx::VertexBuffer(vertices);
-	auto index_buffer = skygfx::IndexBuffer(indices);
-	auto uniform_buffer = skygfx::UniformBuffer(matrices);
-
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
@@ -139,6 +135,12 @@ int main()
 	std::tie(matrices.view, matrices.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position, width, height);
 
 	const auto scale = 100.0f;
+
+	device.setTopology(skygfx::Topology::TriangleList);
+	device.setShader(shader);
+	device.setDynamicVertexBuffer(vertices);
+	device.setDynamicIndexBuffer(indices);
+	device.setCullMode(skygfx::CullMode::Back);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -148,15 +150,9 @@ int main()
 		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
 		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
 
-		uniform_buffer.write(matrices);
+		device.setDynamicUniformBuffer(0, matrices);
 
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.setTopology(skygfx::Topology::TriangleList);
-		device.setShader(shader);
-		device.setVertexBuffer(vertex_buffer);
-		device.setIndexBuffer(index_buffer);
-		device.setUniformBuffer(0, uniform_buffer);
-		device.setCullMode(skygfx::CullMode::Back);
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 
