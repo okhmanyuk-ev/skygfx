@@ -889,6 +889,88 @@ void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset)
 
 void BackendD3D12::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
 {
+	auto dst_texture = (TextureD3D12*)dst_texture_handle;
+
+	assert(dst_texture->width == size.x);
+	assert(dst_texture->height == size.y);
+
+	if (size.x <= 0 || size.y <= 0)
+		return;
+
+	auto rtv_resource = gRenderTarget ? 
+		gRenderTarget->texture_data->texture : 
+		gMainRenderTarget.frames[gFrameIndex].resource;
+
+	auto desc = rtv_resource->GetDesc();
+
+	auto back_w = desc.Width;
+	auto back_h = desc.Height;
+
+	auto src_x = (UINT)pos.x;
+	auto src_y = (UINT)pos.y;
+	auto src_w = (UINT)size.x;
+	auto src_h = (UINT)size.y;
+
+	UINT dst_x = 0;
+	UINT dst_y = 0;
+
+	if (pos.x < 0)
+	{
+		src_x = 0;
+		if (-pos.x > size.x)
+			src_w = 0;
+		else
+			src_w += pos.x;
+
+		dst_x = -pos.x;
+	}
+
+	if (pos.y < 0)
+	{
+		src_y = 0;
+		if (-pos.y > size.y)
+			src_h = 0;
+		else
+			src_h += pos.y;
+
+		dst_y = -pos.y;
+	}
+
+	src_w = glm::min(src_w, (UINT)back_w);
+	src_h = glm::min(src_h, (UINT)back_h);
+
+	D3D12_BOX box;
+	box.left = src_x;
+	box.right = src_x + src_w;
+	box.top = src_y;
+	box.bottom = src_y + src_h;
+	box.front = 0;
+	box.back = 1;
+
+	if (pos.y < (int)back_h && pos.x < (int)back_w)
+	{
+		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		gCommandList->ResourceBarrier(1, &barrier);
+
+		D3D12_TEXTURE_COPY_LOCATION src_loc = {};
+		src_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		src_loc.pResource = rtv_resource.Get();
+		src_loc.SubresourceIndex = 0;
+
+		D3D12_TEXTURE_COPY_LOCATION dst_loc = {};
+		dst_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		dst_loc.pResource = dst_texture->texture.Get();
+		dst_loc.SubresourceIndex = 0;
+
+		gCommandList->CopyTextureRegion(&dst_loc, dst_x, dst_y, 0, &src_loc, &box);
+
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
+			D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+		gCommandList->ResourceBarrier(1, &barrier);
+	}
 }
 
 void BackendD3D12::prepareForDrawing(bool indexed)
