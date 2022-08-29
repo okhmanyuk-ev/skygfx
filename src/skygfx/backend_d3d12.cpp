@@ -1138,8 +1138,10 @@ TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, uint
 
 void BackendD3D12::destroyTexture(TextureHandle* handle)
 {
-	auto texture = (TextureD3D12*)handle;
-	delete texture;
+	gExecuteAfterPresent.add([handle] {
+		auto texture = (TextureD3D12*)handle;
+		delete texture;
+	});
 }
 
 RenderTargetHandle* BackendD3D12::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
@@ -1151,8 +1153,10 @@ RenderTargetHandle* BackendD3D12::createRenderTarget(uint32_t width, uint32_t he
 
 void BackendD3D12::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetD3D12*)handle;
-	delete render_target;
+	gExecuteAfterPresent.add([handle] {
+		auto render_target = (RenderTargetD3D12*)handle;
+		delete render_target;
+	});
 }
 
 ShaderHandle* BackendD3D12::createShader(const Vertex::Layout& layout, const std::string& vertex_code,
@@ -1164,8 +1168,10 @@ ShaderHandle* BackendD3D12::createShader(const Vertex::Layout& layout, const std
 
 void BackendD3D12::destroyShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderD3D12*)handle;
-	delete shader;
+	gExecuteAfterPresent.add([handle] {
+		auto shader = (ShaderD3D12*)handle;
+		delete shader;
+	});
 }
 
 VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
