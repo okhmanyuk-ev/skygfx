@@ -3,6 +3,7 @@
 #ifdef SKYGFX_HAS_D3D12
 
 #include <stdexcept>
+#include <unordered_set>
 
 #include <d3dcompiler.h>
 #include <d3d12.h>
@@ -20,6 +21,7 @@
 using Microsoft::WRL::ComPtr;
 using namespace skygfx;
 
+class BufferD3D12;
 class ShaderD3D12;
 class TextureD3D12;
 class RenderTargetD3D12;
@@ -92,8 +94,10 @@ static ComPtr<ID3D12Fence> gFence;
 static UINT64 gFenceValue;
 
 static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
-static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
+static std::unordered_map<uint32_t, D3D12_GPU_VIRTUAL_ADDRESS> gUniformBuffers;
 static RenderTargetD3D12* gRenderTarget = nullptr;
+
+static std::unordered_set<BufferD3D12*> gUsedBuffersInThisFrame;
 
 static PipelineStateD3D12 gPipelineState;
 static std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> gPipelineStates;
@@ -416,27 +420,67 @@ class BufferD3D12
 	friend class BackendD3D12;
 
 protected:
-	ComPtr<ID3D12Resource> buffer;
-	size_t size = 0;
+	std::vector<ComPtr<ID3D12Resource>> buffers;
+	uint32_t buffer_index = 0;
+	size_t page_size = 0;
+	bool used = false;
 
 public:
-	BufferD3D12(size_t _size) : size(_size)
+	BufferD3D12(size_t _size) : page_size(_size)
 	{
+		buffers.push_back(createBufferResource(page_size));
+	}
+
+	ComPtr<ID3D12Resource> createBufferResource(size_t size)
+	{
+		ComPtr<ID3D12Resource> result;
+
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 		auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
 
 		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(buffer.GetAddressOf()));
+			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(result.GetAddressOf()));
+
+		return result;
 	}
 
-	void write(void* memory, size_t _size)
+	void write(void* memory, size_t size_to_write)
 	{
-		assert(_size <= size);
-		CD3DX12_RANGE range(0, 0);
-		void* dst_memory = nullptr;
-		buffer->Map(0, &range, &dst_memory);
-		memcpy(dst_memory, memory, _size);
-		buffer->Unmap(0, &range);
+		assert(size_to_write <= page_size);
+
+		if (used)
+		{
+			buffer_index += 1;
+			used = false;
+		}
+
+		if (buffer_index >= buffers.size())
+		{
+			buffers.push_back(createBufferResource(page_size));
+		}
+
+		const auto& buffer = buffers.at(buffer_index);
+
+		void* cpu_memory = nullptr;
+		buffer->Map(0, NULL, &cpu_memory);
+		memcpy(cpu_memory, memory, size_to_write);
+		buffer->Unmap(0, NULL);
+	}
+
+	void mark_used()
+	{
+		used = true;
+	}
+
+	void reset_index()
+	{
+		buffer_index = 0;
+		used = false;
+	}
+
+	D3D12_GPU_VIRTUAL_ADDRESS get_current_gpu_virtual_address() const
+	{
+		return buffers.at(buffer_index)->GetGPUVirtualAddress();
 	}
 };
 
@@ -468,12 +512,17 @@ public:
 	}
 };
 
+int RoundUp(int num, int factor)
+{
+	return num + factor - 1 - (num + factor - 1) % factor;
+}
+
 class UniformBufferD3D12 : public BufferD3D12
 {
 	friend class BackendD3D12;
 
 public:
-	UniformBufferD3D12(size_t _size) : BufferD3D12(_size)
+	UniformBufferD3D12(size_t _size) : BufferD3D12(RoundUp(_size, 256))
 	{
 	}
 };
@@ -730,11 +779,14 @@ void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 	auto buffer = (VertexBufferD3D12*)handle;
 
 	D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
-	buffer_view.BufferLocation = buffer->buffer->GetGPUVirtualAddress();
-	buffer_view.SizeInBytes = (UINT)buffer->size;
+	buffer_view.BufferLocation = buffer->get_current_gpu_virtual_address();
+	buffer_view.SizeInBytes = (UINT)buffer->page_size;
 	buffer_view.StrideInBytes = (UINT)buffer->stride;
 
 	gCommandList->IASetVertexBuffers(0, 1, &buffer_view);
+
+	buffer->mark_used();
+	gUsedBuffersInThisFrame.insert(buffer);
 }
 
 void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
@@ -742,17 +794,24 @@ void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 	auto buffer = (IndexBufferD3D12*)handle;
 
 	D3D12_INDEX_BUFFER_VIEW buffer_view = {};
-	buffer_view.BufferLocation = buffer->buffer->GetGPUVirtualAddress();
-	buffer_view.SizeInBytes = (UINT)buffer->size;
+	buffer_view.BufferLocation = buffer->get_current_gpu_virtual_address();
+	buffer_view.SizeInBytes = (UINT)buffer->page_size;
 	buffer_view.Format = buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 
 	gCommandList->IASetIndexBuffer(&buffer_view);
+
+	buffer->mark_used();
+	gUsedBuffersInThisFrame.insert(buffer);
 }
 
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferD3D12*)handle;
-	gUniformBuffers[binding] = buffer;
+
+	gUniformBuffers[binding] = buffer->get_current_gpu_virtual_address();
+
+	buffer->mark_used();
+	gUsedBuffersInThisFrame.insert(buffer);
 }
 
 void BackendD3D12::setBlendMode(const BlendMode& value)
@@ -956,8 +1015,8 @@ void BackendD3D12::prepareForDrawing()
 		}
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
-			const auto& buffer = gUniformBuffers.at(binding);
-			gCommandList->SetGraphicsRootConstantBufferView(root_index, buffer->buffer->GetGPUVirtualAddress());
+			const auto& gpu_virtual_address = gUniformBuffers.at(binding);
+			gCommandList->SetGraphicsRootConstantBufferView(root_index, gpu_virtual_address);
 		}
 		else
 		{
@@ -1019,9 +1078,17 @@ void BackendD3D12::prepareForDrawing()
 void BackendD3D12::present()
 {
 	end();
-	bool vsync = true;
+	bool vsync = false;
 	gSwapChain->Present(vsync ? 1 : 0, 0);
 	MoveToNextFrame();
+
+	for (auto buffer : gUsedBuffersInThisFrame)
+	{
+		buffer->reset_index();
+	}
+
+	gUsedBuffersInThisFrame.clear();
+
 	gExecuteAfterPresent.flush();
 	begin();
 }
