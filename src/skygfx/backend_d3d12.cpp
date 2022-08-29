@@ -110,6 +110,10 @@ static bool gViewportDirty = true;
 static std::optional<Scissor> gScissor;
 static bool gScissorDirty = true;
 
+static D3D_PRIMITIVE_TOPOLOGY gTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+static std::optional<D3D12_INDEX_BUFFER_VIEW> gIndexBuffer;
+static std::optional<D3D12_VERTEX_BUFFER_VIEW> gVertexBuffer;
+
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
 
@@ -522,7 +526,7 @@ class UniformBufferD3D12 : public BufferD3D12
 	friend class BackendD3D12;
 
 public:
-	UniformBufferD3D12(size_t _size) : BufferD3D12(RoundUp(_size, 256))
+	UniformBufferD3D12(size_t _size) : BufferD3D12(RoundUp((int)_size, 256))
 	{
 	}
 };
@@ -570,7 +574,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	};
 
 	D3D12_INFO_QUEUE_FILTER filter = {};
-	filter.DenyList.NumIDs = filtered_messages.size();
+	filter.DenyList.NumIDs = (UINT)filtered_messages.size();
 	filter.DenyList.pIDList = filtered_messages.data();
 	info_queue->AddStorageFilterEntries(&filter);
 
@@ -722,7 +726,7 @@ void BackendD3D12::setTopology(Topology topology)
 		{ Topology::TriangleStrip, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP }
 	};
 
-	gCommandList->IASetPrimitiveTopology(TopologyMap.at(topology));
+	gTopology = TopologyMap.at(topology);
 }
 
 void BackendD3D12::setViewport(std::optional<Viewport> viewport)
@@ -783,7 +787,7 @@ void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 	buffer_view.SizeInBytes = (UINT)buffer->page_size;
 	buffer_view.StrideInBytes = (UINT)buffer->stride;
 
-	gCommandList->IASetVertexBuffers(0, 1, &buffer_view);
+	gVertexBuffer = buffer_view;
 
 	buffer->mark_used();
 	gUsedBuffersInThisFrame.insert(buffer);
@@ -798,7 +802,7 @@ void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 	buffer_view.SizeInBytes = (UINT)buffer->page_size;
 	buffer_view.Format = buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 
-	gCommandList->IASetIndexBuffer(&buffer_view);
+	gIndexBuffer = buffer_view;
 
 	buffer->mark_used();
 	gUsedBuffersInThisFrame.insert(buffer);
@@ -873,13 +877,13 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 
 void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
-	prepareForDrawing();
+	prepareForDrawing(false);
 	gCommandList->DrawInstanced((UINT)vertex_count, 1, (UINT)vertex_offset, 0);
 }
 
 void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
-	prepareForDrawing();
+	prepareForDrawing(true);
 	gCommandList->DrawIndexedInstanced((UINT)index_count, 1, (UINT)index_offset, 0, 0);
 }
 
@@ -887,7 +891,7 @@ void BackendD3D12::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 {
 }
 
-void BackendD3D12::prepareForDrawing()
+void BackendD3D12::prepareForDrawing(bool indexed)
 {
 	auto shader = gPipelineState.shader;
 	assert(shader);
@@ -1073,6 +1077,17 @@ void BackendD3D12::prepareForDrawing()
 			gScissorDirty = false;
 		}
 	}
+
+	gCommandList->IASetPrimitiveTopology(gTopology);
+
+	if (indexed)
+	{
+		const auto& value = gIndexBuffer.value();
+		gCommandList->IASetIndexBuffer(&value);
+	}
+
+	const auto& vertex_buffer = gVertexBuffer.value();
+	gCommandList->IASetVertexBuffers(0, 1, &vertex_buffer);
 }
 
 void BackendD3D12::present()
