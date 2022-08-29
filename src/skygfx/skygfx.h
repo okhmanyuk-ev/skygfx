@@ -134,7 +134,7 @@ namespace skygfx
 		template <class T> explicit UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
 
 		void write(void* memory, size_t size);
-		template <class T> void write(T value) { write(&value, sizeof(T)); }
+		template <class T> void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
 
 		operator UniformBufferHandle* () { return mUniformBufferHandle; }
 
@@ -442,9 +442,9 @@ namespace skygfx
 		void setDynamicUniformBuffer(uint32_t binding, void* memory, size_t size);
 
 		template <class T>
-		void setDynamicUniformBuffer(uint32_t binding, T value)
+		void setDynamicUniformBuffer(uint32_t binding, const T& value)
 		{ 
-			setDynamicUniformBuffer(binding, &value, sizeof(T));
+			setDynamicUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
 		}
 
 		uint32_t getBackbufferWidth() const;
