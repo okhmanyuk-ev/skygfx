@@ -333,12 +333,12 @@ public:
 
 		if (memory)
 		{
-			const UINT64 upload_size = GetRequiredIntermediateSize(texture.Get(), 0, 1);
-
+			auto upload_size = GetRequiredIntermediateSize(texture.Get(), 0, 1);
 			auto upload_desc = CD3DX12_RESOURCE_DESC::Buffer(upload_size);
 			auto upload_prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
 			ComPtr<ID3D12Resource> upload_buffer = NULL;
+
 			gDevice->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
 				D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
 
@@ -360,7 +360,16 @@ public:
 
 				cmdlist->ResourceBarrier(1, &barrier);
 			});
+
+			if (mipmap)
+			{
+				generateMips();
+			}
 		}
+	}
+
+	void generateMips()
+	{
 	}
 };
 
@@ -970,6 +979,9 @@ void BackendD3D12::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 			D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 		gCommandList->ResourceBarrier(1, &barrier);
+
+		if (dst_texture->mipmap)
+			dst_texture->generateMips();
 	}
 }
 
@@ -1021,35 +1033,18 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		auto depth_mode = gPipelineState.depth_mode.value_or(DepthMode());
 		const auto& blend_mode = gPipelineState.blend_mode;
 
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->vertex_shader_blob.Get());
-		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->pixel_shader_blob.Get());
-		pso_desc.InputLayout = { shader->input.data(), (UINT)shader->input.size() };
-		pso_desc.NodeMask = 1;
-		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pso_desc.pRootSignature = shader->root_signature.Get();
-		pso_desc.SampleMask = UINT_MAX;
-		pso_desc.NumRenderTargets = 1;
-		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-		pso_desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		pso_desc.SampleDesc.Count = 1;
-		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-		pso_desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		pso_desc.RasterizerState.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
+		auto depth_stencil_state = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		depth_stencil_state.DepthEnable = gPipelineState.depth_mode.has_value();
+		depth_stencil_state.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+		depth_stencil_state.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
+		depth_stencil_state.StencilEnable = false;
 
-		pso_desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-		pso_desc.DepthStencilState.DepthEnable = gPipelineState.depth_mode.has_value();
-		pso_desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-		pso_desc.DepthStencilState.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
-
-		pso_desc.DepthStencilState.StencilEnable = false;
-
-		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-		pso_desc.BlendState.AlphaToCoverageEnable = false;
+		auto blend_state = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		blend_state.AlphaToCoverageEnable = false;
 
 		for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
 		{
-			auto& blend = pso_desc.BlendState.RenderTarget[i];
+			auto& blend = blend_state.RenderTarget[i];
 
 			if (blend_mode.color_mask.red)
 				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
@@ -1073,6 +1068,26 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 			blend.DestBlendAlpha = BlendMap.at(blend_mode.alpha_dst_blend);
 			blend.BlendOpAlpha = BlendOpMap.at(blend_mode.alpha_blend_func);
 		}
+
+		auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		rasterizer_state.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
+
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
+		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->vertex_shader_blob.Get());
+		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->pixel_shader_blob.Get());
+		pso_desc.InputLayout = { shader->input.data(), (UINT)shader->input.size() };
+		pso_desc.NodeMask = 1;
+		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		pso_desc.pRootSignature = shader->root_signature.Get();
+		pso_desc.SampleMask = UINT_MAX;
+		pso_desc.NumRenderTargets = 1;
+		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		pso_desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		pso_desc.SampleDesc.Count = 1;
+		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+		pso_desc.RasterizerState = rasterizer_state;
+		pso_desc.DepthStencilState = depth_stencil_state;
+		pso_desc.BlendState = blend_state;
 
 		gDevice->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
 	}
