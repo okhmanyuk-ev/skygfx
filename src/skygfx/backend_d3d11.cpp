@@ -202,25 +202,13 @@ public:
 		height(_height),
 		mipmap(_mipmap)
 	{
-		D3D11_TEXTURE2D_DESC tex_desc = { };
-		tex_desc.Width = width;
-		tex_desc.Height = height;
+		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_R8G8B8A8_UNORM, width, height);
 		tex_desc.MipLevels = mipmap ? 0 : 1;
-		tex_desc.ArraySize = 1;
-		tex_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		tex_desc.SampleDesc.Count = 1;
-		tex_desc.SampleDesc.Quality = 0;
-		tex_desc.Usage = D3D11_USAGE_DEFAULT;
 		tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
-		tex_desc.CPUAccessFlags = 0;
 		tex_desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS; // TODO: only in mapmap mode ?
 		gDevice->CreateTexture2D(&tex_desc, NULL, texture2d.GetAddressOf());
 
-		D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = { };
-		srv_desc.Format = tex_desc.Format;
-		srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-		srv_desc.Texture2D.MipLevels = -1;
-		srv_desc.Texture2D.MostDetailedMip = 0;
+		auto srv_desc = CD3D11_SHADER_RESOURCE_VIEW_DESC(texture2d.Get(), D3D11_SRV_DIMENSION_TEXTURE2D);
 		gDevice->CreateShaderResourceView(texture2d.Get(), &srv_desc, shader_resource_view.GetAddressOf());
 
 		if (memory)
@@ -254,29 +242,18 @@ public:
 	RenderTargetD3D11(uint32_t width, uint32_t height, TextureD3D11* _texture_data) :
 		texture_data(_texture_data)
 	{
-		D3D11_RENDER_TARGET_VIEW_DESC rtv_desc = {};
-		rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-		rtv_desc.Texture2D.MipSlice = 0;
+		auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, 
+			DXGI_FORMAT_R8G8B8A8_UNORM);
+
 		gDevice->CreateRenderTargetView(texture_data->texture2d.Get(), &rtv_desc, render_target_view.GetAddressOf());
 
-		D3D11_TEXTURE2D_DESC tex_desc = {};
-		tex_desc.Width = width;
-		tex_desc.Height = height;
+		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_D24_UNORM_S8_UINT, width, height);
 		tex_desc.MipLevels = 1;
-		tex_desc.ArraySize = 1;
-		tex_desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		tex_desc.SampleDesc.Count = 1;
-		tex_desc.SampleDesc.Quality = 0;
-		tex_desc.Usage = D3D11_USAGE_DEFAULT;
 		tex_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-		tex_desc.CPUAccessFlags = 0;
-		tex_desc.MiscFlags = 0;
 		gDevice->CreateTexture2D(&tex_desc, NULL, depth_stencil_texture.GetAddressOf());
 
-		D3D11_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
-		dsv_desc.Format = tex_desc.Format;
-		dsv_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+		auto dsv_desc = CD3D11_DEPTH_STENCIL_VIEW_DESC(D3D11_DSV_DIMENSION_TEXTURE2D, 
+			tex_desc.Format);
 		gDevice->CreateDepthStencilView(depth_stencil_texture.Get(), &dsv_desc, depth_stencil_view.GetAddressOf());
 	}
 };
@@ -292,11 +269,8 @@ private:
 public:
 	BufferD3D11(size_t _size, D3D11_BIND_FLAG bind_flags) : size(_size)
 	{
-		D3D11_BUFFER_DESC desc = {};
-		desc.ByteWidth = static_cast<UINT>(size);
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.BindFlags = bind_flags;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		auto desc = CD3D11_BUFFER_DESC((UINT)size, bind_flags, D3D11_USAGE_DYNAMIC, 
+			D3D11_CPU_ACCESS_WRITE);
 		gDevice->CreateBuffer(&desc, NULL, buffer.GetAddressOf());
 	}
 
@@ -545,32 +519,35 @@ void BackendD3D11::setBlendMode(const BlendMode& value)
 			{ BlendFunction::Max, D3D11_BLEND_OP_MAX },
 		};
 
-		D3D11_BLEND_DESC desc = {};
+		auto desc = CD3D11_BLEND_DESC(D3D11_DEFAULT);
 		desc.AlphaToCoverageEnable = false;
 
-		auto& blend = desc.RenderTarget[0];
+		for (int i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
+		{
+			auto& blend = desc.RenderTarget[i];
 
-		if (value.color_mask.red)
-			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
+			if (value.color_mask.red)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
 
-		if (value.color_mask.green)
-			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
+			if (value.color_mask.green)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
 
-		if (value.color_mask.blue)
-			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
+			if (value.color_mask.blue)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
 
-		if (value.color_mask.alpha)
-			blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+			if (value.color_mask.alpha)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
 
-		blend.BlendEnable = true;
+			blend.BlendEnable = true;
 
-		blend.SrcBlend = BlendMap.at(value.color_src_blend);
-		blend.DestBlend = BlendMap.at(value.color_dst_blend);
-		blend.BlendOp = BlendOpMap.at(value.color_blend_func);
+			blend.SrcBlend = BlendMap.at(value.color_src_blend);
+			blend.DestBlend = BlendMap.at(value.color_dst_blend);
+			blend.BlendOp = BlendOpMap.at(value.color_blend_func);
 
-		blend.SrcBlendAlpha = BlendMap.at(value.alpha_src_blend);
-		blend.DestBlendAlpha = BlendMap.at(value.alpha_dst_blend);
-		blend.BlendOpAlpha = BlendOpMap.at(value.alpha_blend_func);
+			blend.SrcBlendAlpha = BlendMap.at(value.alpha_src_blend);
+			blend.DestBlendAlpha = BlendMap.at(value.alpha_dst_blend);
+			blend.BlendOpAlpha = BlendOpMap.at(value.alpha_blend_func);
+		}
 
 		gDevice->CreateBlendState(&desc, gBlendModes[value].GetAddressOf());
 	}
@@ -822,23 +799,13 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 	gSwapChain->GetBuffer(0, IID_PPV_ARGS(backbuffer.GetAddressOf()));
 	gDevice->CreateRenderTargetView(backbuffer.Get(), NULL, gMainRenderTarget.render_target_view.GetAddressOf());
 
-	D3D11_TEXTURE2D_DESC tex_desc = {};
-	tex_desc.Width = width;
-	tex_desc.Height = height;
+	auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_D24_UNORM_S8_UINT, width, height);
 	tex_desc.MipLevels = 1;
-	tex_desc.ArraySize = 1;
-	tex_desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	tex_desc.SampleDesc.Count = 1;
-	tex_desc.SampleDesc.Quality = 0;
-	tex_desc.Usage = D3D11_USAGE_DEFAULT;
 	tex_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-	tex_desc.CPUAccessFlags = 0;
-	tex_desc.MiscFlags = 0;
 	gDevice->CreateTexture2D(&tex_desc, NULL, gMainRenderTarget.depth_stencil_texture.GetAddressOf());
 
-	D3D11_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
-	dsv_desc.Format = tex_desc.Format;
-	dsv_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+	auto dsv_desc = CD3D11_DEPTH_STENCIL_VIEW_DESC(D3D11_DSV_DIMENSION_TEXTURE2D, 
+		tex_desc.Format);
 	gDevice->CreateDepthStencilView(gMainRenderTarget.depth_stencil_texture.Get(), &dsv_desc, gMainRenderTarget.depth_stencil_view.GetAddressOf());
 	
 	gBackbufferWidth = width;
@@ -889,9 +856,8 @@ void BackendD3D11::prepareForDrawing()
 				{ StencilOp::Decrement, D3D11_STENCIL_OP_DECR },
 			};
 
-			D3D11_DEPTH_STENCIL_DESC desc = {};
+			auto desc = CD3D11_DEPTH_STENCIL_DESC(D3D11_DEFAULT);
 			desc.DepthEnable = depth_stencil_state.depth_mode.has_value();
-			desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 			desc.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
 
 			desc.StencilEnable = depth_stencil_state.stencil_mode.has_value();
@@ -927,11 +893,9 @@ void BackendD3D11::prepareForDrawing()
 				{ CullMode::Back, D3D11_CULL_BACK }
 			};
 
-			D3D11_RASTERIZER_DESC desc = {};
-			desc.FillMode = D3D11_FILL_SOLID;
+			auto desc = CD3D11_RASTERIZER_DESC(D3D11_DEFAULT);
 			desc.CullMode = CullMap.at(value.cull_mode);
 			desc.ScissorEnable = value.scissor_enabled;
-			desc.DepthClipEnable = true;
 			gDevice->CreateRasterizerState(&desc, gRasterizerStates[value].GetAddressOf());
 		}
 
@@ -961,16 +925,11 @@ void BackendD3D11::prepareForDrawing()
 				{ TextureAddress::MirrorWrap, D3D11_TEXTURE_ADDRESS_MIRROR }
 			};
 
-			D3D11_SAMPLER_DESC desc = {};
+			auto desc = CD3D11_SAMPLER_DESC(D3D11_DEFAULT);
 			desc.Filter = SamplerMap.at(value.sampler);
 			desc.AddressU = TextureAddressMap.at(value.textureAddress);
 			desc.AddressV = TextureAddressMap.at(value.textureAddress);
 			desc.AddressW = TextureAddressMap.at(value.textureAddress);
-			desc.MaxAnisotropy = D3D11_MAX_MAXANISOTROPY;
-			desc.MipLODBias = 0.0f;
-			desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-			desc.MinLOD = 0.0f;
-			desc.MaxLOD = FLT_MAX;
 			gDevice->CreateSamplerState(&desc, gSamplerStates[value].GetAddressOf());
 		}
 
