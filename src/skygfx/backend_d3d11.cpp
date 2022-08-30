@@ -186,138 +186,148 @@ public:
 
 class TextureD3D11
 {
-	friend class RenderTargetD3D11;
-	friend class BackendD3D11;
+public:
+	const auto& getD3D11Texture2D() const { return mTexture2D; }
+	const auto& getD3D11ShaderResourceView() const { return mShaderResourceView; }
+	auto getWidth() const { return mWidth; }
+	auto getHeight() const { return mHeight; }
+	bool isMipmap() const { return mMipmap; }
 
 private:
-	ComPtr<ID3D11Texture2D> texture2d;
-	ComPtr<ID3D11ShaderResourceView> shader_resource_view;
-	uint32_t width;
-	uint32_t height;
-	bool mipmap;
+	ComPtr<ID3D11ShaderResourceView> mShaderResourceView;
+	ComPtr<ID3D11Texture2D> mTexture2D;
+	uint32_t mWidth = 0;
+	uint32_t mHeight = 0;
+	bool mMipmap = false;
 
 public:
-	TextureD3D11(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) :
-		width(_width),
-		height(_height),
-		mipmap(_mipmap)
+	TextureD3D11(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+		mWidth(width),
+		mHeight(height),
+		mMipmap(mipmap)
 	{
 		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_R8G8B8A8_UNORM, width, height);
 		tex_desc.MipLevels = mipmap ? 0 : 1;
 		tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 		tex_desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS; // TODO: only in mapmap mode ?
-		gDevice->CreateTexture2D(&tex_desc, NULL, texture2d.GetAddressOf());
+		gDevice->CreateTexture2D(&tex_desc, NULL, mTexture2D.GetAddressOf());
 
-		auto srv_desc = CD3D11_SHADER_RESOURCE_VIEW_DESC(texture2d.Get(), D3D11_SRV_DIMENSION_TEXTURE2D);
-		gDevice->CreateShaderResourceView(texture2d.Get(), &srv_desc, shader_resource_view.GetAddressOf());
+		auto srv_desc = CD3D11_SHADER_RESOURCE_VIEW_DESC(mTexture2D.Get(), D3D11_SRV_DIMENSION_TEXTURE2D);
+		gDevice->CreateShaderResourceView(mTexture2D.Get(), &srv_desc, mShaderResourceView.GetAddressOf());
 
 		if (memory)
 		{
 			auto memPitch = width * channels;
 			auto memSlicePitch = width * height * channels;
-			gContext->UpdateSubresource(texture2d.Get(), 0, NULL, memory, memPitch, memSlicePitch);
+			gContext->UpdateSubresource(mTexture2D.Get(), 0, NULL, memory, memPitch, memSlicePitch);
 
 			if (mipmap)
-				gContext->GenerateMips(shader_resource_view.Get());
+				gContext->GenerateMips(mShaderResourceView.Get());
 		}
 	}
 
 	void bind(uint32_t binding)
 	{
-		gContext->PSSetShaderResources((UINT)binding, 1, shader_resource_view.GetAddressOf());
+		gContext->PSSetShaderResources((UINT)binding, 1, mShaderResourceView.GetAddressOf());
 	}
 };
 
 class RenderTargetD3D11
 {
-	friend class BackendD3D11;
+public:
+	const auto& getD3D11RenderTargetView() const { return mRenderTargetView; }
+	const auto& getD3D11DepthStencilView() const { return mDepthStencilView; }
+	auto getTexture() const { return mTexture; }
 
 private:
-	ComPtr<ID3D11RenderTargetView> render_target_view;
-	ComPtr<ID3D11Texture2D> depth_stencil_texture;
-	ComPtr<ID3D11DepthStencilView> depth_stencil_view;
-	TextureD3D11* texture_data;
+	ComPtr<ID3D11Texture2D> mDepthStencilTexture;
+	ComPtr<ID3D11RenderTargetView> mRenderTargetView;
+	ComPtr<ID3D11DepthStencilView> mDepthStencilView;
+	TextureD3D11* mTexture = nullptr;
 
 public:
-	RenderTargetD3D11(uint32_t width, uint32_t height, TextureD3D11* _texture_data) :
-		texture_data(_texture_data)
+	RenderTargetD3D11(uint32_t width, uint32_t height, TextureD3D11* texture) :
+		mTexture(texture)
 	{
 		auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, 
 			DXGI_FORMAT_R8G8B8A8_UNORM);
 
-		gDevice->CreateRenderTargetView(texture_data->texture2d.Get(), &rtv_desc, render_target_view.GetAddressOf());
+		gDevice->CreateRenderTargetView(texture->getD3D11Texture2D().Get(), &rtv_desc, mRenderTargetView.GetAddressOf());
 
 		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_D24_UNORM_S8_UINT, width, height);
 		tex_desc.MipLevels = 1;
 		tex_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-		gDevice->CreateTexture2D(&tex_desc, NULL, depth_stencil_texture.GetAddressOf());
+		gDevice->CreateTexture2D(&tex_desc, NULL, mDepthStencilTexture.GetAddressOf());
 
-		auto dsv_desc = CD3D11_DEPTH_STENCIL_VIEW_DESC(D3D11_DSV_DIMENSION_TEXTURE2D, 
-			tex_desc.Format);
-		gDevice->CreateDepthStencilView(depth_stencil_texture.Get(), &dsv_desc, depth_stencil_view.GetAddressOf());
+		auto dsv_desc = CD3D11_DEPTH_STENCIL_VIEW_DESC(D3D11_DSV_DIMENSION_TEXTURE2D, tex_desc.Format);
+		gDevice->CreateDepthStencilView(mDepthStencilTexture.Get(), &dsv_desc, mDepthStencilView.GetAddressOf());
 	}
 };
 
 class BufferD3D11
 {
-	friend class BackendD3D11;
+public:
+	const auto& getD3D11Buffer() const { return mBuffer; }
+	auto getSize() const { return mSize; }
 
 private:
-	ComPtr<ID3D11Buffer> buffer;
-	size_t size;
+	ComPtr<ID3D11Buffer> mBuffer;
+	size_t mSize = 0;
 
 public:
-	BufferD3D11(size_t _size, D3D11_BIND_FLAG bind_flags) : size(_size)
+	BufferD3D11(size_t size, D3D11_BIND_FLAG bind_flags) : mSize(size)
 	{
 		auto desc = CD3D11_BUFFER_DESC((UINT)size, bind_flags, D3D11_USAGE_DYNAMIC, 
 			D3D11_CPU_ACCESS_WRITE);
-		gDevice->CreateBuffer(&desc, NULL, buffer.GetAddressOf());
+		gDevice->CreateBuffer(&desc, NULL, mBuffer.GetAddressOf());
 	}
 
-	void write(void* memory, size_t _size)
+	void write(void* memory, size_t size)
 	{
-		assert(_size <= size);
+		assert(size <= mSize);
 		D3D11_MAPPED_SUBRESOURCE resource;
-		gContext->Map(buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
-		memcpy(resource.pData, memory, _size);
-		gContext->Unmap(buffer.Get(), 0);
+		gContext->Map(mBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &resource);
+		memcpy(resource.pData, memory, size);
+		gContext->Unmap(mBuffer.Get(), 0);
 	}
 };
 
 class VertexBufferD3D11 : public BufferD3D11
 {
-	friend class BackendD3D11;
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 
 private:
-	size_t stride;
+	size_t mStride = 0;
 
 public:
-	VertexBufferD3D11(size_t size, size_t _stride) :
+	VertexBufferD3D11(size_t size, size_t stride) :
 		BufferD3D11(size, D3D11_BIND_VERTEX_BUFFER),
-		stride(_stride)
+		mStride(stride)
 	{
 	}
 };
 
 class IndexBufferD3D11 : public BufferD3D11
 {
-	friend class BackendD3D11;
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 
 private:
-	size_t stride;
+	size_t mStride = 0;
 
 public:
-	IndexBufferD3D11(size_t size, size_t _stride) :
+	IndexBufferD3D11(size_t size, size_t stride) :
 		BufferD3D11(size, D3D11_BIND_INDEX_BUFFER),
-		stride(_stride)
+		mStride(stride)
 	{
 	}
 };
 
 class UniformBufferD3D11 : public BufferD3D11
 {
-	friend class BackendD3D11;
-
 public:
 	UniformBufferD3D11(size_t size) :
 		BufferD3D11(size, D3D11_BIND_CONSTANT_BUFFER)
@@ -433,7 +443,7 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 	ComPtr<ID3D11ShaderResourceView> prev_shader_resource_view;
 	gContext->PSGetShaderResources(0, 1, prev_shader_resource_view.GetAddressOf());
 
-	if (prev_shader_resource_view.Get() == render_target->texture_data->shader_resource_view.Get())
+	if (prev_shader_resource_view.Get() == render_target->getTexture()->getD3D11ShaderResourceView().Get())
 	{
 		ID3D11ShaderResourceView* null[] = { NULL };
 		gContext->PSSetShaderResources(0, 1, null); // remove old shader view
@@ -441,8 +451,8 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 		// we should remove every binding with this texture
 	}
 
-	gContext->OMSetRenderTargets(1, render_target->render_target_view.GetAddressOf(), 
-		render_target->depth_stencil_view.Get());
+	gContext->OMSetRenderTargets(1, render_target->getD3D11RenderTargetView().GetAddressOf(),
+		render_target->getD3D11DepthStencilView().Get());
 
 	gRenderTarget = render_target;
 	
@@ -471,27 +481,27 @@ void BackendD3D11::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferD3D11*)handle;
 
-	auto stride = static_cast<UINT>(buffer->stride);
-	auto offset = static_cast<UINT>(0);
+	auto stride = (UINT)buffer->getStride();
+	auto offset = (UINT)0;
 
-	gContext->IASetVertexBuffers(0, 1, buffer->buffer.GetAddressOf(), &stride, &offset);
+	gContext->IASetVertexBuffers(0, 1, buffer->getD3D11Buffer().GetAddressOf(), &stride, &offset);
 }
 
 void BackendD3D11::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferD3D11*)handle;
 
-	auto stride = static_cast<UINT>(buffer->stride);
+	auto stride = (UINT)buffer->getStride();
 
-	gContext->IASetIndexBuffer(buffer->buffer.Get(), buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
+	gContext->IASetIndexBuffer(buffer->getD3D11Buffer().Get(), buffer->getStride() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
 }
 
 void BackendD3D11::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferD3D11*)handle;
 
-	gContext->VSSetConstantBuffers(binding, 1, buffer->buffer.GetAddressOf());
-	gContext->PSSetConstantBuffers(binding, 1, buffer->buffer.GetAddressOf());
+	gContext->VSSetConstantBuffers(binding, 1, buffer->getD3D11Buffer().GetAddressOf());
+	gContext->PSSetConstantBuffers(binding, 1, buffer->getD3D11Buffer().GetAddressOf());
 }
 
 void BackendD3D11::setBlendMode(const BlendMode& value)
@@ -589,8 +599,8 @@ void BackendD3D11::setTextureAddress(TextureAddress value)
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	auto rtv = gRenderTarget != nullptr ? gRenderTarget->render_target_view : gMainRenderTarget.render_target_view;
-	auto dsv = gRenderTarget != nullptr ? gRenderTarget->depth_stencil_view : gMainRenderTarget.depth_stencil_view;
+	auto rtv = gRenderTarget != nullptr ? gRenderTarget->getD3D11RenderTargetView() : gMainRenderTarget.render_target_view;
+	auto dsv = gRenderTarget != nullptr ? gRenderTarget->getD3D11DepthStencilView() : gMainRenderTarget.depth_stencil_view;
 
 	if (color.has_value())
 	{
@@ -627,13 +637,15 @@ void BackendD3D11::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 {
 	auto dst_texture = (TextureD3D11*)dst_texture_handle;
 
-	assert(dst_texture->width == size.x);
-	assert(dst_texture->height == size.y);
+	assert(dst_texture->getWidth() == size.x);
+	assert(dst_texture->getHeight() == size.y);
 
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto rtv = gRenderTarget ? gRenderTarget->render_target_view : gMainRenderTarget.render_target_view;
+	auto rtv = gRenderTarget ? 
+		gRenderTarget->getD3D11RenderTargetView() : 
+		gMainRenderTarget.render_target_view;
 
 	ComPtr<ID3D11Resource> rtv_resource;
 	rtv->GetResource(rtv_resource.GetAddressOf());
@@ -686,10 +698,10 @@ void BackendD3D11::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 
 	if (pos.y < (int)back_h && pos.x < (int)back_w)
 	{
-		gContext->CopySubresourceRegion(dst_texture->texture2d.Get(), 0, dst_x, dst_y, 0, rtv_resource.Get(), 0, &box);
+		gContext->CopySubresourceRegion(dst_texture->getD3D11Texture2D().Get(), 0, dst_x, dst_y, 0, rtv_resource.Get(), 0, &box);
 
-		if (dst_texture->mipmap)
-			gContext->GenerateMips(dst_texture->shader_resource_view.Get());
+		if (dst_texture->isMipmap())
+			gContext->GenerateMips(dst_texture->getD3D11ShaderResourceView().Get());
 	}
 }
 
@@ -753,7 +765,7 @@ void BackendD3D11::writeVertexBufferMemory(VertexBufferHandle* handle, void* mem
 {
 	auto buffer = (VertexBufferD3D11*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 IndexBufferHandle* BackendD3D11::createIndexBuffer(size_t size, size_t stride)
@@ -766,7 +778,7 @@ void BackendD3D11::writeIndexBufferMemory(IndexBufferHandle* handle, void* memor
 {
 	auto buffer = (IndexBufferD3D11*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 void BackendD3D11::destroyIndexBuffer(IndexBufferHandle* handle)
@@ -953,8 +965,8 @@ void BackendD3D11::prepareForDrawing()
 		}
 		else
 		{
-			width = static_cast<float>(gRenderTarget->texture_data->width);
-			height = static_cast<float>(gRenderTarget->texture_data->height);
+			width = static_cast<float>(gRenderTarget->getTexture()->getWidth());
+			height = static_cast<float>(gRenderTarget->getTexture()->getHeight());
 		}
 
 		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
