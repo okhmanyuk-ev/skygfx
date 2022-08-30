@@ -46,7 +46,7 @@ struct PipelineStateD3D12
 	ShaderD3D12* shader = nullptr;
 	RasterizerStateD3D12 rasterizer_state;
 	std::optional<DepthMode> depth_mode;
-	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
+	BlendMode blend_mode = BlendStates::Opaque;
 	
 	bool operator==(const PipelineStateD3D12& value) const
 	{
@@ -1047,29 +1047,32 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		pso_desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 		pso_desc.BlendState.AlphaToCoverageEnable = false;
 
-		auto& blend = pso_desc.BlendState.RenderTarget[0];
+		for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
+		{
+			auto& blend = pso_desc.BlendState.RenderTarget[i];
 
-		if (blend_mode.color_mask.red)
-			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
+			if (blend_mode.color_mask.red)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
 
-		if (blend_mode.color_mask.green)
-			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_GREEN;
+			if (blend_mode.color_mask.green)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_GREEN;
 
-		if (blend_mode.color_mask.blue)
-			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_BLUE;
+			if (blend_mode.color_mask.blue)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_BLUE;
 
-		if (blend_mode.color_mask.alpha)
-			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
+			if (blend_mode.color_mask.alpha)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
 
-		blend.BlendEnable = true;
+			blend.BlendEnable = true;
 
-		blend.SrcBlend = BlendMap.at(blend_mode.color_src_blend);
-		blend.DestBlend = BlendMap.at(blend_mode.color_dst_blend);
-		blend.BlendOp = BlendOpMap.at(blend_mode.color_blend_func);
+			blend.SrcBlend = BlendMap.at(blend_mode.color_src_blend);
+			blend.DestBlend = BlendMap.at(blend_mode.color_dst_blend);
+			blend.BlendOp = BlendOpMap.at(blend_mode.color_blend_func);
 
-		blend.SrcBlendAlpha = BlendMap.at(blend_mode.alpha_src_blend);
-		blend.DestBlendAlpha = BlendMap.at(blend_mode.alpha_dst_blend);
-		blend.BlendOpAlpha = BlendOpMap.at(blend_mode.alpha_blend_func);
+			blend.SrcBlendAlpha = BlendMap.at(blend_mode.alpha_src_blend);
+			blend.DestBlendAlpha = BlendMap.at(blend_mode.alpha_dst_blend);
+			blend.BlendOpAlpha = BlendOpMap.at(blend_mode.alpha_blend_func);
+		}
 
 		gDevice->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
 	}
