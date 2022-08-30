@@ -93,8 +93,9 @@ int main()
 		matrices.model = glm::mat4(1.0f);
 		matrices.model = glm::translate(matrices.model, { glm::sin(time * 2.0f) * 0.5f, 0.0f, 0.0f });
 
-		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.setDynamicUniformBuffer(0, matrices);
+
+		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 

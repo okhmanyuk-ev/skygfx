@@ -95,23 +95,19 @@ int main()
 
 	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory, true);
 
-	auto vertex_buffer = skygfx::VertexBuffer(vertices);
-	auto index_buffer = skygfx::IndexBuffer(indices);
-	auto uniform_buffer = skygfx::UniformBuffer(settings);
+	device.setTopology(skygfx::Topology::TriangleList);
+	device.setShader(shader);
+	device.setTexture(0, texture);
+	device.setDynamicVertexBuffer(vertices);
+	device.setDynamicIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
 		settings.mipmap_bias = glm::abs(glm::mod(static_cast<float>(glfwGetTime() * 4.0f), 16.0f) - 8.0f);
 
-		uniform_buffer.write(settings);
-
+		device.setDynamicUniformBuffer(1, settings);
+		
 		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.setTopology(skygfx::Topology::TriangleList);
-		device.setShader(shader);
-		device.setTexture(0, texture);
-		device.setVertexBuffer(vertex_buffer);
-		device.setIndexBuffer(index_buffer);
-		device.setUniformBuffer(1, uniform_buffer); 
 		device.drawIndexed(static_cast<uint32_t>(indices.size()));
 		device.present();
 
