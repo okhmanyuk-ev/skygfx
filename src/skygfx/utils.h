@@ -1,6 +1,8 @@
 #pragma once
 
 #include <functional>
+#include <list>
+
 namespace skygfx
 {
     inline void hash_combine(std::size_t& seed) { }

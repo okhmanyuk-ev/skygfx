@@ -32,11 +32,11 @@ if(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)
 elseif(APPLE)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_APPLE)
-	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
+#	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 
 	set(OBJC_SOURCES
-		src/skygfx/backend_gl44.cpp
+		src/skygfx/backend_gl.cpp
 	)
 	set_source_files_properties(${OBJC_SOURCES} PROPERTIES COMPILE_FLAGS "-x objective-c++ -fembed-bitcode")
 

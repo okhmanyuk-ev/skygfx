@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
 #include "vertex.h"
