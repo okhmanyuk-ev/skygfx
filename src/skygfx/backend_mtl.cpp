@@ -20,6 +20,19 @@ class TextureMetal;
 class BufferMetal;
 class IndexBufferMetal;
 
+struct PipelineStateMetal
+{
+	ShaderMetal* shader = nullptr;
+	
+	bool operator==(const PipelineStateMetal& value) const
+	{
+		return shader == value.shader;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
+	t.shader);
+
 static NS::AutoreleasePool* gAutoreleasePool = nullptr;
 static MTL::Device* gDevice = nullptr;
 static MTK::View* gView = nullptr;
@@ -36,16 +49,23 @@ static std::unordered_map<uint32_t, TextureMetal*> gTextures;
 static MTL::SamplerState* gSamplerState = nullptr;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
-static ShaderMetal* gShader = nullptr;
+
+static PipelineStateMetal gPipelineState;
+static std::unordered_map<PipelineStateMetal, MTL::RenderPipelineState*> gPipelineStates;
 
 class ShaderMetal
 {
-	friend class BackendMetal;
+public:
+	auto getMetalVertFunc() const { return mVertFunc; }
+	auto getMetalFragFunc() const { return mFragFunc; }
+	auto getMetalVertexDescriptor() const { return mVertexDescriptor; }
 	
 private:
-	MTL::Library* vert_library = nullptr;
-	MTL::Library* frag_library = nullptr;
-	MTL::RenderPipelineState* pso = nullptr;
+	MTL::Library* mVertLib = nullptr;
+	MTL::Library* mFragLib = nullptr;
+	MTL::Function* mVertFunc = nullptr;
+	MTL::Function* mFragFunc = nullptr;
+	MTL::VertexDescriptor* mVertexDescriptor = nullptr;
 	
 public:
 	ShaderMetal(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -61,22 +81,22 @@ public:
 		
 		NS::Error* error = nullptr;
 		
-		vert_library = gDevice->newLibrary(NS::String::string(msl_vert.c_str(), NS::StringEncoding::UTF8StringEncoding), nullptr, &error);
-		if (!vert_library)
+		mVertLib = gDevice->newLibrary(NS::String::string(msl_vert.c_str(), NS::StringEncoding::UTF8StringEncoding), nullptr, &error);
+		if (!mVertLib)
 		{
 			auto reason = error->localizedDescription()->utf8String();
 			throw std::runtime_error(reason);
 		}
 
-		frag_library = gDevice->newLibrary(NS::String::string(msl_frag.c_str(), NS::StringEncoding::UTF8StringEncoding), nullptr, &error);
-		if (!frag_library)
+		mFragLib = gDevice->newLibrary(NS::String::string(msl_frag.c_str(), NS::StringEncoding::UTF8StringEncoding), nullptr, &error);
+		if (!mFragLib)
 		{
 			auto reason = error->localizedDescription()->utf8String();
 			throw std::runtime_error(reason);
 		}
-
-		auto vert_fn = vert_library->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
-		auto frag_fn = frag_library->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
+		
+		mVertFunc = mVertLib->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
+		mFragFunc = mFragLib->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
 
 		static const std::unordered_map<Vertex::Attribute::Format, MTL::VertexFormat> Format = {
 			{ Vertex::Attribute::Format::R32F, MTL::VertexFormat::VertexFormatFloat },
@@ -89,48 +109,30 @@ public:
 			{ Vertex::Attribute::Format::R8G8B8A8UN, MTL::VertexFormat::VertexFormatUChar4Normalized }
 		};
 
-		auto vertex_descriptor = MTL::VertexDescriptor::alloc()->init();
+		mVertexDescriptor = MTL::VertexDescriptor::alloc()->init();
 		
 		for (int i = 0; i < layout.attributes.size(); i++)
 		{
 			const auto& attrib = layout.attributes.at(i);
-			auto desc = vertex_descriptor->attributes()->object(i);
+			auto desc = mVertexDescriptor->attributes()->object(i);
 			desc->setFormat(Format.at(attrib.format));
 			desc->setOffset(attrib.offset);
 			desc->setBufferIndex(gVertexBufferStageBinding);
 		}
 
-		auto vertex_layout = vertex_descriptor->layouts()->object(gVertexBufferStageBinding);
+		auto vertex_layout = mVertexDescriptor->layouts()->object(gVertexBufferStageBinding);
 		vertex_layout->setStride(layout.stride);
 		vertex_layout->setStepRate(1);
 		vertex_layout->setStepFunction(MTL::VertexStepFunction::VertexStepFunctionPerVertex);
-		
-		auto desc = MTL::RenderPipelineDescriptor::alloc()->init();
-		desc->setVertexFunction(vert_fn);
-		desc->setFragmentFunction(frag_fn);
-		desc->setVertexDescriptor(vertex_descriptor);
-		desc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
-		//desc->setDepthAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth16Unorm);
-		desc->setVertexDescriptor(vertex_descriptor);
-		
-		pso = gDevice->newRenderPipelineState(desc, &error);
-		if (!pso)
-		{
-			auto reason = error->localizedDescription()->utf8String();
-			throw std::runtime_error(reason);
-		}
-
-		vertex_descriptor->release();
-		vert_fn->release();
-		frag_fn->release();
-		desc->release();
 	}
 
 	~ShaderMetal()
 	{
-		pso->release();
-		vert_library->release();
-		frag_library->release();
+		mVertLib->release();
+		mFragLib->release();
+		mVertexDescriptor->release();
+		mVertFunc->release();
+		mFragFunc->release();
 	}
 };
 
@@ -151,7 +153,7 @@ public:
 		desc->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
 		desc->setTextureType(MTL::TextureType2D);
 		desc->setStorageMode(MTL::StorageModeManaged);
-		desc->setUsage(MTL::ResourceUsageSample | MTL::ResourceUsageRead);
+		desc->setUsage(MTL::ResourceUsageSample | MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
 
 		if (mipmap)
 		{
@@ -186,7 +188,14 @@ public:
 class RenderTargetMetal
 {
 public:
-	RenderTargetMetal(uint32_t width, uint32_t height, TextureMetal* _texture_data)
+	auto getTexture() const { return mTexture; }
+	
+private:
+	TextureMetal* mTexture = nullptr;
+	
+public:
+	RenderTargetMetal(uint32_t width, uint32_t height, TextureMetal* texture) :
+		mTexture(texture)
 	{
 	}
 
@@ -334,7 +343,7 @@ void BackendMetal::setRenderTarget(std::nullptr_t value)
 void BackendMetal::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderMetal*)handle;
-	gShader = shader;
+	gPipelineState.shader = shader;
 }
 
 void BackendMetal::setVertexBuffer(VertexBufferHandle* handle)
@@ -450,8 +459,10 @@ void BackendMetal::destroyShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderMetal*)handle;
 	
-	if (gShader == shader)
-		gShader = nullptr;
+	if (gPipelineState.shader == shader)
+		gPipelineState.shader = nullptr;
+
+	// TODO: erase (and free) pso with this shader from gPipelineStates
 	
 	delete shader;
 }
@@ -509,7 +520,7 @@ UniformBufferHandle* BackendMetal::createUniformBuffer(size_t size)
 
 void BackendMetal::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	auto buffer = (BufferMetal*)handle;	
+	auto buffer = (BufferMetal*)handle;
 	delete buffer;
 }
 
@@ -528,7 +539,34 @@ void BackendMetal::prepareForDrawing()
 	}
 
 	gRenderCommandEncoder->setVertexBuffer(gVertexBuffer->getMetalBuffer(), 0, gVertexBufferStageBinding);
-	gRenderCommandEncoder->setRenderPipelineState(gShader->pso);
+	
+	if (!gPipelineStates.contains(gPipelineState))
+	{
+		auto shader = gPipelineState.shader;
+		
+		auto desc = MTL::RenderPipelineDescriptor::alloc()->init();
+		desc->setVertexFunction(shader->getMetalVertFunc());
+		desc->setFragmentFunction(shader->getMetalFragFunc());
+		desc->setVertexDescriptor(shader->getMetalVertexDescriptor());
+		desc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
+		//desc->setDepthAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth16Unorm);
+
+		NS::Error* error = nullptr;
+
+		auto pso = gDevice->newRenderPipelineState(desc, &error);
+
+		if (!pso)
+		{
+			auto reason = error->localizedDescription()->utf8String();
+			throw std::runtime_error(reason);
+		}
+		
+		gPipelineStates[gPipelineState] = pso;
+	}
+	
+	auto pso = gPipelineStates.at(gPipelineState);
+	
+	gRenderCommandEncoder->setRenderPipelineState(pso);
 
 	for (auto [binding, buffer] : gUniformBuffers)
 	{

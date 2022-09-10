@@ -87,7 +87,6 @@ static struct
 	ComPtr<ID3D12Resource> depth_stencil_resource;
 } gMainRenderTarget;
 
-
 static UINT gFrameIndex = 0;
 static HANDLE gFenceEvent = NULL;
 static ComPtr<ID3D12Fence> gFence;
