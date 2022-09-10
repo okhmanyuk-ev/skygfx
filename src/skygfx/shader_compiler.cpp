@@ -219,12 +219,23 @@ std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool 
 
 std::string skygfx::CompileSpirvToMsl(const std::vector<uint32_t>& spirv)
 {
-	auto compiler = spirv_cross::CompilerMSL(spirv);
+	class FixedCompilerMSL : public spirv_cross::CompilerMSL
+	{
+	public:
+		using spirv_cross::CompilerMSL::CompilerMSL;
+		
+		void replace_illegal_names() override
+		{
+			spirv_cross::CompilerGLSL::replace_illegal_names({ "fragment" });
+		}
+	};
+	
+	auto compiler = FixedCompilerMSL(spirv);
 	
 	spirv_cross::CompilerMSL::Options options;
 	options.enable_decoration_binding = true;
 	compiler.set_msl_options(options);
-	
+
 	return compiler.compile();
 }
 
