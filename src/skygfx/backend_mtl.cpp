@@ -17,21 +17,26 @@ using namespace skygfx;
 
 class ShaderMetal;
 class TextureMetal;
+class RenderTargetMetal;
 class BufferMetal;
 class IndexBufferMetal;
 
 struct PipelineStateMetal
 {
 	ShaderMetal* shader = nullptr;
+	RenderTargetMetal* render_target = nullptr;
 	
 	bool operator==(const PipelineStateMetal& value) const
 	{
-		return shader == value.shader;
+		return
+			shader == value.shader &&
+			render_target == value.render_target;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
-	t.shader);
+	t.shader,
+	t.render_target);
 
 static NS::AutoreleasePool* gAutoreleasePool = nullptr;
 static MTL::Device* gDevice = nullptr;
@@ -164,16 +169,20 @@ public:
 		}
 		
 		mTexture = gDevice->newTexture(desc);
-		mTexture->replaceRegion(MTL::Region(0, 0, 0, width, height, 1), 0, memory, width * channels);
 		
-		if (mipmap)
+		if (memory != nullptr)
 		{
-			auto cmd = gCommandQueue->commandBuffer();
-			auto enc = cmd->blitCommandEncoder();
-			enc->generateMipmaps(mTexture);
-			enc->endEncoding();
-			cmd->commit();
-			cmd->waitUntilCompleted();
+			mTexture->replaceRegion(MTL::Region(0, 0, 0, width, height, 1), 0, memory, width * channels);
+			
+			if (mipmap)
+			{
+				auto cmd = gCommandQueue->commandBuffer();
+				auto enc = cmd->blitCommandEncoder();
+				enc->generateMipmaps(mTexture);
+				enc->endEncoding();
+				cmd->commit();
+				cmd->waitUntilCompleted();
+			}
 		}
 		
 		desc->release();
@@ -196,10 +205,6 @@ private:
 public:
 	RenderTargetMetal(uint32_t width, uint32_t height, TextureMetal* texture) :
 		mTexture(texture)
-	{
-	}
-
-	~RenderTargetMetal()
 	{
 	}
 };
@@ -250,9 +255,10 @@ static NS::AutoreleasePool* gFrameAutoreleasePool = nullptr;
 static void begin()
 {
 	gFrameAutoreleasePool = NS::AutoreleasePool::alloc()->init();
-	
+
 	gCommandBuffer = gCommandQueue->commandBuffer();
 	gRenderPassDescriptor = gView->currentRenderPassDescriptor();
+	gRenderPassDescriptor->colorAttachments()->object(0)->setStoreAction(MTL::StoreAction::StoreActionStore);
 	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
 }
 
@@ -263,6 +269,25 @@ static void end()
 	gCommandBuffer->commit();
 	
 	gFrameAutoreleasePool->release();
+}
+
+static void ensureRenderTarget()
+{
+	auto render_texture = gPipelineState.render_target ?
+		gPipelineState.render_target->getTexture()->getMetalTexture() :
+		gView->currentDrawable()->texture();
+	
+	auto color_attachment = gRenderPassDescriptor->colorAttachments()->object(0);
+	
+	if (color_attachment->texture() != render_texture)
+	{
+		gRenderCommandEncoder->endEncoding();
+		gCommandBuffer->commit();
+		gCommandBuffer = gCommandQueue->commandBuffer();
+		color_attachment->setTexture(render_texture);
+		color_attachment->setLoadAction(MTL::LoadAction::LoadActionLoad);
+		gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
+	}
 }
 
 BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
@@ -334,10 +359,13 @@ void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 
 void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
 {
+	auto render_target = (RenderTargetMetal*)handle;
+	gPipelineState.render_target = render_target;
 }
 
 void BackendMetal::setRenderTarget(std::nullptr_t value)
 {
+	gPipelineState.render_target = nullptr;
 }
 
 void BackendMetal::setShader(ShaderHandle* handle)
@@ -393,9 +421,14 @@ void BackendMetal::setTextureAddress(TextureAddress value)
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
+	ensureRenderTarget();
+	
 	auto col = color.value();
-	gView->setClearColor(MTL::ClearColor::Make(col.r, col.g, col.b, col.a));
+	auto clear_color = MTL::ClearColor::Make(col.r, col.g, col.b, col.a);
 
+	gRenderPassDescriptor->colorAttachments()->object(0)->setClearColor(clear_color);
+	gRenderPassDescriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadAction::LoadActionClear);
+	
 	gRenderCommandEncoder->endEncoding();
 	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
 }
@@ -532,6 +565,8 @@ void BackendMetal::writeUniformBufferMemory(UniformBufferHandle* handle, void* m
 
 void BackendMetal::prepareForDrawing()
 {
+	ensureRenderTarget();
+	
 	for (auto [binding, texture] : gTextures)
 	{
 		gRenderCommandEncoder->setFragmentTexture(texture->getMetalTexture(), binding);
@@ -539,16 +574,20 @@ void BackendMetal::prepareForDrawing()
 	}
 
 	gRenderCommandEncoder->setVertexBuffer(gVertexBuffer->getMetalBuffer(), 0, gVertexBufferStageBinding);
-	
+
 	if (!gPipelineStates.contains(gPipelineState))
 	{
 		auto shader = gPipelineState.shader;
+		
+		auto pixel_format = gPipelineState.render_target ?
+			MTL::PixelFormat::PixelFormatRGBA8Unorm :
+			MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB;
 		
 		auto desc = MTL::RenderPipelineDescriptor::alloc()->init();
 		desc->setVertexFunction(shader->getMetalVertFunc());
 		desc->setFragmentFunction(shader->getMetalFragFunc());
 		desc->setVertexDescriptor(shader->getMetalVertexDescriptor());
-		desc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
+		desc->colorAttachments()->object(0)->setPixelFormat(pixel_format);
 		//desc->setDepthAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth16Unorm);
 
 		NS::Error* error = nullptr;
