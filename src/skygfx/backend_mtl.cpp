@@ -16,6 +16,7 @@
 using namespace skygfx;
 
 class ShaderMetal;
+class TextureMetal;
 class BufferMetal;
 class IndexBufferMetal;
 
@@ -31,7 +32,7 @@ static MTL::IndexType gIndexType = MTL::IndexType::IndexTypeUInt16;
 static IndexBufferMetal* gIndexBuffer = nullptr;
 static BufferMetal* gVertexBuffer = nullptr;
 static std::unordered_map<uint32_t, BufferMetal*> gUniformBuffers;
-static std::unordered_map<uint32_t, MTL::Texture*> gTextures;
+static std::unordered_map<uint32_t, TextureMetal*> gTextures;
 static MTL::SamplerState* gSamplerState = nullptr;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
@@ -135,10 +136,11 @@ public:
 
 class TextureMetal
 {
-	friend class BackendMetal;
+public:
+	auto getMetalTexture() const { return mTexture; }
 	
 private:
-	MTL::Texture* texture = nullptr;
+	MTL::Texture* mTexture = nullptr;
 	
 public:
 	TextureMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
@@ -159,14 +161,14 @@ public:
 			desc->setMipmapLevelCount(mip_count);
 		}
 		
-		texture = gDevice->newTexture(desc);
-		texture->replaceRegion(MTL::Region(0, 0, 0, width, height, 1), 0, memory, width * channels);
+		mTexture = gDevice->newTexture(desc);
+		mTexture->replaceRegion(MTL::Region(0, 0, 0, width, height, 1), 0, memory, width * channels);
 		
 		if (mipmap)
 		{
 			auto cmd = gCommandQueue->commandBuffer();
 			auto enc = cmd->blitCommandEncoder();
-			enc->generateMipmaps(texture);
+			enc->generateMipmaps(mTexture);
 			enc->endEncoding();
 			cmd->commit();
 			cmd->waitUntilCompleted();
@@ -177,7 +179,7 @@ public:
 
 	~TextureMetal()
 	{
-		texture->release();
+		mTexture->release();
 	}
 };
 
@@ -318,7 +320,7 @@ void BackendMetal::setScissor(std::optional<Scissor> scissor)
 void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureMetal*)handle;
-	gTextures[binding] = texture->texture;
+	gTextures[binding] = texture;
 }
 
 void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
@@ -447,6 +449,10 @@ ShaderHandle* BackendMetal::createShader(const Vertex::Layout& layout, const std
 void BackendMetal::destroyShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderMetal*)handle;
+	
+	if (gShader == shader)
+		gShader = nullptr;
+	
 	delete shader;
 }
 
@@ -459,6 +465,10 @@ VertexBufferHandle* BackendMetal::createVertexBuffer(size_t size, size_t stride)
 void BackendMetal::destroyVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (BufferMetal*)handle;
+
+	if (gVertexBuffer == buffer)
+		gVertexBuffer = nullptr;
+
 	delete buffer;
 }
 
@@ -477,6 +487,10 @@ IndexBufferHandle* BackendMetal::createIndexBuffer(size_t size, size_t stride)
 void BackendMetal::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferMetal*)handle;
+	
+	if (gIndexBuffer == buffer)
+		gIndexBuffer = nullptr;
+	
 	delete buffer;
 }
 
@@ -495,7 +509,7 @@ UniformBufferHandle* BackendMetal::createUniformBuffer(size_t size)
 
 void BackendMetal::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	auto buffer = (BufferMetal*)handle;
+	auto buffer = (BufferMetal*)handle;	
 	delete buffer;
 }
 
@@ -509,7 +523,7 @@ void BackendMetal::prepareForDrawing()
 {
 	for (auto [binding, texture] : gTextures)
 	{
-		gRenderCommandEncoder->setFragmentTexture(texture, binding);
+		gRenderCommandEncoder->setFragmentTexture(texture->getMetalTexture(), binding);
 		gRenderCommandEncoder->setFragmentSamplerState(gSamplerState, binding);
 	}
 
