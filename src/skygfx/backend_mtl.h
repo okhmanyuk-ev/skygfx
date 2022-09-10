@@ -21,9 +21,9 @@ namespace skygfx
 		void setRenderTarget(RenderTargetHandle* handle) override;
 		void setRenderTarget(std::nullptr_t value) override;
 		void setShader(ShaderHandle* handle) override;
-		void setVertexBuffer(const Buffer& buffer) override;
-		void setIndexBuffer(const Buffer& buffer) override;
-		void setUniformBuffer(uint32_t binding, void* memory, size_t size) override;
+		void setVertexBuffer(VertexBufferHandle* handle) override;
+		void setIndexBuffer(IndexBufferHandle* handle) override;
+		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(std::optional<DepthMode> depth_mode) override;
 		void setStencilMode(std::optional<StencilMode> stencil_mode) override;
@@ -50,7 +50,19 @@ namespace skygfx
 		ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
-		
+
+		VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) override;
+		void destroyVertexBuffer(VertexBufferHandle* handle) override;
+		void writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride) override;
+
+		IndexBufferHandle* createIndexBuffer(size_t size, size_t stride) override;
+		void destroyIndexBuffer(IndexBufferHandle* handle) override;
+		void writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride) override;
+
+		UniformBufferHandle* createUniformBuffer(size_t size) override;
+		void destroyUniformBuffer(UniformBufferHandle* handle) override;
+		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
+
 	private:
 		void prepareForDrawing();
 	};

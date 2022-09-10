@@ -15,6 +15,10 @@
 
 using namespace skygfx;
 
+class ShaderMetal;
+class BufferMetal;
+class IndexBufferMetal;
+
 static NS::AutoreleasePool* gAutoreleasePool = nullptr;
 static MTL::Device* gDevice = nullptr;
 static MTK::View* gView = nullptr;
@@ -24,19 +28,16 @@ static MTL::RenderPassDescriptor* gRenderPassDescriptor = nullptr;
 static MTL::RenderCommandEncoder* gRenderCommandEncoder = nullptr;
 static MTL::PrimitiveType gPrimitiveType = MTL::PrimitiveType::PrimitiveTypeTriangle;
 static MTL::IndexType gIndexType = MTL::IndexType::IndexTypeUInt16;
-static MTL::Buffer* gIndexBuffer = nullptr;
-static MTL::Buffer* gVertexBuffer = nullptr;
+static IndexBufferMetal* gIndexBuffer = nullptr;
+static BufferMetal* gVertexBuffer = nullptr;
+static std::unordered_map<uint32_t, BufferMetal*> gUniformBuffers;
 static std::unordered_map<uint32_t, MTL::Texture*> gTextures;
 static MTL::SamplerState* gSamplerState = nullptr;
-static std::unordered_map<uint32_t, MTL::Buffer*> gUniformBuffers;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
+static ShaderMetal* gShader = nullptr;
 
-class ShaderDataMetal;
-
-static ShaderDataMetal* gShader = nullptr;
-
-class ShaderDataMetal
+class ShaderMetal
 {
 	friend class BackendMetal;
 	
@@ -46,7 +47,7 @@ private:
 	MTL::RenderPipelineState* pso = nullptr;
 	
 public:
-	ShaderDataMetal(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderMetal(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
 		AddShaderLocationDefines(layout, defines);
@@ -124,7 +125,7 @@ public:
 		desc->release();
 	}
 
-	~ShaderDataMetal()
+	~ShaderMetal()
 	{
 		pso->release();
 		vert_library->release();
@@ -132,7 +133,7 @@ public:
 	}
 };
 
-class TextureDataMetal
+class TextureMetal
 {
 	friend class BackendMetal;
 	
@@ -140,7 +141,7 @@ private:
 	MTL::Texture* texture = nullptr;
 	
 public:
-	TextureDataMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+	TextureMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 	{
 		auto desc = MTL::TextureDescriptor::alloc()->init();
 		desc->setWidth(width);
@@ -174,20 +175,61 @@ public:
 		desc->release();
 	}
 
-	~TextureDataMetal()
+	~TextureMetal()
 	{
 		texture->release();
 	}
 };
 
-class RenderTargetDataMetal
+class RenderTargetMetal
 {
 public:
-	RenderTargetDataMetal(uint32_t width, uint32_t height, TextureDataMetal* _texture_data)
+	RenderTargetMetal(uint32_t width, uint32_t height, TextureMetal* _texture_data)
 	{
 	}
 
-	~RenderTargetDataMetal()
+	~RenderTargetMetal()
+	{
+	}
+};
+
+class BufferMetal
+{
+public:
+	auto getMetalBuffer() const { return mBuffer; }
+	
+private:
+	MTL::Buffer* mBuffer = nullptr;
+	
+public:
+	BufferMetal(size_t size)
+	{
+		mBuffer = gDevice->newBuffer(size, MTL::ResourceStorageModeManaged);
+	}
+	
+	~BufferMetal()
+	{
+		mBuffer->release();
+	}
+	
+	void write(void* memory, size_t size)
+	{
+		memcpy(mBuffer->contents(), memory, size);
+		mBuffer->didModifyRange(NS::Range::Make(0, size));
+	}
+};
+
+class IndexBufferMetal : public BufferMetal
+{
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
+	
+private:
+	size_t mStride = 0;
+	
+public:
+	IndexBufferMetal(size_t size, size_t stride) : BufferMetal(size), mStride(stride)
 	{
 	}
 };
@@ -241,12 +283,6 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 BackendMetal::~BackendMetal()
 {
 	end();
-	
-	for (auto [binding, buffer] : gUniformBuffers)
-	{
-		buffer->release();
-	}
-	
 	gSamplerState->release();
 	gCommandQueue->release();
 	gView->release();
@@ -281,7 +317,7 @@ void BackendMetal::setScissor(std::optional<Scissor> scissor)
 
 void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	auto texture = (TextureDataMetal*)handle;
+	auto texture = (TextureMetal*)handle;
 	gTextures[binding] = texture->texture;
 }
 
@@ -295,68 +331,27 @@ void BackendMetal::setRenderTarget(std::nullptr_t value)
 
 void BackendMetal::setShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderDataMetal*)handle;
+	auto shader = (ShaderMetal*)handle;
 	gShader = shader;
 }
 
-void BackendMetal::setVertexBuffer(const Buffer& buffer)
+void BackendMetal::setVertexBuffer(VertexBufferHandle* handle)
 {
-	if (gVertexBuffer == nullptr)
-	{
-		gVertexBuffer = gDevice->newBuffer(buffer.size, MTL::ResourceStorageModeManaged);
-	}
-	
-	if (gVertexBuffer->length() < buffer.size)
-	{
-		gVertexBuffer->release();
-		gVertexBuffer = gDevice->newBuffer(buffer.size, MTL::ResourceStorageModeManaged);
-	}
-
-	memcpy(gVertexBuffer->contents(), buffer.data, buffer.size);
-	gVertexBuffer->didModifyRange(NS::Range::Make(0, buffer.size));
+	auto buffer = (BufferMetal*)handle;
+	gVertexBuffer = buffer;
 }
 
-void BackendMetal::setIndexBuffer(const Buffer& buffer)
+void BackendMetal::setIndexBuffer(IndexBufferHandle* handle)
 {
-	if (gIndexBuffer == nullptr)
-	{
-		gIndexBuffer = gDevice->newBuffer(buffer.size, MTL::ResourceStorageModeManaged);
-	}
-	
-	if (gIndexBuffer->length() < buffer.size)
-	{
-		gIndexBuffer->release();
-		gIndexBuffer = gDevice->newBuffer(buffer.size, MTL::ResourceStorageModeManaged);
-	}
-
-	memcpy(gIndexBuffer->contents(), buffer.data, buffer.size);
-	gIndexBuffer->didModifyRange(NS::Range::Make(0, buffer.size));
-
-	gIndexType = buffer.stride == 2 ? MTL::IndexType::IndexTypeUInt16 : MTL::IndexType::IndexTypeUInt32;
+	auto buffer = (IndexBufferMetal*)handle;
+	gIndexBuffer = buffer;
+	gIndexType = buffer->getStride() == 2 ? MTL::IndexType::IndexTypeUInt16 : MTL::IndexType::IndexTypeUInt32;
 }
 
-void BackendMetal::setUniformBuffer(uint32_t binding, void* memory, size_t size)
+void BackendMetal::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	auto createBuffer = [&] {
-		return gDevice->newBuffer(size, MTL::ResourceStorageModeManaged);
-	};
-	
-	if (!gUniformBuffers.contains(binding))
-	{
-		gUniformBuffers.insert({ binding, createBuffer() });
-	}
-	
-	auto uniform_buffer = gUniformBuffers.at(binding);
-	
-	if (uniform_buffer->length() < size)
-	{
-		uniform_buffer->release();
-		uniform_buffer = createBuffer();
-		gUniformBuffers[binding] = uniform_buffer;
-	}
-
-	memcpy(uniform_buffer->contents(), memory, size);
-	uniform_buffer->didModifyRange(NS::Range::Make(0, size));
+	auto buffer = (BufferMetal*)handle;
+	gUniformBuffers[binding] = buffer;
 }
 
 void BackendMetal::setBlendMode(const BlendMode& value)
@@ -403,7 +398,7 @@ void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
 void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
-	gRenderCommandEncoder->drawIndexedPrimitives(gPrimitiveType, index_count, gIndexType, gIndexBuffer, index_offset);
+	gRenderCommandEncoder->drawIndexedPrimitives(gPrimitiveType, index_count, gIndexType, gIndexBuffer->getMetalBuffer(), index_offset);
 }
 
 void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
@@ -419,40 +414,95 @@ void BackendMetal::present()
 
 TextureHandle* BackendMetal::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 {
-	auto texture = new TextureDataMetal(width, height, channels, memory, mipmap);
+	auto texture = new TextureMetal(width, height, channels, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
 void BackendMetal::destroyTexture(TextureHandle* handle)
 {
-	auto texture = (TextureDataMetal*)handle;
+	auto texture = (TextureMetal*)handle;
 	delete texture;
 }
 
 RenderTargetHandle* BackendMetal::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
-	auto texture = (TextureDataMetal*)texture_handle;
-	auto render_target = new RenderTargetDataMetal(width, height, texture);
+	auto texture = (TextureMetal*)texture_handle;
+	auto render_target = new RenderTargetMetal(width, height, texture);
 	return (RenderTargetHandle*)render_target;
 }
 
 void BackendMetal::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetDataMetal*)handle;
+	auto render_target = (RenderTargetMetal*)handle;
 	delete render_target;
 }
 
 ShaderHandle* BackendMetal::createShader(const Vertex::Layout& layout, const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderDataMetal(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderMetal(layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 
 void BackendMetal::destroyShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderDataMetal*)handle;
+	auto shader = (ShaderMetal*)handle;
 	delete shader;
+}
+
+VertexBufferHandle* BackendMetal::createVertexBuffer(size_t size, size_t stride)
+{
+	auto buffer = new BufferMetal(size); // stride ?
+	return (VertexBufferHandle*)buffer;
+}
+
+void BackendMetal::destroyVertexBuffer(VertexBufferHandle* handle)
+{
+	auto buffer = (BufferMetal*)handle;
+	delete buffer;
+}
+
+void BackendMetal::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+{
+	auto buffer = (BufferMetal*)handle;
+	buffer->write(memory, size); // stride ?
+}
+
+IndexBufferHandle* BackendMetal::createIndexBuffer(size_t size, size_t stride)
+{
+	auto buffer = new IndexBufferMetal(size, stride);
+	return (IndexBufferHandle*)buffer;
+}
+
+void BackendMetal::destroyIndexBuffer(IndexBufferHandle* handle)
+{
+	auto buffer = (IndexBufferMetal*)handle;
+	delete buffer;
+}
+
+void BackendMetal::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
+{
+	auto buffer = (IndexBufferMetal*)handle;
+	buffer->write(memory, size);
+	buffer->setStride(stride);
+}
+
+UniformBufferHandle* BackendMetal::createUniformBuffer(size_t size)
+{
+	auto buffer = new BufferMetal(size);
+	return (UniformBufferHandle*)buffer;
+}
+
+void BackendMetal::destroyUniformBuffer(UniformBufferHandle* handle)
+{
+	auto buffer = (BufferMetal*)handle;
+	delete buffer;
+}
+
+void BackendMetal::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+{
+	auto buffer = (BufferMetal*)handle;
+	buffer->write(memory, size);
 }
 
 void BackendMetal::prepareForDrawing()
@@ -463,13 +513,13 @@ void BackendMetal::prepareForDrawing()
 		gRenderCommandEncoder->setFragmentSamplerState(gSamplerState, binding);
 	}
 
-	gRenderCommandEncoder->setVertexBuffer(gVertexBuffer, 0, gVertexBufferStageBinding);
+	gRenderCommandEncoder->setVertexBuffer(gVertexBuffer->getMetalBuffer(), 0, gVertexBufferStageBinding);
 	gRenderCommandEncoder->setRenderPipelineState(gShader->pso);
 
 	for (auto [binding, buffer] : gUniformBuffers)
 	{
-		gRenderCommandEncoder->setVertexBuffer(buffer, 0, binding);
-		gRenderCommandEncoder->setFragmentBuffer(buffer, 0, binding);
+		gRenderCommandEncoder->setVertexBuffer(buffer->getMetalBuffer(), 0, binding);
+		gRenderCommandEncoder->setFragmentBuffer(buffer->getMetalBuffer(), 0, binding);
 	}
 	
 	static const std::unordered_map<CullMode, MTL::CullMode> CullModes = {
