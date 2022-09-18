@@ -534,7 +534,7 @@ class UniformBufferD3D12 : public BufferD3D12
 	friend class BackendD3D12;
 
 public:
-	UniformBufferD3D12(size_t _size) : BufferD3D12(RoundUp((int)_size, 256))
+	UniformBufferD3D12(size_t _size) : BufferD3D12(RoundUp((int)_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT))
 	{
 	}
 };
