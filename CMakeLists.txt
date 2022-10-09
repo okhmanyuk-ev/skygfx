@@ -36,6 +36,7 @@ elseif(APPLE)
 	endif()
 
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_APPLE)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
 
 	target_link_libraries(${PROJECT_NAME}
 		"-ObjC"
@@ -59,8 +60,6 @@ elseif(APPLE)
 		)
 
 		add_definitions(-DGLES_SILENCE_DEPRECATION)
-	else()
-		target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
 	endif()
 endif()
 
