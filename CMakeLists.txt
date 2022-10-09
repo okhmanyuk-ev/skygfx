@@ -31,25 +31,37 @@ if(WIN32)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)
 elseif(APPLE)
-	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_APPLE)
-#	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
-	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
+	if(CMAKE_OSX_SYSROOT STREQUAL iphoneos)
+		set(IOS True)
+	endif()
 
-	set(OBJC_SOURCES
-		src/skygfx/backend_gl.cpp
-	)
-	set_source_files_properties(${OBJC_SOURCES} PROPERTIES COMPILE_FLAGS "-x objective-c++ -fembed-bitcode")
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_APPLE)
 
 	target_link_libraries(${PROJECT_NAME}
 		"-ObjC"
 		"-framework Metal"
 		"-framework GLKit"
-		"-framework OpenGLES"
-		"-framework UIKit"
 		"-framework Foundation"
 	)
 
-	add_definitions(-DGLES_SILENCE_DEPRECATION)
+	if(IOS)
+		target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
+
+		set(OBJC_SOURCES
+			src/skygfx/backend_gl.cpp
+		)
+
+		set_source_files_properties(${OBJC_SOURCES} PROPERTIES COMPILE_FLAGS "-x objective-c++ -fembed-bitcode")
+
+		target_link_libraries(${PROJECT_NAME}
+			"-framework OpenGLES"
+			"-framework UIKit"
+		)
+
+		add_definitions(-DGLES_SILENCE_DEPRECATION)
+	else()
+		target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
+	endif()
 endif()
 
 # glew
