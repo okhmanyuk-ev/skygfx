@@ -623,9 +623,13 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	
 	auto glViewRect = [contentView bounds];
 	glView = [[NSOpenGLView alloc] initWithFrame:glViewRect pixelFormat:pixelFormat];
-	
+
 	[pixelFormat release];
 	
+	// This fixes bug when image is in lower left corner.
+	// TODO: find another solution to fix this bug
+	[glView setWantsBestResolutionOpenGLSurface:false];
+
 	// GLFW creates a helper contentView that handles things like keyboard and drag and
 	// drop events. We don't want to clobber that view if it exists. Instead we just
 	// add ourselves as a subview and make the view resize automatically.
@@ -664,7 +668,6 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	{
 		dispatch_sync(dispatch_get_main_queue(),set_view);
 	}
-	
 #endif
 	glGenBuffers(1, &gPixelBuffer);
 
