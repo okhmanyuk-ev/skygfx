@@ -13,12 +13,16 @@
 	#include <GL/wglew.h>
 	#pragma comment(lib, "opengl32")
 	#pragma comment(lib, "glu32")
-#elif defined(SKYGFX_PLATFORM_APPLE)
+#elif defined(SKYGFX_PLATFORM_IOS)
 	#include <OpenGLES/ES3/gl.h>
 	#include <OpenGLES/ES3/glext.h>
 	#import <Foundation/Foundation.h>
 	#import <UIKit/UIKit.h>
 	#import <GLKit/GLKit.h>
+#elif defined(SKYGFX_PLATFORM_MACOS)
+	#include <OpenGL/OpenGL.h>
+	#include <OpenGL/gl3.h>
+	#import <AppKit/AppKit.h>
 #endif
 
 using namespace skygfx;
@@ -156,19 +160,38 @@ public:
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
-#if defined(SKYGFX_PLATFORM_APPLE)
-		bool es = true;
-		uint32_t version = 300;
+		struct {
+			bool es;
+			uint32_t version;
+			bool enable_420pack_extension;
+			bool force_flattened_io_blocks;
+		} options;
+
+#if defined(SKYGFX_PLATFORM_IOS)
+		options.es = true;
+		options.version = 300;
+		options.enable_420pack_extension = true;
+		options.force_flattened_io_blocks = false;
 		// TODO: android can be 320
 		// TODO: since 310 we have uniform(std140, binding = 1), 300 have uniform(std140)
 #elif defined(SKYGFX_PLATFORM_WINDOWS)
-		bool es = false;
-		uint32_t version = 450;
+		options.es = false;
+		options.version = 450;
+		options.enable_420pack_extension = true;
+		options.force_flattened_io_blocks = false;
+#elif defined(SKYGFX_PLATFORM_MACOS)
+		options.es = false;
+		options.version = 410;
+		options.enable_420pack_extension = false;
+		options.force_flattened_io_blocks = true;
 #endif
 
-		auto glsl_vert = skygfx::CompileSpirvToGlsl(vertex_shader_spirv, es, version);
-		auto glsl_frag = skygfx::CompileSpirvToGlsl(fragment_shader_spirv, es, version);
+		auto glsl_vert = skygfx::CompileSpirvToGlsl(vertex_shader_spirv, options.es, options.version,
+			options.enable_420pack_extension, options.force_flattened_io_blocks);
 
+		auto glsl_frag = skygfx::CompileSpirvToGlsl(fragment_shader_spirv, options.es, options.version,
+			options.enable_420pack_extension, options.force_flattened_io_blocks);
+		
 		auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
 		auto v = glsl_vert.c_str();
 		glShaderSource(vertexShader, 1, &v, NULL);
@@ -238,7 +261,7 @@ public:
 #endif
 		}
 		
-		if (es && version <= 300)
+		if (options.es && options.version <= 300)
 		{
 			auto fix_bindings = [&](const ShaderReflection& reflection) {
 				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
@@ -267,7 +290,7 @@ public:
 		glBindVertexArray(vao);
 	}
 	
-#if defined(SKYGFX_PLATFORM_APPLE)
+#if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
 	void applyLayout()
 	{
 		for (int i = 0; i < layout.attributes.size(); i++)
@@ -458,8 +481,11 @@ public:
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 static HGLRC WglContext;
 static HDC gHDC;
-#elif defined(SKYGFX_PLATFORM_APPLE)
+#elif defined(SKYGFX_PLATFORM_IOS)
 static GLKView* gGLKView = nullptr;
+#elif defined(SKYGFX_PLATFORM_MACOS)
+NSOpenGLView* glView;
+NSOpenGLContext *glContext;
 #endif
 
 static GLenum gTopology;
@@ -554,7 +580,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 
 	bool vsync = false;
 	wglSwapIntervalEXT(vsync ? 1 : 0);
-#elif defined(SKYGFX_PLATFORM_APPLE)
+#elif defined(SKYGFX_PLATFORM_IOS)
 	auto _window = (UIWindow*)window;
 	auto rootView = [[_window rootViewController] view];
 	gGLKView = [[GLKView alloc] initWithFrame:[_window frame]];
@@ -566,6 +592,79 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	[gGLKView setAutoresizingMask:UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight];
 	[EAGLContext setCurrentContext:gGLKView.context];
 	[rootView addSubview:gGLKView];
+#elif defined(SKYGFX_PLATFORM_MACOS)
+	NSObject* nwh = (NSObject*)window;
+	NSView* contentView = nil;
+	NSWindow* nsWindow = nil;
+	
+	if ([nwh isKindOfClass:[NSView class]])
+	{
+		contentView = (NSView*)nwh;
+	}
+	else if ([nwh isKindOfClass:[NSWindow class]])
+	{
+		nsWindow = (NSWindow*)nwh;
+		contentView = [nsWindow contentView];
+	}
+
+	NSOpenGLPixelFormatAttribute pixelFormatAttribs[] = {
+		NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion4_1Core,
+		NSOpenGLPFAColorSize,     24,
+		NSOpenGLPFAAlphaSize,     8,
+		NSOpenGLPFADepthSize,     24,
+		NSOpenGLPFAStencilSize,   8,
+		NSOpenGLPFADoubleBuffer,  true,
+		NSOpenGLPFAAccelerated,   true,
+		NSOpenGLPFANoRecovery,    true,
+		0,                        0,
+	};
+	
+	auto pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttribs];
+	
+	auto glViewRect = [contentView bounds];
+	glView = [[NSOpenGLView alloc] initWithFrame:glViewRect pixelFormat:pixelFormat];
+	
+	[pixelFormat release];
+	
+	// GLFW creates a helper contentView that handles things like keyboard and drag and
+	// drop events. We don't want to clobber that view if it exists. Instead we just
+	// add ourselves as a subview and make the view resize automatically.
+	if (contentView != nil)
+	{
+		[glView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
+				NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin )];
+		[contentView addSubview:glView];
+	}
+	else
+	{
+		if (nil != nsWindow)
+			[nsWindow setContentView:glView];
+	}
+	
+	glContext = [glView openGLContext];
+
+	[glContext makeCurrentContext];
+	GLint interval = 0;
+	[glContext setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
+	
+	// When initializing NSOpenGLView programmatically (as we are), this sometimes doesn't
+	// get hooked up properly (especially when there are existing window elements). This ensures
+	// we are valid. Otherwise, you'll probably get a GL_INVALID_FRAMEBUFFER_OPERATION when
+	// trying to glClear() for the first time.
+	
+	void (^set_view)(void) = ^(void) {
+		[glContext setView:glView];
+	};
+	
+	if([NSThread isMainThread])
+	{
+		set_view();
+	}
+	else
+	{
+		dispatch_sync(dispatch_get_main_queue(),set_view);
+	}
+	
 #endif
 	glGenBuffers(1, &gPixelBuffer);
 
@@ -581,6 +680,8 @@ BackendGL::~BackendGL()
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	wglDeleteContext(WglContext);
+#elif defined(SKYGFX_PLATFORM_MACOS)
+	[glView release];
 #endif
 }
 
@@ -657,9 +758,9 @@ void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendGL::setRenderTarget(std::nullptr_t value)
 {
-#if defined(SKYGFX_PLATFORM_WINDOWS)
+#if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-#elif defined(SKYGFX_PLATFORM_APPLE)
+#elif defined(SKYGFX_PLATFORM_IOS)
 	[gGLKView bindDrawable];
 #endif
 	gRenderTarget = nullptr;
@@ -696,7 +797,6 @@ void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 void BackendGL::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferGL*)handle;
-
 	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->buffer);
 }
 
@@ -889,10 +989,11 @@ void BackendGL::present()
 	CheckErrors();
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	SwapBuffers(gHDC);
-#elif defined(SKYGFX_PLATFORM_APPLE)
+#elif defined(SKYGFX_PLATFORM_IOS)
 	[gGLKView display];
+#elif defined(SKYGFX_PLATFORM_MACOS)
+	[glContext flushBuffer];
 #endif
-
 	gExecuteAfterPresent.flush();
 }
 
@@ -1028,11 +1129,11 @@ void BackendGL::prepareForDrawing()
 		glBindBuffer(GL_ARRAY_BUFFER, gVertexBuffer->buffer);		
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 		glBindVertexBuffer(0, gVertexBuffer->buffer, 0, (GLsizei)gVertexBuffer->stride);
-#elif defined(SKYGFX_PLATFORM_APPLE)
+#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
 		gShader->applyLayout();
 #endif
 	}
-	
+
 	if (gTexParametersDirty)
 	{
 		for (auto [binding, texture_handle] : gTextures)
@@ -1099,7 +1200,7 @@ void BackendGL::prepareForDrawing()
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 		glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
-#elif defined(SKYGFX_PLATFORM_APPLE)
+#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
 		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
 #endif
 	}

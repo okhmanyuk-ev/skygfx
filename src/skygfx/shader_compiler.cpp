@@ -181,21 +181,29 @@ std::string skygfx::CompileSpirvToHlsl(const std::vector<uint32_t>& spirv, uint3
 	return compiler.compile();
 }
 
-std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool es, uint32_t version)
+std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool es,
+	uint32_t version, bool enable_420pack_extension, bool force_flattened_io_blocks)
 {
 	auto compiler = spirv_cross::CompilerGLSL(spirv);
 
 	spirv_cross::CompilerGLSL::Options options;
 	options.es = es;
 	options.version = version;
+	options.enable_420pack_extension = enable_420pack_extension;
+	options.force_flattened_io_blocks = force_flattened_io_blocks;
 	compiler.set_common_options(options);
 	
-	if (es && version <= 300)
+	bool fix_varyings = es && version <= 300;
+
+#if defined(SKYGFX_PLATFORM_MACOS)
+	fix_varyings = true;
+#endif
+
+	if (fix_varyings)
 	{
 		// https://github.com/KhronosGroup/SPIRV-Cross/issues/1104
 		
 		auto stage = compiler.get_entry_points_and_stages()[0].execution_model;
-
 		auto resources = compiler.get_shader_resources();
 		
 		if (stage == spv::ExecutionModelFragment)
