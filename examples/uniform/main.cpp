@@ -74,7 +74,6 @@ int main()
 	auto window_pos_y = (video_mode->height / 2) - (height / 2);
 
 	glfwSetWindowPos(window, window_pos_x, window_pos_y);
-	glfwMakeContextCurrent(window);
 
 	auto native_window = utils::GetNativeWindow(window);
 
