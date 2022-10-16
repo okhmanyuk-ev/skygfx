@@ -191,7 +191,7 @@ public:
 
 		auto glsl_frag = skygfx::CompileSpirvToGlsl(fragment_shader_spirv, options.es, options.version,
 			options.enable_420pack_extension, options.force_flattened_io_blocks);
-		
+
 		auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
 		auto v = glsl_vert.c_str();
 		glShaderSource(vertexShader, 1, &v, NULL);
@@ -261,7 +261,12 @@ public:
 #endif
 		}
 		
-		if (options.es && options.version <= 300)
+		bool want_fix_bindings = options.es && options.version <= 300;
+
+#if defined(SKYGFX_PLATFORM_MACOS)
+		want_fix_bindings = true;
+#endif
+		if (want_fix_bindings)
 		{
 			auto fix_bindings = [&](const ShaderReflection& reflection) {
 				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
@@ -327,7 +332,7 @@ public:
 		glGenTextures(1, &texture);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-
+		
 		if (memory)
 		{
 			auto temp_data = malloc(width * height * 4); // TODO: we should not use magic numbers
@@ -627,7 +632,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	[pixelFormat release];
 	
 	// This fixes bug when image is in lower left corner.
-	// TODO: find another solution to fix this bug
+	// TODO: find another way to fix this bug
 	[glView setWantsBestResolutionOpenGLSurface:false];
 
 	// GLFW creates a helper contentView that handles things like keyboard and drag and
