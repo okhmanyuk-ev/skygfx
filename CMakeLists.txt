@@ -41,12 +41,15 @@ elseif(APPLE)
 	target_link_libraries(${PROJECT_NAME}
 		"-ObjC"
 		"-framework Metal"
+		"-framework MetalKit"
 		"-framework GLKit"
 		"-framework Foundation"
 	)
 	
 	set(OBJC_SOURCES
 		src/skygfx/backend_gl.cpp
+		src/skygfx/backend_mtl.cpp
+		src/skygfx/backend_mtl_bridge.cpp
 	)
 
 	set_source_files_properties(${OBJC_SOURCES} PROPERTIES COMPILE_FLAGS "-x objective-c++ -fembed-bitcode")
@@ -160,11 +163,6 @@ if(WIN32)
 	target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_WIN32_KHR)
 endif()
 target_link_libraries(${PROJECT_NAME} vulkan)
-
-# metal-cpp
-
-target_include_directories(${PROJECT_NAME} PUBLIC lib/metal-cpp)
-target_include_directories(${PROJECT_NAME} PUBLIC lib/metal-cpp-extensions)
 
 # d3d12
 

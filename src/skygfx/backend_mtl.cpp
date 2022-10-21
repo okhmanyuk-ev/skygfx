@@ -4,14 +4,9 @@
 
 #include <unordered_map>
 
-#define NS_PRIVATE_IMPLEMENTATION
-#define MTL_PRIVATE_IMPLEMENTATION
-#define MTK_PRIVATE_IMPLEMENTATION
-#define CA_PRIVATE_IMPLEMENTATION
-
-#include <Metal/Metal.hpp>
-#include <AppKit/AppKit.hpp>
-#include <MetalKit/MetalKit.hpp>
+#import <AppKit/AppKit.h>
+#import <Metal/Metal.h>
+#import <MetalKit/MetalKit.h>
 
 using namespace skygfx;
 
@@ -38,25 +33,25 @@ SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
 	t.shader,
 	t.render_target);
 
-static NS::AutoreleasePool* gAutoreleasePool = nullptr;
-static MTL::Device* gDevice = nullptr;
-static MTK::View* gView = nullptr;
-static MTL::CommandQueue* gCommandQueue = nullptr;
-static MTL::CommandBuffer* gCommandBuffer = nullptr;
-static MTL::RenderPassDescriptor* gRenderPassDescriptor = nullptr;
-static MTL::RenderCommandEncoder* gRenderCommandEncoder = nullptr;
-static MTL::PrimitiveType gPrimitiveType = MTL::PrimitiveType::PrimitiveTypeTriangle;
-static MTL::IndexType gIndexType = MTL::IndexType::IndexTypeUInt16;
+static NSAutoreleasePool* gAutoreleasePool = nullptr;
+static id<MTLDevice> gDevice = nullptr;
+static MTKView* gView = nullptr;
+static id<MTLCommandQueue> gCommandQueue = nullptr;
+static id<MTLCommandBuffer> gCommandBuffer = nullptr;
+static MTLRenderPassDescriptor* gRenderPassDescriptor = nullptr;
+static id<MTLRenderCommandEncoder> gRenderCommandEncoder = nullptr;
+static MTLPrimitiveType gPrimitiveType = MTLPrimitiveTypeTriangle;
+static MTLIndexType gIndexType = MTLIndexTypeUInt16;
 static IndexBufferMetal* gIndexBuffer = nullptr;
 static BufferMetal* gVertexBuffer = nullptr;
 static std::unordered_map<uint32_t, BufferMetal*> gUniformBuffers;
 static std::unordered_map<uint32_t, TextureMetal*> gTextures;
-static MTL::SamplerState* gSamplerState = nullptr;
+static id<MTLSamplerState> gSamplerState = nullptr;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
 
 static PipelineStateMetal gPipelineState;
-static std::unordered_map<PipelineStateMetal, MTL::RenderPipelineState*> gPipelineStates;
+static std::unordered_map<PipelineStateMetal, id<MTLRenderPipelineState>> gPipelineStates;
 
 class ShaderMetal
 {
@@ -66,11 +61,11 @@ public:
 	auto getMetalVertexDescriptor() const { return mVertexDescriptor; }
 	
 private:
-	MTL::Library* mVertLib = nullptr;
-	MTL::Library* mFragLib = nullptr;
-	MTL::Function* mVertFunc = nullptr;
-	MTL::Function* mFragFunc = nullptr;
-	MTL::VertexDescriptor* mVertexDescriptor = nullptr;
+	id<MTLLibrary> mVertLib = nullptr;
+	id<MTLLibrary> mFragLib = nullptr;
+	id<MTLFunction> mVertFunc = nullptr;
+	id<MTLFunction> mFragFunc = nullptr;
+	MTLVertexDescriptor* mVertexDescriptor = nullptr;
 	
 public:
 	ShaderMetal(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -83,61 +78,63 @@ public:
 
 		auto msl_vert = CompileSpirvToMsl(vertex_shader_spirv);
 		auto msl_frag = CompileSpirvToMsl(fragment_shader_spirv);
-		
-		NS::Error* error = nullptr;
-		
-		mVertLib = gDevice->newLibrary(NS::String::string(msl_vert.c_str(), NS::StringEncoding::UTF8StringEncoding), nullptr, &error);
+
+		NSError* error = nil;
+	
+		mVertLib = [gDevice newLibraryWithSource:[NSString stringWithUTF8String:msl_vert.c_str()] options:nil error:&error];
+	
 		if (!mVertLib)
 		{
-			auto reason = error->localizedDescription()->utf8String();
+			auto reason = error.localizedDescription.UTF8String;
 			throw std::runtime_error(reason);
 		}
-
-		mFragLib = gDevice->newLibrary(NS::String::string(msl_frag.c_str(), NS::StringEncoding::UTF8StringEncoding), nullptr, &error);
+	
+		mFragLib = [gDevice newLibraryWithSource:[NSString stringWithUTF8String:msl_frag.c_str()] options:nil error:&error];
+	
 		if (!mFragLib)
 		{
-			auto reason = error->localizedDescription()->utf8String();
+			auto reason = error.localizedDescription.UTF8String;
 			throw std::runtime_error(reason);
 		}
-		
-		mVertFunc = mVertLib->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
-		mFragFunc = mFragLib->newFunction(NS::String::string("main0", NS::StringEncoding::UTF8StringEncoding));
 
-		static const std::unordered_map<Vertex::Attribute::Format, MTL::VertexFormat> Format = {
-			{ Vertex::Attribute::Format::R32F, MTL::VertexFormat::VertexFormatFloat },
-			{ Vertex::Attribute::Format::R32G32F, MTL::VertexFormat::VertexFormatFloat2 },
-			{ Vertex::Attribute::Format::R32G32B32F, MTL::VertexFormat::VertexFormatFloat3 },
-			{ Vertex::Attribute::Format::R32G32B32A32F, MTL::VertexFormat::VertexFormatFloat4 },
+		mVertFunc = [mVertLib newFunctionWithName:@"main0"];
+		mFragFunc = [mFragLib newFunctionWithName:@"main0"];
+	
+		static const std::unordered_map<Vertex::Attribute::Format, MTLVertexFormat> Format = {
+			{ Vertex::Attribute::Format::R32F, MTLVertexFormatFloat },
+			{ Vertex::Attribute::Format::R32G32F, MTLVertexFormatFloat2 },
+			{ Vertex::Attribute::Format::R32G32B32F, MTLVertexFormatFloat3 },
+			{ Vertex::Attribute::Format::R32G32B32A32F, MTLVertexFormatFloat4 },
 			//{ Vertex::Attribute::Format::R8UN, },
 			//{ Vertex::Attribute::Format::R8G8UN, },
 			//{ Vertex::Attribute::Format::R8G8B8UN, },
-			{ Vertex::Attribute::Format::R8G8B8A8UN, MTL::VertexFormat::VertexFormatUChar4Normalized }
+			{ Vertex::Attribute::Format::R8G8B8A8UN, MTLVertexFormatUChar4Normalized }
 		};
-
-		mVertexDescriptor = MTL::VertexDescriptor::alloc()->init();
+	
+		mVertexDescriptor = [[MTLVertexDescriptor alloc] init];
 		
 		for (int i = 0; i < layout.attributes.size(); i++)
 		{
 			const auto& attrib = layout.attributes.at(i);
-			auto desc = mVertexDescriptor->attributes()->object(i);
-			desc->setFormat(Format.at(attrib.format));
-			desc->setOffset(attrib.offset);
-			desc->setBufferIndex(gVertexBufferStageBinding);
+			auto desc = mVertexDescriptor.attributes[i];
+			desc.format = Format.at(attrib.format);
+			desc.offset = attrib.offset;
+			desc.bufferIndex = gVertexBufferStageBinding;
 		}
 
-		auto vertex_layout = mVertexDescriptor->layouts()->object(gVertexBufferStageBinding);
-		vertex_layout->setStride(layout.stride);
-		vertex_layout->setStepRate(1);
-		vertex_layout->setStepFunction(MTL::VertexStepFunction::VertexStepFunctionPerVertex);
+		auto vertex_layout = mVertexDescriptor.layouts[gVertexBufferStageBinding];
+		vertex_layout.stride = layout.stride;
+		vertex_layout.stepRate = 1;
+		vertex_layout.stepFunction = MTLVertexStepFunctionPerVertex;
 	}
 
 	~ShaderMetal()
 	{
-		mVertLib->release();
-		mFragLib->release();
-		mVertexDescriptor->release();
-		mVertFunc->release();
-		mFragFunc->release();
+		[mVertLib release];
+		[mFragLib release];
+		[mVertexDescriptor release];
+		[mVertFunc release];
+		[mFragFunc release];
 	}
 };
 
@@ -147,50 +144,52 @@ public:
 	auto getMetalTexture() const { return mTexture; }
 	
 private:
-	MTL::Texture* mTexture = nullptr;
+	id<MTLTexture> mTexture = nullptr;
 	
 public:
 	TextureMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
 	{
-		auto desc = MTL::TextureDescriptor::alloc()->init();
-		desc->setWidth(width);
-		desc->setHeight(height);
-		desc->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
-		desc->setTextureType(MTL::TextureType2D);
-		desc->setStorageMode(MTL::StorageModeManaged);
-		desc->setUsage(MTL::ResourceUsageSample | MTL::ResourceUsageRead | MTL::ResourceUsageWrite);
-
+		auto desc = [[MTLTextureDescriptor alloc] init];
+		desc.width = width;
+		desc.height = height;
+		desc.pixelFormat = MTLPixelFormatRGBA8Unorm;
+		desc.textureType = MTLTextureType2D;
+		desc.storageMode = MTLStorageModeManaged;
+		desc.usage = MTLResourceUsageSample | MTLResourceUsageRead | MTLResourceUsageWrite;
+	
 		if (mipmap)
 		{
 			int height_levels = ceil(log2(height));
 			int width_levels = ceil(log2(width));
 			int mip_count = (height_levels > width_levels) ? height_levels : width_levels;
-			desc->setMipmapLevelCount(mip_count);
+			desc.mipmapLevelCount = mip_count;
 		}
-		
-		mTexture = gDevice->newTexture(desc);
-		
+
+		mTexture = [gDevice newTextureWithDescriptor:desc];
+
+		[desc release];
+
 		if (memory != nullptr)
 		{
-			mTexture->replaceRegion(MTL::Region(0, 0, 0, width, height, 1), 0, memory, width * channels);
-			
+			auto region = MTLRegionMake2D(0, 0, width, height);
+			[mTexture replaceRegion:region mipmapLevel:0 withBytes:memory bytesPerRow:width * channels];
+		
 			if (mipmap)
 			{
-				auto cmd = gCommandQueue->commandBuffer();
-				auto enc = cmd->blitCommandEncoder();
-				enc->generateMipmaps(mTexture);
-				enc->endEncoding();
-				cmd->commit();
-				cmd->waitUntilCompleted();
+				auto cmd = gCommandQueue.commandBuffer;
+				auto enc = cmd.blitCommandEncoder;
+			
+				[enc generateMipmapsForTexture:mTexture];
+				[enc endEncoding];
+				[cmd commit];
+				[cmd waitUntilCompleted];
 			}
 		}
-		
-		desc->release();
 	}
 
 	~TextureMetal()
 	{
-		mTexture->release();
+		[mTexture release];
 	}
 };
 
@@ -215,23 +214,23 @@ public:
 	auto getMetalBuffer() const { return mBuffer; }
 	
 private:
-	MTL::Buffer* mBuffer = nullptr;
+	id<MTLBuffer> mBuffer = nullptr;
 	
 public:
 	BufferMetal(size_t size)
 	{
-		mBuffer = gDevice->newBuffer(size, MTL::ResourceStorageModeManaged);
+		mBuffer = [gDevice newBufferWithLength:size options:MTLResourceStorageModeManaged];
 	}
 	
 	~BufferMetal()
 	{
-		mBuffer->release();
+		[mBuffer release];
 	}
 	
 	void write(void* memory, size_t size)
 	{
-		memcpy(mBuffer->contents(), memory, size);
-		mBuffer->didModifyRange(NS::Range::Make(0, size));
+		memcpy(mBuffer.contents, memory, size);
+		[mBuffer didModifyRange:NSMakeRange(0, size)];
 	}
 };
 
@@ -250,68 +249,89 @@ public:
 	}
 };
 
-static NS::AutoreleasePool* gFrameAutoreleasePool = nullptr;
+static NSAutoreleasePool* gFrameAutoreleasePool = nullptr;
 
 static void begin()
 {
-	gFrameAutoreleasePool = NS::AutoreleasePool::alloc()->init();
+	gFrameAutoreleasePool = [[NSAutoreleasePool alloc] init];
 
-	gCommandBuffer = gCommandQueue->commandBuffer();
-	gRenderPassDescriptor = gView->currentRenderPassDescriptor();
-	gRenderPassDescriptor->colorAttachments()->object(0)->setStoreAction(MTL::StoreAction::StoreActionStore);
-	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
+	gCommandBuffer = gCommandQueue.commandBuffer;
+	gRenderPassDescriptor = gView.currentRenderPassDescriptor;
+	gRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
 }
 
 static void end()
 {
-	gRenderCommandEncoder->endEncoding();
-	gCommandBuffer->presentDrawable(gView->currentDrawable());
-	gCommandBuffer->commit();
+	[gRenderCommandEncoder endEncoding];
+	[gCommandBuffer presentDrawable:gView.currentDrawable];
+	[gCommandBuffer commit];
 	
-	gFrameAutoreleasePool->release();
+	[gFrameAutoreleasePool release];
 }
 
 static void ensureRenderTarget()
 {
 	auto render_texture = gPipelineState.render_target ?
 		gPipelineState.render_target->getTexture()->getMetalTexture() :
-		gView->currentDrawable()->texture();
+		gView.currentDrawable.texture;
 	
-	auto color_attachment = gRenderPassDescriptor->colorAttachments()->object(0);
+	auto color_attachment = gRenderPassDescriptor.colorAttachments[0];
 	
-	if (color_attachment->texture() != render_texture)
+	if (color_attachment.texture != render_texture)
 	{
-		gRenderCommandEncoder->endEncoding();
-		gCommandBuffer->commit();
-		gCommandBuffer = gCommandQueue->commandBuffer();
-		color_attachment->setTexture(render_texture);
-		color_attachment->setLoadAction(MTL::LoadAction::LoadActionLoad);
-		gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
+		[gRenderCommandEncoder endEncoding];
+		[gCommandBuffer commit];
+		gCommandBuffer = gCommandQueue.commandBuffer;
+		color_attachment.texture = render_texture;
+		color_attachment.loadAction = MTLLoadActionLoad;
+		gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
 	}
 }
 
 BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 {
-	gAutoreleasePool = NS::AutoreleasePool::alloc()->init();
-	
-	gDevice = MTL::CreateSystemDefaultDevice();
-	
-	auto frame = CGRect{ { 0.0, 0.0 }, { (float)width, (float)height } };
-	
-	gView = MTK::View::alloc()->init(frame, gDevice);
-	gView->setColorPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB);
+	gAutoreleasePool = [[NSAutoreleasePool alloc] init];
 
-	auto _window = (NS::Window*)window;
-	_window->setContentView(gView);
+	gDevice = MTLCreateSystemDefaultDevice();
+
+	auto frame = CGRectMake(0.0f, 0.0f, (float)width, (float)height);
+	gView = [[MTKView alloc] initWithFrame:frame device:gDevice];
+
+	gView.colorPixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
+
+	NSObject* nwh = (NSObject*)window;
+	NSView* contentView = nil;
+	NSWindow* nsWindow = nil;
 	
-	gCommandQueue = gDevice->newCommandQueue();
+	if ([nwh isKindOfClass:[NSView class]])
+	{
+		contentView = (NSView*)nwh;
+	}
+	else if ([nwh isKindOfClass:[NSWindow class]])
+	{
+		nsWindow = (NSWindow*)nwh;
+		contentView = [nsWindow contentView];
+	}
+
+	if (contentView != nil)
+	{
+		[contentView addSubview:gView];
+	}
+	else
+	{
+		if (nil != nsWindow)
+			[nsWindow setContentView:gView];
+	}
 	
-	auto sampler_desc = MTL::SamplerDescriptor::alloc()->init();
-	sampler_desc->setMagFilter(MTL::SamplerMinMagFilter::SamplerMinMagFilterLinear);
-	sampler_desc->setMinFilter(MTL::SamplerMinMagFilter::SamplerMinMagFilterLinear);
-	sampler_desc->setMipFilter(MTL::SamplerMipFilter::SamplerMipFilterLinear);
-	gSamplerState = gDevice->newSamplerState(sampler_desc);
-	sampler_desc->release();
+	gCommandQueue = gDevice.newCommandQueue;
+	
+	auto sampler_desc = [[MTLSamplerDescriptor alloc] init];
+	sampler_desc.magFilter = MTLSamplerMinMagFilterLinear;
+	sampler_desc.minFilter = MTLSamplerMinMagFilterLinear;
+	sampler_desc.mipFilter = MTLSamplerMipFilterLinear;
+	gSamplerState = [gDevice newSamplerStateWithDescriptor:sampler_desc];
+	[sampler_desc release];
 	
 	begin();
 }
@@ -319,11 +339,11 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 BackendMetal::~BackendMetal()
 {
 	end();
-	gSamplerState->release();
-	gCommandQueue->release();
-	gView->release();
-	gDevice->release();
-	gAutoreleasePool->release();
+	[gSamplerState release];
+	[gCommandQueue release];
+	[gView release];
+	[gDevice release];
+	[gAutoreleasePool release];
 }
 
 void BackendMetal::resize(uint32_t width, uint32_t height)
@@ -332,12 +352,12 @@ void BackendMetal::resize(uint32_t width, uint32_t height)
 
 void BackendMetal::setTopology(Topology topology)
 {
-	const static std::unordered_map<Topology, MTL::PrimitiveType> TopologyMap = {
-		{ Topology::PointList, MTL::PrimitiveType::PrimitiveTypePoint },
-		{ Topology::LineList, MTL::PrimitiveType::PrimitiveTypeLine },
-		{ Topology::LineStrip, MTL::PrimitiveType::PrimitiveTypeLineStrip },
-		{ Topology::TriangleList, MTL::PrimitiveType::PrimitiveTypeTriangle },
-		{ Topology::TriangleStrip, MTL::PrimitiveType::PrimitiveTypeTriangleStrip }
+	const static std::unordered_map<Topology, MTLPrimitiveType> TopologyMap = {
+		{ Topology::PointList, MTLPrimitiveTypePoint },
+		{ Topology::LineList, MTLPrimitiveTypeLine },
+		{ Topology::LineStrip, MTLPrimitiveTypeLineStrip },
+		{ Topology::TriangleList, MTLPrimitiveTypeTriangle },
+		{ Topology::TriangleStrip, MTLPrimitiveTypeTriangleStrip }
 	};
 
 	gPrimitiveType = TopologyMap.at(topology);
@@ -384,7 +404,7 @@ void BackendMetal::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferMetal*)handle;
 	gIndexBuffer = buffer;
-	gIndexType = buffer->getStride() == 2 ? MTL::IndexType::IndexTypeUInt16 : MTL::IndexType::IndexTypeUInt32;
+	gIndexType = buffer->getStride() == 2 ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32;
 }
 
 void BackendMetal::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
@@ -424,25 +444,25 @@ void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optio
 	ensureRenderTarget();
 	
 	auto col = color.value();
-	auto clear_color = MTL::ClearColor::Make(col.r, col.g, col.b, col.a);
+	auto clear_color = MTLClearColorMake(col.r, col.g, col.b, col.a);
 
-	gRenderPassDescriptor->colorAttachments()->object(0)->setClearColor(clear_color);
-	gRenderPassDescriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadAction::LoadActionClear);
+	gRenderPassDescriptor.colorAttachments[0].clearColor = clear_color;
+	gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
 	
-	gRenderCommandEncoder->endEncoding();
-	gRenderCommandEncoder = gCommandBuffer->renderCommandEncoder(gRenderPassDescriptor);
+	[gRenderCommandEncoder endEncoding];
+	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
 }
 
 void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
-	gRenderCommandEncoder->drawPrimitives(gPrimitiveType, vertex_offset, vertex_count);
+	[gRenderCommandEncoder drawPrimitives:gPrimitiveType vertexStart:vertex_offset vertexCount:vertex_count];
 }
 
 void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
-	gRenderCommandEncoder->drawIndexedPrimitives(gPrimitiveType, index_count, gIndexType, gIndexBuffer->getMetalBuffer(), index_offset);
+	[gRenderCommandEncoder drawIndexedPrimitives:gPrimitiveType indexCount:index_count indexType:gIndexType indexBuffer:gIndexBuffer->getMetalBuffer() indexBufferOffset:index_offset];
 }
 
 void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
@@ -452,7 +472,8 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 void BackendMetal::present()
 {
 	end();
-	gView->draw();
+	[gView draw];
+	// TODO: maybe here gAutoreleasePool->drain();
 	begin();
 }
 
@@ -569,34 +590,34 @@ void BackendMetal::prepareForDrawing()
 	
 	for (auto [binding, texture] : gTextures)
 	{
-		gRenderCommandEncoder->setFragmentTexture(texture->getMetalTexture(), binding);
-		gRenderCommandEncoder->setFragmentSamplerState(gSamplerState, binding);
+		[gRenderCommandEncoder setFragmentTexture:texture->getMetalTexture() atIndex:binding];
+		[gRenderCommandEncoder setFragmentSamplerState:gSamplerState atIndex:binding];
 	}
 
-	gRenderCommandEncoder->setVertexBuffer(gVertexBuffer->getMetalBuffer(), 0, gVertexBufferStageBinding);
+	[gRenderCommandEncoder setVertexBuffer:gVertexBuffer->getMetalBuffer() offset:0 atIndex:gVertexBufferStageBinding];
 
 	if (!gPipelineStates.contains(gPipelineState))
 	{
 		auto shader = gPipelineState.shader;
 		
 		auto pixel_format = gPipelineState.render_target ?
-			MTL::PixelFormat::PixelFormatRGBA8Unorm :
-			MTL::PixelFormat::PixelFormatBGRA8Unorm_sRGB;
+			MTLPixelFormatRGBA8Unorm :
+			MTLPixelFormatBGRA8Unorm_sRGB;
 		
-		auto desc = MTL::RenderPipelineDescriptor::alloc()->init();
-		desc->setVertexFunction(shader->getMetalVertFunc());
-		desc->setFragmentFunction(shader->getMetalFragFunc());
-		desc->setVertexDescriptor(shader->getMetalVertexDescriptor());
-		desc->colorAttachments()->object(0)->setPixelFormat(pixel_format);
+		auto desc = [[MTLRenderPipelineDescriptor alloc] init];
+		desc.vertexFunction = shader->getMetalVertFunc();
+		desc.fragmentFunction = shader->getMetalFragFunc();
+		desc.vertexDescriptor = shader->getMetalVertexDescriptor();
+		desc.colorAttachments[0].pixelFormat = pixel_format;
 		//desc->setDepthAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth16Unorm);
 
-		NS::Error* error = nullptr;
+		NSError* error = nullptr;
 
-		auto pso = gDevice->newRenderPipelineState(desc, &error);
+		auto pso = [gDevice newRenderPipelineStateWithDescriptor:desc error:&error];
 
 		if (!pso)
 		{
-			auto reason = error->localizedDescription()->utf8String();
+			auto reason = error.localizedDescription.UTF8String;
 			throw std::runtime_error(reason);
 		}
 		
@@ -605,22 +626,22 @@ void BackendMetal::prepareForDrawing()
 	
 	auto pso = gPipelineStates.at(gPipelineState);
 	
-	gRenderCommandEncoder->setRenderPipelineState(pso);
+	[gRenderCommandEncoder setRenderPipelineState:pso];
 
 	for (auto [binding, buffer] : gUniformBuffers)
 	{
-		gRenderCommandEncoder->setVertexBuffer(buffer->getMetalBuffer(), 0, binding);
-		gRenderCommandEncoder->setFragmentBuffer(buffer->getMetalBuffer(), 0, binding);
+		[gRenderCommandEncoder setVertexBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
+		[gRenderCommandEncoder setFragmentBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
 	}
 	
-	static const std::unordered_map<CullMode, MTL::CullMode> CullModes = {
-		{ CullMode::None, MTL::CullMode::CullModeNone },
-		{ CullMode::Back, MTL::CullMode::CullModeBack },
-		{ CullMode::Front, MTL::CullMode::CullModeFront }
+	static const std::unordered_map<CullMode, MTLCullMode> CullModes = {
+		{ CullMode::None, MTLCullModeNone },
+		{ CullMode::Back, MTLCullModeBack },
+		{ CullMode::Front, MTLCullModeFront }
 	};
 	
-	gRenderCommandEncoder->setCullMode(CullModes.at(gCullMode));
-	gRenderCommandEncoder->setFrontFacingWinding(MTL::Winding::WindingClockwise);
+	[gRenderCommandEncoder setCullMode:CullModes.at(gCullMode)];
+	[gRenderCommandEncoder setFrontFacingWinding:MTLWindingClockwise];
 }
 
 #endif
