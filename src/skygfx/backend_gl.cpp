@@ -268,7 +268,7 @@ public:
 		
 		bool need_fix_uniform_bindings =
 			(options.es && options.version <= 300) ||
-			(options.version < 420 && !options.enable_420pack_extension);
+			(!options.es && options.version < 420 && !options.enable_420pack_extension);
 
 		if (need_fix_uniform_bindings)
 		{
@@ -300,7 +300,7 @@ public:
 		
 		bool need_fix_texture_bindings =
 			(options.es && options.version <= 300) ||
-			(options.version < 420 && !options.enable_420pack_extension);
+			(!options.es && options.version < 420 && !options.enable_420pack_extension);
 			
 		if (need_fix_texture_bindings)
 		{
