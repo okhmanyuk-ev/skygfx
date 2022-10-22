@@ -172,7 +172,7 @@ public:
 #if defined(SKYGFX_PLATFORM_IOS)
 		options.es = true;
 		options.version = 300;
-		options.enable_420pack_extension = true;
+		options.enable_420pack_extension = false;
 		options.force_flattened_io_blocks = false;
 		// TODO: android can be 320
 		// TODO: since 310 we have uniform(std140, binding = 1), 300 have uniform(std140)
@@ -298,8 +298,10 @@ public:
 		glUseProgram(program);
 		glBindVertexArray(vao);
 		
-		bool need_fix_texture_bindings = options.version < 420 && !options.enable_420pack_extension;
-
+		bool need_fix_texture_bindings =
+			(options.es && options.version <= 300) ||
+			(options.version < 420 && !options.enable_420pack_extension);
+			
 		if (need_fix_texture_bindings)
 		{
 			auto fix_bindings = [&](const ShaderReflection& reflection) {
