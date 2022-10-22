@@ -355,9 +355,9 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gDevice = MTLCreateSystemDefaultDevice();
 
 	auto frame = CGRectMake(0.0f, 0.0f, (float)width, (float)height);
-	gView = [[MTKView alloc] initWithFrame:frame device:gDevice];
 
-	gView.colorPixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
+	gView = [[MTKView alloc] initWithFrame:frame device:gDevice];
+	gView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
 	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
 
 #if defined(SKYGFX_PLATFORM_MACOS)
@@ -567,7 +567,6 @@ void BackendMetal::present()
 {
 	end();
 	[gView draw];
-	// TODO: maybe here gAutoreleasePool->drain();
 	begin();
 }
 
@@ -783,8 +782,8 @@ void BackendMetal::prepareForDrawing()
 		auto shader = gPipelineState.shader;
 		
 		auto pixel_format = gPipelineState.render_target ?
-			MTLPixelFormatRGBA8Unorm :
-			MTLPixelFormatBGRA8Unorm_sRGB;
+			gPipelineState.render_target->getTexture()->getMetalTexture().pixelFormat :
+			gView.colorPixelFormat;
 		
 		auto depth_stencil_pixel_format = gView.depthStencilPixelFormat;
 		
