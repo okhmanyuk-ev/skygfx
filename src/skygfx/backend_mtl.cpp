@@ -57,6 +57,23 @@ struct SamplerStateMetal
 SKYGFX_MAKE_HASHABLE(SamplerStateMetal,
 	t.sampler,
 	t.texture_address);
+	
+struct DepthStencilStateMetal
+{
+	std::optional<DepthMode> depth_mode;
+	std::optional<StencilMode> stencil_mode;
+
+	bool operator==(const DepthStencilStateMetal& value) const
+	{
+		return
+			depth_mode == value.depth_mode &&
+			stencil_mode == value.stencil_mode;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(DepthStencilStateMetal,
+	t.depth_mode,
+	t.stencil_mode);
 
 static NSAutoreleasePool* gAutoreleasePool = nullptr;
 static id<MTLDevice> gDevice = nullptr;
@@ -71,10 +88,14 @@ static IndexBufferMetal* gIndexBuffer = nullptr;
 static BufferMetal* gVertexBuffer = nullptr;
 static std::unordered_map<uint32_t, BufferMetal*> gUniformBuffers;
 static std::unordered_map<uint32_t, TextureMetal*> gTextures;
-static SamplerStateMetal gSamplerState;
-static std::unordered_map<SamplerStateMetal, id<MTLSamplerState>> gSamplerStates;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
+
+static SamplerStateMetal gSamplerState;
+static std::unordered_map<SamplerStateMetal, id<MTLSamplerState>> gSamplerStates;
+
+static DepthStencilStateMetal gDepthStencilState;
+static std::unordered_map<DepthStencilStateMetal, id<MTLDepthStencilState>> gDepthStencilStates;
 
 static PipelineStateMetal gPipelineState;
 static std::unordered_map<PipelineStateMetal, id<MTLRenderPipelineState>> gPipelineStates;
@@ -337,10 +358,11 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView = [[MTKView alloc] initWithFrame:frame device:gDevice];
 
 	gView.colorPixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
-
-	NSObject* nwh = (NSObject*)window;
+	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
 
 #if defined(SKYGFX_PLATFORM_MACOS)
+	NSObject* nwh = (NSObject*)window;
+
 	NSView* contentView = nil;
 	NSWindow* nsWindow = nil;
 	
@@ -370,7 +392,7 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 #endif
 	
 	gCommandQueue = gDevice.newCommandQueue;
-		
+			
 	begin();
 }
 
@@ -461,10 +483,12 @@ void BackendMetal::setBlendMode(const BlendMode& value)
 
 void BackendMetal::setDepthMode(std::optional<DepthMode> depth_mode)
 {
+	gDepthStencilState.depth_mode = depth_mode;
 }
 
 void BackendMetal::setStencilMode(std::optional<StencilMode> stencil_mode)
 {
+	gDepthStencilState.stencil_mode = stencil_mode;
 }
 
 void BackendMetal::setCullMode(CullMode cull_mode)
@@ -486,13 +510,39 @@ void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optio
 	const std::optional<uint8_t>& stencil)
 {
 	ensureRenderTarget();
-	
-	auto col = color.value();
-	auto clear_color = MTLClearColorMake(col.r, col.g, col.b, col.a);
 
-	gRenderPassDescriptor.colorAttachments[0].clearColor = clear_color;
-	gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
-	
+	if (color.has_value())
+	{
+		auto col = color.value();
+
+		gRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(col.r, col.g, col.b, col.a);
+		gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+	}
+	else
+	{
+		gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
+	}
+
+	if (depth.has_value())
+	{
+		gRenderPassDescriptor.depthAttachment.clearDepth = depth.value();
+		gRenderPassDescriptor.depthAttachment.loadAction = MTLLoadActionClear;
+	}
+	else
+	{
+		gRenderPassDescriptor.depthAttachment.loadAction = MTLLoadActionLoad;
+	}
+
+	if (stencil.has_value())
+	{
+		gRenderPassDescriptor.stencilAttachment.clearStencil = stencil.value();
+		gRenderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionClear;
+	}
+	else
+	{
+		gRenderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionLoad;
+	}
+
 	[gRenderCommandEncoder endEncoding];
 	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
 }
@@ -673,6 +723,61 @@ void BackendMetal::prepareForDrawing()
 
 	[gRenderCommandEncoder setVertexBuffer:gVertexBuffer->getMetalBuffer() offset:0 atIndex:gVertexBufferStageBinding];
 
+	if (!gDepthStencilStates.contains(gDepthStencilState))
+	{
+		const static std::unordered_map<ComparisonFunc, MTLCompareFunction> ComparisonFuncMap = {
+			{ ComparisonFunc::Always, MTLCompareFunctionAlways },
+			{ ComparisonFunc::Never, MTLCompareFunctionNever },
+			{ ComparisonFunc::Less, MTLCompareFunctionLess },
+			{ ComparisonFunc::Equal, MTLCompareFunctionEqual },
+			{ ComparisonFunc::NotEqual, MTLCompareFunctionNotEqual },
+			{ ComparisonFunc::LessEqual, MTLCompareFunctionLessEqual },
+			{ ComparisonFunc::Greater, MTLCompareFunctionGreater },
+			{ ComparisonFunc::GreaterEqual, MTLCompareFunctionGreaterEqual }
+		};
+
+		const static std::unordered_map<StencilOp, MTLStencilOperation> StencilOpMap = {
+			{ StencilOp::Keep, MTLStencilOperationKeep },
+			{ StencilOp::Zero, MTLStencilOperationZero },
+			{ StencilOp::Replace, MTLStencilOperationReplace },
+			{ StencilOp::IncrementSaturation, MTLStencilOperationIncrementClamp },
+			{ StencilOp::DecrementSaturation, MTLStencilOperationDecrementClamp },
+			{ StencilOp::Invert, MTLStencilOperationInvert },
+			{ StencilOp::Increment, MTLStencilOperationIncrementWrap },
+			{ StencilOp::Decrement, MTLStencilOperationDecrementWrap },
+		};
+	
+		auto depth_mode = gDepthStencilState.depth_mode.value_or(DepthMode());
+		auto stencil_mode = gDepthStencilState.stencil_mode.value_or(StencilMode());
+	
+		auto desc = [[MTLDepthStencilDescriptor alloc] init];
+		desc.depthWriteEnabled = gDepthStencilState.depth_mode.has_value();
+		desc.depthCompareFunction = ComparisonFuncMap.at(depth_mode.func);
+
+		desc.backFaceStencil.depthFailureOperation = StencilOpMap.at(stencil_mode.depth_fail_op);
+		desc.backFaceStencil.stencilFailureOperation = StencilOpMap.at(stencil_mode.fail_op);
+		desc.backFaceStencil.stencilCompareFunction = ComparisonFuncMap.at(stencil_mode.func);
+		desc.backFaceStencil.depthStencilPassOperation = StencilOpMap.at(stencil_mode.pass_op);
+		desc.backFaceStencil.readMask = stencil_mode.read_mask;
+		desc.backFaceStencil.writeMask = stencil_mode.write_mask;
+		
+		desc.frontFaceStencil = desc.backFaceStencil;
+
+		auto depth_stencil_state = [gDevice newDepthStencilStateWithDescriptor:desc];
+
+		gDepthStencilStates.insert({ gDepthStencilState, depth_stencil_state });
+
+		[desc release];
+	}
+	
+	if (gDepthStencilState.stencil_mode.has_value())
+	{
+		auto reference = gDepthStencilState.stencil_mode.value().reference;
+		[gRenderCommandEncoder setStencilReferenceValue:reference];
+	}
+	
+	[gRenderCommandEncoder setDepthStencilState:gDepthStencilStates.at(gDepthStencilState)];
+
 	if (!gPipelineStates.contains(gPipelineState))
 	{
 		auto shader = gPipelineState.shader;
@@ -681,10 +786,14 @@ void BackendMetal::prepareForDrawing()
 			MTLPixelFormatRGBA8Unorm :
 			MTLPixelFormatBGRA8Unorm_sRGB;
 		
+		auto depth_stencil_pixel_format = gView.depthStencilPixelFormat;
+		
 		auto desc = [[MTLRenderPipelineDescriptor alloc] init];
 		desc.vertexFunction = shader->getMetalVertFunc();
 		desc.fragmentFunction = shader->getMetalFragFunc();
 		desc.vertexDescriptor = shader->getMetalVertexDescriptor();
+		desc.depthAttachmentPixelFormat = depth_stencil_pixel_format;
+		desc.stencilAttachmentPixelFormat = depth_stencil_pixel_format;
 		
 		auto attachment_0 = desc.colorAttachments[0];
 		attachment_0.pixelFormat = pixel_format;
