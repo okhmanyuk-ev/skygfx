@@ -20,18 +20,21 @@ struct PipelineStateMetal
 {
 	ShaderMetal* shader = nullptr;
 	RenderTargetMetal* render_target = nullptr;
+	BlendMode blend_mode = BlendStates::AlphaBlend;
 	
 	bool operator==(const PipelineStateMetal& value) const
 	{
 		return
 			shader == value.shader &&
-			render_target == value.render_target;
+			render_target == value.render_target &&
+			blend_mode == value.blend_mode;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
 	t.shader,
-	t.render_target);
+	t.render_target,
+	t.blend_mode);
 
 static NSAutoreleasePool* gAutoreleasePool = nullptr;
 static id<MTLDevice> gDevice = nullptr;
@@ -415,6 +418,7 @@ void BackendMetal::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 
 void BackendMetal::setBlendMode(const BlendMode& value)
 {
+	gPipelineState.blend_mode = value;
 }
 
 void BackendMetal::setDepthMode(std::optional<DepthMode> depth_mode)
@@ -608,8 +612,42 @@ void BackendMetal::prepareForDrawing()
 		desc.vertexFunction = shader->getMetalVertFunc();
 		desc.fragmentFunction = shader->getMetalFragFunc();
 		desc.vertexDescriptor = shader->getMetalVertexDescriptor();
-		desc.colorAttachments[0].pixelFormat = pixel_format;
-		//desc->setDepthAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth16Unorm);
+		
+		auto attachment_0 = desc.colorAttachments[0];
+		attachment_0.pixelFormat = pixel_format;
+
+		const static std::unordered_map<Blend, MTLBlendFactor> BlendMap = {
+			{ Blend::One, MTLBlendFactorOne },
+			{ Blend::Zero, MTLBlendFactorZero },
+			{ Blend::SrcColor, MTLBlendFactorSourceColor },
+			{ Blend::InvSrcColor, MTLBlendFactorOneMinusSourceColor },
+			{ Blend::SrcAlpha, MTLBlendFactorSourceAlpha },
+			{ Blend::InvSrcAlpha, MTLBlendFactorOneMinusSourceAlpha },
+			{ Blend::DstColor, MTLBlendFactorDestinationColor },
+			{ Blend::InvDstColor, MTLBlendFactorOneMinusDestinationColor },
+			{ Blend::DstAlpha, MTLBlendFactorDestinationAlpha },
+			{ Blend::InvDstAlpha, MTLBlendFactorOneMinusDestinationAlpha }
+		};
+
+		const static std::unordered_map<BlendFunction, MTLBlendOperation> BlendOpMap = {
+			{ BlendFunction::Add, MTLBlendOperationAdd },
+			{ BlendFunction::Subtract, MTLBlendOperationSubtract },
+			{ BlendFunction::ReverseSubtract, MTLBlendOperationReverseSubtract },
+			{ BlendFunction::Min, MTLBlendOperationMin },
+			{ BlendFunction::Max, MTLBlendOperationMax },
+		};
+		
+		const auto& blend_mode = gPipelineState.blend_mode;
+		
+		attachment_0.blendingEnabled = true;
+		
+		attachment_0.sourceRGBBlendFactor = BlendMap.at(blend_mode.color_src_blend);
+		attachment_0.sourceAlphaBlendFactor = BlendMap.at(blend_mode.alpha_src_blend);
+		attachment_0.destinationRGBBlendFactor = BlendMap.at(blend_mode.color_dst_blend);
+		attachment_0.destinationAlphaBlendFactor = BlendMap.at(blend_mode.alpha_dst_blend);
+		
+		attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_blend_func);
+		attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_blend_func);
 
 		NSError* error = nullptr;
 
