@@ -35,6 +35,23 @@ SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
 	t.shader,
 	t.render_target,
 	t.blend_mode);
+	
+struct SamplerStateMetal
+{
+	Sampler sampler = Sampler::Linear;
+	TextureAddress texture_address = TextureAddress::Clamp;
+
+	bool operator==(const SamplerStateMetal& value) const
+	{
+		return
+			sampler == value.sampler &&
+			texture_address == value.texture_address;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(SamplerStateMetal,
+	t.sampler,
+	t.texture_address);
 
 static NSAutoreleasePool* gAutoreleasePool = nullptr;
 static id<MTLDevice> gDevice = nullptr;
@@ -49,7 +66,8 @@ static IndexBufferMetal* gIndexBuffer = nullptr;
 static BufferMetal* gVertexBuffer = nullptr;
 static std::unordered_map<uint32_t, BufferMetal*> gUniformBuffers;
 static std::unordered_map<uint32_t, TextureMetal*> gTextures;
-static id<MTLSamplerState> gSamplerState = nullptr;
+static SamplerStateMetal gSamplerState;
+static std::unordered_map<SamplerStateMetal, id<MTLSamplerState>> gSamplerStates;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
 
@@ -328,21 +346,17 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	}
 	
 	gCommandQueue = gDevice.newCommandQueue;
-	
-	auto sampler_desc = [[MTLSamplerDescriptor alloc] init];
-	sampler_desc.magFilter = MTLSamplerMinMagFilterLinear;
-	sampler_desc.minFilter = MTLSamplerMinMagFilterLinear;
-	sampler_desc.mipFilter = MTLSamplerMipFilterLinear;
-	gSamplerState = [gDevice newSamplerStateWithDescriptor:sampler_desc];
-	[sampler_desc release];
-	
+		
 	begin();
 }
 
 BackendMetal::~BackendMetal()
 {
 	end();
-	[gSamplerState release];
+	for (auto [_, sampler_state] : gSamplerStates)
+	{
+		[sampler_state release];
+	}
 	[gCommandQueue release];
 	[gView release];
 	[gDevice release];
@@ -436,10 +450,12 @@ void BackendMetal::setCullMode(CullMode cull_mode)
 
 void BackendMetal::setSampler(Sampler value)
 {
+	gSamplerState.sampler = value;
 }
 
 void BackendMetal::setTextureAddress(TextureAddress value)
 {
+	gSamplerState.texture_address = value;
 }
 
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -592,10 +608,43 @@ void BackendMetal::prepareForDrawing()
 {
 	ensureRenderTarget();
 	
+	if (!gSamplerStates.contains(gSamplerState))
+	{
+		const static std::unordered_map<Sampler, MTLSamplerMinMagFilter> SamplerMinMagFilter = {
+			{ Sampler::Linear, MTLSamplerMinMagFilterLinear  },
+			{ Sampler::Nearest, MTLSamplerMinMagFilterNearest },
+		};
+		
+		const static std::unordered_map<Sampler, MTLSamplerMipFilter> SamplerMipFilter = {
+			{ Sampler::Linear, MTLSamplerMipFilterLinear  },
+			{ Sampler::Nearest, MTLSamplerMipFilterNearest },
+		};
+		
+		const static std::unordered_map<TextureAddress, MTLSamplerAddressMode> TextureAddressMap = {
+			{ TextureAddress::Clamp, MTLSamplerAddressModeClampToEdge },
+			{ TextureAddress::Wrap, MTLSamplerAddressModeRepeat },
+			{ TextureAddress::MirrorWrap, MTLSamplerAddressModeMirrorRepeat }
+		};
+
+		auto desc = [[MTLSamplerDescriptor alloc] init];
+		desc.magFilter = SamplerMinMagFilter.at(gSamplerState.sampler);
+		desc.minFilter = SamplerMinMagFilter.at(gSamplerState.sampler);
+		desc.mipFilter = SamplerMipFilter.at(gSamplerState.sampler);
+		desc.rAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
+		desc.sAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
+		desc.tAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
+		
+		auto sampler_state = [gDevice newSamplerStateWithDescriptor:desc];
+		
+		gSamplerStates.insert({ gSamplerState, sampler_state });
+		
+		[desc release];
+	}
+	
 	for (auto [binding, texture] : gTextures)
 	{
 		[gRenderCommandEncoder setFragmentTexture:texture->getMetalTexture() atIndex:binding];
-		[gRenderCommandEncoder setFragmentSamplerState:gSamplerState atIndex:binding];
+		[gRenderCommandEncoder setFragmentSamplerState:gSamplerStates.at(gSamplerState) atIndex:binding];
 	}
 
 	[gRenderCommandEncoder setVertexBuffer:gVertexBuffer->getMetalBuffer() offset:0 atIndex:gVertexBufferStageBinding];
