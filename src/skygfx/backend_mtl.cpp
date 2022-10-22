@@ -91,6 +91,12 @@ static std::unordered_map<uint32_t, TextureMetal*> gTextures;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
 
+static uint32_t gBackbufferWidth = 0;
+static uint32_t gBackbufferHeight = 0;
+
+static std::optional<Viewport> gViewport;
+static std::optional<Scissor> gScissor;
+
 static SamplerStateMetal gSamplerState;
 static std::unordered_map<SamplerStateMetal, id<MTLSamplerState>> gSamplerStates;
 
@@ -355,10 +361,14 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gDevice = MTLCreateSystemDefaultDevice();
 
 	auto frame = CGRectMake(0.0f, 0.0f, (float)width, (float)height);
-
+	
 	gView = [[MTKView alloc] initWithFrame:frame device:gDevice];
 	gView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
 	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
+	gView.paused = YES;
+	gView.enableSetNeedsDisplay = NO;
+	gView.autoResizeDrawable = NO;
+	gView.drawableSize = CGSizeMake((float)width, (float)height);
 
 #if defined(SKYGFX_PLATFORM_MACOS)
 	NSObject* nwh = (NSObject*)window;
@@ -391,6 +401,9 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	[root_view addSubview:gView];
 #endif
 	
+	gBackbufferWidth = width;
+	gBackbufferHeight = height;
+
 	gCommandQueue = gDevice.newCommandQueue;
 			
 	begin();
@@ -411,6 +424,11 @@ BackendMetal::~BackendMetal()
 
 void BackendMetal::resize(uint32_t width, uint32_t height)
 {
+//	end();
+//	gBackbufferWidth = width;
+//	gBackbufferHeight = height;
+//	gView.drawableSize = CGSizeMake((float)gBackbufferWidth, (float)gBackbufferHeight);
+//	begin();
 }
 
 void BackendMetal::setTopology(Topology topology)
@@ -428,10 +446,12 @@ void BackendMetal::setTopology(Topology topology)
 
 void BackendMetal::setViewport(std::optional<Viewport> viewport)
 {
+	gViewport = viewport;
 }
 
 void BackendMetal::setScissor(std::optional<Scissor> scissor)
 {
+	gScissor = scissor;
 }
 
 void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
@@ -861,6 +881,48 @@ void BackendMetal::prepareForDrawing()
 	
 	[gRenderCommandEncoder setCullMode:CullModes.at(gCullMode)];
 	[gRenderCommandEncoder setFrontFacingWinding:MTLWindingClockwise];
+	
+	float width;
+	float height;
+
+	if (gPipelineState.render_target == nullptr)
+	{
+		width = static_cast<float>(gBackbufferWidth);
+		height = static_cast<float>(gBackbufferHeight);
+	}
+	else
+	{
+		auto texture = gPipelineState.render_target->getTexture()->getMetalTexture();
+		
+		width = static_cast<float>(texture.width);
+		height = static_cast<float>(texture.height);
+	}
+
+	auto _viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+	auto _scissor = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+
+	MTLViewport viewport;
+	viewport.originX = _viewport.position.x;
+	viewport.originY = _viewport.position.x;
+	viewport.width = _viewport.size.x;
+	viewport.height = _viewport.size.y;
+	viewport.znear = _viewport.min_depth;
+	viewport.zfar = _viewport.max_depth;
+
+	MTLScissorRect scissor;
+	scissor.x = _scissor.position.x;
+	scissor.y = _scissor.position.y;
+	scissor.width = _scissor.size.x;
+	scissor.height = _scissor.size.y;
+	
+	if (scissor.x + scissor.width > width)
+		scissor.width = width - scissor.x;
+
+	if (scissor.y + scissor.height > height)
+		scissor.height = height - scissor.y;
+
+	[gRenderCommandEncoder setViewport:viewport];
+	[gRenderCommandEncoder setScissorRect:scissor];
 }
 
 #endif
