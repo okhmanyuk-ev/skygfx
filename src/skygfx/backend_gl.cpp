@@ -149,6 +149,15 @@ private:
 	Vertex::Layout layout;
 	GLuint program;
 	GLuint vao;
+	ShaderReflection vert_refl;
+	ShaderReflection frag_refl;
+	
+	struct {
+		bool es;
+		uint32_t version;
+		bool enable_420pack_extension;
+		bool force_flattened_io_blocks;
+	} options;
 
 public:
 	ShaderGL(const Vertex::Layout& _layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -159,13 +168,6 @@ public:
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
-
-		struct {
-			bool es;
-			uint32_t version;
-			bool enable_420pack_extension;
-			bool force_flattened_io_blocks;
-		} options;
 
 #if defined(SKYGFX_PLATFORM_IOS)
 		options.es = true;
@@ -261,12 +263,14 @@ public:
 #endif
 		}
 		
-		bool want_fix_bindings = options.es && options.version <= 300;
+		vert_refl = MakeSpirvReflection(vertex_shader_spirv);
+		frag_refl = MakeSpirvReflection(fragment_shader_spirv);
+		
+		bool need_fix_uniform_bindings =
+			(options.es && options.version <= 300) ||
+			(options.version < 420 && !options.enable_420pack_extension);
 
-#if defined(SKYGFX_PLATFORM_MACOS)
-		want_fix_bindings = true;
-#endif
-		if (want_fix_bindings)
+		if (need_fix_uniform_bindings)
 		{
 			auto fix_bindings = [&](const ShaderReflection& reflection) {
 				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
@@ -278,8 +282,8 @@ public:
 					glUniformBlockBinding(program, block_index, binding);
 				}
 			};
-			fix_bindings(MakeSpirvReflection(vertex_shader_spirv));
-			fix_bindings(MakeSpirvReflection(fragment_shader_spirv));
+			fix_bindings(vert_refl);
+			fix_bindings(frag_refl);
 		}
 	}
 
@@ -293,6 +297,24 @@ public:
 	{
 		glUseProgram(program);
 		glBindVertexArray(vao);
+		
+		bool need_fix_texture_bindings = options.version < 420 && !options.enable_420pack_extension;
+
+		if (need_fix_texture_bindings)
+		{
+			auto fix_bindings = [&](const ShaderReflection& reflection) {
+				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
+				{
+					if (descriptor.type != ShaderReflection::Descriptor::Type::CombinedImageSampler)
+						continue;
+	
+					auto location = glGetUniformLocation(program, descriptor.name.c_str());
+					glUniform1i(location, binding);
+				}
+			};
+			fix_bindings(vert_refl);
+			fix_bindings(frag_refl);
+		}
 	}
 	
 #if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
