@@ -4,7 +4,12 @@
 
 #include <unordered_map>
 
-#import <AppKit/AppKit.h>
+#if defined(SKYGFX_PLATFORM_MACOS)
+	#import <AppKit/AppKit.h>
+#elif defined(SKYGFX_PLATFORM_IOS)
+	#import <UIKit/UIKit.h>
+#endif
+
 #import <Metal/Metal.h>
 #import <MetalKit/MetalKit.h>
 
@@ -175,7 +180,11 @@ public:
 		desc.height = height;
 		desc.pixelFormat = MTLPixelFormatRGBA8Unorm;
 		desc.textureType = MTLTextureType2D;
+#if defined(SKYGFX_PLATFORM_MACOS)
 		desc.storageMode = MTLStorageModeManaged;
+#elif defined(SKYGFX_PLATFORM_IOS)
+		desc.storageMode = MTLStorageModeShared;
+#endif
 		desc.usage = MTLResourceUsageSample | MTLResourceUsageRead | MTLResourceUsageWrite;
 	
 		if (mipmap)
@@ -240,7 +249,13 @@ private:
 public:
 	BufferMetal(size_t size)
 	{
-		mBuffer = [gDevice newBufferWithLength:size options:MTLResourceStorageModeManaged];
+#if defined(SKYGFX_PLATFORM_MACOS)
+		auto storageMode = MTLResourceStorageModeManaged;
+#elif defined(SKYGFX_PLATFORM_IOS)
+		auto storageMode = MTLResourceStorageModeShared;
+#endif
+	
+		mBuffer = [gDevice newBufferWithLength:size options:storageMode];
 	}
 	
 	~BufferMetal()
@@ -251,7 +266,9 @@ public:
 	void write(void* memory, size_t size)
 	{
 		memcpy(mBuffer.contents, memory, size);
+#if defined(SKYGFX_PLATFORM_MACOS)
 		[mBuffer didModifyRange:NSMakeRange(0, size)];
+#endif
 	}
 };
 
@@ -322,6 +339,8 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.colorPixelFormat = MTLPixelFormatBGRA8Unorm_sRGB;
 
 	NSObject* nwh = (NSObject*)window;
+
+#if defined(SKYGFX_PLATFORM_MACOS)
 	NSView* contentView = nil;
 	NSWindow* nsWindow = nil;
 	
@@ -334,7 +353,7 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 		nsWindow = (NSWindow*)nwh;
 		contentView = [nsWindow contentView];
 	}
-
+	
 	if (contentView != nil)
 	{
 		[contentView addSubview:gView];
@@ -344,6 +363,11 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 		if (nil != nsWindow)
 			[nsWindow setContentView:gView];
 	}
+#elif defined(SKYGFX_PLATFORM_IOS)
+	auto _window = (UIWindow*)window;
+	auto root_view = [[_window rootViewController] view];
+	[root_view addSubview:gView];
+#endif
 	
 	gCommandQueue = gDevice.newCommandQueue;
 		
