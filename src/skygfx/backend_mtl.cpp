@@ -281,7 +281,7 @@ public:
 #elif defined(SKYGFX_PLATFORM_IOS)
 		auto storageMode = MTLResourceStorageModeShared;
 #endif
-	
+
 		mBuffer = [gDevice newBufferWithLength:size options:storageMode];
 	}
 	
@@ -371,6 +371,9 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.autoResizeDrawable = NO;
 	gView.drawableSize = CGSizeMake((float)width, (float)height);
 
+	auto metal_layer = (CAMetalLayer*)gView.layer;
+	metal_layer.magnificationFilter = kCAFilterNearest;
+	
 #if defined(SKYGFX_PLATFORM_MACOS)
 	NSObject* nwh = (NSObject*)window;
 

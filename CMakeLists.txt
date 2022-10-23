@@ -44,6 +44,7 @@ elseif(APPLE)
 		"-framework MetalKit"
 		"-framework GLKit"
 		"-framework Foundation"
+		"-framework QuartzCore"
 	)
 	
 	set(OBJC_SOURCES
