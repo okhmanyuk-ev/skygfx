@@ -331,6 +331,7 @@ static void end()
 	[gRenderCommandEncoder endEncoding];
 	[gCommandBuffer presentDrawable:gView.currentDrawable];
 	[gCommandBuffer commit];
+	[gCommandBuffer waitUntilCompleted];
 	
 	[gFrameAutoreleasePool release];
 }
@@ -570,13 +571,17 @@ void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optio
 void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
-	[gRenderCommandEncoder drawPrimitives:gPrimitiveType vertexStart:vertex_offset vertexCount:vertex_count];
+	[gRenderCommandEncoder drawPrimitives:gPrimitiveType vertexStart:vertex_offset
+		vertexCount:vertex_count];
 }
 
 void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
-	[gRenderCommandEncoder drawIndexedPrimitives:gPrimitiveType indexCount:index_count indexType:gIndexType indexBuffer:gIndexBuffer->getMetalBuffer() indexBufferOffset:index_offset];
+	auto index_size = gIndexType == MTLIndexTypeUInt32 ? 4 : 2;
+	[gRenderCommandEncoder drawIndexedPrimitives:gPrimitiveType indexCount:index_count
+		indexType:gIndexType indexBuffer:gIndexBuffer->getMetalBuffer()
+		indexBufferOffset:index_offset * index_size];
 }
 
 void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
