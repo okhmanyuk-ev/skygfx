@@ -922,7 +922,7 @@ void BackendMetal::prepareForDrawing()
 
 	MTLViewport viewport;
 	viewport.originX = _viewport.position.x;
-	viewport.originY = _viewport.position.x;
+	viewport.originY = _viewport.position.y;
 	viewport.width = _viewport.size.x;
 	viewport.height = _viewport.size.y;
 	viewport.znear = _viewport.min_depth;
