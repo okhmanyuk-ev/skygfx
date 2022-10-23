@@ -855,6 +855,20 @@ void BackendMetal::prepareForDrawing()
 		attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_blend_func);
 		attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_blend_func);
 
+		attachment_0.writeMask = MTLColorWriteMaskNone;
+		
+		if (blend_mode.color_mask.red)
+			attachment_0.writeMask |= MTLColorWriteMaskRed;
+		
+		if (blend_mode.color_mask.green)
+			attachment_0.writeMask |= MTLColorWriteMaskGreen;
+		
+		if (blend_mode.color_mask.blue)
+			attachment_0.writeMask |= MTLColorWriteMaskBlue;
+		
+		if (blend_mode.color_mask.alpha)
+			attachment_0.writeMask |= MTLColorWriteMaskAlpha;
+				
 		NSError* error = nullptr;
 
 		auto pso = [gDevice newRenderPipelineStateWithDescriptor:desc error:&error];
