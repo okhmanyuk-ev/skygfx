@@ -540,6 +540,7 @@ static std::unordered_map<uint32_t, TextureHandle*> gTextures;
 static std::optional<Viewport> gViewport;
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
+static float gBackbufferScaleFactor = 1.0f;
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 {
@@ -655,10 +656,6 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 
 	[pixelFormat release];
 	
-	// This fixes bug when image is in lower left corner.
-	// TODO: find another way to fix this bug
-	[glView setWantsBestResolutionOpenGLSurface:false];
-
 	// GLFW creates a helper contentView that handles things like keyboard and drag and
 	// drop events. We don't want to clobber that view if it exists. Instead we just
 	// add ourselves as a subview and make the view resize automatically.
@@ -673,6 +670,8 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 		if (nil != nsWindow)
 			[nsWindow setContentView:glView];
 	}
+	
+	gBackbufferScaleFactor = glView.window.backingScaleFactor;
 	
 	glContext = [glView openGLContext];
 
@@ -749,10 +748,15 @@ void BackendGL::setScissor(std::optional<Scissor> scissor)
 	{
 		auto value = scissor.value();
 
+		value.size *= gBackbufferScaleFactor;
+		value.position *= gBackbufferScaleFactor;
+
+		auto backbuffer_width = gBackbufferHeight * gBackbufferScaleFactor;
+
 		glEnable(GL_SCISSOR_TEST);
 		glScissor(
 			(GLint)glm::round(value.position.x),
-			(GLint)glm::round(gBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
+			(GLint)glm::round(backbuffer_width - value.position.y - value.size.y), // TODO: need different calculations when render target
 			(GLint)glm::round(value.size.x),
 			(GLint)glm::round(value.size.y));
 	}
@@ -1224,6 +1228,9 @@ void BackendGL::prepareForDrawing()
 
 		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
+		viewport.position *= gBackbufferScaleFactor;
+		viewport.size *= gBackbufferScaleFactor;
+		
 		glViewport(
 			(GLint)viewport.position.x,
 			(GLint)viewport.position.y,
