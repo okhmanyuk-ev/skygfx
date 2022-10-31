@@ -748,15 +748,19 @@ void BackendGL::setScissor(std::optional<Scissor> scissor)
 	{
 		auto value = scissor.value();
 
-		value.size *= gBackbufferScaleFactor;
-		value.position *= gBackbufferScaleFactor;
-
-		auto backbuffer_width = gBackbufferHeight * gBackbufferScaleFactor;
+		auto backbuffer_height = gBackbufferHeight;
+		
+		if (gRenderTarget == nullptr)
+		{
+			value.size *= gBackbufferScaleFactor;
+			value.position *= gBackbufferScaleFactor;
+			backbuffer_height *= gBackbufferScaleFactor;
+		}
 
 		glEnable(GL_SCISSOR_TEST);
 		glScissor(
 			(GLint)glm::round(value.position.x),
-			(GLint)glm::round(backbuffer_width - value.position.y - value.size.y), // TODO: need different calculations when render target
+			(GLint)glm::round(backbuffer_height - value.position.y - value.size.y), // TODO: need different calculations when render target
 			(GLint)glm::round(value.size.x),
 			(GLint)glm::round(value.size.y));
 	}
@@ -999,10 +1003,21 @@ void BackendGL::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Textur
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto x = (GLint)pos.x;
-	auto y = (GLint)(gBackbufferHeight - pos.y - size.y); // TODO: need different calculations when render target
-	auto w = (GLint)size.x;
-	auto h = (GLint)size.y;
+	auto backbuffer_height = gBackbufferHeight;
+	auto _pos = pos;
+	auto _size = size;
+
+	if (gRenderTarget == nullptr)
+	{
+		_pos *= (glm::vec2)gBackbufferScaleFactor;
+		_size *= gBackbufferScaleFactor;
+		backbuffer_height *= gBackbufferScaleFactor;
+	}
+
+	auto x = (GLint)_pos.x;
+	auto y = (GLint)(backbuffer_height - _pos.y - _size.y); // TODO: need different calculations when render target
+	auto w = (GLint)_size.x;
+	auto h = (GLint)_size.y;
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, gPixelBuffer);
 	glBufferData(GL_PIXEL_PACK_BUFFER, w * h * 4, nullptr, GL_STATIC_READ);
@@ -1228,8 +1243,11 @@ void BackendGL::prepareForDrawing()
 
 		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
-		viewport.position *= gBackbufferScaleFactor;
-		viewport.size *= gBackbufferScaleFactor;
+		if (gRenderTarget == nullptr)
+		{
+			viewport.position *= gBackbufferScaleFactor;
+			viewport.size *= gBackbufferScaleFactor;
+		}
 		
 		glViewport(
 			(GLint)viewport.position.x,
