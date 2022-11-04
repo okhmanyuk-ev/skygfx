@@ -146,11 +146,11 @@ static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
 class ShaderGL
 {
 private:
-	Vertex::Layout layout;
-	GLuint program;
-	GLuint vao;
-	ShaderReflection vert_refl;
-	ShaderReflection frag_refl;
+	Vertex::Layout mLayout;
+	GLuint mProgram;
+	GLuint mVao;
+	ShaderReflection mVertRefl;
+	ShaderReflection mFragRefl;
 	
 	struct {
 		bool es;
@@ -160,8 +160,8 @@ private:
 	} options;
 
 public:
-	ShaderGL(const Vertex::Layout& _layout, const std::string& vertex_code, const std::string& fragment_code,
-		std::vector<std::string> defines) : layout(_layout)
+	ShaderGL(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+		std::vector<std::string> defines) : mLayout(layout)
 	{
 		AddShaderLocationDefines(layout, defines);
 		defines.push_back("FLIP_TEXCOORD_Y");
@@ -228,28 +228,28 @@ public:
 			throw std::runtime_error(errorLog);
 		}
 		
-		program = glCreateProgram();
-		glAttachShader(program, vertexShader);
-		glAttachShader(program, fragmentShader);
-		glLinkProgram(program);
+		mProgram = glCreateProgram();
+		glAttachShader(mProgram, vertexShader);
+		glAttachShader(mProgram, fragmentShader);
+		glLinkProgram(mProgram);
 		
 		GLint link_status = 0;
-		glGetProgramiv(program, GL_LINK_STATUS, &link_status);
+		glGetProgramiv(mProgram, GL_LINK_STATUS, &link_status);
 		if (link_status == GL_FALSE)
 		{
 			GLint maxLength = 0;
-			glGetProgramiv(program, GL_INFO_LOG_LENGTH, &maxLength);
+			glGetProgramiv(mProgram, GL_INFO_LOG_LENGTH, &maxLength);
 			std::string errorLog;
 			errorLog.resize(maxLength);
-			glGetProgramInfoLog(program, maxLength, &maxLength, &errorLog[0]);
+			glGetProgramInfoLog(mProgram, maxLength, &maxLength, &errorLog[0]);
 			throw std::runtime_error(errorLog);
 		}
 		
 		glDeleteShader(vertexShader);
 		glDeleteShader(fragmentShader);
 
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
+		glGenVertexArrays(1, &mVao);
+		glBindVertexArray(mVao);
 
 		for (int i = 0; i < layout.attributes.size(); i++)
 		{
@@ -263,8 +263,8 @@ public:
 #endif
 		}
 		
-		vert_refl = MakeSpirvReflection(vertex_shader_spirv);
-		frag_refl = MakeSpirvReflection(fragment_shader_spirv);
+		mVertRefl = MakeSpirvReflection(vertex_shader_spirv);
+		mFragRefl = MakeSpirvReflection(fragment_shader_spirv);
 		
 		bool need_fix_uniform_bindings =
 			(options.es && options.version <= 300) ||
@@ -278,25 +278,25 @@ public:
 					if (descriptor.type != ShaderReflection::Descriptor::Type::UniformBuffer)
 						continue;
 					
-					auto block_index = glGetUniformBlockIndex(program, descriptor.type_name.c_str());
-					glUniformBlockBinding(program, block_index, binding);
+					auto block_index = glGetUniformBlockIndex(mProgram, descriptor.type_name.c_str());
+					glUniformBlockBinding(mProgram, block_index, binding);
 				}
 			};
-			fix_bindings(vert_refl);
-			fix_bindings(frag_refl);
+			fix_bindings(mVertRefl);
+			fix_bindings(mFragRefl);
 		}
 	}
 
 	~ShaderGL()
 	{
-		glDeleteVertexArrays(1, &vao);
-		glDeleteProgram(program);
+		glDeleteVertexArrays(1, &mVao);
+		glDeleteProgram(mProgram);
 	}
 
 	void apply()
 	{
-		glUseProgram(program);
-		glBindVertexArray(vao);
+		glUseProgram(mProgram);
+		glBindVertexArray(mVao);
 		
 		bool need_fix_texture_bindings =
 			(options.es && options.version <= 300) ||
@@ -310,25 +310,25 @@ public:
 					if (descriptor.type != ShaderReflection::Descriptor::Type::CombinedImageSampler)
 						continue;
 	
-					auto location = glGetUniformLocation(program, descriptor.name.c_str());
+					auto location = glGetUniformLocation(mProgram, descriptor.name.c_str());
 					glUniform1i(location, binding);
 				}
 			};
-			fix_bindings(vert_refl);
-			fix_bindings(frag_refl);
+			fix_bindings(mVertRefl);
+			fix_bindings(mFragRefl);
 		}
 	}
 	
 #if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
 	void applyLayout()
 	{
-		for (int i = 0; i < layout.attributes.size(); i++)
+		for (int i = 0; i < mLayout.attributes.size(); i++)
 		{
-			const auto& attrib = layout.attributes.at(i);
+			const auto& attrib = mLayout.attributes.at(i);
 
 			glVertexAttribPointer(i, SizeMap.at(attrib.format),
 				TypeMap.at(attrib.format), NormalizeMap.at(attrib.format),
-				(GLsizei)layout.stride, (void*)attrib.offset);
+				(GLsizei)mLayout.stride, (void*)attrib.offset);
 		}
 	}
 #endif
@@ -336,25 +336,28 @@ public:
 
 class TextureGL
 {
-	friend class RenderTargetGL;
-	friend class BackendGL;
+public:
+	auto getGLTexture() const { return mTexture; }
+	auto isMipmap() const { return mMipmap; }
+	auto getWidth() const { return mWidth; }
+	auto getHeight() const { return mHeight; }
 
 private:
-	GLuint texture;
-	bool mipmap;
-	uint32_t width;
-	uint32_t height;
+	GLuint mTexture = 0;
+	bool mMipmap = false;
+	uint32_t mWidth = 0;
+	uint32_t mHeight = 0;
 
 public:
-	TextureGL(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) : 
-		mipmap(_mipmap),
-		width(_width),
-		height(_height)
+	TextureGL(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+		mMipmap(mipmap),
+		mWidth(width),
+		mHeight(height)
 	{
 		GLint last_texture;
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-		glGenTextures(1, &texture);
-		glBindTexture(GL_TEXTURE_2D, texture);
+		glGenTextures(1, &mTexture);
+		glBindTexture(GL_TEXTURE_2D, mTexture);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 		
 		if (memory)
@@ -370,7 +373,7 @@ public:
 				memcpy(dst, src, row_size);
 			}
 
-			glBindTexture(GL_TEXTURE_2D, texture);
+			glBindTexture(GL_TEXTURE_2D, mTexture);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp_data);
 			free(temp_data);
 			
@@ -383,30 +386,29 @@ public:
 
 	~TextureGL()
 	{
-		glDeleteTextures(1, &texture);
+		glDeleteTextures(1, &mTexture);
 	}
 
 	void bind(uint32_t binding)
 	{
 		glActiveTexture(GL_TEXTURE0 + binding);
-		glBindTexture(GL_TEXTURE_2D, texture);
+		glBindTexture(GL_TEXTURE_2D, mTexture);
 	}
 };
 
 class RenderTargetGL
 {
-	friend class BackendGL;
-
+public:
+	auto getGLFramebuffer() const { return mFramebuffer; }
+	auto getTexture() const { return mTexture; }
+	
 private:
-	GLuint framebuffer;
-	GLuint depth_stencil_renderbuffer;
-	TextureGL* texture_data;
-	uint32_t width;
-	uint32_t height;
+	GLuint mFramebuffer = 0;
+	GLuint mDepthStencilRenderbuffer = 0;
+	TextureGL* mTexture = nullptr;
 
 public:
-	RenderTargetGL(uint32_t _width, uint32_t _height, TextureGL* _texture_data) : 
-		texture_data(_texture_data), width(_width), height(_height)
+	RenderTargetGL(TextureGL* texture) : mTexture(texture)
 	{
 		GLint last_fbo;
 		GLint last_rbo;
@@ -414,16 +416,16 @@ public:
 		glGetIntegerv(GL_FRAMEBUFFER_BINDING, &last_fbo);
 		glGetIntegerv(GL_RENDERBUFFER_BINDING, &last_rbo);
 
-		glGenFramebuffers(1, &framebuffer);
-		glGenRenderbuffers(1, &depth_stencil_renderbuffer);
+		glGenFramebuffers(1, &mFramebuffer);
+		glGenRenderbuffers(1, &mDepthStencilRenderbuffer);
 
-		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-		glBindRenderbuffer(GL_RENDERBUFFER, depth_stencil_renderbuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer);
+		glBindRenderbuffer(GL_RENDERBUFFER, mDepthStencilRenderbuffer);
 
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture_data->texture, 0);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture->getGLTexture(), 0);
 
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, depth_stencil_renderbuffer);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, mTexture->getWidth(), mTexture->getHeight());
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mDepthStencilRenderbuffer);
 
 		assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
@@ -433,73 +435,75 @@ public:
 
 	~RenderTargetGL()
 	{
-		glDeleteFramebuffers(1, &framebuffer);
-		glDeleteRenderbuffers(1, &depth_stencil_renderbuffer);
+		glDeleteFramebuffers(1, &mFramebuffer);
+		glDeleteRenderbuffers(1, &mDepthStencilRenderbuffer);
 	}
 };
 
 class BufferGL
 {
-	friend class BackendGL;
+public:
+	auto getGLBuffer() const { return mBuffer; }
 
-protected:
-	GLuint buffer;
-	GLenum type;
+private:
+	GLuint mBuffer = 0;
+	GLenum mType = 0;
 
 public:
-	BufferGL(size_t size, GLenum _type) : type(_type)
+	BufferGL(size_t size, GLenum type) : mType(type)
 	{
-		glGenBuffers(1, &buffer);
-		glBindBuffer(type, buffer);
+		glGenBuffers(1, &mBuffer);
+		glBindBuffer(type, mBuffer);
 		glBufferData(type, size, nullptr, GL_DYNAMIC_DRAW);
 	}
 
 	~BufferGL()
 	{
-		glDeleteBuffers(1, &buffer);
+		glDeleteBuffers(1, &mBuffer);
 	}
 
 	void write(void* memory, size_t size)
 	{
-		glBindBuffer(type, buffer);
-		auto ptr = glMapBufferRange(type, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
+		glBindBuffer(mType, mBuffer);
+		auto ptr = glMapBufferRange(mType, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
 		memcpy(ptr, memory, size);
-		glUnmapBuffer(type);
+		glUnmapBuffer(mType);
 	}
 };
 
 class VertexBufferGL : public BufferGL
 {
-	friend class BackendGL;
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 
 private:
-	size_t stride = 0;
+	size_t mStride = 0;
 
 public:
-	VertexBufferGL(size_t size, size_t _stride) : BufferGL(size, GL_ARRAY_BUFFER),
-		stride(_stride)
+	VertexBufferGL(size_t size, size_t stride) : BufferGL(size, GL_ARRAY_BUFFER),
+		mStride(stride)
 	{
 	}
 };
 
 class IndexBufferGL : public BufferGL
 {
-	friend class BackendGL;
-
+public:
+	auto getStride() const { return mStride; }
+	
 private:
-	size_t stride = 0;
+	size_t mStride = 0;
 
 public:
-	IndexBufferGL(size_t size, size_t _stride) : BufferGL(size, GL_ELEMENT_ARRAY_BUFFER),
-		stride(_stride)
+	IndexBufferGL(size_t size, size_t stride) : BufferGL(size, GL_ELEMENT_ARRAY_BUFFER),
+		mStride(stride)
 	{
 	}
 };
 
 class UniformBufferGL : public BufferGL
 {
-	friend class BackendGL;
-
 public:
 	UniformBufferGL(size_t size) : BufferGL(size, GL_UNIFORM_BUFFER)
 	{
@@ -789,7 +793,7 @@ void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetGL*)handle;
-	glBindFramebuffer(GL_FRAMEBUFFER, render_target->framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, render_target->getGLFramebuffer());
 	gRenderTarget = render_target;
 
 	if (!gViewport.has_value())
@@ -837,7 +841,7 @@ void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 void BackendGL::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferGL*)handle;
-	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->buffer);
+	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->getGLBuffer());
 }
 
 void BackendGL::setBlendMode(const BlendMode& value)
@@ -997,8 +1001,8 @@ void BackendGL::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Textur
 {
 	auto dst_texture = (TextureGL*)dst_texture_handle;
 
-	assert(dst_texture->width == size.x);
-	assert(dst_texture->height == size.y);
+	assert(dst_texture->getWidth() == size.x);
+	assert(dst_texture->getHeight() == size.y);
 
 	if (size.x <= 0 || size.y <= 0)
 		return;
@@ -1024,12 +1028,12 @@ void BackendGL::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Textur
 	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
-	glBindTexture(GL_TEXTURE_2D, dst_texture->texture);
+	glBindTexture(GL_TEXTURE_2D, dst_texture->getGLTexture());
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gPixelBuffer);
 
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 
-	if (dst_texture->mipmap)
+	if (dst_texture->isMipmap())
 		glGenerateMipmap(GL_TEXTURE_2D);
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -1063,7 +1067,7 @@ void BackendGL::destroyTexture(TextureHandle* handle)
 RenderTargetHandle* BackendGL::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = (TextureGL*)texture_handle;
-	auto render_target = new RenderTargetGL(width, height, texture);
+	auto render_target = new RenderTargetGL(texture);
 	return (RenderTargetHandle*)render_target;
 }
 
@@ -1108,7 +1112,7 @@ void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 {
 	auto buffer = (VertexBufferGL*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
@@ -1133,7 +1137,7 @@ void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 {
 	auto buffer = (VertexBufferGL*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
@@ -1170,16 +1174,16 @@ void BackendGL::prepareForDrawing()
 	if (gIndexBufferDirty)
 	{
 		gIndexBufferDirty = false;
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer->buffer);
-		gIndexType = gIndexBuffer->stride == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer->getGLBuffer());
+		gIndexType = gIndexBuffer->getStride() == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 	}
 
 	if (gVertexBufferDirty)
 	{
 		gVertexBufferDirty = false;
-		glBindBuffer(GL_ARRAY_BUFFER, gVertexBuffer->buffer);		
+		glBindBuffer(GL_ARRAY_BUFFER, gVertexBuffer->getGLBuffer());
 #if defined(SKYGFX_PLATFORM_WINDOWS)
-		glBindVertexBuffer(0, gVertexBuffer->buffer, 0, (GLsizei)gVertexBuffer->stride);
+		glBindVertexBuffer(0, gVertexBuffer->getGLBuffer(), 0, (GLsizei)gVertexBuffer->getStride());
 #elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
 		gShader->applyLayout();
 #endif
@@ -1191,7 +1195,7 @@ void BackendGL::prepareForDrawing()
 		{
 			glActiveTexture(GL_TEXTURE0 + binding);
 
-			bool texture_has_mipmap = ((TextureGL*)texture_handle)->mipmap;
+			bool texture_has_mipmap = ((TextureGL*)texture_handle)->isMipmap();
 
 			if (gSampler == Sampler::Linear)
 			{
@@ -1237,8 +1241,8 @@ void BackendGL::prepareForDrawing()
 		}
 		else
 		{
-			width = static_cast<float>(gRenderTarget->width);
-			height = static_cast<float>(gRenderTarget->height);
+			width = static_cast<float>(gRenderTarget->getTexture()->getWidth());
+			height = static_cast<float>(gRenderTarget->getTexture()->getHeight());
 		}
 
 		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
