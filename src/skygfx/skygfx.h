@@ -460,7 +460,8 @@ namespace skygfx
 		std::unordered_map<uint32_t, std::shared_ptr<UniformBuffer>> mDynamicUniformBuffers;
 
 	public:
-		static BackendType GetBackendTypeBasedOnPlatform();
+		static std::vector<BackendType> GetAvailableBackends();
+		static BackendType GetDefaultBackend();
 	};
 }
 

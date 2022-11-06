@@ -115,7 +115,7 @@ Device::Device(void* window, uint32_t width, uint32_t height, std::optional<Back
 {
 	assert(gBackend == nullptr);
 
-	auto type = _type.value_or(GetBackendTypeBasedOnPlatform());
+	auto type = _type.value_or(GetDefaultBackend());
 
 #ifdef SKYGFX_HAS_D3D11
 	if (type == BackendType::D3D11)
@@ -339,22 +339,35 @@ uint32_t Device::getBackbufferHeight() const
 	return mBackbufferHeight;
 }
 
-BackendType Device::GetBackendTypeBasedOnPlatform()
+std::vector<BackendType> Device::GetAvailableBackends()
 {
+	std::vector<BackendType> result;
+
 #ifdef SKYGFX_HAS_D3D11
-	return BackendType::D3D11;
+	result.push_back(BackendType::D3D11);
 #endif
 #ifdef SKYGFX_HAS_D3D12
-	return BackendType::D3D12;
+	result.push_back(BackendType::D3D12);
 #endif
 #ifdef SKYGFX_HAS_OPENGL
-	return BackendType::OpenGL;
+	result.push_back(BackendType::OpenGL);
 #endif
 #ifdef SKYGFX_HAS_VULKAN
-	return BackendType::Vulkan;
+	result.push_back(BackendType::Vulkan);
 #endif
 #ifdef SKYGFX_HAS_METAL
-	return BackendType::Metal;
+	result.push_back(BackendType::Metal);
 #endif
-	throw std::runtime_error("no available backends");
+
+	return result;
+}
+
+BackendType Device::GetDefaultBackend()
+{
+	auto backends = GetAvailableBackends();
+	
+	if (backends.empty())
+		throw std::runtime_error("no available backends");
+
+	return backends.at(0);
 }

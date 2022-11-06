@@ -15,35 +15,31 @@ namespace utils
 {
 	skygfx::BackendType ChooseBackendTypeViaConsole()
 	{
-		struct Backend
-		{
-			std::string name;
-			skygfx::BackendType type;
-		};
-
-		static const std::vector<Backend> backends = {
-			{ "D3D11", skygfx::BackendType::D3D11 },
-			{ "D3D12", skygfx::BackendType::D3D12 },
-			{ "OpenGL", skygfx::BackendType::OpenGL },
-			{ "Vulkan", skygfx::BackendType::Vulkan },
-			{ "Metal", skygfx::BackendType::Metal },
+		static const std::map<skygfx::BackendType, std::string> backend_names = {
+			{ skygfx::BackendType::D3D11, "D3D11" },
+			{ skygfx::BackendType::D3D12, "D3D12" },
+			{ skygfx::BackendType::OpenGL, "OpenGL" },
+			{ skygfx::BackendType::Vulkan, "Vulkan" },
+			{ skygfx::BackendType::Metal, "Metal" },
 		};
 
 		std::cout << "Choose backend type: " << std::endl;
 
+		auto backends = skygfx::Device::GetAvailableBackends();
+
 		for (int i = 0; i < backends.size(); i++)
 		{
-			std::cout << i + 1 << ". " << backends.at(i).name << std::endl;
+			std::cout << i + 1 << ". " << backend_names.at(backends.at(i)) << std::endl;
 		}
 		
 		int value = 0;
 		std::cin >> value;
 
-		const auto& backend = backends.at(value - 1);
+		auto backend = backends.at(value - 1);
 
-		std::cout << "Backend is " << backend.name << std::endl;
+		std::cout << "Backend is " << backend_names.at(backend) << std::endl;
 
-		return backend.type;
+		return backend;
 	}
 
 	void* GetNativeWindow(GLFWwindow* window)
