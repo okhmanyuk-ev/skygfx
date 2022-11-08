@@ -797,8 +797,8 @@ void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 
 	gVertexBuffer = buffer_view;
 
-	buffer->mark_used();
-	gUsedBuffersInThisFrame.insert(buffer);
+	buffer->mark_used(); // TODO: there is no guarantee that this buffer will be used in drawcall
+	gUsedBuffersInThisFrame.insert(buffer); // TODO: there is no guarantee that this buffer will be used in drawcall
 }
 
 void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
@@ -812,8 +812,8 @@ void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 
 	gIndexBuffer = buffer_view;
 
-	buffer->mark_used();
-	gUsedBuffersInThisFrame.insert(buffer);
+	buffer->mark_used(); // TODO: there is no guarantee that this buffer will be used in drawcall
+	gUsedBuffersInThisFrame.insert(buffer); // TODO: there is no guarantee that this buffer will be used in drawcall
 }
 
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
@@ -822,8 +822,8 @@ void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 
 	gUniformBuffers[binding] = buffer->get_current_gpu_virtual_address();
 
-	buffer->mark_used();
-	gUsedBuffersInThisFrame.insert(buffer);
+	buffer->mark_used(); // TODO: there is no guarantee that this buffer will be used in drawcall
+	gUsedBuffersInThisFrame.insert(buffer); // TODO: there is no guarantee that this buffer will be used in drawcall
 }
 
 void BackendD3D12::setBlendMode(const BlendMode& value)

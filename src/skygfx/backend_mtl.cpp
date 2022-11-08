@@ -3,6 +3,7 @@
 #ifdef SKYGFX_HAS_METAL
 
 #include <unordered_map>
+#include <unordered_set>
 
 #if defined(SKYGFX_PLATFORM_MACOS)
 	#import <AppKit/AppKit.h>
@@ -105,6 +106,8 @@ static std::unordered_map<DepthStencilStateMetal, id<MTLDepthStencilState>> gDep
 
 static PipelineStateMetal gPipelineState;
 static std::unordered_map<PipelineStateMetal, id<MTLRenderPipelineState>> gPipelineStates;
+
+static std::unordered_set<BufferMetal*> gUsedBuffersInThisFrame;
 
 class ShaderMetal
 {
@@ -267,14 +270,67 @@ public:
 
 class BufferMetal
 {
+private:
+	std::vector<id<MTLBuffer>> mBuffers;
+	size_t mSize = 0;
+	bool mUsed = false;
+	uint32_t mIndex = 0;
+	
 public:
-	auto getMetalBuffer() const { return mBuffer; }
+	BufferMetal(size_t size) : mSize(size)
+	{
+		mBuffers.push_back(createBuffer());
+	}
+	
+	~BufferMetal()
+	{
+		for (auto buffer : mBuffers)
+		{
+			[buffer release];
+		}
+	}
+	
+	void write(void* memory, size_t size)
+	{
+		assert(size <= mSize);
+		
+		if (mUsed)
+		{
+			mIndex += 1;
+			mUsed = false;
+		}
+		
+		if (mIndex >= mBuffers.size())
+		{
+			mBuffers.push_back(createBuffer());
+		}
+		
+		auto buffer = mBuffers.at(mIndex);
+
+		memcpy(buffer.contents, memory, size);
+#if defined(SKYGFX_PLATFORM_MACOS)
+		[buffer didModifyRange:NSMakeRange(0, size)];
+#endif
+	}
+	
+	void markUsed()
+	{
+		mUsed = true;
+	}
+	
+	void resetIndex()
+	{
+		mIndex = 0;
+		mUsed = false;
+	}
+	
+	auto getMetalBuffer() const
+	{
+		return mBuffers.at(mIndex);
+	}
 	
 private:
-	id<MTLBuffer> mBuffer = nullptr;
-	
-public:
-	BufferMetal(size_t size)
+	id<MTLBuffer> createBuffer()
 	{
 #if defined(SKYGFX_PLATFORM_MACOS)
 		auto storageMode = MTLResourceStorageModeManaged;
@@ -282,20 +338,7 @@ public:
 		auto storageMode = MTLResourceStorageModeShared;
 #endif
 
-		mBuffer = [gDevice newBufferWithLength:size options:storageMode];
-	}
-	
-	~BufferMetal()
-	{
-		[mBuffer release];
-	}
-	
-	void write(void* memory, size_t size)
-	{
-		memcpy(mBuffer.contents, memory, size);
-#if defined(SKYGFX_PLATFORM_MACOS)
-		[mBuffer didModifyRange:NSMakeRange(0, size)];
-#endif
+		return [gDevice newBufferWithLength:mSize options:storageMode];
 	}
 };
 
@@ -581,7 +624,12 @@ void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
 void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
+	
 	auto index_size = gIndexType == MTLIndexTypeUInt32 ? 4 : 2;
+	
+	gIndexBuffer->markUsed();
+	gUsedBuffersInThisFrame.insert(gIndexBuffer);
+	
 	[gRenderCommandEncoder drawIndexedPrimitives:gPrimitiveType indexCount:index_count
 		indexType:gIndexType indexBuffer:gIndexBuffer->getMetalBuffer()
 		indexBufferOffset:index_offset * index_size];
@@ -594,7 +642,16 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 void BackendMetal::present()
 {
 	end();
+
 	[gView draw];
+	
+	for (auto buffer : gUsedBuffersInThisFrame)
+	{
+		buffer->resetIndex();
+	}
+
+	gUsedBuffersInThisFrame.clear();
+	
 	begin();
 }
 
@@ -748,6 +805,9 @@ void BackendMetal::prepareForDrawing()
 		[gRenderCommandEncoder setFragmentSamplerState:gSamplerStates.at(gSamplerState) atIndex:binding];
 	}
 
+	gVertexBuffer->markUsed();
+	gUsedBuffersInThisFrame.insert(gVertexBuffer);
+
 	[gRenderCommandEncoder setVertexBuffer:gVertexBuffer->getMetalBuffer() offset:0 atIndex:gVertexBufferStageBinding];
 
 	if (!gDepthStencilStates.contains(gDepthStencilState))
@@ -891,6 +951,9 @@ void BackendMetal::prepareForDrawing()
 
 	for (auto [binding, buffer] : gUniformBuffers)
 	{
+		buffer->markUsed();
+		gUsedBuffersInThisFrame.insert(buffer);
+
 		[gRenderCommandEncoder setVertexBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
 		[gRenderCommandEncoder setFragmentBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
 	}
