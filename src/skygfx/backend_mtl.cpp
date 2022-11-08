@@ -92,6 +92,7 @@ static std::unordered_map<uint32_t, TextureMetal*> gTextures;
 static CullMode gCullMode = CullMode::None;
 static const uint32_t gVertexBufferStageBinding = 30;
 
+static float gBackbufferScaleFactor = 1.0f;
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
 
@@ -412,7 +413,6 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
 	gView.autoResizeDrawable = NO;
-	gView.drawableSize = CGSizeMake((float)width, (float)height);
 
 	auto metal_layer = (CAMetalLayer*)gView.layer;
 	metal_layer.magnificationFilter = kCAFilterNearest;
@@ -448,6 +448,7 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	[root_view addSubview:gView];
 #endif
 	
+	gBackbufferScaleFactor = gView.window.backingScaleFactor;
 	gBackbufferWidth = width;
 	gBackbufferHeight = height;
 
@@ -985,7 +986,19 @@ void BackendMetal::prepareForDrawing()
 
 	auto _viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 	auto _scissor = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+	
+	if (gPipelineState.render_target == nullptr)
+	{
+		_viewport.position *= gBackbufferScaleFactor;
+		_viewport.size *= gBackbufferScaleFactor;
 
+		_scissor.position *= gBackbufferScaleFactor;
+		_scissor.size *= gBackbufferScaleFactor;
+		
+		width *= gBackbufferScaleFactor;
+		height *= gBackbufferScaleFactor;
+	}
+	
 	MTLViewport viewport;
 	viewport.originX = _viewport.position.x;
 	viewport.originY = _viewport.position.y;
@@ -1007,7 +1020,7 @@ void BackendMetal::prepareForDrawing()
 		scissor.height = height - scissor.y;
 
 	[gRenderCommandEncoder setViewport:viewport];
-	[gRenderCommandEncoder setScissorRect:scissor];
+	//[gRenderCommandEncoder setScissorRect:scissor]; // TODO: uncomment and fix assertions
 }
 
 #endif
