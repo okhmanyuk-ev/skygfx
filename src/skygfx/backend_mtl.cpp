@@ -412,7 +412,6 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
-	gView.autoResizeDrawable = NO;
 
 	auto metal_layer = (CAMetalLayer*)gView.layer;
 	metal_layer.magnificationFilter = kCAFilterNearest;
@@ -1020,7 +1019,7 @@ void BackendMetal::prepareForDrawing()
 		scissor.height = height - scissor.y;
 
 	[gRenderCommandEncoder setViewport:viewport];
-	//[gRenderCommandEncoder setScissorRect:scissor]; // TODO: uncomment and fix assertions
+	[gRenderCommandEncoder setScissorRect:scissor];
 }
 
 #endif
