@@ -368,6 +368,9 @@ static void begin()
 	gRenderPassDescriptor = gView.currentRenderPassDescriptor;
 	gRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
+	
+	gBackbufferWidth = gView.frame.size.width;
+	gBackbufferHeight = gView.frame.size.height;
 }
 
 static void end()
@@ -412,6 +415,9 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
+	
+	[gView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
+		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin )];
 
 	auto metal_layer = (CAMetalLayer*)gView.layer;
 	metal_layer.magnificationFilter = kCAFilterNearest;
@@ -471,11 +477,6 @@ BackendMetal::~BackendMetal()
 
 void BackendMetal::resize(uint32_t width, uint32_t height)
 {
-//	end();
-//	gBackbufferWidth = width;
-//	gBackbufferHeight = height;
-//	gView.drawableSize = CGSizeMake((float)gBackbufferWidth, (float)gBackbufferHeight);
-//	begin();
 }
 
 void BackendMetal::setTopology(Topology topology)
