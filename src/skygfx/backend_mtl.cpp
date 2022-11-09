@@ -416,9 +416,6 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
 	
-	[gView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
-		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin )];
-
 	auto metal_layer = (CAMetalLayer*)gView.layer;
 	metal_layer.magnificationFilter = kCAFilterNearest;
 	
@@ -447,13 +444,17 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 		if (nil != nsWindow)
 			[nsWindow setContentView:gView];
 	}
+	
+	[gView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
+		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin )];
+
+	gBackbufferScaleFactor = gView.window.backingScaleFactor;
 #elif defined(SKYGFX_PLATFORM_IOS)
 	auto _window = (UIWindow*)window;
 	auto root_view = [[_window rootViewController] view];
 	[root_view addSubview:gView];
 #endif
 	
-	gBackbufferScaleFactor = gView.window.backingScaleFactor;
 	gBackbufferWidth = width;
 	gBackbufferHeight = height;
 
