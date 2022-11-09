@@ -1012,6 +1012,9 @@ void BackendMetal::prepareForDrawing()
 	scissor.width = _scissor.size.x;
 	scissor.height = _scissor.size.y;
 	
+	scissor.x = glm::min((uint32_t)scissor.x, (uint32_t)width);
+	scissor.y = glm::min((uint32_t)scissor.y, (uint32_t)height);
+
 	if (scissor.x + scissor.width > width)
 		scissor.width = width - scissor.x;
 
