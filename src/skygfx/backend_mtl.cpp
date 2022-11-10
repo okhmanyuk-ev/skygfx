@@ -88,6 +88,8 @@ static MTLIndexType gIndexType = MTLIndexTypeUInt16;
 static IndexBufferMetal* gIndexBuffer = nullptr;
 static BufferMetal* gVertexBuffer = nullptr;
 static std::unordered_map<uint32_t, BufferMetal*> gUniformBuffers;
+
+static std::unordered_set<uint32_t> gDirtyTextures;
 static std::unordered_map<uint32_t, TextureMetal*> gTextures;
 
 static bool gCullModeDirty = true;
@@ -105,6 +107,7 @@ static std::optional<Viewport> gViewport;
 static bool gScissorDirty = true;
 static std::optional<Scissor> gScissor;
 
+static bool gSamplerStateDirty = true;
 static SamplerStateMetal gSamplerState;
 static std::unordered_map<SamplerStateMetal, id<MTLSamplerState>> gSamplerStates;
 
@@ -534,7 +537,13 @@ void BackendMetal::setScissor(std::optional<Scissor> scissor)
 void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureMetal*)handle;
+	
+	if (gTextures[binding] == texture)
+		return;
+	
 	gTextures[binding] = texture;
+	gDirtyTextures.insert(binding);
+	gSamplerStateDirty = true;
 }
 
 void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
@@ -625,12 +634,20 @@ void BackendMetal::setCullMode(CullMode cull_mode)
 
 void BackendMetal::setSampler(Sampler value)
 {
+	if (gSamplerState.sampler == value)
+		return;
+		
 	gSamplerState.sampler = value;
+	gSamplerStateDirty = true;
 }
 
 void BackendMetal::setTextureAddress(TextureAddress value)
 {
+	if (gSamplerState.texture_address == value)
+		return;
+		
 	gSamplerState.texture_address = value;
+	gSamplerStateDirty = true;
 }
 
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -829,44 +846,56 @@ void BackendMetal::prepareForDrawing()
 {
 	ensureRenderTarget();
 	
-	if (!gSamplerStates.contains(gSamplerState))
+	if (gSamplerStateDirty)
 	{
-		const static std::unordered_map<Sampler, MTLSamplerMinMagFilter> SamplerMinMagFilter = {
-			{ Sampler::Linear, MTLSamplerMinMagFilterLinear  },
-			{ Sampler::Nearest, MTLSamplerMinMagFilterNearest },
-		};
-		
-		const static std::unordered_map<Sampler, MTLSamplerMipFilter> SamplerMipFilter = {
-			{ Sampler::Linear, MTLSamplerMipFilterLinear  },
-			{ Sampler::Nearest, MTLSamplerMipFilterNearest },
-		};
-		
-		const static std::unordered_map<TextureAddress, MTLSamplerAddressMode> TextureAddressMap = {
-			{ TextureAddress::Clamp, MTLSamplerAddressModeClampToEdge },
-			{ TextureAddress::Wrap, MTLSamplerAddressModeRepeat },
-			{ TextureAddress::MirrorWrap, MTLSamplerAddressModeMirrorRepeat }
-		};
+		gSamplerStateDirty = false;
+	
+		if (!gSamplerStates.contains(gSamplerState))
+		{
+			const static std::unordered_map<Sampler, MTLSamplerMinMagFilter> SamplerMinMagFilter = {
+				{ Sampler::Linear, MTLSamplerMinMagFilterLinear  },
+				{ Sampler::Nearest, MTLSamplerMinMagFilterNearest },
+			};
+			
+			const static std::unordered_map<Sampler, MTLSamplerMipFilter> SamplerMipFilter = {
+				{ Sampler::Linear, MTLSamplerMipFilterLinear  },
+				{ Sampler::Nearest, MTLSamplerMipFilterNearest },
+			};
+			
+			const static std::unordered_map<TextureAddress, MTLSamplerAddressMode> TextureAddressMap = {
+				{ TextureAddress::Clamp, MTLSamplerAddressModeClampToEdge },
+				{ TextureAddress::Wrap, MTLSamplerAddressModeRepeat },
+				{ TextureAddress::MirrorWrap, MTLSamplerAddressModeMirrorRepeat }
+			};
 
-		auto desc = [[MTLSamplerDescriptor alloc] init];
-		desc.magFilter = SamplerMinMagFilter.at(gSamplerState.sampler);
-		desc.minFilter = SamplerMinMagFilter.at(gSamplerState.sampler);
-		desc.mipFilter = SamplerMipFilter.at(gSamplerState.sampler);
-		desc.rAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
-		desc.sAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
-		desc.tAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
-		
-		auto sampler_state = [gDevice newSamplerStateWithDescriptor:desc];
-		
-		gSamplerStates.insert({ gSamplerState, sampler_state });
-		
-		[desc release];
+			auto desc = [[MTLSamplerDescriptor alloc] init];
+			desc.magFilter = SamplerMinMagFilter.at(gSamplerState.sampler);
+			desc.minFilter = SamplerMinMagFilter.at(gSamplerState.sampler);
+			desc.mipFilter = SamplerMipFilter.at(gSamplerState.sampler);
+			desc.rAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
+			desc.sAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
+			desc.tAddressMode = TextureAddressMap.at(gSamplerState.texture_address);
+			
+			auto sampler_state = [gDevice newSamplerStateWithDescriptor:desc];
+			
+			gSamplerStates.insert({ gSamplerState, sampler_state });
+			
+			[desc release];
+		}
+
+		for (auto [binding, texture] : gTextures)
+		{
+			[gRenderCommandEncoder setFragmentSamplerState:gSamplerStates.at(gSamplerState) atIndex:binding];
+		}
 	}
 	
-	for (auto [binding, texture] : gTextures)
+	for (auto binding : gDirtyTextures)
 	{
+		auto texture = gTextures.at(binding);
 		[gRenderCommandEncoder setFragmentTexture:texture->getMetalTexture() atIndex:binding];
-		[gRenderCommandEncoder setFragmentSamplerState:gSamplerStates.at(gSamplerState) atIndex:binding];
 	}
+	
+	gDirtyTextures.clear();
 
 	gVertexBuffer->markUsed();
 	gUsedBuffersInThisFrame.insert(gVertexBuffer);
