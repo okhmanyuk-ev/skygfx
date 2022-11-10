@@ -817,8 +817,8 @@ void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferGL*)handle;
 
-	if (gVertexBuffer == buffer)
-		return;
+	//if (gVertexBuffer == buffer) // TODO: gl emit errors when this code uncommented
+	//	return;
 
 	gVertexBuffer = buffer;
 	gVertexBufferDirty = true;
@@ -828,8 +828,8 @@ void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferGL*)handle;
 	
-	if (gIndexBuffer == buffer)
-		return;
+	//if (gIndexBuffer == buffer) // TODO: gl emit errors when this code uncommented
+	//	return;
 	
 	gIndexBuffer = buffer;
 	gIndexBufferDirty = true;
