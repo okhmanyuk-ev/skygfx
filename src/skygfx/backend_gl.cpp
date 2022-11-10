@@ -3,6 +3,7 @@
 #ifdef SKYGFX_HAS_OPENGL
 
 #include <unordered_map>
+#include <unordered_set>
 #include <stdexcept>
 #include <iostream>
 
@@ -388,12 +389,6 @@ public:
 	{
 		glDeleteTextures(1, &mTexture);
 	}
-
-	void bind(uint32_t binding)
-	{
-		glActiveTexture(GL_TEXTURE0 + binding);
-		glBindTexture(GL_TEXTURE_2D, mTexture);
-	}
 };
 
 class RenderTargetGL
@@ -537,11 +532,18 @@ static GLenum gIndexType;
 static ExecuteList gExecuteAfterPresent;
 
 static bool gTexParametersDirty = true;
-static bool gViewportDirty = true;
 static Sampler gSampler = Sampler::Linear;
 static TextureAddress gTextureAddress = TextureAddress::Wrap;
-static std::unordered_map<uint32_t, TextureHandle*> gTextures;
+
+static std::unordered_set<uint32_t> gDirtyTextures;
+static std::unordered_map<uint32_t, TextureGL*> gTextures;
+
+static bool gViewportDirty = true;
 static std::optional<Viewport> gViewport;
+
+static bool gScissorDirty = true;
+static std::optional<Scissor> gScissor;
+
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
 static float gBackbufferScaleFactor = 1.0f;
@@ -742,57 +744,41 @@ void BackendGL::setTopology(Topology topology)
 
 void BackendGL::setViewport(std::optional<Viewport> viewport)
 {
+	if (gViewport == viewport)
+		return;
+		
 	gViewport = viewport;
 	gViewportDirty = true;
 }
 
 void BackendGL::setScissor(std::optional<Scissor> scissor)
 {
-	if (scissor.has_value())
-	{
-		auto value = scissor.value();
-
-		auto backbuffer_height = gBackbufferHeight;
+	if (gScissor == scissor)
+		return;
 		
-		if (gRenderTarget == nullptr)
-		{
-			value.size *= gBackbufferScaleFactor;
-			value.position *= gBackbufferScaleFactor;
-			backbuffer_height *= gBackbufferScaleFactor;
-		}
-
-		glEnable(GL_SCISSOR_TEST);
-		glScissor(
-			(GLint)glm::round(value.position.x),
-			(GLint)glm::round(backbuffer_height - value.position.y - value.size.y), // TODO: need different calculations when render target
-			(GLint)glm::round(value.size.x),
-			(GLint)glm::round(value.size.y));
-	}
-	else
-	{
-		glDisable(GL_SCISSOR_TEST);
-	}
+	gScissor = scissor;
+	gScissorDirty = true;
 }
 
 void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureGL*)handle;
-	texture->bind(binding);
 	
-	TextureHandle* prev_texture = nullptr;
-	
-	if (gTextures.contains(binding))
-		prev_texture = gTextures.at(binding);
-
-	gTextures[binding] = handle;
-	
-	if (prev_texture != handle)
-		gTexParametersDirty = true;
+	if (gTextures[binding] == texture)
+		return;
+		
+	gTextures[binding] = texture;
+	gDirtyTextures.insert(binding);
+	gTexParametersDirty = true;
 }
 
 void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetGL*)handle;
+	
+	if (gRenderTarget == render_target)
+		return;
+	
 	glBindFramebuffer(GL_FRAMEBUFFER, render_target->getGLFramebuffer());
 	gRenderTarget = render_target;
 
@@ -802,6 +788,9 @@ void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendGL::setRenderTarget(std::nullptr_t value)
 {
+	if (gRenderTarget == nullptr)
+		return;
+		
 #if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #elif defined(SKYGFX_PLATFORM_IOS)
@@ -827,6 +816,10 @@ void BackendGL::setShader(ShaderHandle* handle)
 void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferGL*)handle;
+
+	if (gVertexBuffer == buffer)
+		return;
+
 	gVertexBuffer = buffer;
 	gVertexBufferDirty = true;
 }
@@ -834,6 +827,10 @@ void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferGL*)handle;
+	
+	if (gIndexBuffer == buffer)
+		return;
+	
 	gIndexBuffer = buffer;
 	gIndexBufferDirty = true;
 }
@@ -934,12 +931,18 @@ void BackendGL::setCullMode(CullMode cull_mode)
 
 void BackendGL::setSampler(Sampler value)
 {
+	if (gSampler == value)
+		return;
+
 	gSampler = value;
 	gTexParametersDirty = true;
 }
 
 void BackendGL::setTextureAddress(TextureAddress value)
 {
+	if (gTextureAddress == value)
+		return;
+		
 	gTextureAddress = value;
 	gTexParametersDirty = true;
 }
@@ -1189,6 +1192,16 @@ void BackendGL::prepareForDrawing()
 #endif
 	}
 
+	for (auto binding : gDirtyTextures)
+	{
+		auto texture = gTextures.at(binding);
+		
+		glActiveTexture(GL_TEXTURE0 + binding);
+		glBindTexture(GL_TEXTURE_2D, texture->getGLTexture());
+	}
+
+	gDirtyTextures.clear();
+
 	if (gTexParametersDirty)
 	{
 		for (auto [binding, texture_handle] : gTextures)
@@ -1264,6 +1277,36 @@ void BackendGL::prepareForDrawing()
 #elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
 		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
 #endif
+	}
+	
+	if (gScissorDirty)
+	{
+		gScissorDirty = false;
+		
+		if (gScissor.has_value())
+		{
+			auto value = gScissor.value();
+
+			auto backbuffer_height = gBackbufferHeight;
+			
+			if (gRenderTarget == nullptr)
+			{
+				value.size *= gBackbufferScaleFactor;
+				value.position *= gBackbufferScaleFactor;
+				backbuffer_height *= gBackbufferScaleFactor;
+			}
+
+			glEnable(GL_SCISSOR_TEST);
+			glScissor(
+				(GLint)glm::round(value.position.x),
+				(GLint)glm::round(backbuffer_height - value.position.y - value.size.y), // TODO: need different calculations when render target
+				(GLint)glm::round(value.size.x),
+				(GLint)glm::round(value.size.y));
+		}
+		else
+		{
+			glDisable(GL_SCISSOR_TEST);
+		}
 	}
 }
 
