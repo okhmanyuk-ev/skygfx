@@ -380,6 +380,18 @@ static void begin()
 	gRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
 	
+	gCullModeDirty = true;
+	gViewportDirty = true;
+	gScissorDirty = true;
+	gSamplerStateDirty = true;
+	gDepthStencilStateDirty = true;
+	gPipelineStateDirty = true;
+	
+	for (auto [binding, texture] : gTextures)
+	{
+		gDirtyTextures.insert(binding);
+	}
+	
 	auto width = (uint32_t)gView.frame.size.width;
 	auto height = (uint32_t)gView.frame.size.height;
 	
