@@ -1139,6 +1139,18 @@ void BackendMetal::prepareForDrawing()
 			height *= gBackbufferScaleFactor;
 		}
 		
+		if (_scissor.position.x < 0.0f)
+		{
+			_scissor.size.x -= _scissor.position.x;
+			_scissor.position.x = 0.0f;
+		}
+		
+		if (_scissor.position.y < 0.0f)
+		{
+			_scissor.size.y -= _scissor.position.y;
+			_scissor.position.y = 0.0f;
+		}
+		
 		MTLScissorRect scissor;
 		scissor.x = _scissor.position.x;
 		scissor.y = _scissor.position.y;
