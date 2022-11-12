@@ -451,9 +451,12 @@ namespace skygfx
 		uint32_t getBackbufferWidth() const;
 		uint32_t getBackbufferHeight() const;
 
+		auto getBackendType() const { return mBackendType; }
+
 	private:
 		uint32_t mBackbufferWidth = 0;
 		uint32_t mBackbufferHeight = 0;
+		BackendType mBackendType = BackendType::OpenGL;
 
 		std::shared_ptr<VertexBuffer> mDynamicVertexBuffer;
 		std::shared_ptr<IndexBuffer> mDynamicIndexBuffer;

@@ -143,6 +143,7 @@ Device::Device(void* window, uint32_t width, uint32_t height, std::optional<Back
 
 	mBackbufferWidth = width;
 	mBackbufferHeight = height;
+	mBackendType = type;
 }
 
 Device::~Device()
