@@ -83,6 +83,7 @@ static id<MTLCommandQueue> gCommandQueue = nullptr;
 static id<MTLCommandBuffer> gCommandBuffer = nullptr;
 static MTLRenderPassDescriptor* gRenderPassDescriptor = nullptr;
 static id<MTLRenderCommandEncoder> gRenderCommandEncoder = nullptr;
+static id<MTLBlitCommandEncoder> gBlitCommandEncoder = nullptr;
 static MTLPrimitiveType gPrimitiveType = MTLPrimitiveTypeTriangle;
 static MTLIndexType gIndexType = MTLIndexTypeUInt16;
 static IndexBufferMetal* gIndexBuffer = nullptr;
@@ -210,12 +211,14 @@ class TextureMetal
 {
 public:
 	auto getMetalTexture() const { return mTexture; }
+	auto isMipmap() const { return mMipmap; }
 	
 private:
 	id<MTLTexture> mTexture = nullptr;
+	bool mMipmap = false;
 	
 public:
-	TextureMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+	TextureMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) : mMipmap(mipmap)
 	{
 		auto desc = [[MTLTextureDescriptor alloc] init];
 		desc.width = width;
@@ -248,13 +251,7 @@ public:
 		
 			if (mipmap)
 			{
-				auto cmd = gCommandQueue.commandBuffer;
-				auto enc = cmd.blitCommandEncoder;
-			
-				[enc generateMipmapsForTexture:mTexture];
-				[enc endEncoding];
-				[cmd commit];
-				[cmd waitUntilCompleted];
+				generateMips();
 			}
 		}
 	}
@@ -262,6 +259,22 @@ public:
 	~TextureMetal()
 	{
 		[mTexture release];
+	}
+	
+	void generateMips()
+	{
+		assert(mMipmap);
+		
+		if (!mMipmap)
+			return;
+		
+		auto cmd = gCommandQueue.commandBuffer;
+		auto enc = cmd.blitCommandEncoder;
+
+		[enc generateMipmapsForTexture:mTexture];
+		[enc endEncoding];
+		[cmd commit];
+		[cmd waitUntilCompleted];
 	}
 };
 
@@ -371,13 +384,27 @@ public:
 
 static NSAutoreleasePool* gFrameAutoreleasePool = nullptr;
 
-static void begin()
+static void endEncoding()
 {
-	gFrameAutoreleasePool = [[NSAutoreleasePool alloc] init];
+	if (gRenderCommandEncoder)
+	{
+		[gRenderCommandEncoder endEncoding];
+		gRenderCommandEncoder = nullptr;
+	}
+	
+	if (gBlitCommandEncoder)
+	{
+		[gBlitCommandEncoder endEncoding];
+		gBlitCommandEncoder = nullptr;
+	}
+}
 
-	gCommandBuffer = gCommandQueue.commandBuffer;
-	gRenderPassDescriptor = gView.currentRenderPassDescriptor;
-	gRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+static void beginRenderEncoding()
+{
+	assert(gRenderCommandEncoder == nullptr);
+	
+	endEncoding();
+	
 	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
 	
 	gCullModeDirty = true;
@@ -391,6 +418,26 @@ static void begin()
 	{
 		gDirtyTextures.insert(binding);
 	}
+}
+
+static void beginBlitEncoding()
+{
+	assert(gBlitCommandEncoder == nullptr);
+	
+	endEncoding();
+	
+	gBlitCommandEncoder = [gCommandBuffer blitCommandEncoder];
+}
+
+static void begin()
+{
+	gFrameAutoreleasePool = [[NSAutoreleasePool alloc] init];
+
+	gCommandBuffer = gCommandQueue.commandBuffer;
+	gRenderPassDescriptor = gView.currentRenderPassDescriptor;
+	gRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+	
+	beginRenderEncoding();
 	
 	auto width = (uint32_t)gView.frame.size.width;
 	auto height = (uint32_t)gView.frame.size.height;
@@ -410,7 +457,8 @@ static void begin()
 
 static void end()
 {
-	[gRenderCommandEncoder endEncoding];
+	endEncoding();
+	
 	[gCommandBuffer presentDrawable:gView.currentDrawable];
 	[gCommandBuffer commit];
 	[gCommandBuffer waitUntilCompleted];
@@ -428,12 +476,9 @@ static void ensureRenderTarget()
 	
 	if (color_attachment.texture != render_texture)
 	{
-		[gRenderCommandEncoder endEncoding];
-		[gCommandBuffer commit];
-		gCommandBuffer = gCommandQueue.commandBuffer;
+		endEncoding();
 		color_attachment.texture = render_texture;
-		color_attachment.loadAction = MTLLoadActionLoad;
-		gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
+		beginRenderEncoding();
 	}
 }
 
@@ -450,6 +495,7 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
+	gView.framebufferOnly = NO;
 	
 	auto metal_layer = (CAMetalLayer*)gView.layer;
 	metal_layer.magnificationFilter = kCAFilterNearest;
@@ -674,19 +720,11 @@ void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optio
 		gRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(col.r, col.g, col.b, col.a);
 		gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
 	}
-	else
-	{
-		gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
-	}
 
 	if (depth.has_value())
 	{
 		gRenderPassDescriptor.depthAttachment.clearDepth = depth.value();
 		gRenderPassDescriptor.depthAttachment.loadAction = MTLLoadActionClear;
-	}
-	else
-	{
-		gRenderPassDescriptor.depthAttachment.loadAction = MTLLoadActionLoad;
 	}
 
 	if (stencil.has_value())
@@ -694,13 +732,13 @@ void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optio
 		gRenderPassDescriptor.stencilAttachment.clearStencil = stencil.value();
 		gRenderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionClear;
 	}
-	else
-	{
-		gRenderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionLoad;
-	}
 
-	[gRenderCommandEncoder endEncoding];
-	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
+	endEncoding();
+	beginRenderEncoding();
+	
+	gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
+	gRenderPassDescriptor.depthAttachment.loadAction = MTLLoadActionLoad;
+	gRenderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionLoad;
 }
 
 void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
@@ -726,6 +764,61 @@ void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 
 void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
 {
+	auto dst_texture = (TextureMetal*)dst_texture_handle;
+
+	assert(dst_texture->getMetalTexture().width == size.x);
+	assert(dst_texture->getMetalTexture().height == size.y);
+
+	if (size.x <= 0 || size.y <= 0)
+		return;
+
+	beginBlitEncoding();
+	
+	auto src_texture = gRenderPassDescriptor.colorAttachments[0].texture;
+	
+	float src_x = pos.x;
+	float src_y = pos.y;
+	float src_w = size.x;
+	float src_h = size.y;
+	
+	if (src_x < 0)
+	{
+		src_w += src_x;
+		src_x = 0;
+	}
+	
+	if (src_y < 0)
+	{
+		src_h += src_y;
+		src_y = 0;
+	}
+	
+	if (src_x + src_w > src_texture.width)
+	{
+		src_w = (float)src_texture.width - src_x;
+	}
+
+	if (src_y + src_h > src_texture.height)
+	{
+		src_h = (float)src_texture.height - src_y;
+	}
+
+	[gBlitCommandEncoder
+		copyFromTexture:src_texture
+		sourceSlice:0
+		sourceLevel:0
+		sourceOrigin:MTLOriginMake((uint32_t)src_x, (uint32_t)src_y, 0)
+		sourceSize:MTLSizeMake((uint32_t)src_w, (uint32_t)src_h, 1)
+		toTexture:dst_texture->getMetalTexture()
+		destinationSlice:0
+		destinationLevel:0
+		destinationOrigin:MTLOriginMake(0, 0, 0)
+	];
+	
+	if (dst_texture->isMipmap())
+		dst_texture->generateMips(); // TODO: maybe use gBlitCommandEncoder inside generateMips (pass through args)
+		
+	beginRenderEncoding();
 }
 
 void BackendMetal::present()
