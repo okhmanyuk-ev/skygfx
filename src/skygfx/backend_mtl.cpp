@@ -225,12 +225,12 @@ public:
 		desc.height = height;
 		desc.pixelFormat = MTLPixelFormatRGBA8Unorm;
 		desc.textureType = MTLTextureType2D;
+		desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
 #if defined(SKYGFX_PLATFORM_MACOS)
 		desc.storageMode = MTLStorageModeManaged;
 #elif defined(SKYGFX_PLATFORM_IOS)
 		desc.storageMode = MTLStorageModeShared;
 #endif
-		desc.usage = MTLResourceUsageSample | MTLResourceUsageRead | MTLResourceUsageWrite;
 	
 		if (mipmap)
 		{
@@ -402,30 +402,14 @@ static void endEncoding()
 static void beginRenderEncoding()
 {
 	assert(gRenderCommandEncoder == nullptr);
-	
 	endEncoding();
-	
 	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
-	
-	gCullModeDirty = true;
-	gViewportDirty = true;
-	gScissorDirty = true;
-	gSamplerStateDirty = true;
-	gDepthStencilStateDirty = true;
-	gPipelineStateDirty = true;
-	
-	for (auto [binding, texture] : gTextures)
-	{
-		gDirtyTextures.insert(binding);
-	}
 }
 
 static void beginBlitEncoding()
 {
 	assert(gBlitCommandEncoder == nullptr);
-	
 	endEncoding();
-	
 	gBlitCommandEncoder = [gCommandBuffer blitCommandEncoder];
 }
 
@@ -438,6 +422,18 @@ static void begin()
 	gRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 	
 	beginRenderEncoding();
+	
+	gCullModeDirty = true;
+	gViewportDirty = true;
+	gScissorDirty = true;
+	gSamplerStateDirty = true;
+	gDepthStencilStateDirty = true;
+	gPipelineStateDirty = true;
+	
+	for (auto [binding, texture] : gTextures)
+	{
+		gDirtyTextures.insert(binding);
+	}
 	
 	auto width = (uint32_t)gView.frame.size.width;
 	auto height = (uint32_t)gView.frame.size.height;
