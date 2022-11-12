@@ -61,7 +61,7 @@ int main()
 	uint32_t width = 800;
 	uint32_t height = 600;
 
-	auto window = glfwCreateWindow(width, height, "Hello Texture", NULL, NULL);
+	auto window = glfwCreateWindow(width, height, "Texture", NULL, NULL);
 
 	int count = 0;
 	auto monitors = glfwGetMonitors(&count);

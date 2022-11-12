@@ -63,7 +63,7 @@ int main()
 	uint32_t width = 800;
 	uint32_t height = 600;
 
-	auto window = glfwCreateWindow(width, height, "Hello Uniform Buffer", NULL, NULL);
+	auto window = glfwCreateWindow(width, height, "Uniform Buffer", NULL, NULL);
 
 	int count = 0;
 	auto monitors = glfwGetMonitors(&count);

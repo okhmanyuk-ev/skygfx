@@ -25,7 +25,8 @@ namespace utils
 
 		std::cout << "Choose backend type: " << std::endl;
 
-		auto backends = skygfx::Device::GetAvailableBackends();
+		auto available_backends = skygfx::Device::GetAvailableBackends();
+		auto backends = std::vector(available_backends.begin(), available_backends.end());
 
 		for (int i = 0; i < backends.size(); i++)
 		{
