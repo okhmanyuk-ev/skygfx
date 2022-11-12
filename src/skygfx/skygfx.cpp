@@ -340,24 +340,24 @@ uint32_t Device::getBackbufferHeight() const
 	return mBackbufferHeight;
 }
 
-std::vector<BackendType> Device::GetAvailableBackends()
+std::unordered_set<BackendType> Device::GetAvailableBackends()
 {
-	std::vector<BackendType> result;
+	std::unordered_set<BackendType> result;
 
 #ifdef SKYGFX_HAS_D3D11
-	result.push_back(BackendType::D3D11);
+	result.insert(BackendType::D3D11);
 #endif
 #ifdef SKYGFX_HAS_D3D12
-	result.push_back(BackendType::D3D12);
+	result.insert(BackendType::D3D12);
 #endif
 #ifdef SKYGFX_HAS_OPENGL
-	result.push_back(BackendType::OpenGL);
+	result.insert(BackendType::OpenGL);
 #endif
 #ifdef SKYGFX_HAS_VULKAN
-	result.push_back(BackendType::Vulkan);
+	result.insert(BackendType::Vulkan);
 #endif
 #ifdef SKYGFX_HAS_METAL
-	result.push_back(BackendType::Metal);
+	result.insert(BackendType::Metal);
 #endif
 
 	return result;
@@ -365,10 +365,23 @@ std::vector<BackendType> Device::GetAvailableBackends()
 
 BackendType Device::GetDefaultBackend()
 {
+	static const auto backends_by_priority = {
+		BackendType::D3D11,
+		BackendType::OpenGL,
+		BackendType::Metal,
+		BackendType::D3D12,
+		BackendType::Vulkan
+	};
+
 	auto backends = GetAvailableBackends();
 	
-	if (backends.empty())
-		throw std::runtime_error("no available backends");
+	for (auto backend : backends_by_priority)
+	{
+		if (!backends.contains(backend))
+			continue;
+			
+		return backend;
+	}
 
-	return backends.at(0);
+	throw std::runtime_error("no available backend");
 }

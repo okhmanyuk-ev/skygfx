@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <unordered_set>
 #include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
@@ -463,7 +464,7 @@ namespace skygfx
 		std::unordered_map<uint32_t, std::shared_ptr<UniformBuffer>> mDynamicUniformBuffers;
 
 	public:
-		static std::vector<BackendType> GetAvailableBackends();
+		static std::unordered_set<BackendType> GetAvailableBackends();
 		static BackendType GetDefaultBackend();
 	};
 }
