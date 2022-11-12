@@ -465,7 +465,7 @@ namespace skygfx
 
 	public:
 		static std::unordered_set<BackendType> GetAvailableBackends();
-		static BackendType GetDefaultBackend();
+		static std::optional<BackendType> GetDefaultBackend();
 	};
 }
 

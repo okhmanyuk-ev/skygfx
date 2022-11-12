@@ -115,7 +115,7 @@ Device::Device(void* window, uint32_t width, uint32_t height, std::optional<Back
 {
 	assert(gBackend == nullptr);
 
-	auto type = _type.value_or(GetDefaultBackend());
+	auto type = _type.value_or(GetDefaultBackend().value());
 
 #ifdef SKYGFX_HAS_D3D11
 	if (type == BackendType::D3D11)
@@ -363,7 +363,7 @@ std::unordered_set<BackendType> Device::GetAvailableBackends()
 	return result;
 }
 
-BackendType Device::GetDefaultBackend()
+std::optional<BackendType> Device::GetDefaultBackend()
 {
 	static const auto backends_by_priority = {
 		BackendType::D3D11,
@@ -383,5 +383,5 @@ BackendType Device::GetDefaultBackend()
 		return backend;
 	}
 
-	throw std::runtime_error("no available backend");
+	return std::nullopt;
 }
