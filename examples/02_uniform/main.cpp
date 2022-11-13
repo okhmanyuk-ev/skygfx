@@ -3,7 +3,7 @@
 #include <skygfx/skygfx.h>
 #include "../utils/utils.h"
 
-static std::string vertex_shader_code = R"(
+const std::string vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -25,7 +25,7 @@ void main()
 	gl_Position = ubo.projection * ubo.view * ubo.model * vec4(aPosition, 1.0);
 })";
 
-static std::string fragment_shader_code = R"(
+const std::string fragment_shader_code = R"(
 #version 450 core
 
 layout(location = 0) out vec4 result;
@@ -38,15 +38,15 @@ void main()
 
 using Vertex = skygfx::Vertex::PositionColor;
 
-static std::vector<Vertex> vertices = {
+const std::vector<Vertex> vertices = {
 	{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
 	{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
 	{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
 };
 
-static std::vector<uint32_t> indices = { 0, 1, 2 };
+const std::vector<uint32_t> indices = { 0, 1, 2 };
 
-static struct alignas(16) Matrices
+struct alignas(16) Matrices
 {
 	glm::mat4 projection = glm::mat4(1.0f);
 	glm::mat4 view = glm::mat4(1.0f);
@@ -77,13 +77,14 @@ int main()
 
 	auto native_window = utils::GetNativeWindow(window);
 
-	auto device = skygfx::Device(native_window, width, height, backend_type);
+	skygfx::Initialize(native_window, width, height, backend_type);
+	
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
-	device.setTopology(skygfx::Topology::TriangleList);
-	device.setShader(shader);
-	device.setDynamicVertexBuffer(vertices);
-	device.setDynamicIndexBuffer(indices);
+	skygfx::SetTopology(skygfx::Topology::TriangleList);
+	skygfx::SetShader(shader);
+	skygfx::SetDynamicVertexBuffer(vertices);
+	skygfx::SetDynamicIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -92,15 +93,18 @@ int main()
 		matrices.model = glm::mat4(1.0f);
 		matrices.model = glm::translate(matrices.model, { glm::sin(time * 2.0f) * 0.5f, 0.0f, 0.0f });
 
-		device.setDynamicUniformBuffer(0, matrices);
+		skygfx::SetDynamicUniformBuffer(0, matrices);
 
-		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.drawIndexed(static_cast<uint32_t>(indices.size()));
-		device.present();
+		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
+		skygfx::Present();
 
 		glfwPollEvents();
 	}
 
+	skygfx::Finalize();
+	
 	glfwTerminate();
+	
 	return 0;
 }

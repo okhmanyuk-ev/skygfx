@@ -7,7 +7,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>	
 
-static std::string vertex_shader_code = R"(
+const std::string vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -27,7 +27,7 @@ void main()
 	gl_Position = vec4(aPosition, 1.0);
 })";
 
-static std::string fragment_shader_code = R"(
+const std::string fragment_shader_code = R"(
 #version 450 core
 
 layout(location = 0) out vec4 result;
@@ -42,14 +42,14 @@ void main()
 
 using Vertex = skygfx::Vertex::PositionColorTexture;
 
-static std::vector<Vertex> vertices = {
+const std::vector<Vertex> vertices = {
 	{ {  0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } }, // bottom right
 	{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } }, // bottom left
 	{ {  0.5f,  0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } }, // top right
 	{ { -0.5f,  0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } }, // top left
 };
 
-static std::vector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
+const std::vector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
 int main()
 {
@@ -75,7 +75,8 @@ int main()
 
 	auto native_window = utils::GetNativeWindow(window);
 
-	auto device = skygfx::Device(native_window, width, height, backend_type);
+	skygfx::Initialize(native_window, width, height, backend_type);
+
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
 	int tex_width = 0;
@@ -84,21 +85,24 @@ int main()
 
 	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory);
 
-	device.setTopology(skygfx::Topology::TriangleList);
-	device.setShader(shader);
-	device.setTexture(0, texture);
-	device.setDynamicVertexBuffer(vertices);
-	device.setDynamicIndexBuffer(indices);
+	skygfx::SetTopology(skygfx::Topology::TriangleList);
+	skygfx::SetShader(shader);
+	skygfx::SetTexture(0, texture);
+	skygfx::SetDynamicVertexBuffer(vertices);
+	skygfx::SetDynamicIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.drawIndexed(static_cast<uint32_t>(indices.size()));
-		device.present();
+		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
+		skygfx::Present();
 
 		glfwPollEvents();
 	}
 
+	skygfx::Finalize();
+
 	glfwTerminate();
+	
 	return 0;
 }

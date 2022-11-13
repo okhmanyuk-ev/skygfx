@@ -12,6 +12,12 @@
 using namespace skygfx;
 
 static Backend* gBackend = nullptr;
+static uint32_t gBackbufferWidth = 0;
+static uint32_t gBackbufferHeight = 0;
+static BackendType gBackendType = BackendType::OpenGL;
+static std::shared_ptr<VertexBuffer> gDynamicVertexBuffer;
+static std::shared_ptr<IndexBuffer> gDynamicIndexBuffer;
+static std::unordered_map<uint32_t, std::shared_ptr<UniformBuffer>> gDynamicUniformBuffers;
 
 // texture
 
@@ -24,7 +30,8 @@ Texture::Texture(uint32_t width, uint32_t height, uint32_t channels, void* memor
 
 Texture::~Texture()
 {
-	gBackend->destroyTexture(mTextureHandle);
+	if (gBackend)
+		gBackend->destroyTexture(mTextureHandle);
 }
 
 RenderTarget::RenderTarget(uint32_t width, uint32_t height) : Texture(width, height, 4, nullptr)
@@ -34,7 +41,8 @@ RenderTarget::RenderTarget(uint32_t width, uint32_t height) : Texture(width, hei
 
 RenderTarget::~RenderTarget()
 {
-	gBackend->destroyRenderTarget(mRenderTargetHandle);
+	if (gBackend)
+		gBackend->destroyRenderTarget(mRenderTargetHandle);
 }
 
 // shader
@@ -46,7 +54,8 @@ Shader::Shader(const Vertex::Layout& layout, const std::string& vertex_code, con
 
 Shader::~Shader()
 {
-	gBackend->destroyShader(mShaderHandle);
+	if (gBackend)
+		gBackend->destroyShader(mShaderHandle);
 }
 
 // buffer
@@ -65,7 +74,8 @@ VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride) : Buffer(si
 
 VertexBuffer::~VertexBuffer()
 {
-	gBackend->destroyVertexBuffer(mVertexBufferHandle);
+	if (gBackend)
+		gBackend->destroyVertexBuffer(mVertexBufferHandle);
 }
 
 void VertexBuffer::write(void* memory, size_t size, size_t stride)
@@ -83,7 +93,8 @@ IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride) : Buffer(size
 
 IndexBuffer::~IndexBuffer()
 {
-	gBackend->destroyIndexBuffer(mIndexBufferHandle);
+	if (gBackend)
+		gBackend->destroyIndexBuffer(mIndexBufferHandle);
 }
 
 void IndexBuffer::write(void* memory, size_t size, size_t stride)
@@ -101,7 +112,8 @@ UniformBuffer::UniformBuffer(void* memory, size_t size) : Buffer(size)
 
 UniformBuffer::~UniformBuffer()
 {
-	gBackend->destroyUniformBuffer(mUniformBufferHandle);
+	if (gBackend)
+		gBackend->destroyUniformBuffer(mUniformBufferHandle);
 }
 
 void UniformBuffer::write(void* memory, size_t size)
@@ -111,7 +123,7 @@ void UniformBuffer::write(void* memory, size_t size)
 
 // device
 
-Device::Device(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type)
+void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type)
 {
 	assert(gBackend == nullptr);
 
@@ -141,176 +153,176 @@ Device::Device(void* window, uint32_t width, uint32_t height, std::optional<Back
 	if (gBackend == nullptr)
 		throw std::runtime_error("backend not implemented");
 
-	mBackbufferWidth = width;
-	mBackbufferHeight = height;
-	mBackendType = type;
+	gBackbufferWidth = width;
+	gBackbufferHeight = height;
+	gBackendType = type;
 }
 
-Device::~Device()
+void skygfx::Finalize()
 {
-	mDynamicIndexBuffer.reset();
-	mDynamicVertexBuffer.reset();
-	mDynamicUniformBuffers.clear();
+	gDynamicIndexBuffer.reset();
+	gDynamicVertexBuffer.reset();
+	gDynamicUniformBuffers.clear();
 
 	delete gBackend;
 	gBackend = nullptr;
 }
 
-void Device::resize(uint32_t width, uint32_t height)
+void skygfx::Resize(uint32_t width, uint32_t height)
 {
 	gBackend->resize(width, height);
-	mBackbufferWidth = width;
-	mBackbufferHeight = height;
+	gBackbufferWidth = width;
+	gBackbufferHeight = height;
 }
 
-void Device::setTopology(Topology topology)
+void skygfx::SetTopology(Topology topology)
 {
 	gBackend->setTopology(topology);
 }
 
-void Device::setViewport(std::optional<Viewport> viewport)
+void skygfx::SetViewport(std::optional<Viewport> viewport)
 {
 	gBackend->setViewport(viewport);
 }
 
-void Device::setScissor(std::optional<Scissor> scissor)
+void skygfx::SetScissor(std::optional<Scissor> scissor)
 {
 	gBackend->setScissor(scissor);
 }
 
-void Device::setTexture(uint32_t binding, const Texture& texture)
+void skygfx::SetTexture(uint32_t binding, const Texture& texture)
 {
 	gBackend->setTexture(binding, const_cast<Texture&>(texture));
 }
 
-void Device::setRenderTarget(const RenderTarget& value)
+void skygfx::SetRenderTarget(const RenderTarget& value)
 {
 	gBackend->setRenderTarget(const_cast<RenderTarget&>(value));
 }
 
-void Device::setRenderTarget(std::nullptr_t value)
+void skygfx::SetRenderTarget(std::nullptr_t value)
 {
 	gBackend->setRenderTarget(value);
 }
 
-void Device::setShader(const Shader& shader)
+void skygfx::SetShader(const Shader& shader)
 {
 	gBackend->setShader(const_cast<Shader&>(shader));
 }
 
-void Device::setVertexBuffer(const VertexBuffer& value)
+void skygfx::SetVertexBuffer(const VertexBuffer& value)
 {
 	gBackend->setVertexBuffer(const_cast<VertexBuffer&>(value));
 }
 
-void Device::setIndexBuffer(const IndexBuffer& value)
+void skygfx::SetIndexBuffer(const IndexBuffer& value)
 {
 	gBackend->setIndexBuffer(const_cast<IndexBuffer&>(value));
 }
 
-void Device::setUniformBuffer(uint32_t binding, const UniformBuffer& value)
+void skygfx::SetUniformBuffer(uint32_t binding, const UniformBuffer& value)
 {
 	gBackend->setUniformBuffer(binding, const_cast<UniformBuffer&>(value));
 }
 
-void Device::setBlendMode(const BlendMode& value)
+void skygfx::SetBlendMode(const BlendMode& value)
 {
 	gBackend->setBlendMode(value);
 }
 
-void Device::setDepthMode(std::optional<DepthMode> depth_mode)
+void skygfx::SetDepthMode(std::optional<DepthMode> depth_mode)
 {
 	gBackend->setDepthMode(depth_mode);
 }
 
-void Device::setStencilMode(std::optional<StencilMode> stencil_mode)
+void skygfx::SetStencilMode(std::optional<StencilMode> stencil_mode)
 {
 	gBackend->setStencilMode(stencil_mode);
 }
 
-void Device::setCullMode(CullMode cull_mode)
+void skygfx::SetCullMode(CullMode cull_mode)
 {
 	gBackend->setCullMode(cull_mode);
 }
 
-void Device::setSampler(Sampler value)
+void skygfx::SetSampler(Sampler value)
 {
 	gBackend->setSampler(value);
 }
 
-void Device::setTextureAddress(TextureAddress value)
+void skygfx::SetTextureAddress(TextureAddress value)
 {
 	gBackend->setTextureAddress(value);
 }
 
-void Device::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth, 
+void skygfx::Clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
 	gBackend->clear(color, depth, stencil);
 }
 
-void Device::draw(uint32_t vertex_count, uint32_t vertex_offset)
+void skygfx::Draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	gBackend->draw(vertex_count, vertex_offset);
 }
 
-void Device::drawIndexed(uint32_t index_count, uint32_t index_offset)
+void skygfx::DrawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	gBackend->drawIndexed(index_count, index_offset);
 }
 
-void Device::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture)
+void skygfx::ReadPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture)
 {
 	gBackend->readPixels(pos, size, dst_texture);
 }
 
-void Device::present()
+void skygfx::Present()
 {
 	gBackend->present();
 }
 
-void Device::setDynamicVertexBuffer(void* memory, size_t size, size_t stride)
+void skygfx::SetDynamicVertexBuffer(void* memory, size_t size, size_t stride)
 {
 	assert(size > 0);
 	
 	size_t vertex_buffer_size = 0;
 
-	if (mDynamicVertexBuffer)
-		vertex_buffer_size = mDynamicVertexBuffer->getSize();
+	if (gDynamicVertexBuffer)
+		vertex_buffer_size = gDynamicVertexBuffer->getSize();
 
 	if (vertex_buffer_size < size)
-		mDynamicVertexBuffer = std::make_shared<skygfx::VertexBuffer>(memory, size, stride);
+		gDynamicVertexBuffer = std::make_shared<skygfx::VertexBuffer>(memory, size, stride);
 	else
-		mDynamicVertexBuffer->write(memory, size, stride);
+		gDynamicVertexBuffer->write(memory, size, stride);
 
-	setVertexBuffer(*mDynamicVertexBuffer);
+	SetVertexBuffer(*gDynamicVertexBuffer);
 }
 
-void Device::setDynamicIndexBuffer(void* memory, size_t size, size_t stride)
+void skygfx::SetDynamicIndexBuffer(void* memory, size_t size, size_t stride)
 {
 	assert(size > 0);
 
 	size_t index_buffer_size = 0;
 
-	if (mDynamicIndexBuffer)
-		index_buffer_size = mDynamicIndexBuffer->getSize();
+	if (gDynamicIndexBuffer)
+		index_buffer_size = gDynamicIndexBuffer->getSize();
 
 	if (index_buffer_size < size)
-		mDynamicIndexBuffer = std::make_shared<skygfx::IndexBuffer>(memory, size, stride);
+		gDynamicIndexBuffer = std::make_shared<skygfx::IndexBuffer>(memory, size, stride);
 	else
-		mDynamicIndexBuffer->write(memory, size, stride);
+		gDynamicIndexBuffer->write(memory, size, stride);
 
-	setIndexBuffer(*mDynamicIndexBuffer);
+	SetIndexBuffer(*gDynamicIndexBuffer);
 }
 
-void Device::setDynamicUniformBuffer(uint32_t binding, void* memory, size_t size)
+void skygfx::SetDynamicUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	assert(size > 0);
 
 	std::shared_ptr<skygfx::UniformBuffer> uniform_buffer = nullptr;
 
-	if (mDynamicUniformBuffers.contains(binding))
-		uniform_buffer = mDynamicUniformBuffers.at(binding);
+	if (gDynamicUniformBuffers.contains(binding))
+		uniform_buffer = gDynamicUniformBuffers.at(binding);
 
 	size_t uniform_buffer_size = 0;
 
@@ -320,27 +332,32 @@ void Device::setDynamicUniformBuffer(uint32_t binding, void* memory, size_t size
 	if (uniform_buffer_size < size)
 	{
 		uniform_buffer = std::make_shared<skygfx::UniformBuffer>(memory, size);
-		mDynamicUniformBuffers[binding] = uniform_buffer;
+		gDynamicUniformBuffers[binding] = uniform_buffer;
 	}
 	else
 	{
 		uniform_buffer->write(memory, size);
 	}
 
-	setUniformBuffer(binding, *uniform_buffer);
+	SetUniformBuffer(binding, *uniform_buffer);
 }
 
-uint32_t Device::getBackbufferWidth() const
+uint32_t skygfx::GetBackbufferWidth()
 {
-	return mBackbufferWidth;
+	return gBackbufferWidth;
 }
 
-uint32_t Device::getBackbufferHeight() const
+uint32_t skygfx::GetBackbufferHeight()
 {
-	return mBackbufferHeight;
+	return gBackbufferHeight;
 }
 
-std::unordered_set<BackendType> Device::GetAvailableBackends()
+BackendType skygfx::GetBackendType()
+{
+	return gBackendType;
+}
+
+std::unordered_set<BackendType> skygfx::GetAvailableBackends()
 {
 	std::unordered_set<BackendType> result;
 
@@ -363,7 +380,7 @@ std::unordered_set<BackendType> Device::GetAvailableBackends()
 	return result;
 }
 
-std::optional<BackendType> Device::GetDefaultBackend()
+std::optional<BackendType> skygfx::GetDefaultBackend()
 {
 	static const auto backends_by_priority = {
 		BackendType::D3D11,

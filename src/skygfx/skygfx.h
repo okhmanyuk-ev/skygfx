@@ -378,95 +378,79 @@ namespace skygfx
 		MirrorWrap
 	};
 
-	class Device : private noncopyable
+	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt);
+	void Finalize();
+
+	void Resize(uint32_t width, uint32_t height);
+
+	void SetTopology(Topology topology);
+	void SetViewport(std::optional<Viewport> viewport);
+	void SetScissor(std::optional<Scissor> scissor);
+	void SetTexture(uint32_t binding, const Texture& texture);
+	void SetRenderTarget(const RenderTarget& value);
+	void SetRenderTarget(std::nullptr_t value);
+	void SetShader(const Shader& shader);
+	void SetVertexBuffer(const VertexBuffer& value);
+	void SetIndexBuffer(const IndexBuffer& value);
+	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
+	void SetBlendMode(const BlendMode& value);
+	void SetDepthMode(std::optional<DepthMode> depth_mode);
+	void SetStencilMode(std::optional<StencilMode> stencil_mode);
+	void SetCullMode(CullMode cull_mode);
+	void SetSampler(Sampler value);
+	void SetTextureAddress(TextureAddress value);
+
+	void Clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
+		const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
+	void Draw(uint32_t vertex_count, uint32_t vertex_offset = 0);
+	void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0);
+	void ReadPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture);
+	
+	void Present();
+
+	void SetDynamicVertexBuffer(void* memory, size_t size, size_t stride);
+
+	template<class T>
+	void SetDynamicVertexBuffer(T* memory, size_t count)
 	{
-	public:
-		Device(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt);
-		~Device();
+		SetDynamicVertexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+	}
 
-		void resize(uint32_t width, uint32_t height);
+	template<class T>
+	void SetDynamicVertexBuffer(const std::vector<T>& values)
+	{
+		SetDynamicVertexBuffer(values.data(), values.size());
+	}
 
-		void setTopology(Topology topology);
-		void setViewport(std::optional<Viewport> viewport);
-		void setScissor(std::optional<Scissor> scissor);
-		void setTexture(uint32_t binding, const Texture& texture);
-		void setRenderTarget(const RenderTarget& value);
-		void setRenderTarget(std::nullptr_t value);
-		void setShader(const Shader& shader);
-		void setVertexBuffer(const VertexBuffer& value);
-		void setIndexBuffer(const IndexBuffer& value);
-		void setUniformBuffer(uint32_t binding, const UniformBuffer& value);
-		void setBlendMode(const BlendMode& value);
-		void setDepthMode(std::optional<DepthMode> depth_mode);
-		void setStencilMode(std::optional<StencilMode> stencil_mode);
-		void setCullMode(CullMode cull_mode);
-		void setSampler(Sampler value);
-		void setTextureAddress(TextureAddress value);
+	void SetDynamicIndexBuffer(void* memory, size_t size, size_t stride);
 
-		void clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
-			const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
-		void draw(uint32_t vertex_count, uint32_t vertex_offset = 0);
-		void drawIndexed(uint32_t index_count, uint32_t index_offset = 0);
+	template<class T>
+	void SetDynamicIndexBuffer(T* memory, size_t count)
+	{
+		SetDynamicIndexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+	}
 
-		void readPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture);
+	template<class T>
+	void SetDynamicIndexBuffer(const std::vector<T>& values)
+	{
+		SetDynamicIndexBuffer(values.data(), values.size());
+	}
 
-		void present();
+	void SetDynamicUniformBuffer(uint32_t binding, void* memory, size_t size);
 
-	public: // helpers
-		void setDynamicVertexBuffer(void* memory, size_t size, size_t stride);
+	template <class T>
+	void SetDynamicUniformBuffer(uint32_t binding, const T& value)
+	{
+		SetDynamicUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
+	}
 
-		template<class T>
-		void setDynamicVertexBuffer(T* memory, size_t count)
-		{
-			setDynamicVertexBuffer((void*)memory, count * sizeof(T), sizeof(T));
-		}
+	uint32_t GetBackbufferWidth();
+	uint32_t GetBackbufferHeight();
 
-		template<class T>
-		void setDynamicVertexBuffer(const std::vector<T>& values)
-		{
-			setDynamicVertexBuffer(values.data(), values.size());
-		}
+	BackendType GetBackendType();
 
-		void setDynamicIndexBuffer(void* memory, size_t size, size_t stride);
-
-		template<class T>
-		void setDynamicIndexBuffer(T* memory, size_t count)
-		{
-			setDynamicIndexBuffer((void*)memory, count * sizeof(T), sizeof(T));
-		}
-
-		template<class T>
-		void setDynamicIndexBuffer(const std::vector<T>& values)
-		{
-			setDynamicIndexBuffer(values.data(), values.size());
-		}
-
-		void setDynamicUniformBuffer(uint32_t binding, void* memory, size_t size);
-
-		template <class T>
-		void setDynamicUniformBuffer(uint32_t binding, const T& value)
-		{ 
-			setDynamicUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
-		}
-
-		uint32_t getBackbufferWidth() const;
-		uint32_t getBackbufferHeight() const;
-
-		auto getBackendType() const { return mBackendType; }
-
-	private:
-		uint32_t mBackbufferWidth = 0;
-		uint32_t mBackbufferHeight = 0;
-		BackendType mBackendType = BackendType::OpenGL;
-
-		std::shared_ptr<VertexBuffer> mDynamicVertexBuffer;
-		std::shared_ptr<IndexBuffer> mDynamicIndexBuffer;
-		std::unordered_map<uint32_t, std::shared_ptr<UniformBuffer>> mDynamicUniformBuffers;
-
-	public:
-		static std::unordered_set<BackendType> GetAvailableBackends();
-		static std::optional<BackendType> GetDefaultBackend();
-	};
+	std::unordered_set<BackendType> GetAvailableBackends();
+	std::optional<BackendType> GetDefaultBackend();
 }
 
 SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,

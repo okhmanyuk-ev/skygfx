@@ -7,7 +7,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>	
 
-static std::string vertex_shader_code = R"(
+const std::string vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -32,7 +32,7 @@ void main()
 	gl_Position = ubo.projection * ubo.view * ubo.model * vec4(aPosition, 1.0);
 })";
 
-static std::string fragment_shader_code = R"(
+const std::string fragment_shader_code = R"(
 #version 450 core
 
 layout(location = 0) out vec4 result;
@@ -84,7 +84,7 @@ const std::vector<Vertex> vertices = {
 	/* 23 */ { { 1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f } },
 };
 
-static std::vector<uint32_t> indices = {
+const std::vector<uint32_t> indices = {
 	0, 1, 2, 1, 3, 2, // front
 	4, 5, 6, 5, 7, 6, // top
 	8, 9, 10, 9, 11, 10, // left
@@ -93,7 +93,7 @@ static std::vector<uint32_t> indices = {
 	20, 21, 22, 21, 23, 22, // right
 };
 
-static struct alignas(16) Matrices
+struct alignas(16) Matrices
 {
 	glm::mat4 projection = glm::mat4(1.0f);
 	glm::mat4 view = glm::mat4(1.0f);
@@ -124,7 +124,8 @@ int main()
 
 	auto native_window = utils::GetNativeWindow(window);
 
-	auto device = skygfx::Device(native_window, width, height, backend_type);
+	skygfx::Initialize(native_window, width, height, backend_type);
+
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
 	int tex_width = 0;
@@ -141,12 +142,12 @@ int main()
 
 	const auto scale = 100.0f;
 
-	device.setTopology(skygfx::Topology::TriangleList);
-	device.setShader(shader);
-	device.setDynamicVertexBuffer(vertices);
-	device.setDynamicIndexBuffer(indices);
-	device.setCullMode(skygfx::CullMode::Back);
-	device.setTexture(0, texture);
+	skygfx::SetTopology(skygfx::Topology::TriangleList);
+	skygfx::SetShader(shader);
+	skygfx::SetDynamicVertexBuffer(vertices);
+	skygfx::SetDynamicIndexBuffer(indices);
+	skygfx::SetCullMode(skygfx::CullMode::Back);
+	skygfx::SetTexture(0, texture);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -156,15 +157,18 @@ int main()
 		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
 		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
 
-		device.setDynamicUniformBuffer(1, matrices);
+		skygfx::SetDynamicUniformBuffer(1, matrices);
 
-		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.drawIndexed(static_cast<uint32_t>(indices.size()));
-		device.present();
+		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
+		skygfx::Present();
 
 		glfwPollEvents();
 	}
 
+	skygfx::Finalize();
+
 	glfwTerminate();
+	
 	return 0;
 }

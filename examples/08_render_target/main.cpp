@@ -4,7 +4,7 @@
 #include <skygfx/skygfx.h>
 #include "../utils/utils.h"
 
-static std::string triangle_vertex_shader_code = R"(
+const std::string triangle_vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -19,7 +19,7 @@ void main()
 	gl_Position = vec4(aPosition, 1.0);
 })";
 
-static std::string triangle_fragment_shader_code = R"(
+const std::string triangle_fragment_shader_code = R"(
 #version 450 core
 
 layout(location = 0) out vec4 result;
@@ -32,15 +32,15 @@ void main()
 
 using TriangleVertex = skygfx::Vertex::PositionColor;
 
-static std::vector<TriangleVertex> triangle_vertices = {
+const std::vector<TriangleVertex> triangle_vertices = {
 	{ {  0.75f, -0.75f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
 	{ { -0.75f, -0.75f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
 	{ {  0.0f,   0.75f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
 };
 
-static std::vector<uint32_t> triangle_indices = { 0, 1, 2 };
+const std::vector<uint32_t> triangle_indices = { 0, 1, 2 };
 
-static std::string cube_vertex_shader_code = R"(
+const std::string cube_vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -68,7 +68,7 @@ void main()
 	gl_Position = ubo.projection * ubo.view * ubo.model * vec4(aPosition, 1.0);
 })";
 
-static std::string cube_fragment_shader_code = R"(
+const std::string cube_fragment_shader_code = R"(
 #version 450 core
 
 layout(binding = 2) uniform _light
@@ -104,7 +104,7 @@ void main()
 
 using CubeVertex = skygfx::Vertex::PositionTextureNormal;
 
-const std::vector<CubeVertex> cube_vertices = {
+const const std::vector<CubeVertex> cube_vertices = {
 	/* front */
 	/* 0  */ { { -1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
 	/* 1  */ { {  1.0f,  1.0f,  1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
@@ -142,7 +142,7 @@ const std::vector<CubeVertex> cube_vertices = {
 	/* 23 */ { { 1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
 };
 
-static std::vector<uint32_t> cube_indices = {
+const std::vector<uint32_t> cube_indices = {
 	0, 1, 2, 1, 3, 2, // front
 	4, 5, 6, 5, 7, 6, // top
 	8, 9, 10, 9, 11, 10, // left
@@ -151,14 +151,14 @@ static std::vector<uint32_t> cube_indices = {
 	20, 21, 22, 21, 23, 22, // right
 };
 
-static struct alignas(16) Matrices
+struct alignas(16) Matrices
 {
 	glm::mat4 projection = glm::mat4(1.0f);
 	glm::mat4 view = glm::mat4(1.0f);
 	glm::mat4 model = glm::mat4(1.0f);
 } matrices;
 
-static struct alignas(16) Light
+struct alignas(16) Light
 {
 	alignas(16) glm::vec3 direction;
 	alignas(16) glm::vec3 ambient;
@@ -192,7 +192,7 @@ int main()
 
 	auto native_window = utils::GetNativeWindow(window);
 
-	auto device = skygfx::Device(native_window, width, height, backend_type);
+	skygfx::Initialize(native_window, width, height, backend_type);
 	
 	auto cube_shader = skygfx::Shader(CubeVertex::Layout, cube_vertex_shader_code, cube_fragment_shader_code);
 	auto triangle_shader = skygfx::Shader(TriangleVertex::Layout, triangle_vertex_shader_code, triangle_fragment_shader_code);
@@ -216,25 +216,25 @@ int main()
 
 	// draw triangle to target
 
-	device.setRenderTarget(target);
-	device.setTopology(skygfx::Topology::TriangleList);
-	device.setCullMode(skygfx::CullMode::None);
-	device.setDynamicVertexBuffer(triangle_vertices);
-	device.setDynamicIndexBuffer(triangle_indices);
-	device.setShader(triangle_shader);
-	device.clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
-	device.drawIndexed(static_cast<uint32_t>(triangle_indices.size()));
+	skygfx::SetRenderTarget(target);
+	skygfx::SetTopology(skygfx::Topology::TriangleList);
+	skygfx::SetCullMode(skygfx::CullMode::None);
+	skygfx::SetDynamicVertexBuffer(triangle_vertices);
+	skygfx::SetDynamicIndexBuffer(triangle_indices);
+	skygfx::SetShader(triangle_shader);
+	skygfx::Clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
+	skygfx::DrawIndexed(static_cast<uint32_t>(triangle_indices.size()));
 
 	// prepare steps for drawing target to cube and later to screen
 
-	device.setRenderTarget(nullptr);
-	device.setTopology(skygfx::Topology::TriangleList);
-	device.setCullMode(skygfx::CullMode::Back);
-	device.setDynamicVertexBuffer(cube_vertices);
-	device.setDynamicIndexBuffer(cube_indices);
-	device.setDynamicUniformBuffer(2, light);
-	device.setTexture(0, target); // render targets can be pushed as textures
-	device.setShader(cube_shader);
+	skygfx::SetRenderTarget(nullptr);
+	skygfx::SetTopology(skygfx::Topology::TriangleList);
+	skygfx::SetCullMode(skygfx::CullMode::Back);
+	skygfx::SetDynamicVertexBuffer(cube_vertices);
+	skygfx::SetDynamicIndexBuffer(cube_indices);
+	skygfx::SetDynamicUniformBuffer(2, light);
+	skygfx::SetTexture(0, target); // render targets can be pushed as textures
+	skygfx::SetShader(cube_shader);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -244,15 +244,18 @@ int main()
 		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
 		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
 
-		device.setDynamicUniformBuffer(1, matrices);
+		skygfx::SetDynamicUniformBuffer(1, matrices);
 
-		device.clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		device.drawIndexed(static_cast<uint32_t>(cube_indices.size()));
-		device.present();
+		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::DrawIndexed(static_cast<uint32_t>(cube_indices.size()));
+		skygfx::Present();
 
 		glfwPollEvents();
 	}
 
+	skygfx::Finalize();
+
 	glfwTerminate();
+	
 	return 0;
 }
