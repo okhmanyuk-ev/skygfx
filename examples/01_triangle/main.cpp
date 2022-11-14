@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include <skygfx/skygfx.h>
 #include "../utils/utils.h"
 

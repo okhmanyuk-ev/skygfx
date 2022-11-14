@@ -1,6 +1,3 @@
-#include <iostream>
-
-#include <GLFW/glfw3.h>
 #include <skygfx/skygfx.h>
 #include "../utils/utils.h"
 

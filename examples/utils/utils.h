@@ -11,6 +11,8 @@
 #endif
 #include <GLFW/glfw3native.h>
 
+#include <iostream>
+
 namespace utils
 {
 	skygfx::BackendType ChooseBackendTypeViaConsole()
