@@ -122,14 +122,16 @@ int main()
 	auto native_window = utils::GetNativeWindow(window);
 
 	skygfx::Initialize(native_window, width, height, backend_type);
+
+	glfwSetWindowSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+	});
 	
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 	
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
-
-	std::tie(matrices.view, matrices.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position, width, height);
 
 	const auto scale = 100.0f;
 
@@ -141,6 +143,8 @@ int main()
 
 	while (!glfwWindowShouldClose(window))
 	{
+		std::tie(matrices.view, matrices.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position);
+
 		auto time = (float)glfwGetTime();
 
 		matrices.model = glm::mat4(1.0f);

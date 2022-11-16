@@ -101,7 +101,7 @@ void main()
 
 using CubeVertex = skygfx::Vertex::PositionTextureNormal;
 
-const const std::vector<CubeVertex> cube_vertices = {
+const std::vector<CubeVertex> cube_vertices = {
 	/* front */
 	/* 0  */ { { -1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
 	/* 1  */ { {  1.0f,  1.0f,  1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
@@ -190,6 +190,10 @@ int main()
 	auto native_window = utils::GetNativeWindow(window);
 
 	skygfx::Initialize(native_window, width, height, backend_type);
+
+	glfwSetWindowSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+	});
 	
 	auto cube_shader = skygfx::Shader(CubeVertex::Layout, cube_vertex_shader_code, cube_fragment_shader_code);
 	auto triangle_shader = skygfx::Shader(TriangleVertex::Layout, triangle_vertex_shader_code, triangle_fragment_shader_code);
@@ -198,8 +202,6 @@ int main()
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
 	
-	std::tie(matrices.view, matrices.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position, width, height);
-
 	const auto scale = 100.0f;
 
 	light.eye_position = position;
@@ -235,6 +237,8 @@ int main()
 
 	while (!glfwWindowShouldClose(window))
 	{
+		std::tie(matrices.view, matrices.projection) = utils::CalculatePerspectiveViewProjection(yaw, pitch, position);
+
 		auto time = (float)glfwGetTime();
 
 		matrices.model = glm::mat4(1.0f);

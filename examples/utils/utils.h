@@ -56,7 +56,8 @@ namespace utils
 	}
 
 	std::tuple<glm::mat4/*view*/, glm::mat4/*projection*/> CalculatePerspectiveViewProjection(float yaw, 
-		float pitch, const glm::vec3& position, uint32_t width, uint32_t height, float fov = 70.0f, 
+		float pitch, const glm::vec3& position, uint32_t width = skygfx::GetBackbufferWidth(),
+		uint32_t height = skygfx::GetBackbufferHeight(), float fov = 70.0f, 
 		float near_plane = 1.0f, float far_plane = 8192.0f, const glm::vec3& world_up = { 0.0f, 1.0f, 0.0f })
 	{
 		auto sin_yaw = glm::sin(yaw);

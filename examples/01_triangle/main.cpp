@@ -62,6 +62,10 @@ int main()
 	auto native_window = utils::GetNativeWindow(window);
 
 	skygfx::Initialize(native_window, width, height, backend_type);
+	
+	glfwSetWindowSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+	});
 
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
