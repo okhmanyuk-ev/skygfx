@@ -35,6 +35,7 @@ elseif(APPLE)
 		set(IOS True)
 	endif()
 
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 
@@ -163,6 +164,12 @@ target_link_libraries(vulkan INTERFACE ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/vulk
 target_include_directories(vulkan INTERFACE lib/vulkan/include)
 if(WIN32)
 	target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_WIN32_KHR)
+elseif(APPLE)
+	if(IOS)
+		target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_IOS_MVK)
+	else()
+		target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_MACOS_MVK)
+	endif()
 endif()
 target_link_libraries(${PROJECT_NAME} vulkan)
 

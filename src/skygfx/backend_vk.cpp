@@ -42,7 +42,7 @@ SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 	t.sampler,
 	t.texture_address);
 
-static vk::raii::Context gContext;
+static vk::raii::Context* gContext = nullptr;
 static vk::raii::Instance gInstance = nullptr;
 static vk::raii::PhysicalDevice gPhysicalDevice = nullptr;
 static vk::raii::Queue gQueue = nullptr;
@@ -591,14 +591,16 @@ public:
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
-	auto all_extensions = gContext.enumerateInstanceExtensionProperties();
+	gContext = new vk::raii::Context();
+	
+	auto all_extensions = gContext->enumerateInstanceExtensionProperties();
 
 	for (auto extension : all_extensions)
 	{
 		//	std::cout << extension.extensionName << std::endl;
 	}
 
-	auto all_layers = gContext.enumerateInstanceLayerProperties();
+	auto all_layers = gContext->enumerateInstanceLayerProperties();
 
 	for (auto layer : all_layers)
 	{
@@ -607,14 +609,20 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto extensions = {
 		VK_KHR_SURFACE_EXTENSION_NAME,
-		VK_KHR_WIN32_SURFACE_EXTENSION_NAME
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#elif defined(SKYGFX_PLATFORM_IOS)
+		VK_MVK_IOS_SURFACE_EXTENSION_NAME,
+#elif defined(SKYGFX_PLATFORM_MACOS)
+		VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
+#endif
 	};
-
+	
 	auto layers = {
 		"VK_LAYER_KHRONOS_validation"
 	};
 
-	auto version = gContext.enumerateInstanceVersion();
+	auto version = gContext->enumerateInstanceVersion();
 
 	auto major_version = VK_API_VERSION_MAJOR(version);
 	auto minor_version = VK_API_VERSION_MINOR(version);
@@ -630,7 +638,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setPEnabledLayerNames(layers)
 		.setPApplicationInfo(&application_info);
 
-	gInstance = gContext.createInstance(instance_info);
+	gInstance = gContext->createInstance(instance_info);
 
 	auto devices = gInstance.enumeratePhysicalDevices();
 	size_t device_index = 0;
@@ -692,8 +700,13 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	gQueue = gDevice.getQueue(gQueueFamilyIndex, 0);
 
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 	auto surface_info = vk::Win32SurfaceCreateInfoKHR()
 		.setHwnd((HWND)window);
+#elif defined(SKYGFX_PLATFORM_MACOS)
+	auto surface_info = vk::MacOSSurfaceCreateInfoMVK()
+		.setPView(window);
+#endif
 
 	gSurface = vk::raii::SurfaceKHR(gInstance, surface_info);
 
@@ -747,6 +760,7 @@ BackendVK::~BackendVK()
 {
 	end();
 	gExecuteAfterPresent.flush();
+	delete gContext;
 }
 
 void BackendVK::resize(uint32_t width, uint32_t height)
