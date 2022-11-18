@@ -39,8 +39,14 @@ elseif(APPLE)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 
+	#set_target_properties(${PROJECT_NAME} PROPERTIES
+	#	XCODE_ATTRIBUTE_FRAMEWORK_SEARCH_PATHS ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/apple
+	#)
+
 	target_link_libraries(${PROJECT_NAME}
 		"-ObjC"
+		"-framework IOSurface"
+	#	"-framework MoltenVK"
 		"-framework Metal"
 		"-framework MetalKit"
 		"-framework GLKit"
@@ -51,7 +57,6 @@ elseif(APPLE)
 	set(OBJC_SOURCES
 		src/skygfx/backend_gl.cpp
 		src/skygfx/backend_mtl.cpp
-		src/skygfx/backend_mtl_bridge.cpp
 	)
 
 	set_source_files_properties(${OBJC_SOURCES} PROPERTIES COMPILE_FLAGS "-x objective-c++ -fembed-bitcode")
@@ -160,13 +165,14 @@ target_link_libraries(${PROJECT_NAME} glm)
 # vulkan
 
 add_library(vulkan INTERFACE)
-target_link_libraries(vulkan INTERFACE ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/vulkan-1.lib)
 target_include_directories(vulkan INTERFACE lib/vulkan/include)
 if(WIN32)
 	target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_WIN32_KHR)
+	target_link_libraries(vulkan INTERFACE ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/windows/vulkan-1.lib)
 elseif(APPLE)
 	if(IOS)
 		target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_IOS_MVK)
+		target_link_libraries(vulkan INTERFACE ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/apple/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a)
 	else()
 		target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_MACOS_MVK)
 	endif()
