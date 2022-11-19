@@ -591,8 +591,12 @@ public:
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 	gContext = new vk::raii::Context();
-	
+#elif defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_IOS)
+	gContext = new vk::raii::Context(vkGetInstanceProcAddr);
+#endif
+
 	auto all_extensions = gContext->enumerateInstanceExtensionProperties();
 
 	for (auto extension : all_extensions)
