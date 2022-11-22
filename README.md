@@ -1,9 +1,8 @@
 # sky-gfx - Lightweight rendering library
 
 # Features
-- Backend API: D3D11, OpenGL 4.4
+- Backend API: OpenGL, D3D11, D3D12, Metal, Vulkan
 - GLSL shaders for any backend via SPIRV-Cross
-- RAII memory management over objects like Device, Shader, Texture, etc..
 - Choosing backend API in runtime, no compilation definitions
 
 # Integration
