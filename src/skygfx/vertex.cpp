@@ -4,60 +4,60 @@ using namespace skygfx::Vertex;
 
 const Layout Position::Layout = { 
 	sizeof(Position), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(Position, pos) } 
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(Position, pos) }
 	}
 };
 
 const Layout PositionColor::Layout = { 
 	sizeof(PositionColor), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionColor, pos) },
-		{ Attribute::Type::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColor, color) }
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(PositionColor, pos) },
+		{ Location::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColor, color) }
 	} 
 };
 
 const Layout PositionTexture::Layout = { 
 	sizeof(PositionTexture), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionTexture, pos) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTexture, texcoord) }
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(PositionTexture, pos) },
+		{ Location::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTexture, texcoord) }
 	}
 };
 
 const Layout PositionNormal::Layout = { 
 	sizeof(PositionNormal), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionNormal, pos) },
-		{ Attribute::Type::Normal, Attribute::Format::R32G32B32F, offsetof(PositionNormal, normal) } 
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(PositionNormal, pos) },
+		{ Location::Normal, Attribute::Format::R32G32B32F, offsetof(PositionNormal, normal) }
 	}
 };
 
 const Layout PositionColorNormal::Layout = { 
 	sizeof(PositionColorNormal), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorNormal, pos) },
-		{ Attribute::Type::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorNormal, color) },
-		{ Attribute::Type::Normal, Attribute::Format::R32G32B32F, offsetof(PositionColorNormal, normal) } 
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorNormal, pos) },
+		{ Location::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorNormal, color) },
+		{ Location::Normal, Attribute::Format::R32G32B32F, offsetof(PositionColorNormal, normal) }
 	}
 };
 
 const Layout PositionColorTexture::Layout = { 
 	sizeof(PositionColorTexture), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorTexture, pos) },
-		{ Attribute::Type::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorTexture, color) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTexture, texcoord) }
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorTexture, pos) },
+		{ Location::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorTexture, color) },
+		{ Location::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTexture, texcoord) }
 	}
 };
 
 const Layout PositionTextureNormal::Layout = { 
 	sizeof(PositionTextureNormal), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionTextureNormal, pos) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTextureNormal, texcoord) },
-		{ Attribute::Type::Normal, Attribute::Format::R32G32B32F, offsetof(PositionTextureNormal, normal) } 
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(PositionTextureNormal, pos) },
+		{ Location::TexCoord, Attribute::Format::R32G32F, offsetof(PositionTextureNormal, texcoord) },
+		{ Location::Normal, Attribute::Format::R32G32B32F, offsetof(PositionTextureNormal, normal) }
 	}
 };
 
 const Layout PositionColorTextureNormal::Layout = { 
 	sizeof(PositionColorTextureNormal), {
-		{ Attribute::Type::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorTextureNormal, pos) },
-		{ Attribute::Type::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorTextureNormal, color) },
-		{ Attribute::Type::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTextureNormal, texcoord) },
-		{ Attribute::Type::Normal, Attribute::Format::R32G32B32F, offsetof(PositionColorTextureNormal, normal) } 
+		{ Location::Position, Attribute::Format::R32G32B32F, offsetof(PositionColorTextureNormal, pos) },
+		{ Location::Color, Attribute::Format::R32G32B32A32F, offsetof(PositionColorTextureNormal, color) },
+		{ Location::TexCoord, Attribute::Format::R32G32F, offsetof(PositionColorTextureNormal, texcoord) },
+		{ Location::Normal, Attribute::Format::R32G32B32F, offsetof(PositionColorTextureNormal, normal) }
 	}
 };
