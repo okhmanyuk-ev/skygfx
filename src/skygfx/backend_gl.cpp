@@ -101,36 +101,36 @@ void CheckErrors()
 }
 
 static const std::unordered_map<Vertex::Attribute::Format, GLint> SizeMap = {
-	{ Vertex::Attribute::Format::R32F, 1 },
-	{ Vertex::Attribute::Format::R32G32F, 2 },
-	{ Vertex::Attribute::Format::R32G32B32F, 3 },
-	{ Vertex::Attribute::Format::R32G32B32A32F, 4 },
-	{ Vertex::Attribute::Format::R8UN, 1 },
-	{ Vertex::Attribute::Format::R8G8UN, 2 },
-	{ Vertex::Attribute::Format::R8G8B8UN, 3 },
-	{ Vertex::Attribute::Format::R8G8B8A8UN, 4 }
+	{ Vertex::Attribute::Format::Float1, 1 },
+	{ Vertex::Attribute::Format::Float2, 2 },
+	{ Vertex::Attribute::Format::Float3, 3 },
+	{ Vertex::Attribute::Format::Float4, 4 },
+	{ Vertex::Attribute::Format::Byte1, 1 },
+	{ Vertex::Attribute::Format::Byte2, 2 },
+	{ Vertex::Attribute::Format::Byte3, 3 },
+	{ Vertex::Attribute::Format::Byte4, 4 }
 };
 
 static const std::unordered_map<Vertex::Attribute::Format, GLenum> TypeMap = {
-	{ Vertex::Attribute::Format::R32F, GL_FLOAT },
-	{ Vertex::Attribute::Format::R32G32F, GL_FLOAT },
-	{ Vertex::Attribute::Format::R32G32B32F, GL_FLOAT },
-	{ Vertex::Attribute::Format::R32G32B32A32F, GL_FLOAT },
-	{ Vertex::Attribute::Format::R8UN, GL_UNSIGNED_BYTE },
-	{ Vertex::Attribute::Format::R8G8UN, GL_UNSIGNED_BYTE },
-	{ Vertex::Attribute::Format::R8G8B8UN, GL_UNSIGNED_BYTE },
-	{ Vertex::Attribute::Format::R8G8B8A8UN, GL_UNSIGNED_BYTE }
+	{ Vertex::Attribute::Format::Float1, GL_FLOAT },
+	{ Vertex::Attribute::Format::Float2, GL_FLOAT },
+	{ Vertex::Attribute::Format::Float3, GL_FLOAT },
+	{ Vertex::Attribute::Format::Float4, GL_FLOAT },
+	{ Vertex::Attribute::Format::Byte1, GL_UNSIGNED_BYTE },
+	{ Vertex::Attribute::Format::Byte2, GL_UNSIGNED_BYTE },
+	{ Vertex::Attribute::Format::Byte3, GL_UNSIGNED_BYTE },
+	{ Vertex::Attribute::Format::Byte4, GL_UNSIGNED_BYTE }
 };
 
 static const std::unordered_map<Vertex::Attribute::Format, GLboolean> NormalizeMap = {
-	{ Vertex::Attribute::Format::R32F, GL_FALSE },
-	{ Vertex::Attribute::Format::R32G32F, GL_FALSE },
-	{ Vertex::Attribute::Format::R32G32B32F, GL_FALSE },
-	{ Vertex::Attribute::Format::R32G32B32A32F, GL_FALSE },
-	{ Vertex::Attribute::Format::R8UN, GL_TRUE },
-	{ Vertex::Attribute::Format::R8G8UN, GL_TRUE },
-	{ Vertex::Attribute::Format::R8G8B8UN, GL_TRUE },
-	{ Vertex::Attribute::Format::R8G8B8A8UN, GL_TRUE }
+	{ Vertex::Attribute::Format::Float1, GL_FALSE },
+	{ Vertex::Attribute::Format::Float2, GL_FALSE },
+	{ Vertex::Attribute::Format::Float3, GL_FALSE },
+	{ Vertex::Attribute::Format::Float4, GL_FALSE },
+	{ Vertex::Attribute::Format::Byte1, GL_TRUE },
+	{ Vertex::Attribute::Format::Byte2, GL_TRUE },
+	{ Vertex::Attribute::Format::Byte3, GL_TRUE },
+	{ Vertex::Attribute::Format::Byte4, GL_TRUE }
 };
 
 static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {

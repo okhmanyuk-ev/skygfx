@@ -19,14 +19,14 @@ namespace skygfx::Vertex
 	{
 		enum class Format
 		{
-			R32F,
-			R32G32F,
-			R32G32B32F,
-			R32G32B32A32F,
-			R8UN,
-			R8G8UN,
-			R8G8B8UN,
-			R8G8B8A8UN
+			Float1,
+			Float2,
+			Float3,
+			Float4,
+			Byte1,
+			Byte2,
+			Byte3,
+			Byte4
 		};
 
 		std::optional<std::string> location_define;

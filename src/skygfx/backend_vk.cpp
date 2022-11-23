@@ -320,14 +320,14 @@ public:
 		fragment_shader_module = gDevice.createShaderModule(fragment_shader_module_create_info);
 
 		static const std::unordered_map<Vertex::Attribute::Format, vk::Format> Format = {
-			{ Vertex::Attribute::Format::R32F, vk::Format::eR32Sfloat },
-			{ Vertex::Attribute::Format::R32G32F, vk::Format::eR32G32Sfloat },
-			{ Vertex::Attribute::Format::R32G32B32F, vk::Format::eR32G32B32Sfloat },
-			{ Vertex::Attribute::Format::R32G32B32A32F, vk::Format::eR32G32B32A32Sfloat },
-			{ Vertex::Attribute::Format::R8UN, vk::Format::eR8Unorm },
-			{ Vertex::Attribute::Format::R8G8UN, vk::Format::eR8G8Unorm },
-			{ Vertex::Attribute::Format::R8G8B8UN, vk::Format::eR8G8B8Unorm },
-			{ Vertex::Attribute::Format::R8G8B8A8UN, vk::Format::eR8G8B8A8Unorm }
+			{ Vertex::Attribute::Format::Float1, vk::Format::eR32Sfloat },
+			{ Vertex::Attribute::Format::Float2, vk::Format::eR32G32Sfloat },
+			{ Vertex::Attribute::Format::Float3, vk::Format::eR32G32B32Sfloat },
+			{ Vertex::Attribute::Format::Float4, vk::Format::eR32G32B32A32Sfloat },
+			{ Vertex::Attribute::Format::Byte1, vk::Format::eR8Unorm },
+			{ Vertex::Attribute::Format::Byte2, vk::Format::eR8G8Unorm },
+			{ Vertex::Attribute::Format::Byte3, vk::Format::eR8G8B8Unorm },
+			{ Vertex::Attribute::Format::Byte4, vk::Format::eR8G8B8A8Unorm }
 		};
 
 		vertex_input_binding_description = vk::VertexInputBindingDescription()

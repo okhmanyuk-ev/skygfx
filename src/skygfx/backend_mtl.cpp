@@ -170,14 +170,14 @@ public:
 		mFragFunc = [mFragLib newFunctionWithName:@"main0"];
 	
 		static const std::unordered_map<Vertex::Attribute::Format, MTLVertexFormat> Format = {
-			{ Vertex::Attribute::Format::R32F, MTLVertexFormatFloat },
-			{ Vertex::Attribute::Format::R32G32F, MTLVertexFormatFloat2 },
-			{ Vertex::Attribute::Format::R32G32B32F, MTLVertexFormatFloat3 },
-			{ Vertex::Attribute::Format::R32G32B32A32F, MTLVertexFormatFloat4 },
-			//{ Vertex::Attribute::Format::R8UN, },
-			//{ Vertex::Attribute::Format::R8G8UN, },
-			//{ Vertex::Attribute::Format::R8G8B8UN, },
-			{ Vertex::Attribute::Format::R8G8B8A8UN, MTLVertexFormatUChar4Normalized }
+			{ Vertex::Attribute::Format::Float1, MTLVertexFormatFloat },
+			{ Vertex::Attribute::Format::Float2, MTLVertexFormatFloat2 },
+			{ Vertex::Attribute::Format::Float3, MTLVertexFormatFloat3 },
+			{ Vertex::Attribute::Format::Float4, MTLVertexFormatFloat4 },
+			{ Vertex::Attribute::Format::Byte1, MTLVertexFormatUCharNormalized },
+			{ Vertex::Attribute::Format::Byte2, MTLVertexFormatUChar2Normalized },
+			{ Vertex::Attribute::Format::Byte3, MTLVertexFormatUChar3Normalized },
+			{ Vertex::Attribute::Format::Byte4, MTLVertexFormatUChar4Normalized }
 		};
 	
 		mVertexDescriptor = [[MTLVertexDescriptor alloc] init];
