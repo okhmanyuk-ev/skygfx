@@ -2,7 +2,7 @@
 
 # Features
 - Supported platforms: Windows, Mac, iOS
-- Supported graphic APIs: OpenGL, D3D11, D3D12, Metal, Vulkan
+- Supported graphic backends: OpenGL, D3D11, D3D12, Metal, Vulkan
 - GLSL shaders for any backend via SPIRV-Cross
 - Choosing backend API in runtime, no compilation definitions
 
