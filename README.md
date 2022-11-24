@@ -2,7 +2,7 @@
 
 # Features
 - Supported platforms: Windows, Mac, iOS
-- Supported graphic backends: OpenGL, D3D11, D3D12, Metal, Vulkan
+- Supported graphic backends: OpenGL(ES), D3D11, D3D12, Metal, Vulkan
 - GLSL shaders for any backend via SPIRV-Cross
 - Choosing backend API in runtime, no compilation definitions
 
@@ -17,8 +17,13 @@ target_link_libraries(YOUR_TARGET skygfx)
 
 ## Visual Studio
 1. Open the `examples` folder
-2. Execute `build.cmd`
+2. Execute `build.sh`
 3. The `build` folder will be created in a short time and the `.sln` file will be inside
+
+## Xcode
+1. Open terminal and go to the `examples` folder
+2. Run `sh build.sh` command 
+3. The `build` folder will be created in a short time and the `.xcodeproj` file will be inside
 
 # Examples
 
