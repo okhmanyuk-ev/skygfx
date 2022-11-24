@@ -955,7 +955,7 @@ void BackendD3D12::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	box.front = 0;
 	box.back = 1;
 
-	if (pos.y < (int)back_h && pos.x < (int)back_w)
+	if (pos.y < (int)back_h && pos.x < (int)back_w) // TODO: use return instead adding scope
 	{
 		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
 			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);

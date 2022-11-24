@@ -287,7 +287,7 @@ private:
 	TextureMetal* mTexture = nullptr;
 	
 public:
-	RenderTargetMetal(uint32_t width, uint32_t height, TextureMetal* texture) :
+	RenderTargetMetal(TextureMetal* texture) :
 		mTexture(texture)
 	{
 	}
@@ -487,7 +487,7 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	auto frame = CGRectMake(0.0f, 0.0f, (float)width, (float)height);
 	
 	gView = [[MTKView alloc] initWithFrame:frame device:gDevice];
-	gView.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
+	gView.colorPixelFormat = MTLPixelFormatRGBA8Unorm;
 	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
@@ -760,15 +760,18 @@ void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 
 void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
 {
+	if (size.x <= 0 || size.y <= 0)
+		return;
+		
+	if (pos.x + size.x <= 0 || pos.y + size.y <= 0)
+		return;
+
 	auto dst_texture = (TextureMetal*)dst_texture_handle;
 
 	assert(dst_texture->getMetalTexture().width == size.x);
 	assert(dst_texture->getMetalTexture().height == size.y);
 
-	if (size.x <= 0 || size.y <= 0)
-		return;
-
-	beginBlitEncoding();
+	ensureRenderTarget();
 	
 	auto src_texture = gRenderPassDescriptor.colorAttachments[0].texture;
 	
@@ -777,27 +780,51 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	float src_w = size.x;
 	float src_h = size.y;
 	
-	if (src_x < 0)
+	float tex_w = (float)src_texture.width;
+	float tex_h = (float)src_texture.height;
+
+	if (src_x >= tex_w)
+		return;
+		
+	if (src_y >= tex_h)
+		return;
+
+	float dst_x = 0.0f;
+	float dst_y = 0.0f;
+
+	if (src_x < 0.0f)
 	{
+		dst_x -= src_x;
 		src_w += src_x;
-		src_x = 0;
+		src_x = 0.0f;
 	}
 	
-	if (src_y < 0)
+	if (src_y < 0.0f)
 	{
+		dst_y -= src_y;
 		src_h += src_y;
-		src_y = 0;
+		src_y = 0.0f;
 	}
 	
-	if (src_x + src_w > src_texture.width)
+	if (src_x + src_w > tex_w)
 	{
-		src_w = (float)src_texture.width - src_x;
+		src_w = tex_w - src_x;
 	}
 
-	if (src_y + src_h > src_texture.height)
+	if (src_y + src_h > tex_h)
 	{
-		src_h = (float)src_texture.height - src_y;
+		src_h = tex_h - src_y;
 	}
+
+	//if (gPipelineState.render_target == nullptr) // TODO: should be uncommented or removed
+	//{
+	//	src_x *= gBackbufferScaleFactor;
+	//	src_y *= gBackbufferScaleFactor;
+	//	src_w *= gBackbufferScaleFactor;
+	//	src_h *= gBackbufferScaleFactor;
+	//}
+	
+	beginBlitEncoding();
 
 	[gBlitCommandEncoder
 		copyFromTexture:src_texture
@@ -808,12 +835,12 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 		toTexture:dst_texture->getMetalTexture()
 		destinationSlice:0
 		destinationLevel:0
-		destinationOrigin:MTLOriginMake(0, 0, 0)
+		destinationOrigin:MTLOriginMake((uint32_t)dst_x, (uint32_t)dst_y, 0)
 	];
 	
 	if (dst_texture->isMipmap())
-		dst_texture->generateMips(); // TODO: maybe use gBlitCommandEncoder inside generateMips (pass through args)
-		
+		[gBlitCommandEncoder generateMipmapsForTexture:dst_texture->getMetalTexture()];
+	
 	beginRenderEncoding();
 }
 
@@ -848,7 +875,7 @@ void BackendMetal::destroyTexture(TextureHandle* handle)
 RenderTargetHandle* BackendMetal::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = (TextureMetal*)texture_handle;
-	auto render_target = new RenderTargetMetal(width, height, texture);
+	auto render_target = new RenderTargetMetal(texture);
 	return (RenderTargetHandle*)render_target;
 }
 
