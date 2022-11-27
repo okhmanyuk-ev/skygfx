@@ -490,15 +490,15 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
 	gView.framebufferOnly = NO;
-	gView.autoresizingMask = NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
-		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
 
 	auto metal_layer = (CAMetalLayer*)gView.layer;
 	metal_layer.magnificationFilter = kCAFilterNearest;
 
 #if defined(SKYGFX_PLATFORM_MACOS)
-	NSObject* nwh = (NSObject*)window;
+	gView.autoresizingMask = NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
+		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
 
+	NSObject* nwh = (NSObject*)window;
 	NSView* contentView = nil;
 	NSWindow* nsWindow = nil;
 	

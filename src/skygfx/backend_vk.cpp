@@ -710,6 +710,9 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 #elif defined(SKYGFX_PLATFORM_MACOS)
 	auto surface_info = vk::MacOSSurfaceCreateInfoMVK()
 		.setPView(window);
+#elif defined(SKYGFX_PLATFORM_IOS)
+	auto surface_info = vk::IOSSurfaceCreateInfoMVK()
+		.setPView(window);
 #endif
 
 	gSurface = vk::raii::SurfaceKHR(gInstance, surface_info);
