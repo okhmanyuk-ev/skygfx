@@ -546,7 +546,6 @@ static std::optional<Scissor> gScissor;
 
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
-static float gBackbufferScaleFactor = 1.0f;
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 {
@@ -655,33 +654,33 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 		0,                        0,
 	};
 	
-	auto pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttribs];
+	auto pixel_format = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttribs];
 	
-	auto glViewRect = [contentView bounds];
-	glView = [[NSOpenGLView alloc] initWithFrame:glViewRect pixelFormat:pixelFormat];
+	auto bounds = [contentView bounds];
+	
+	glView = [[NSOpenGLView alloc] initWithFrame:bounds pixelFormat:pixel_format];
+	
+	[pixel_format release];
+	
+	[glView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
+		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin)];
 
-	[pixelFormat release];
-	
 	// GLFW creates a helper contentView that handles things like keyboard and drag and
 	// drop events. We don't want to clobber that view if it exists. Instead we just
 	// add ourselves as a subview and make the view resize automatically.
 	if (contentView != nil)
 	{
-		[glView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
-				NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin )];
 		[contentView addSubview:glView];
 	}
-	else
+	else if (nsWindow != nil)
 	{
-		if (nil != nsWindow)
-			[nsWindow setContentView:glView];
+		[nsWindow setContentView:glView];
 	}
-	
-	gBackbufferScaleFactor = glView.window.backingScaleFactor;
 	
 	glContext = [glView openGLContext];
 
 	[glContext makeCurrentContext];
+
 	GLint interval = 0;
 	[glContext setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
 	
@@ -1010,21 +1009,10 @@ void BackendGL::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Textur
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto backbuffer_height = gBackbufferHeight;
-	auto _pos = pos;
-	auto _size = size;
-
-	if (gRenderTarget == nullptr)
-	{
-		_pos *= (glm::vec2)gBackbufferScaleFactor;
-		_size *= gBackbufferScaleFactor;
-		backbuffer_height *= gBackbufferScaleFactor;
-	}
-
-	auto x = (GLint)_pos.x;
-	auto y = (GLint)(backbuffer_height - _pos.y - _size.y); // TODO: need different calculations when render target
-	auto w = (GLint)_size.x;
-	auto h = (GLint)_size.y;
+	auto x = (GLint)pos.x;
+	auto y = (GLint)(gBackbufferHeight - pos.y - size.y); // TODO: need different calculations when render target
+	auto w = (GLint)size.x;
+	auto h = (GLint)size.y;
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, gPixelBuffer);
 	glBufferData(GL_PIXEL_PACK_BUFFER, w * h * 4, nullptr, GL_STATIC_READ);
@@ -1259,12 +1247,6 @@ void BackendGL::prepareForDrawing()
 		}
 
 		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
-
-		if (gRenderTarget == nullptr)
-		{
-			viewport.position *= gBackbufferScaleFactor;
-			viewport.size *= gBackbufferScaleFactor;
-		}
 		
 		glViewport(
 			(GLint)viewport.position.x,
@@ -1286,20 +1268,11 @@ void BackendGL::prepareForDrawing()
 		if (gScissor.has_value())
 		{
 			auto value = gScissor.value();
-
-			auto backbuffer_height = gBackbufferHeight;
 			
-			if (gRenderTarget == nullptr)
-			{
-				value.size *= gBackbufferScaleFactor;
-				value.position *= gBackbufferScaleFactor;
-				backbuffer_height *= gBackbufferScaleFactor;
-			}
-
 			glEnable(GL_SCISSOR_TEST);
 			glScissor(
 				(GLint)glm::round(value.position.x),
-				(GLint)glm::round(backbuffer_height - value.position.y - value.size.y), // TODO: need different calculations when render target
+				(GLint)glm::round(gBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
 				(GLint)glm::round(value.size.x),
 				(GLint)glm::round(value.size.y));
 		}

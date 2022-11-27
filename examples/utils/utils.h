@@ -75,4 +75,25 @@ namespace utils
 
 		return { view, projection };
 	}
+	
+	std::tuple<GLFWwindow*, void*, uint32_t, uint32_t> SpawnWindow(uint32_t width, uint32_t height, const std::string& title)
+	{
+		auto window = glfwCreateWindow((int)width, (int)height, title.c_str(), NULL, NULL);
+
+		auto monitor = glfwGetPrimaryMonitor();
+		auto video_mode = glfwGetVideoMode(monitor);
+
+		auto window_pos_x = (video_mode->width / 2) - (width / 2);
+		auto window_pos_y = (video_mode->height / 2) - (height / 2);
+
+		glfwSetWindowPos(window, window_pos_x, window_pos_y);
+		
+		int fb_width;
+		int fb_height;
+		glfwGetFramebufferSize(window, &fb_width, &fb_height);
+
+		auto native_window = GetNativeWindow(window);
+
+		return { window, native_window, fb_width, fb_height };
+	}
 }

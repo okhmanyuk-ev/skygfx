@@ -98,7 +98,6 @@ static CullMode gCullMode = CullMode::None;
 
 static const uint32_t gVertexBufferStageBinding = 30;
 
-static float gBackbufferScaleFactor = 1.0f;
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
 
@@ -435,8 +434,8 @@ static void begin()
 		gDirtyTextures.insert(binding);
 	}
 	
-	auto width = (uint32_t)gView.frame.size.width;
-	auto height = (uint32_t)gView.frame.size.height;
+	auto width = (uint32_t)gView.drawableSize.width;
+	auto height = (uint32_t)gView.drawableSize.height;
 	
 	if (gBackbufferWidth != width || gBackbufferHeight != height)
 	{
@@ -483,19 +482,20 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gAutoreleasePool = [[NSAutoreleasePool alloc] init];
 
 	gDevice = MTLCreateSystemDefaultDevice();
-
-	auto frame = CGRectMake(0.0f, 0.0f, (float)width, (float)height);
 	
-	gView = [[MTKView alloc] initWithFrame:frame device:gDevice];
+	gView = [[MTKView alloc] init];
+	gView.device = gDevice;
 	gView.colorPixelFormat = MTLPixelFormatRGBA8Unorm;
 	gView.depthStencilPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
 	gView.paused = YES;
 	gView.enableSetNeedsDisplay = NO;
 	gView.framebufferOnly = NO;
-	
+	gView.autoresizingMask = NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
+		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin;
+
 	auto metal_layer = (CAMetalLayer*)gView.layer;
 	metal_layer.magnificationFilter = kCAFilterNearest;
-	
+
 #if defined(SKYGFX_PLATFORM_MACOS)
 	NSObject* nwh = (NSObject*)window;
 
@@ -512,26 +512,23 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 		contentView = [nsWindow contentView];
 	}
 	
+	gView.frame = [contentView bounds];
+	
 	if (contentView != nil)
 	{
 		[contentView addSubview:gView];
 	}
-	else
+	else if (nsWindow != nil)
 	{
-		if (nil != nsWindow)
-			[nsWindow setContentView:gView];
+		[nsWindow setContentView:gView];
 	}
-	
-	[gView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
-		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin )];
-
-	gBackbufferScaleFactor = gView.window.backingScaleFactor;
 #elif defined(SKYGFX_PLATFORM_IOS)
 	auto _window = (UIWindow*)window;
 	auto root_view = [[_window rootViewController] view];
+	gView.frame = [root_view bounds];
 	[root_view addSubview:gView];
 #endif
-	
+
 	gBackbufferWidth = width;
 	gBackbufferHeight = height;
 
@@ -815,14 +812,6 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	{
 		src_h = tex_h - src_y;
 	}
-
-	//if (gPipelineState.render_target == nullptr) // TODO: should be uncommented or removed
-	//{
-	//	src_x *= gBackbufferScaleFactor;
-	//	src_y *= gBackbufferScaleFactor;
-	//	src_w *= gBackbufferScaleFactor;
-	//	src_h *= gBackbufferScaleFactor;
-	//}
 	
 	beginBlitEncoding();
 
@@ -1223,12 +1212,6 @@ void BackendMetal::prepareForDrawing()
 
 		auto _viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
-		if (gPipelineState.render_target == nullptr)
-		{
-			_viewport.position *= gBackbufferScaleFactor;
-			_viewport.size *= gBackbufferScaleFactor;
-		}
-
 		MTLViewport viewport;
 		viewport.originX = _viewport.position.x;
 		viewport.originY = _viewport.position.y;
@@ -1245,16 +1228,7 @@ void BackendMetal::prepareForDrawing()
 		gScissorDirty = false;
 		
 		auto _scissor = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
-		
-		if (gPipelineState.render_target == nullptr)
-		{
-			_scissor.position *= gBackbufferScaleFactor;
-			_scissor.size *= gBackbufferScaleFactor;
-			
-			width *= gBackbufferScaleFactor;
-			height *= gBackbufferScaleFactor;
-		}
-		
+				
 		if (_scissor.position.x < 0.0f)
 		{
 			_scissor.size.x -= _scissor.position.x;
@@ -1282,7 +1256,7 @@ void BackendMetal::prepareForDrawing()
 		if (scissor.y + scissor.height > height)
 			scissor.height = height - scissor.y;
 
-		[gRenderCommandEncoder setScissorRect:scissor];
+	//	[gRenderCommandEncoder setScissorRect:scissor]; // TODO: uncomment
 	}
 }
 

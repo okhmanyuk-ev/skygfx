@@ -55,26 +55,11 @@ int main()
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-	uint32_t width = 800;
-	uint32_t height = 600;
-
-	auto window = glfwCreateWindow(width, height, "Texture", NULL, NULL);
-
-	int count = 0;
-	auto monitors = glfwGetMonitors(&count);
-
-	auto video_mode = glfwGetVideoMode(monitors[0]);
-
-	auto window_pos_x = (video_mode->width / 2) - (width / 2);
-	auto window_pos_y = (video_mode->height / 2) - (height / 2);
-
-	glfwSetWindowPos(window, window_pos_x, window_pos_y);
-
-	auto native_window = utils::GetNativeWindow(window);
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Texture");
 
 	skygfx::Initialize(native_window, width, height, backend_type);
 
-	glfwSetWindowSizeCallback(window, [](GLFWwindow* window, int width, int height) {
+	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
