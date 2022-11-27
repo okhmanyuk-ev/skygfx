@@ -759,7 +759,7 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 {
 	if (size.x <= 0 || size.y <= 0)
 		return;
-		
+
 	if (pos.x + size.x <= 0 || pos.y + size.y <= 0)
 		return;
 
@@ -768,21 +768,21 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	assert(dst_texture->getMetalTexture().width == size.x);
 	assert(dst_texture->getMetalTexture().height == size.y);
 
-	ensureRenderTarget();
-	
-	auto src_texture = gRenderPassDescriptor.colorAttachments[0].texture;
-	
+	auto src_texture = gPipelineState.render_target ?
+		gPipelineState.render_target->getTexture()->getMetalTexture() :
+		gView.currentDrawable.texture;
+
 	float src_x = pos.x;
 	float src_y = pos.y;
 	float src_w = size.x;
 	float src_h = size.y;
-	
+
 	float tex_w = (float)src_texture.width;
 	float tex_h = (float)src_texture.height;
 
 	if (src_x >= tex_w)
 		return;
-		
+
 	if (src_y >= tex_h)
 		return;
 
@@ -795,14 +795,14 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 		src_w += src_x;
 		src_x = 0.0f;
 	}
-	
+
 	if (src_y < 0.0f)
 	{
 		dst_y -= src_y;
 		src_h += src_y;
 		src_y = 0.0f;
 	}
-	
+
 	if (src_x + src_w > tex_w)
 	{
 		src_w = tex_w - src_x;
@@ -812,7 +812,7 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	{
 		src_h = tex_h - src_y;
 	}
-	
+
 	beginBlitEncoding();
 
 	[gBlitCommandEncoder
@@ -826,10 +826,10 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 		destinationLevel:0
 		destinationOrigin:MTLOriginMake((uint32_t)dst_x, (uint32_t)dst_y, 0)
 	];
-	
+
 	if (dst_texture->isMipmap())
 		[gBlitCommandEncoder generateMipmapsForTexture:dst_texture->getMetalTexture()];
-	
+
 	beginRenderEncoding();
 }
 
