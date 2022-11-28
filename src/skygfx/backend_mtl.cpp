@@ -25,21 +25,24 @@ class IndexBufferMetal;
 struct PipelineStateMetal
 {
 	ShaderMetal* shader = nullptr;
-	RenderTargetMetal* render_target = nullptr;
+	MTLPixelFormat color_attachment_pixel_format;
+	MTLPixelFormat depth_stencil_attachment_pixel_format;
 	BlendMode blend_mode = BlendStates::AlphaBlend;
 	
 	bool operator==(const PipelineStateMetal& value) const
 	{
 		return
 			shader == value.shader &&
-			render_target == value.render_target &&
+			color_attachment_pixel_format == value.color_attachment_pixel_format &&
+			depth_stencil_attachment_pixel_format == value.depth_stencil_attachment_pixel_format &&
 			blend_mode == value.blend_mode;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
 	t.shader,
-	t.render_target,
+	t.color_attachment_pixel_format,
+	t.depth_stencil_attachment_pixel_format,
 	t.blend_mode);
 	
 struct SamplerStateMetal
@@ -81,7 +84,6 @@ static id<MTLDevice> gDevice = nullptr;
 static MTKView* gView = nullptr;
 static id<MTLCommandQueue> gCommandQueue = nullptr;
 static id<MTLCommandBuffer> gCommandBuffer = nullptr;
-static MTLRenderPassDescriptor* gRenderPassDescriptor = nullptr;
 static id<MTLRenderCommandEncoder> gRenderCommandEncoder = nullptr;
 static id<MTLBlitCommandEncoder> gBlitCommandEncoder = nullptr;
 static MTLPrimitiveType gPrimitiveType = MTLPrimitiveTypeTriangle;
@@ -118,6 +120,9 @@ static std::unordered_map<DepthStencilStateMetal, id<MTLDepthStencilState>> gDep
 static bool gPipelineStateDirty = true;
 static PipelineStateMetal gPipelineState;
 static std::unordered_map<PipelineStateMetal, id<MTLRenderPipelineState>> gPipelineStates;
+
+static bool gRenderTargetDirty = true;
+static RenderTargetMetal* gRenderTarget = nullptr;
 
 static std::unordered_set<BufferMetal*> gUsedBuffersInThisFrame;
 
@@ -281,14 +286,32 @@ class RenderTargetMetal
 {
 public:
 	auto getTexture() const { return mTexture; }
+	auto getMetalDepthStencilTexture() const { return mDepthStencilTexture; }
 	
 private:
 	TextureMetal* mTexture = nullptr;
+	id<MTLTexture> mDepthStencilTexture = nullptr;
 	
 public:
-	RenderTargetMetal(TextureMetal* texture) :
+	RenderTargetMetal(uint32_t width, uint32_t height, TextureMetal* texture) :
 		mTexture(texture)
 	{
+		auto desc = [[MTLTextureDescriptor alloc] init];
+		desc.width = width;
+		desc.height = height;
+		desc.pixelFormat = MTLPixelFormatDepth32Float_Stencil8;
+		desc.textureType = MTLTextureType2D;
+		desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+		desc.storageMode = MTLStorageModePrivate;
+
+		mDepthStencilTexture = [gDevice newTextureWithDescriptor:desc];
+
+		[desc release];
+	}
+	
+	~RenderTargetMetal()
+	{
+		[mDepthStencilTexture release];
 	}
 };
 
@@ -383,33 +406,85 @@ public:
 
 static NSAutoreleasePool* gFrameAutoreleasePool = nullptr;
 
-static void endEncoding()
-{
-	if (gRenderCommandEncoder)
-	{
-		[gRenderCommandEncoder endEncoding];
-		gRenderCommandEncoder = nullptr;
-	}
-	
-	if (gBlitCommandEncoder)
-	{
-		[gBlitCommandEncoder endEncoding];
-		gBlitCommandEncoder = nullptr;
-	}
-}
-
-static void beginRenderEncoding()
+static void beginRenderPass(const std::optional<glm::vec4>& color = std::nullopt,
+	const std::optional<float>& depth = std::nullopt, const std::optional<uint8_t>& stencil = std::nullopt)
 {
 	assert(gRenderCommandEncoder == nullptr);
-	endEncoding();
-	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:gRenderPassDescriptor];
+
+	auto color_texture = gRenderTarget ?
+		gRenderTarget->getTexture()->getMetalTexture() :
+		gView.currentDrawable.texture;
+
+	auto depth_stencil_texture = gRenderTarget ?
+		gRenderTarget->getMetalDepthStencilTexture() :
+		gView.depthStencilTexture;
+
+	auto descriptor = [[MTLRenderPassDescriptor alloc] init];
+
+	descriptor.colorAttachments[0].texture = color_texture;
+	descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+	
+	descriptor.depthAttachment.texture = depth_stencil_texture;
+	descriptor.depthAttachment.storeAction = MTLStoreActionStore;
+	
+	descriptor.stencilAttachment.texture = depth_stencil_texture;
+	descriptor.stencilAttachment.storeAction = MTLStoreActionStore;
+	
+	if (color.has_value())
+	{
+		auto col = color.value();
+
+		descriptor.colorAttachments[0].clearColor = MTLClearColorMake(col.r, col.g, col.b, col.a);
+		descriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+	}
+	else
+	{
+		descriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
+	}
+
+	if (depth.has_value())
+	{
+		descriptor.depthAttachment.clearDepth = depth.value();
+		descriptor.depthAttachment.loadAction = MTLLoadActionClear;
+	}
+	else
+	{
+		descriptor.depthAttachment.loadAction = MTLLoadActionLoad;
+	}
+
+	if (stencil.has_value())
+	{
+		descriptor.stencilAttachment.clearStencil = stencil.value();
+		descriptor.stencilAttachment.loadAction = MTLLoadActionClear;
+	}
+	else
+	{
+		descriptor.stencilAttachment.loadAction = MTLLoadActionLoad;
+	}
+
+	gRenderCommandEncoder = [gCommandBuffer renderCommandEncoderWithDescriptor:descriptor];
+	
+	gPipelineStateDirty = true;
 }
 
-static void beginBlitEncoding()
+static void endRenderPass()
+{
+	assert(gRenderCommandEncoder != nullptr);
+	[gRenderCommandEncoder endEncoding];
+	gRenderCommandEncoder = nullptr;
+}
+
+static void beginBlitPass()
 {
 	assert(gBlitCommandEncoder == nullptr);
-	endEncoding();
 	gBlitCommandEncoder = [gCommandBuffer blitCommandEncoder];
+}
+
+static void endBlitPass()
+{
+	assert(gBlitCommandEncoder != nullptr);
+	[gBlitCommandEncoder endEncoding];
+	gBlitCommandEncoder = nullptr;
 }
 
 static void begin()
@@ -417,10 +492,8 @@ static void begin()
 	gFrameAutoreleasePool = [[NSAutoreleasePool alloc] init];
 
 	gCommandBuffer = gCommandQueue.commandBuffer;
-	gRenderPassDescriptor = gView.currentRenderPassDescriptor;
-	gRenderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
 	
-	beginRenderEncoding();
+	beginRenderPass();
 	
 	gCullModeDirty = true;
 	gViewportDirty = true;
@@ -452,29 +525,13 @@ static void begin()
 
 static void end()
 {
-	endEncoding();
+	endRenderPass();
 	
 	[gCommandBuffer presentDrawable:gView.currentDrawable];
 	[gCommandBuffer commit];
 	[gCommandBuffer waitUntilCompleted];
 	
 	[gFrameAutoreleasePool release];
-}
-
-static void ensureRenderTarget()
-{
-	auto render_texture = gPipelineState.render_target ?
-		gPipelineState.render_target->getTexture()->getMetalTexture() :
-		gView.currentDrawable.texture;
-	
-	auto color_attachment = gRenderPassDescriptor.colorAttachments[0];
-	
-	if (color_attachment.texture != render_texture)
-	{
-		endEncoding();
-		color_attachment.texture = render_texture;
-		beginRenderEncoding();
-	}
 }
 
 BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
@@ -601,20 +658,52 @@ void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetMetal*)handle;
 	
-	if (gPipelineState.render_target == render_target)
+	if (gRenderTarget == render_target)
 		return;
+
+	gRenderTarget = render_target;
+	gRenderTargetDirty = true;
 	
-	gPipelineState.render_target = render_target;
-	gPipelineStateDirty = true;
+	auto color_attachment_pixel_format = gRenderTarget->getTexture()->getMetalTexture().pixelFormat;
+
+	if (gPipelineState.color_attachment_pixel_format != color_attachment_pixel_format)
+	{
+		gPipelineState.color_attachment_pixel_format = color_attachment_pixel_format;
+		gPipelineStateDirty = true;
+	}
+	
+	auto depth_stencil_attachment_pixel_format = gRenderTarget->getMetalDepthStencilTexture().pixelFormat;
+	
+	if (gPipelineState.depth_stencil_attachment_pixel_format != depth_stencil_attachment_pixel_format)
+	{
+		gPipelineState.depth_stencil_attachment_pixel_format = depth_stencil_attachment_pixel_format;
+		gPipelineStateDirty = true;
+	}
 }
 
 void BackendMetal::setRenderTarget(std::nullptr_t value)
 {
-	if (gPipelineState.render_target == nullptr)
+	if (gRenderTarget == nullptr)
 		return;
 
-	gPipelineState.render_target = nullptr;
-	gPipelineStateDirty = true;
+	gRenderTarget = nullptr;
+	gRenderTargetDirty = true;
+	
+	auto color_attachment_pixel_format = gView.colorPixelFormat;
+
+	if (gPipelineState.color_attachment_pixel_format != color_attachment_pixel_format)
+	{
+		gPipelineState.color_attachment_pixel_format = color_attachment_pixel_format;
+		gPipelineStateDirty = true;
+	}
+	
+	auto depth_stencil_attachment_pixel_format = gView.depthStencilPixelFormat;
+	
+	if (gPipelineState.depth_stencil_attachment_pixel_format != depth_stencil_attachment_pixel_format)
+	{
+		gPipelineState.depth_stencil_attachment_pixel_format = depth_stencil_attachment_pixel_format;
+		gPipelineStateDirty = true;
+	}
 }
 
 void BackendMetal::setShader(ShaderHandle* handle)
@@ -704,34 +793,8 @@ void BackendMetal::setTextureAddress(TextureAddress value)
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	ensureRenderTarget();
-
-	if (color.has_value())
-	{
-		auto col = color.value();
-
-		gRenderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(col.r, col.g, col.b, col.a);
-		gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
-	}
-
-	if (depth.has_value())
-	{
-		gRenderPassDescriptor.depthAttachment.clearDepth = depth.value();
-		gRenderPassDescriptor.depthAttachment.loadAction = MTLLoadActionClear;
-	}
-
-	if (stencil.has_value())
-	{
-		gRenderPassDescriptor.stencilAttachment.clearStencil = stencil.value();
-		gRenderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionClear;
-	}
-
-	endEncoding();
-	beginRenderEncoding();
-	
-	gRenderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
-	gRenderPassDescriptor.depthAttachment.loadAction = MTLLoadActionLoad;
-	gRenderPassDescriptor.stencilAttachment.loadAction = MTLLoadActionLoad;
+	endRenderPass();
+	beginRenderPass(color, depth, stencil);
 }
 
 void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
@@ -768,8 +831,8 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	assert(dst_texture->getMetalTexture().width == size.x);
 	assert(dst_texture->getMetalTexture().height == size.y);
 
-	auto src_texture = gPipelineState.render_target ?
-		gPipelineState.render_target->getTexture()->getMetalTexture() :
+	auto src_texture = gRenderTarget ?
+		gRenderTarget->getTexture()->getMetalTexture() :
 		gView.currentDrawable.texture;
 
 	float src_x = pos.x;
@@ -812,8 +875,9 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	{
 		src_h = tex_h - src_y;
 	}
-
-	beginBlitEncoding();
+	
+	endRenderPass();
+	beginBlitPass();
 
 	[gBlitCommandEncoder
 		copyFromTexture:src_texture
@@ -830,7 +894,8 @@ void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, Tex
 	if (dst_texture->isMipmap())
 		[gBlitCommandEncoder generateMipmapsForTexture:dst_texture->getMetalTexture()];
 
-	beginRenderEncoding();
+	endBlitPass();
+	beginRenderPass();
 }
 
 void BackendMetal::present()
@@ -864,7 +929,7 @@ void BackendMetal::destroyTexture(TextureHandle* handle)
 RenderTargetHandle* BackendMetal::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = (TextureMetal*)texture_handle;
-	auto render_target = new RenderTargetMetal(texture);
+	auto render_target = new RenderTargetMetal(width, height, texture);
 	return (RenderTargetHandle*)render_target;
 }
 
@@ -961,7 +1026,13 @@ void BackendMetal::writeUniformBufferMemory(UniformBufferHandle* handle, void* m
 
 void BackendMetal::prepareForDrawing()
 {
-	ensureRenderTarget();
+	if (gRenderTargetDirty)
+	{
+		gRenderTargetDirty = false;
+
+		endRenderPass();
+		beginRenderPass();
+	}
 	
 	if (gSamplerStateDirty)
 	{
@@ -1086,22 +1157,18 @@ void BackendMetal::prepareForDrawing()
 		if (!gPipelineStates.contains(gPipelineState))
 		{
 			auto shader = gPipelineState.shader;
-			
-			auto pixel_format = gPipelineState.render_target ?
-				gPipelineState.render_target->getTexture()->getMetalTexture().pixelFormat :
-				gView.colorPixelFormat;
-			
-			auto depth_stencil_pixel_format = gView.depthStencilPixelFormat;
-			
+
+			auto depth_stencil_pixel_format = gPipelineState.depth_stencil_attachment_pixel_format;
+
 			auto desc = [[MTLRenderPipelineDescriptor alloc] init];
 			desc.vertexFunction = shader->getMetalVertFunc();
 			desc.fragmentFunction = shader->getMetalFragFunc();
 			desc.vertexDescriptor = shader->getMetalVertexDescriptor();
 			desc.depthAttachmentPixelFormat = depth_stencil_pixel_format;
 			desc.stencilAttachmentPixelFormat = depth_stencil_pixel_format;
-			
+
 			auto attachment_0 = desc.colorAttachments[0];
-			attachment_0.pixelFormat = pixel_format;
+			attachment_0.pixelFormat = gPipelineState.color_attachment_pixel_format;
 
 			const static std::unordered_map<Blend, MTLBlendFactor> BlendMap = {
 				{ Blend::One, MTLBlendFactorOne },
@@ -1193,14 +1260,14 @@ void BackendMetal::prepareForDrawing()
 	float width;
 	float height;
 
-	if (gPipelineState.render_target == nullptr)
+	if (gRenderTarget == nullptr)
 	{
 		width = static_cast<float>(gBackbufferWidth);
 		height = static_cast<float>(gBackbufferHeight);
 	}
 	else
 	{
-		auto texture = gPipelineState.render_target->getTexture()->getMetalTexture();
+		auto texture = gRenderTarget->getTexture()->getMetalTexture();
 		
 		width = static_cast<float>(texture.width);
 		height = static_cast<float>(texture.height);
@@ -1256,7 +1323,7 @@ void BackendMetal::prepareForDrawing()
 		if (scissor.y + scissor.height > height)
 			scissor.height = height - scissor.y;
 
-	//	[gRenderCommandEncoder setScissorRect:scissor]; // TODO: uncomment
+		[gRenderCommandEncoder setScissorRect:scissor];
 	}
 }
 
