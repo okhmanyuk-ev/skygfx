@@ -663,22 +663,6 @@ void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
 
 	gRenderTarget = render_target;
 	gRenderTargetDirty = true;
-	
-	auto color_attachment_pixel_format = gRenderTarget->getTexture()->getMetalTexture().pixelFormat;
-
-	if (gPipelineState.color_attachment_pixel_format != color_attachment_pixel_format)
-	{
-		gPipelineState.color_attachment_pixel_format = color_attachment_pixel_format;
-		gPipelineStateDirty = true;
-	}
-	
-	auto depth_stencil_attachment_pixel_format = gRenderTarget->getMetalDepthStencilTexture().pixelFormat;
-	
-	if (gPipelineState.depth_stencil_attachment_pixel_format != depth_stencil_attachment_pixel_format)
-	{
-		gPipelineState.depth_stencil_attachment_pixel_format = depth_stencil_attachment_pixel_format;
-		gPipelineStateDirty = true;
-	}
 }
 
 void BackendMetal::setRenderTarget(std::nullptr_t value)
@@ -688,22 +672,6 @@ void BackendMetal::setRenderTarget(std::nullptr_t value)
 
 	gRenderTarget = nullptr;
 	gRenderTargetDirty = true;
-	
-	auto color_attachment_pixel_format = gView.colorPixelFormat;
-
-	if (gPipelineState.color_attachment_pixel_format != color_attachment_pixel_format)
-	{
-		gPipelineState.color_attachment_pixel_format = color_attachment_pixel_format;
-		gPipelineStateDirty = true;
-	}
-	
-	auto depth_stencil_attachment_pixel_format = gView.depthStencilPixelFormat;
-	
-	if (gPipelineState.depth_stencil_attachment_pixel_format != depth_stencil_attachment_pixel_format)
-	{
-		gPipelineState.depth_stencil_attachment_pixel_format = depth_stencil_attachment_pixel_format;
-		gPipelineStateDirty = true;
-	}
 }
 
 void BackendMetal::setShader(ShaderHandle* handle)
@@ -1032,6 +1000,26 @@ void BackendMetal::prepareForDrawing()
 
 		endRenderPass();
 		beginRenderPass();
+		
+		auto color_attachment_pixel_format = gRenderTarget ?
+			gRenderTarget->getTexture()->getMetalTexture().pixelFormat :
+			gView.colorPixelFormat;
+
+		if (gPipelineState.color_attachment_pixel_format != color_attachment_pixel_format)
+		{
+			gPipelineState.color_attachment_pixel_format = color_attachment_pixel_format;
+			gPipelineStateDirty = true;
+		}
+		
+		auto depth_stencil_attachment_pixel_format = gRenderTarget ?
+			gRenderTarget->getMetalDepthStencilTexture().pixelFormat :
+			gView.depthStencilPixelFormat;
+		
+		if (gPipelineState.depth_stencil_attachment_pixel_format != depth_stencil_attachment_pixel_format)
+		{
+			gPipelineState.depth_stencil_attachment_pixel_format = depth_stencil_attachment_pixel_format;
+			gPipelineStateDirty = true;
+		}
 	}
 	
 	if (gSamplerStateDirty)
