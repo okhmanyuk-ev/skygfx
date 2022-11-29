@@ -24,7 +24,7 @@ out gl_PerVertex { vec4 gl_Position; };
 void main()
 {
 	Out.Position = vec3(ubo.model * vec4(aPosition, 1.0));
-	Out.Normal = vec3(ubo.model * vec4(aNormal, 1.0));
+	Out.Normal = mat3(transpose(inverse(ubo.model))) * aNormal;
 	Out.TexCoord = aTexCoord;
 #ifdef FLIP_TEXCOORD_Y
 	Out.TexCoord.y = 1.0 - Out.TexCoord.y;
