@@ -618,14 +618,17 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 #elif defined(SKYGFX_PLATFORM_IOS)
 	auto _window = (UIWindow*)window;
 	auto rootView = [[_window rootViewController] view];
+
 	gGLKView = [[GLKView alloc] initWithFrame:[_window frame]];
-	[gGLKView setContext:[[EAGLContext alloc]initWithAPI:kEAGLRenderingAPIOpenGLES3]];
-	[gGLKView setDrawableColorFormat:GLKViewDrawableColorFormatRGBA8888];
-	[gGLKView setDrawableDepthFormat:GLKViewDrawableDepthFormat24];
-	[gGLKView setDrawableStencilFormat:GLKViewDrawableStencilFormat8];
-	[gGLKView setDrawableMultisample:GLKViewDrawableMultisampleNone];
-	[gGLKView setAutoresizingMask:UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight];
-	[EAGLContext setCurrentContext:gGLKView.context];
+	gGLKView.context = [[EAGLContext alloc]initWithAPI:kEAGLRenderingAPIOpenGLES3];
+	gGLKView.drawableColorFormat = GLKViewDrawableColorFormatRGBA8888;
+	gGLKView.drawableDepthFormat = GLKViewDrawableDepthFormat24;
+	gGLKView.drawableStencilFormat = GLKViewDrawableStencilFormat8;
+	gGLKView.drawableMultisample = GLKViewDrawableMultisampleNone;
+	gGLKView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+	EAGLContext.currentContext = gGLKView.context;
+
 	[rootView addSubview:gGLKView];
 #elif defined(SKYGFX_PLATFORM_MACOS)
 	NSObject* nwh = (NSObject*)window;
