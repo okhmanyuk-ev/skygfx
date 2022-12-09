@@ -11,8 +11,20 @@ namespace skygfx::extended
 		using Vertices = std::vector<Vertex>;
 		using Indices = std::vector<uint32_t>;
 		
-		class VerticesBuilder;
-
+		struct DrawVertices
+		{
+			std::optional<uint32_t> vertex_count = std::nullopt;
+			uint32_t vertex_offset = 0;
+		};
+		
+		struct DrawIndexedVertices
+		{
+			std::optional<uint32_t> index_count = std::nullopt;
+			uint32_t index_offset = 0;
+		};
+		
+		using DrawingType = std::variant<DrawVertices, DrawIndexedVertices>;
+		
 		auto getTopology() const { return mTopology; }
 		void setTopology(Topology value) { mTopology = value; }
 
@@ -22,19 +34,52 @@ namespace skygfx::extended
 		const auto& getIndices() const { return mIndices; }
 		void setIndices(const Indices& value) { mIndices = value; }
 
+		const auto& getDrawingType() const { return mDrawingType; }
+		void setDrawingType(DrawingType value) { mDrawingType = value; }
+
 	private:
 		Topology mTopology = Topology::TriangleList;
 		Vertices mVertices;
 		Indices mIndices;
+		DrawingType mDrawingType = DrawVertices{};
 	};
 	
-	struct alignas(16) Matrices
+	struct Matrices
 	{
 		glm::mat4 projection = glm::mat4(1.0f);
 		glm::mat4 view = glm::mat4(1.0f);
 		glm::mat4 model = glm::mat4(1.0f);
 	};
 
-	void DrawMesh(const Mesh& mesh, const Matrices& matrices, const Texture& texture,
-		const Scissor& scissor);
+	struct DirectionalLight
+	{
+		glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+		glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+		glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+		glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+		float shininess = 32.0f;
+	};
+
+	using Light = std::optional<DirectionalLight>;
+
+	void DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* color_texture = nullptr,
+		float mipmap_bias = 0.0f, const Light& light = std::nullopt, const glm::vec3& eye_position = { 0.0f, 0.0f, 0.0f });
+
+	struct OrthogonalCamera {};
+
+	struct PerspectiveCamera
+	{
+		float yaw = 0.0f;
+		float pitch = 0.0f;
+		glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+		glm::vec3 world_up = { 0.0f, 1.0f, 0.0f };
+		float far_plane = 8192.0f;
+		float near_plane = 1.0f;
+		float fov = 70.0f;
+	};
+	
+	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
+
+	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model = glm::mat4(1.0f),
+		Texture* color_texture = nullptr, float mipmap_bias = 0.0f, const Light& light = std::nullopt);
 }
