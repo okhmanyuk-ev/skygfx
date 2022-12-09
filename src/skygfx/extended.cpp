@@ -102,14 +102,14 @@ layout(location = 0) in struct
 layout(location = 0) out vec4 result;
 
 layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
+layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void main()
 {
 	result = In.color * texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 
-	//vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord)));
-	vec3 normal = normalize(In.normal);
-
+	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
+	
 	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
 	vec3 light_dir = normalize(light.direction);
 
@@ -122,8 +122,70 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
+static const std::string fragment_shader_code_point_light = R"(
+#version 450 core
+
+layout(binding = POINT_LIGHT_UNIFORM_BINDING) uniform _light
+{
+	vec3 position;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	float constant_attenuation;
+	float linear_attenuation;
+	float quadratic_attenuation;
+	float shininess;
+} light;
+
+layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
+{
+	mat4 projection;
+	mat4 view;
+	mat4 model;
+	vec3 eye_position;
+	float mipmap_bias;
+} settings;
+
+layout(location = 0) in struct {
+	vec3 frag_position;
+	vec4 color;
+	vec2 tex_coord;
+	vec3 normal;
+} In;
+
+layout(location = 0) out vec4 result;
+
+layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
+layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
+
+void main()
+{
+	result = In.color * texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
+	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
+
+	vec3 light_offset = light.position - In.frag_position;
+
+	float distance = length(light_offset);
+	float linear_attn = light.linear_attenuation * distance;
+	float quadratic_attn = light.quadratic_attenuation * (distance * distance);
+	float attenuation = 1.0 / (light.constant_attenuation + linear_attn + quadratic_attn);
+
+	vec3 light_dir = normalize(light_offset);
+	float diff = max(dot(normal, light_dir), 0.0);
+	vec3 reflect_dir = reflect(-light_dir, normal);
+	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
+
+	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
+
+	intensity *= attenuation;
+
+	result *= vec4(intensity, 1.0);
+})";
+
 void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* color_texture,
-	float mipmap_bias, const Light& light, const glm::vec3& eye_position)
+	Texture* normal_texture, float mipmap_bias, const Light& light, const glm::vec3& eye_position)
 {
 	struct alignas(16) Settings
 	{
@@ -133,52 +195,9 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 		alignas(16) glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 		float mipmap_bias = 0.0f;
 	};
-	
-	struct alignas(16) DirectionalLightBuffer
-	{
-		alignas(16) glm::vec3 direction = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 ambient = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 diffuse = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 specular = { 0.0f, 0.0f, 0.0f };
-		float shininess = 0.0f; // TODO: only material has shininess
-	};
 
-	if (light.has_value())
-	{
-		const auto& light_nn = light.value();
-		
-		auto directional_light_buffer = DirectionalLightBuffer{
-			.direction = light_nn.direction,
-			.ambient = light_nn.ambient,
-			.diffuse = light_nn.diffuse,
-			.specular = light_nn.specular,
-			.shininess = light_nn.shininess,
-		};
-
-		static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_directional_light, {
-			"COLOR_TEXTURE_BINDING 0",
-			"SETTINGS_UNIFORM_BINDING 1",
-			"DIRECTIONAL_LIGHT_UNIFORM_BINDING 2"
-		});
-
-		skygfx::SetShader(shader);
-		skygfx::SetDynamicUniformBuffer(2, directional_light_buffer);
-	}
-	else
-	{
-		static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_no_light, {
-			"COLOR_TEXTURE_BINDING 0",
-			"SETTINGS_UNIFORM_BINDING 1"
-		});
-
-		skygfx::SetShader(shader);
-	}
-	
 	uint32_t white_pixel = 0xFFFFFFFF;
 	static auto white_pixel_texture = Texture(1, 1, 4, &white_pixel);
-
-	auto topology = mesh.getTopology();
-	const auto& vertices = mesh.getVertices();
 
 	auto settings = Settings{
 		.projection = matrices.projection,
@@ -188,10 +207,56 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 		.mipmap_bias = mipmap_bias
 	};
 
+	if (light.has_value())
+	{
+		std::visit(cases{
+			[&](const DirectionalLight& light) {
+				static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_directional_light, {
+					"COLOR_TEXTURE_BINDING 0",
+					"NORMAL_TEXTURE_BINDING 1",
+					"SETTINGS_UNIFORM_BINDING 2",
+					"DIRECTIONAL_LIGHT_UNIFORM_BINDING 3"
+				});
+
+				skygfx::SetShader(shader);
+				skygfx::SetTexture(0, color_texture != nullptr ? *color_texture : white_pixel_texture);
+				skygfx::SetTexture(1, normal_texture != nullptr ? *normal_texture : white_pixel_texture);
+				skygfx::SetDynamicUniformBuffer(2, settings);
+				skygfx::SetDynamicUniformBuffer(3, light);
+			},
+			[&](const PointLight& light) {
+				static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_point_light, {
+					"COLOR_TEXTURE_BINDING 0",
+					"NORMAL_TEXTURE_BINDING 1",
+					"SETTINGS_UNIFORM_BINDING 2",
+					"POINT_LIGHT_UNIFORM_BINDING 3"
+				});
+
+				skygfx::SetShader(shader);
+				skygfx::SetTexture(0, color_texture != nullptr ? *color_texture : white_pixel_texture);
+				skygfx::SetTexture(1, normal_texture != nullptr ? *normal_texture : white_pixel_texture);
+				skygfx::SetDynamicUniformBuffer(2, settings);
+				skygfx::SetDynamicUniformBuffer(3, light);
+			},
+		}, light.value());
+	}
+	else
+	{
+		static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_no_light, {
+			"COLOR_TEXTURE_BINDING 0",
+			"SETTINGS_UNIFORM_BINDING 1"
+		});
+
+		skygfx::SetShader(shader);
+		skygfx::SetTexture(0, color_texture != nullptr ? *color_texture : white_pixel_texture);
+		skygfx::SetDynamicUniformBuffer(1, settings);
+	}
+
+	auto topology = mesh.getTopology();
+	const auto& vertices = mesh.getVertices();
+
 	skygfx::SetTopology(topology);
 	skygfx::SetDynamicVertexBuffer(vertices);
-	skygfx::SetDynamicUniformBuffer(1, settings);
-	skygfx::SetTexture(0, color_texture != nullptr ? *color_texture : white_pixel_texture);
 
 	const auto& drawing_type = mesh.getDrawingType();
 
@@ -201,7 +266,7 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 				draw.vertex_offset);
 		},
 		[&](const Mesh::DrawIndexedVertices& draw) {
-			const auto& indices = mesh.getIndices();
+			const auto& indices = mesh.getIndices(); // TODO: put to drawing_type
 			skygfx::SetDynamicIndexBuffer(indices);
 			
 			skygfx::DrawIndexed(draw.index_count.value_or(static_cast<uint32_t>(indices.size())),
@@ -211,17 +276,17 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 }
 
 void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-	Texture* color_texture, float mipmap_bias, const Light& light)
+	Texture* color_texture, Texture* normal_texture, float mipmap_bias, const Light& light)
 {
 	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
-	
+
+	auto width = (float)skygfx::GetBackbufferWidth(); // TODO: incorrect when render target is active
+	auto height = (float)skygfx::GetBackbufferHeight();
+
 	auto matrices = std::visit(cases{
 		[&](const OrthogonalCamera& camera) {
-			auto width = skygfx::GetBackbufferWidth(); // TODO: incorrect when render target is active
-			auto height = skygfx::GetBackbufferHeight();
-
 			return Matrices{
-				.projection = glm::orthoLH(0.0f, (float)width, (float)height, 0.0f, -1.0f, 1.0f),
+				.projection = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f),
 				.view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
 					glm::vec3(0.0f, 1.0f, 0.0f))
 			};
@@ -236,14 +301,11 @@ void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4&
 			auto front = glm::normalize(glm::vec3(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch));
 			auto right = glm::normalize(glm::cross(front, camera.world_up));
 			auto up = glm::normalize(glm::cross(right, front));
-
-			auto width = skygfx::GetBackbufferWidth(); // TODO: incorrect when render target is active
-			auto height = skygfx::GetBackbufferHeight();
 			
 			eye_position = camera.position;
 			
 			return Matrices{
-				.projection = glm::perspectiveFov(camera.fov, (float)width, (float)height, camera.near_plane, camera.far_plane),
+				.projection = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane),
 				.view = glm::lookAtRH(camera.position, camera.position + front, up)
 			};
 		}
@@ -251,6 +313,6 @@ void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4&
 	
 	matrices.model = model;
 
-	DrawMesh(mesh, matrices, color_texture, mipmap_bias, light, eye_position);
+	DrawMesh(mesh, matrices, color_texture, normal_texture, mipmap_bias, light, eye_position);
 }
 

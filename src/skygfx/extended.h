@@ -51,19 +51,32 @@ namespace skygfx::extended
 		glm::mat4 model = glm::mat4(1.0f);
 	};
 
-	struct DirectionalLight
+	struct alignas(16) DirectionalLight
 	{
-		glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-		glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-		glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-		glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-		float shininess = 32.0f;
+		alignas(16) glm::vec3 direction = { 0.0f, 0.0f, 0.0f };
+		alignas(16) glm::vec3 ambient = { 0.0f, 0.0f, 0.0f };
+		alignas(16) glm::vec3 diffuse = { 0.0f, 0.0f, 0.0f };
+		alignas(16) glm::vec3 specular = { 0.0f, 0.0f, 0.0f };
+		float shininess = 0.0f; // TODO: only material has shininess
 	};
 
-	using Light = std::optional<DirectionalLight>;
+	struct alignas(16) PointLight
+	{
+		alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+		alignas(16) glm::vec3 ambient = { 0.0f, 0.0f, 0.0f };
+		alignas(16) glm::vec3 diffuse = { 0.0f, 0.0f, 0.0f };
+		alignas(16) glm::vec3 specular = { 0.0f, 0.0f, 0.0f };
+		float constant_attenuation = 0.0f;
+		float linear_attenuation = 0.0f;
+		float quadratic_attenuation = 0.0f;
+		float shininess = 0.0f; // TODO: only material has shininess
+	};
+
+	using Light = std::optional<std::variant<DirectionalLight, PointLight>>;
 
 	void DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* color_texture = nullptr,
-		float mipmap_bias = 0.0f, const Light& light = std::nullopt, const glm::vec3& eye_position = { 0.0f, 0.0f, 0.0f });
+		Texture* normal_texture = nullptr, float mipmap_bias = 0.0f, const Light& light = std::nullopt,
+		const glm::vec3& eye_position = { 0.0f, 0.0f, 0.0f });
 
 	struct OrthogonalCamera {};
 
@@ -80,6 +93,7 @@ namespace skygfx::extended
 	
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
-	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model = glm::mat4(1.0f),
-		Texture* color_texture = nullptr, float mipmap_bias = 0.0f, const Light& light = std::nullopt);
+	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
+		Texture* color_texture = nullptr, Texture* normal_texture = nullptr,
+		float mipmap_bias = 0.0f, const Light& light = std::nullopt);
 }
