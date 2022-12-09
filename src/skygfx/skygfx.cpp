@@ -180,12 +180,12 @@ void skygfx::SetTopology(Topology topology)
 	gBackend->setTopology(topology);
 }
 
-void skygfx::SetViewport(std::optional<Viewport> viewport)
+void skygfx::SetViewport(const std::optional<Viewport>& viewport)
 {
 	gBackend->setViewport(viewport);
 }
 
-void skygfx::SetScissor(std::optional<Scissor> scissor)
+void skygfx::SetScissor(const std::optional<Scissor>& scissor)
 {
 	gBackend->setScissor(scissor);
 }
@@ -230,12 +230,12 @@ void skygfx::SetBlendMode(const BlendMode& value)
 	gBackend->setBlendMode(value);
 }
 
-void skygfx::SetDepthMode(std::optional<DepthMode> depth_mode)
+void skygfx::SetDepthMode(const std::optional<DepthMode>& depth_mode)
 {
 	gBackend->setDepthMode(depth_mode);
 }
 
-void skygfx::SetStencilMode(std::optional<StencilMode> stencil_mode)
+void skygfx::SetStencilMode(const std::optional<StencilMode>& stencil_mode)
 {
 	gBackend->setStencilMode(stencil_mode);
 }

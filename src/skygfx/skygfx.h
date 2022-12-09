@@ -384,8 +384,8 @@ namespace skygfx
 	void Resize(uint32_t width, uint32_t height);
 
 	void SetTopology(Topology topology);
-	void SetViewport(std::optional<Viewport> viewport);
-	void SetScissor(std::optional<Scissor> scissor);
+	void SetViewport(const std::optional<Viewport>& viewport);
+	void SetScissor(const std::optional<Scissor>& scissor);
 	void SetTexture(uint32_t binding, const Texture& texture);
 	void SetRenderTarget(const RenderTarget& value);
 	void SetRenderTarget(std::nullptr_t value);
@@ -394,8 +394,8 @@ namespace skygfx
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
 	void SetBlendMode(const BlendMode& value);
-	void SetDepthMode(std::optional<DepthMode> depth_mode);
-	void SetStencilMode(std::optional<StencilMode> stencil_mode);
+	void SetDepthMode(const std::optional<DepthMode>& depth_mode);
+	void SetStencilMode(const std::optional<StencilMode>& stencil_mode);
 	void SetCullMode(CullMode cull_mode);
 	void SetSampler(Sampler value);
 	void SetTextureAddress(TextureAddress value);
