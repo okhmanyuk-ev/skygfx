@@ -29,10 +29,10 @@ namespace skygfx::extended
 		void setTopology(Topology value) { mTopology = value; }
 
 		const auto& getVertices() const { return mVertices; }
-		void setVertices(const Vertices& value) { mVertices = value; }
+		void setVertices(const Vertices& value);
 
 		const auto& getIndices() const { return mIndices; }
-		void setIndices(const Indices& value) { mIndices = value; }
+		void setIndices(const Indices& value);
 
 		const auto& getDrawingType() const { return mDrawingType; }
 		void setDrawingType(DrawingType value) { mDrawingType = value; }
@@ -42,6 +42,14 @@ namespace skygfx::extended
 		Vertices mVertices;
 		Indices mIndices;
 		DrawingType mDrawingType = DrawVertices{};
+
+	public:		
+		const auto& getVertexBuffer() const { return *mVertexBuffer; }
+		const auto& getIndexBuffer() const { return *mIndexBuffer; }
+		
+	private:
+		std::shared_ptr<skygfx::VertexBuffer> mVertexBuffer = nullptr;
+		std::shared_ptr<skygfx::IndexBuffer> mIndexBuffer = nullptr;
 	};
 	
 	struct Material

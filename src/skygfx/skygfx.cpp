@@ -62,6 +62,7 @@ Shader::~Shader()
 
 Buffer::Buffer(size_t size) : mSize(size)
 {
+	assert(size > 0);
 }
 
 // vertex buffer

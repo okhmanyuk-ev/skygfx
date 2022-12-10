@@ -184,6 +184,18 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
+void extended::Mesh::setVertices(const Vertices& value)
+{
+	mVertices = value;
+	mVertexBuffer = std::make_shared<skygfx::VertexBuffer>(mVertices);
+}
+
+void extended::Mesh::setIndices(const Indices& value)
+{
+	mIndices = value;
+	mIndexBuffer = std::make_shared<skygfx::IndexBuffer>(mIndices);
+}
+
 void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
 	float mipmap_bias, const Light& light, const glm::vec3& eye_position)
 {
@@ -256,21 +268,25 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Materi
 	}
 
 	auto topology = mesh.getTopology();
-	const auto& vertices = mesh.getVertices();
+	const auto& vertex_buffer = mesh.getVertexBuffer();
 
 	skygfx::SetTopology(topology);
-	skygfx::SetDynamicVertexBuffer(vertices);
+	skygfx::SetVertexBuffer(vertex_buffer);
 
 	const auto& drawing_type = mesh.getDrawingType();
 
 	std::visit(cases{
 		[&](const Mesh::DrawVertices& draw) {
+			const auto& vertices = mesh.getVertices();
+		
 			skygfx::Draw(draw.vertex_count.value_or(static_cast<uint32_t>(vertices.size())),
 				draw.vertex_offset);
 		},
 		[&](const Mesh::DrawIndexedVertices& draw) {
-			const auto& indices = mesh.getIndices(); // TODO: put to drawing_type
-			skygfx::SetDynamicIndexBuffer(indices);
+			const auto& indices = mesh.getIndices();
+			const auto& index_buffer = mesh.getIndexBuffer();
+			
+			skygfx::SetIndexBuffer(index_buffer);
 			
 			skygfx::DrawIndexed(draw.index_count.value_or(static_cast<uint32_t>(indices.size())),
 				draw.index_offset);
