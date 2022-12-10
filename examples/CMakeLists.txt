@@ -27,6 +27,15 @@ add_subdirectory(lib/glfw)
 set_property(TARGET glfw PROPERTY FOLDER ${LIBS_FOLDER}/glfw)
 set_property(TARGET update_mappings PROPERTY FOLDER ${LIBS_FOLDER}/glfw)
 
+# imgui
+
+file(GLOB IMGUI_SRC 
+	lib/imgui/*.cpp 
+	lib/imgui/*.h
+)
+add_library(imgui STATIC ${IMGUI_SRC})
+set_property(TARGET imgui PROPERTY FOLDER ${LIBS_FOLDER})
+
 # 01 - triangle
 
 add_executable(01_triangle 01_triangle/main.cpp)
@@ -78,3 +87,16 @@ set_target_properties(07_light PROPERTIES RESOURCE ${RESOURCES})
 
 add_executable(08_render_target 08_render_target/main.cpp)
 target_link_libraries(08_render_target glfw skygfx)
+
+# 09 - imgui
+
+add_executable(09_imgui
+	09_imgui/main.cpp
+	utils/imgui_helper.cpp
+	lib/imgui/backends/imgui_impl_glfw.cpp
+)
+target_include_directories(09_imgui PUBLIC
+	lib/imgui
+	lib/imgui/backends
+)
+target_link_libraries(09_imgui glfw skygfx imgui)
