@@ -184,8 +184,8 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
-void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* color_texture,
-	Texture* normal_texture, float mipmap_bias, const Light& light, const glm::vec3& eye_position)
+void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
+	float mipmap_bias, const Light& light, const glm::vec3& eye_position)
 {
 	struct alignas(16) Settings
 	{
@@ -198,6 +198,9 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 
 	uint32_t white_pixel = 0xFFFFFFFF;
 	static auto white_pixel_texture = Texture(1, 1, 4, &white_pixel);
+
+	const auto& color_texture = material.color_texture != nullptr ? *material.color_texture : white_pixel_texture;
+	const auto& normal_texture = material.normal_texture != nullptr ? *material.normal_texture : white_pixel_texture;
 
 	auto settings = Settings{
 		.projection = matrices.projection,
@@ -219,8 +222,8 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 				});
 
 				skygfx::SetShader(shader);
-				skygfx::SetTexture(0, color_texture != nullptr ? *color_texture : white_pixel_texture);
-				skygfx::SetTexture(1, normal_texture != nullptr ? *normal_texture : white_pixel_texture);
+				skygfx::SetTexture(0, color_texture);
+				skygfx::SetTexture(1, normal_texture);
 				skygfx::SetDynamicUniformBuffer(2, settings);
 				skygfx::SetDynamicUniformBuffer(3, light);
 			},
@@ -233,8 +236,8 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 				});
 
 				skygfx::SetShader(shader);
-				skygfx::SetTexture(0, color_texture != nullptr ? *color_texture : white_pixel_texture);
-				skygfx::SetTexture(1, normal_texture != nullptr ? *normal_texture : white_pixel_texture);
+				skygfx::SetTexture(0, color_texture);
+				skygfx::SetTexture(1, normal_texture);
 				skygfx::SetDynamicUniformBuffer(2, settings);
 				skygfx::SetDynamicUniformBuffer(3, light);
 			},
@@ -248,7 +251,7 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 		});
 
 		skygfx::SetShader(shader);
-		skygfx::SetTexture(0, color_texture != nullptr ? *color_texture : white_pixel_texture);
+		skygfx::SetTexture(0, color_texture);
 		skygfx::SetDynamicUniformBuffer(1, settings);
 	}
 
@@ -276,7 +279,7 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* col
 }
 
 void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-	Texture* color_texture, Texture* normal_texture, float mipmap_bias, const Light& light)
+	const Material& material, float mipmap_bias, const Light& light)
 {
 	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 
@@ -313,6 +316,5 @@ void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4&
 	
 	matrices.model = model;
 
-	DrawMesh(mesh, matrices, color_texture, normal_texture, mipmap_bias, light, eye_position);
+	DrawMesh(mesh, matrices, material, mipmap_bias, light, eye_position);
 }
-

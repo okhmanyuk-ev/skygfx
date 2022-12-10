@@ -44,6 +44,12 @@ namespace skygfx::extended
 		DrawingType mDrawingType = DrawVertices{};
 	};
 	
+	struct Material
+	{
+		Texture* color_texture = nullptr;
+		Texture* normal_texture = nullptr;
+	};
+	
 	struct Matrices
 	{
 		glm::mat4 projection = glm::mat4(1.0f);
@@ -74,8 +80,8 @@ namespace skygfx::extended
 
 	using Light = std::optional<std::variant<DirectionalLight, PointLight>>;
 
-	void DrawMesh(const Mesh& mesh, const Matrices& matrices, Texture* color_texture = nullptr,
-		Texture* normal_texture = nullptr, float mipmap_bias = 0.0f, const Light& light = std::nullopt,
+	void DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material = {},
+		float mipmap_bias = 0.0f, const Light& light = std::nullopt,
 		const glm::vec3& eye_position = { 0.0f, 0.0f, 0.0f });
 
 	struct OrthogonalCamera {};
@@ -94,6 +100,5 @@ namespace skygfx::extended
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
 	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-		Texture* color_texture = nullptr, Texture* normal_texture = nullptr,
-		float mipmap_bias = 0.0f, const Light& light = std::nullopt);
+		const Material& material = {}, float mipmap_bias = 0.0f, const Light& light = std::nullopt);
 }
