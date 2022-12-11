@@ -1,5 +1,5 @@
 #include "imgui_helper.h"
-#include <skygfx/extended.h>
+#include <skygfx/utils.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 
@@ -41,7 +41,7 @@ void ImguiHelper::draw()
 
 	auto display_scale = ImGui::GetIO().DisplayFramebufferScale;
 
-	auto camera = skygfx::extended::OrthogonalCamera{};
+	auto camera = skygfx::utils::OrthogonalCamera{};
 	auto model = glm::scale(glm::mat4(1.0f), { display_scale.x, display_scale.y, 1.0f });
 
 	auto draw_data = ImGui::GetDrawData();
@@ -66,7 +66,7 @@ void ImguiHelper::draw()
 					.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
 				});
 
-				auto vertices = skygfx::extended::Mesh::Vertices();
+				auto vertices = skygfx::utils::Mesh::Vertices();
 				
 				for (uint32_t i = 0; i < cmd.ElemCount; i++)
 				{
@@ -75,7 +75,7 @@ void ImguiHelper::draw()
 
 					auto color = (uint8_t*)&vertex.col;
 
-					vertices.push_back(skygfx::extended::Mesh::Vertex{
+					vertices.push_back(skygfx::utils::Mesh::Vertex{
 						.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
 						.color = {
 							color[0] / 255.0f,
@@ -87,15 +87,15 @@ void ImguiHelper::draw()
 					});
 				}
 
-				static auto mesh = skygfx::extended::Mesh();
+				static auto mesh = skygfx::utils::Mesh();
 				
 				mesh.setVertices(vertices);
 				
-				auto material = skygfx::extended::Material{
+				auto material = skygfx::utils::Material{
 					.color_texture = (skygfx::Texture*)cmd.TextureId
 				};
 				
-				skygfx::extended::DrawMesh(mesh, camera, model, material);
+				skygfx::utils::DrawMesh(mesh, camera, model, material);
 			}
 			index_offset += cmd.ElemCount;
 		}

@@ -1,4 +1,4 @@
-#include "extended.h"
+#include "utils.h"
 
 using namespace skygfx;
 
@@ -187,7 +187,7 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
-void extended::Mesh::setVertices(const Vertices& value)
+void utils::Mesh::setVertices(const Vertices& value)
 {
 	mVertices = value;
 
@@ -198,7 +198,7 @@ void extended::Mesh::setVertices(const Vertices& value)
 	mVertexBuffer->write(value);
 }
 
-void extended::Mesh::setIndices(const Indices& value)
+void utils::Mesh::setIndices(const Indices& value)
 {
 	mIndices = value;
 	
@@ -209,7 +209,7 @@ void extended::Mesh::setIndices(const Indices& value)
 	mIndexBuffer->write(value);
 }
 
-void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
+void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
 	float mipmap_bias, const Light& light, const glm::vec3& eye_position)
 {
 	struct alignas(16) Settings
@@ -307,7 +307,7 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Materi
 	}, drawing_type);
 }
 
-void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
+void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
 	const Material& material, float mipmap_bias, const Light& light)
 {
 	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
@@ -348,7 +348,7 @@ void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4&
 	DrawMesh(mesh, matrices, material, mipmap_bias, light, eye_position);
 }
 
-std::shared_ptr<skygfx::VertexBuffer> extended::EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride)
+std::shared_ptr<skygfx::VertexBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride)
 {
 	size_t buffer_size = 0;
 
@@ -361,7 +361,7 @@ std::shared_ptr<skygfx::VertexBuffer> extended::EnsureBufferSpace(std::shared_pt
 	return buffer;
 }
 
-std::shared_ptr<skygfx::IndexBuffer> extended::EnsureBufferSpace(std::shared_ptr<skygfx::IndexBuffer> buffer, size_t size, size_t stride)
+std::shared_ptr<skygfx::IndexBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::IndexBuffer> buffer, size_t size, size_t stride)
 {
 	size_t buffer_size = 0;
 
@@ -374,7 +374,7 @@ std::shared_ptr<skygfx::IndexBuffer> extended::EnsureBufferSpace(std::shared_ptr
 	return buffer;
 }
 
-std::shared_ptr<skygfx::UniformBuffer> extended::EnsureBufferSpace(std::shared_ptr<skygfx::UniformBuffer> buffer, size_t size)
+std::shared_ptr<skygfx::UniformBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::UniformBuffer> buffer, size_t size)
 {
 	size_t buffer_size = 0;
 

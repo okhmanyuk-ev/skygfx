@@ -10,7 +10,7 @@
 #include <glm/ext.hpp>
 #include "vertex.h"
 #include "shader_compiler.h"
-#include "utils.h"
+#include "other.h"
 
 namespace skygfx
 {
