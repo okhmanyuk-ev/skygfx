@@ -87,7 +87,8 @@ void ImguiHelper::draw()
 					});
 				}
 
-				auto mesh = skygfx::extended::Mesh();
+				static auto mesh = skygfx::extended::Mesh();
+				
 				mesh.setVertices(vertices);
 				
 				auto material = skygfx::extended::Material{

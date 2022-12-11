@@ -109,4 +109,12 @@ namespace skygfx::extended
 
 	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
 		const Material& material = {}, float mipmap_bias = 0.0f, const Light& light = std::nullopt);
+
+	// buffer will be recreated if it doesnt have enough space
+	// TODO: make with move semantics instead of shared_ptrs
+	// TODO: try to remove stride argument
+	// TODO: try to make templated version when stride argument will be removed
+	std::shared_ptr<skygfx::VertexBuffer> EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride);
+	std::shared_ptr<skygfx::IndexBuffer> EnsureBufferSpace(std::shared_ptr<skygfx::IndexBuffer> buffer, size_t size, size_t stride);
+	std::shared_ptr<skygfx::UniformBuffer> EnsureBufferSpace(std::shared_ptr<skygfx::UniformBuffer> buffer, size_t size);
 }

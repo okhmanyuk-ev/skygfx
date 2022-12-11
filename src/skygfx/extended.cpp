@@ -190,13 +190,23 @@ void main()
 void extended::Mesh::setVertices(const Vertices& value)
 {
 	mVertices = value;
-	mVertexBuffer = std::make_shared<skygfx::VertexBuffer>(mVertices);
+
+	size_t size = value.size() * sizeof(Vertices::value_type);
+	size_t stride = sizeof(Vertices::value_type);
+
+	mVertexBuffer = EnsureBufferSpace(mVertexBuffer, size, stride);
+	mVertexBuffer->write(value);
 }
 
 void extended::Mesh::setIndices(const Indices& value)
 {
 	mIndices = value;
-	mIndexBuffer = std::make_shared<skygfx::IndexBuffer>(mIndices);
+	
+	size_t size = value.size() * sizeof(Indices::value_type);
+	size_t stride = sizeof(Indices::value_type);
+
+	mIndexBuffer = EnsureBufferSpace(mIndexBuffer, size, stride);
+	mIndexBuffer->write(value);
 }
 
 void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
@@ -336,4 +346,43 @@ void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4&
 	matrices.model = model;
 
 	DrawMesh(mesh, matrices, material, mipmap_bias, light, eye_position);
+}
+
+std::shared_ptr<skygfx::VertexBuffer> extended::EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride)
+{
+	size_t buffer_size = 0;
+
+	if (buffer)
+		buffer_size = buffer->getSize();
+
+	if (buffer_size < size)
+		buffer = std::make_shared<skygfx::VertexBuffer>(size, stride);
+		
+	return buffer;
+}
+
+std::shared_ptr<skygfx::IndexBuffer> extended::EnsureBufferSpace(std::shared_ptr<skygfx::IndexBuffer> buffer, size_t size, size_t stride)
+{
+	size_t buffer_size = 0;
+
+	if (buffer)
+		buffer_size = buffer->getSize();
+
+	if (buffer_size < size)
+		buffer = std::make_shared<skygfx::IndexBuffer>(size, stride);
+		
+	return buffer;
+}
+
+std::shared_ptr<skygfx::UniformBuffer> extended::EnsureBufferSpace(std::shared_ptr<skygfx::UniformBuffer> buffer, size_t size)
+{
+	size_t buffer_size = 0;
+
+	if (buffer)
+		buffer_size = buffer->getSize();
+
+	if (buffer_size < size)
+		buffer = std::make_shared<skygfx::UniformBuffer>(size);
+		
+	return buffer;
 }

@@ -96,13 +96,29 @@ namespace skygfx
 	class VertexBuffer : public Buffer
 	{
 	public:
+		VertexBuffer(size_t size, size_t stride);
 		VertexBuffer(void* memory, size_t size, size_t stride);
 		~VertexBuffer();
 
-		template<class T> explicit VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
-		template<class T> explicit VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
+		template<class T>
+		explicit VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		
+		template<class T>
+		explicit VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
 
 		void write(void* memory, size_t size, size_t stride);
+
+		template<class T>
+		void write(T* memory, size_t count)
+		{
+			write((void*)memory, count * sizeof(T), sizeof(T));
+		}
+
+		template<class T>
+		void write(const std::vector<T>& values)
+		{
+			write(values.data(), values.size());
+		}
 
 		operator VertexBufferHandle* () { return mVertexBufferHandle; }
 
@@ -113,13 +129,29 @@ namespace skygfx
 	class IndexBuffer : public Buffer
 	{
 	public:
+		IndexBuffer(size_t size, size_t stride);
 		IndexBuffer(void* memory, size_t size, size_t stride);
 		~IndexBuffer();
 
-		template<class T> explicit IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
-		template<class T> explicit IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
+		template<class T>
+		explicit IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+
+		template<class T>
+		explicit IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
 
 		void write(void* memory, size_t size, size_t stride);
+
+		template<class T>
+		void write(T* memory, size_t count)
+		{
+			write((void*)memory, count * sizeof(T), sizeof(T));
+		}
+
+		template<class T>
+		void write(const std::vector<T>& values)
+		{
+			write(values.data(), values.size());
+		}
 
 		operator IndexBufferHandle* () { return mIndexBufferHandle; }
 
@@ -130,13 +162,17 @@ namespace skygfx
 	class UniformBuffer : public Buffer
 	{
 	public:
+		UniformBuffer(size_t size);
 		UniformBuffer(void* memory, size_t size);
 		~UniformBuffer();
 
-		template <class T> explicit UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
+		template <class T>
+		explicit UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
 
 		void write(void* memory, size_t size);
-		template <class T> void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
+		
+		template <class T>
+		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
 
 		operator UniformBufferHandle* () { return mUniformBufferHandle; }
 
