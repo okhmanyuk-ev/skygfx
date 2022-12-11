@@ -54,6 +54,7 @@ namespace skygfx::utils
 	
 	struct Material
 	{
+		glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
 		Texture* color_texture = nullptr;
 		Texture* normal_texture = nullptr;
 	};

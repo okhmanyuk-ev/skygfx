@@ -17,6 +17,7 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 	mat4 model;
 	vec3 eye_position;
 	float mipmap_bias;
+	vec4 color;
 } settings;
 
 layout(location = 0) out struct
@@ -54,6 +55,7 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 	mat4 model;
 	vec3 eye_position;
 	float mipmap_bias;
+	vec4 color;
 } settings;
 
 layout(location = 0) out vec4 result;
@@ -70,7 +72,9 @@ layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
 
 void main()
 {
-	result = In.color * texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 })";
 
 static const std::string fragment_shader_code_directional_light = R"(
@@ -83,6 +87,7 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 	mat4 model;
 	vec3 eye_position;
 	float mipmap_bias;
+	vec4 color;
 } settings;
 
 layout(binding = DIRECTIONAL_LIGHT_UNIFORM_BINDING) uniform _light
@@ -109,7 +114,9 @@ layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void main()
 {
-	result = In.color * texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 	
@@ -147,6 +154,7 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 	mat4 model;
 	vec3 eye_position;
 	float mipmap_bias;
+	vec4 color;
 } settings;
 
 layout(location = 0) in struct {
@@ -163,7 +171,9 @@ layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void main()
 {
-	result = In.color * texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 
@@ -219,6 +229,7 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 		glm::mat4 model = glm::mat4(1.0f);
 		alignas(16) glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 		float mipmap_bias = 0.0f;
+		alignas(16) glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	};
 
 	uint32_t white_pixel = 0xFFFFFFFF;
@@ -232,7 +243,8 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 		.view = matrices.view,
 		.model = matrices.model,
 		.eye_position = eye_position,
-		.mipmap_bias = mipmap_bias
+		.mipmap_bias = mipmap_bias,
+		.color = material.color
 	};
 
 	if (light.has_value())
