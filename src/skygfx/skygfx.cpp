@@ -272,7 +272,7 @@ void skygfx::DrawIndexed(uint32_t index_count, uint32_t index_offset)
 	gBackend->drawIndexed(index_count, index_offset);
 }
 
-void skygfx::ReadPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture)
+void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture)
 {
 	gBackend->readPixels(pos, size, dst_texture);
 }

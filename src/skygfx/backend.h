@@ -33,7 +33,7 @@ namespace skygfx
 		virtual void draw(uint32_t vertex_count, uint32_t vertex_offset) = 0;
 		virtual void drawIndexed(uint32_t index_count, uint32_t index_offset) = 0;
 
-		virtual void readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture) = 0;
+		virtual void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) = 0;
 
 		virtual void present() = 0;
 

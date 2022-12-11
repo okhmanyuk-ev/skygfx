@@ -895,7 +895,7 @@ void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset)
 	gCommandList->DrawIndexedInstanced((UINT)index_count, 1, (UINT)index_offset, 0, 0);
 }
 
-void BackendD3D12::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
+void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 	auto dst_texture = (TextureD3D12*)dst_texture_handle;
 

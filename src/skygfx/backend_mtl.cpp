@@ -786,7 +786,7 @@ void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 		indexBufferOffset:index_offset * index_size];
 }
 
-void BackendMetal::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
+void BackendMetal::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 	if (size.x <= 0 || size.y <= 0)
 		return;

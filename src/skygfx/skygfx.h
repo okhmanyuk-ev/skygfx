@@ -404,7 +404,7 @@ namespace skygfx
 		const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
 	void Draw(uint32_t vertex_count, uint32_t vertex_offset = 0);
 	void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0);
-	void ReadPixels(const glm::ivec2& pos, const glm::ivec2& size, Texture& dst_texture);
+	void ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture);
 	
 	void Present();
 

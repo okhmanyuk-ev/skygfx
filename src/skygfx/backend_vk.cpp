@@ -938,7 +938,7 @@ void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 	gCommandBuffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
 
-void BackendVK::readPixels(const glm::ivec2& pos, const glm::ivec2& size, TextureHandle* dst_texture_handle)
+void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 }
 
