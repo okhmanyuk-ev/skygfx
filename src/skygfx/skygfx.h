@@ -444,6 +444,9 @@ namespace skygfx
 		SetDynamicUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
 	}
 
+	uint32_t GetWidth();
+	uint32_t GetHeight();
+
 	uint32_t GetBackbufferWidth();
 	uint32_t GetBackbufferHeight();
 

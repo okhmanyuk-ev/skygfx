@@ -12,8 +12,8 @@
 using namespace skygfx;
 
 static Backend* gBackend = nullptr;
-static uint32_t gBackbufferWidth = 0;
-static uint32_t gBackbufferHeight = 0;
+static glm::u32vec2 gSize = { 0, 0 };
+static std::optional<glm::u32vec2> gRenderTargetSize;
 static BackendType gBackendType = BackendType::OpenGL;
 static std::shared_ptr<VertexBuffer> gDynamicVertexBuffer;
 static std::shared_ptr<IndexBuffer> gDynamicIndexBuffer;
@@ -154,8 +154,7 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 	if (gBackend == nullptr)
 		throw std::runtime_error("backend not implemented");
 
-	gBackbufferWidth = width;
-	gBackbufferHeight = height;
+	gSize = { width, height };
 	gBackendType = type;
 }
 
@@ -172,8 +171,7 @@ void skygfx::Finalize()
 void skygfx::Resize(uint32_t width, uint32_t height)
 {
 	gBackend->resize(width, height);
-	gBackbufferWidth = width;
-	gBackbufferHeight = height;
+	gSize = { width, height };
 }
 
 void skygfx::SetTopology(Topology topology)
@@ -199,11 +197,13 @@ void skygfx::SetTexture(uint32_t binding, const Texture& texture)
 void skygfx::SetRenderTarget(const RenderTarget& value)
 {
 	gBackend->setRenderTarget(const_cast<RenderTarget&>(value));
+	gRenderTargetSize = { value.getWidth(), value.getHeight() };
 }
 
 void skygfx::SetRenderTarget(std::nullptr_t value)
 {
 	gBackend->setRenderTarget(value);
+	gRenderTargetSize.reset();
 }
 
 void skygfx::SetShader(const Shader& shader)
@@ -343,14 +343,24 @@ void skygfx::SetDynamicUniformBuffer(uint32_t binding, void* memory, size_t size
 	SetUniformBuffer(binding, *uniform_buffer);
 }
 
+uint32_t skygfx::GetWidth()
+{
+	return gSize.x;
+}
+
+uint32_t skygfx::GetHeight()
+{
+	return gSize.y;
+}
+
 uint32_t skygfx::GetBackbufferWidth()
 {
-	return gBackbufferWidth;
+	return gRenderTargetSize.value_or(gSize).x;
 }
 
 uint32_t skygfx::GetBackbufferHeight()
 {
-	return gBackbufferHeight;
+	return gRenderTargetSize.value_or(gSize).y;
 }
 
 BackendType skygfx::GetBackendType()

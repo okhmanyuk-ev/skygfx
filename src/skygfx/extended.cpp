@@ -302,7 +302,7 @@ void extended::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4&
 {
 	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 
-	auto width = (float)skygfx::GetBackbufferWidth(); // TODO: incorrect when render target is active
+	auto width = (float)skygfx::GetBackbufferWidth();
 	auto height = (float)skygfx::GetBackbufferHeight();
 
 	auto matrices = std::visit(cases{
