@@ -67,23 +67,23 @@ namespace skygfx::extended
 
 	struct alignas(16) DirectionalLight
 	{
-		alignas(16) glm::vec3 direction = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 ambient = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 diffuse = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 specular = { 0.0f, 0.0f, 0.0f };
-		float shininess = 0.0f; // TODO: only material has shininess
+		alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+		alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+		alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+		alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+		float shininess = 32.0f; // TODO: only material has shininess
 	};
 
 	struct alignas(16) PointLight
 	{
 		alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 ambient = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 diffuse = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 specular = { 0.0f, 0.0f, 0.0f };
+		alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+		alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+		alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
 		float constant_attenuation = 0.0f;
-		float linear_attenuation = 0.0f;
+		float linear_attenuation = 0.00128f;
 		float quadratic_attenuation = 0.0f;
-		float shininess = 0.0f; // TODO: only material has shininess
+		float shininess = 32.0f; // TODO: only material has shininess
 	};
 
 	using Light = std::optional<std::variant<DirectionalLight, PointLight>>;

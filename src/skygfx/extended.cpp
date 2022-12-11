@@ -27,7 +27,10 @@ layout(location = 0) out struct
 	vec3 normal;
 } Out;
 
-out gl_PerVertex { vec4 gl_Position; };
+out gl_PerVertex
+{
+	vec4 gl_Position;
+};
 
 void main()
 {
@@ -225,7 +228,7 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Materi
 	if (light.has_value())
 	{
 		std::visit(cases{
-			[&](const DirectionalLight& light) {
+			[&](const DirectionalLight& directional_light) {
 				static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_directional_light, {
 					"COLOR_TEXTURE_BINDING 0",
 					"NORMAL_TEXTURE_BINDING 1",
@@ -237,9 +240,9 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Materi
 				skygfx::SetTexture(0, color_texture);
 				skygfx::SetTexture(1, normal_texture);
 				skygfx::SetDynamicUniformBuffer(2, settings);
-				skygfx::SetDynamicUniformBuffer(3, light);
+				skygfx::SetDynamicUniformBuffer(3, directional_light);
 			},
-			[&](const PointLight& light) {
+			[&](const PointLight& point_light) {
 				static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_point_light, {
 					"COLOR_TEXTURE_BINDING 0",
 					"NORMAL_TEXTURE_BINDING 1",
@@ -251,7 +254,7 @@ void extended::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Materi
 				skygfx::SetTexture(0, color_texture);
 				skygfx::SetTexture(1, normal_texture);
 				skygfx::SetDynamicUniformBuffer(2, settings);
-				skygfx::SetDynamicUniformBuffer(3, light);
+				skygfx::SetDynamicUniformBuffer(3, point_light);
 			},
 		}, light.value());
 	}
