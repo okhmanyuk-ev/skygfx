@@ -16,7 +16,7 @@ namespace skygfx
 		virtual void setScissor(std::optional<Scissor> scissor) = 0;
 		virtual void setTexture(uint32_t binding, TextureHandle* handle) = 0;
 		virtual void setRenderTarget(RenderTargetHandle* handle) = 0;
-		virtual void setRenderTarget(std::nullptr_t value) = 0;
+		virtual void setRenderTarget(std::nullopt_t value) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;

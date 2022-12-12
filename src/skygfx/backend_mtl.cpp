@@ -665,7 +665,7 @@ void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
 	gRenderTargetDirty = true;
 }
 
-void BackendMetal::setRenderTarget(std::nullptr_t value)
+void BackendMetal::setRenderTarget(std::nullopt_t value)
 {
 	if (gRenderTarget == nullptr)
 		return;

@@ -788,7 +788,7 @@ void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 		gViewportDirty = true;
 }
 
-void BackendGL::setRenderTarget(std::nullptr_t value)
+void BackendGL::setRenderTarget(std::nullopt_t value)
 {
 	if (gRenderTarget == nullptr)
 		return;

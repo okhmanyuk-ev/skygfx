@@ -424,7 +424,7 @@ namespace skygfx
 	void SetScissor(const std::optional<Scissor>& scissor);
 	void SetTexture(uint32_t binding, const Texture& texture);
 	void SetRenderTarget(const RenderTarget& value);
-	void SetRenderTarget(std::nullptr_t value);
+	void SetRenderTarget(std::nullopt_t value);
 	void SetShader(const Shader& shader);
 	void SetVertexBuffer(const VertexBuffer& value);
 	void SetIndexBuffer(const IndexBuffer& value);

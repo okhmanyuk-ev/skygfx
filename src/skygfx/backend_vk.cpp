@@ -810,7 +810,7 @@ void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 {
 }
 
-void BackendVK::setRenderTarget(std::nullptr_t value)
+void BackendVK::setRenderTarget(std::nullopt_t value)
 {
 }
 

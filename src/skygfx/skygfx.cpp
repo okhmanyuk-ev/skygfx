@@ -212,7 +212,7 @@ void skygfx::SetRenderTarget(const RenderTarget& value)
 	gRenderTargetSize = { value.getWidth(), value.getHeight() };
 }
 
-void skygfx::SetRenderTarget(std::nullptr_t value)
+void skygfx::SetRenderTarget(std::nullopt_t value)
 {
 	gBackend->setRenderTarget(value);
 	gRenderTargetSize.reset();

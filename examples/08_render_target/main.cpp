@@ -211,7 +211,7 @@ int main()
 
 	// prepare steps for drawing target to cube and later to screen
 
-	skygfx::SetRenderTarget(nullptr);
+	skygfx::SetRenderTarget(std::nullopt);
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetCullMode(skygfx::CullMode::Back);
 	skygfx::SetDynamicVertexBuffer(cube_vertices);
