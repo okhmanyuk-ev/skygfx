@@ -4,12 +4,16 @@
 
 #include <GLFW/glfw3.h>
 
-#if defined(WIN32)
-	#define GLFW_EXPOSE_NATIVE_WIN32
-#elif defined(__APPLE__)
-	#define GLFW_EXPOSE_NATIVE_COCOA
+#if defined(EMSCRIPTEN)
+	#include <emscripten.h>
+#else
+	#if defined(WIN32)
+		#define GLFW_EXPOSE_NATIVE_WIN32
+	#elif defined(__APPLE__)
+		#define GLFW_EXPOSE_NATIVE_COCOA
+	#endif
+	#include <GLFW/glfw3native.h>
 #endif
-#include <GLFW/glfw3native.h>
 
 #include <iostream>
 
@@ -17,6 +21,10 @@ namespace utils
 {
 	skygfx::BackendType ChooseBackendTypeViaConsole()
 	{
+#ifdef EMSCRIPTEN
+		return skygfx::GetDefaultBackend().value();
+#endif
+
 		static const std::map<skygfx::BackendType, std::string> backend_names = {
 			{ skygfx::BackendType::D3D11, "D3D11" },
 			{ skygfx::BackendType::D3D12, "D3D12" },
@@ -51,8 +59,9 @@ namespace utils
 		return glfwGetWin32Window(window);
 #elif defined(GLFW_EXPOSE_NATIVE_COCOA)
 		return glfwGetCocoaWindow(window);
+#elif defined(EMSCRIPTEN)
+		return window;
 #endif
-		return nullptr;
 	}
 
 	std::tuple<glm::mat4/*view*/, glm::mat4/*projection*/> CalculatePerspectiveViewProjection(float yaw, 
