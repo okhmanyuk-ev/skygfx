@@ -78,6 +78,9 @@ elseif(APPLE)
 			"-framework Cocoa"
 		)
 	endif()
+elseif(EMSCRIPTEN)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_EMSCRIPTEN)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 endif()
 
 # glew

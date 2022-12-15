@@ -24,6 +24,11 @@
 	#include <OpenGL/OpenGL.h>
 	#include <OpenGL/gl3.h>
 	#import <AppKit/AppKit.h>
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+	#include <EGL/egl.h>
+	#include <EGL/eglext.h>
+	#include <EGL/eglplatform.h>
+	#include <GLES3/gl3.h>
 #endif
 
 using namespace skygfx;
@@ -187,6 +192,11 @@ public:
 		options.version = 410;
 		options.enable_420pack_extension = false;
 		options.force_flattened_io_blocks = true;
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+		options.es = true;
+		options.version = 300;
+		options.enable_420pack_extension = false;
+		options.force_flattened_io_blocks = false;
 #endif
 
 		auto glsl_vert = skygfx::CompileSpirvToGlsl(vertex_shader_spirv, options.es, options.version,
@@ -320,7 +330,7 @@ public:
 		}
 	}
 	
-#if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
+#if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	void applyLayout()
 	{
 		for (int i = 0; i < mLayout.attributes.size(); i++)
@@ -460,9 +470,13 @@ public:
 	void write(void* memory, size_t size)
 	{
 		glBindBuffer(mType, mBuffer);
+#ifdef EMSCRIPTEN
+		glBufferData(mType, size, memory, GL_DYNAMIC_DRAW);
+#else
 		auto ptr = glMapBufferRange(mType, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
 		memcpy(ptr, memory, size);
 		glUnmapBuffer(mType);
+#endif
 	}
 };
 
@@ -514,6 +528,11 @@ static GLKView* gGLKView = nullptr;
 #elif defined(SKYGFX_PLATFORM_MACOS)
 NSOpenGLView* glView;
 NSOpenGLContext *glContext;
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+EGLDisplay gDisplay;
+EGLSurface gSurface;
+EGLContext gContext;
+EGLConfig gConfig;
 #endif
 
 static GLenum gTopology;
@@ -704,7 +723,29 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	{
 		dispatch_sync(dispatch_get_main_queue(),set_view);
 	}
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+	const EGLint attribs[] = {
+		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+		EGL_BLUE_SIZE, 8,
+		EGL_GREEN_SIZE, 8,
+		EGL_RED_SIZE, 8,
+		EGL_DEPTH_SIZE, 24,
+		EGL_NONE
+	};
+	const EGLint context_attribs[] = {
+		EGL_CONTEXT_CLIENT_VERSION, 3,
+		EGL_NONE
+	};
+	gDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+	eglInitialize(gDisplay, 0, 0);
+	EGLint num_configs;
+	eglChooseConfig(gDisplay, attribs, &gConfig, 1, &num_configs);
+	gSurface = eglCreateWindowSurface(gDisplay, gConfig, (EGLNativeWindowType)window, NULL);
+	gContext = eglCreateContext(gDisplay, gConfig, NULL, context_attribs);
+	eglMakeCurrent(gDisplay, gSurface, gSurface, gContext);
 #endif
+
 	glGenBuffers(1, &gPixelBuffer);
 
 	gBackbufferWidth = width;
@@ -793,7 +834,7 @@ void BackendGL::setRenderTarget(std::nullopt_t value)
 	if (gRenderTarget == nullptr)
 		return;
 		
-#if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS)
+#if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #elif defined(SKYGFX_PLATFORM_IOS)
 	[gGLKView bindDrawable];
@@ -1042,6 +1083,8 @@ void BackendGL::present()
 	[gGLKView display];
 #elif defined(SKYGFX_PLATFORM_MACOS)
 	[glContext flushBuffer];
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+	eglSwapBuffers(gDisplay, gSurface);
 #endif
 	gExecuteAfterPresent.flush();
 }
@@ -1178,7 +1221,7 @@ void BackendGL::prepareForDrawing()
 		glBindBuffer(GL_ARRAY_BUFFER, gVertexBuffer->getGLBuffer());
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 		glBindVertexBuffer(0, gVertexBuffer->getGLBuffer(), 0, (GLsizei)gVertexBuffer->getStride());
-#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
+#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 		gShader->applyLayout();
 #endif
 	}
@@ -1259,7 +1302,7 @@ void BackendGL::prepareForDrawing()
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 		glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
-#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS)
+#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
 #endif
 	}
