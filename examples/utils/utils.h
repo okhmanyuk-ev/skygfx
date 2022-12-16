@@ -89,6 +89,10 @@ namespace utils
 	{
 		auto window = glfwCreateWindow((int)width, (int)height, title.c_str(), NULL, NULL);
 
+#ifdef EMSCRIPTEN
+		emscripten_set_window_title(title.c_str());
+#endif
+
 		auto monitor = glfwGetPrimaryMonitor();
 		auto video_mode = glfwGetVideoMode(monitor);
 
