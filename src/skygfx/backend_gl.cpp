@@ -738,7 +738,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 		EGL_NONE
 	};
 	gDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	eglInitialize(gDisplay, 0, 0);
+	eglInitialize(gDisplay, NULL, NULL);
 	EGLint num_configs;
 	eglChooseConfig(gDisplay, attribs, &gConfig, 1, &num_configs);
 	gSurface = eglCreateWindowSurface(gDisplay, gConfig, (EGLNativeWindowType)window, NULL);
