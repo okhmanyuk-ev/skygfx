@@ -35,18 +35,12 @@ elseif(APPLE)
 		set(IOS True)
 	endif()
 
-	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_VULKAN)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_METAL)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
-
-	#set_target_properties(${PROJECT_NAME} PROPERTIES
-	#	XCODE_ATTRIBUTE_FRAMEWORK_SEARCH_PATHS ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/apple
-	#)
 
 	target_link_libraries(${PROJECT_NAME}
 		"-ObjC"
 		"-framework IOSurface"
-	#	"-framework MoltenVK"
 		"-framework Metal"
 		"-framework MetalKit"
 		"-framework GLKit"
@@ -177,10 +171,8 @@ if (NOT EMSCRIPTEN)
 		target_compile_definitions(vulkan INTERFACE -DVULKAN_HPP_ENABLE_DYNAMIC_LOADER_TOOL=0)
 		if(IOS)
 			target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_IOS_MVK)
-			target_link_libraries(vulkan INTERFACE ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/apple/MoltenVK.xcframework/ios-arm64/libMoltenVK.a)
 		else()
 			target_compile_definitions(vulkan INTERFACE -DVK_USE_PLATFORM_MACOS_MVK)
-			target_link_libraries(vulkan INTERFACE ${PROJECT_SOURCE_DIR}/lib/vulkan/lib/apple/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a)
 		endif()
 	endif()
 	target_link_libraries(${PROJECT_NAME} vulkan)
