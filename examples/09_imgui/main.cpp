@@ -2,6 +2,7 @@
 #include "../utils/utils.h"
 #include "../utils/imgui_helper.h"
 #include <imgui.h>
+#include <imgui_impl_glfw.h>
 
 int main()
 {
@@ -18,12 +19,16 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
-	auto imgui = ImguiHelper(window);
+	auto imgui = ImguiHelper();
+
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		imgui.newFrame();
+		ImGui_ImplGlfw_NewFrame();
 
+		ImGui::NewFrame();
+	
 		ImGui::ShowDemoWindow();
 
 		skygfx::Clear();
@@ -34,6 +39,8 @@ int main()
 
 		glfwPollEvents();
 	}
+
+	ImGui_ImplGlfw_Shutdown();
 
 	skygfx::Finalize();
 

@@ -1,14 +1,11 @@
 #include "imgui_helper.h"
 #include <skygfx/utils.h>
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
 
-ImguiHelper::ImguiHelper(GLFWwindow* window)
+ImguiHelper::ImguiHelper()
 {
 	ImGui::CreateContext();
 	ImGui::StyleColorsClassic();
-
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
 
 	auto& io = ImGui::GetIO();
 
@@ -26,7 +23,6 @@ ImguiHelper::ImguiHelper(GLFWwindow* window)
 
 ImguiHelper::~ImguiHelper()
 {
-	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 }
 
@@ -102,10 +98,4 @@ void ImguiHelper::draw()
 	}
 
 	skygfx::SetScissor(std::nullopt);
-}
-
-void ImguiHelper::newFrame()
-{
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
 }

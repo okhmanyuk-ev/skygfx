@@ -6,11 +6,10 @@
 class ImguiHelper : skygfx::noncopyable
 {
 public:
-	ImguiHelper(GLFWwindow* window);
+	ImguiHelper();
 	~ImguiHelper();
 
 	void draw();
-	void newFrame();
 
 private:
 	std::shared_ptr<skygfx::Texture> mFontTexture = nullptr;
