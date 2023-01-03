@@ -4,16 +4,12 @@
 
 #include <GLFW/glfw3.h>
 
-#if defined(EMSCRIPTEN)
-	#include <emscripten.h>
-#else
-	#if defined(WIN32)
-		#define GLFW_EXPOSE_NATIVE_WIN32
-	#elif defined(__APPLE__)
-		#define GLFW_EXPOSE_NATIVE_COCOA
-	#endif
-	#include <GLFW/glfw3native.h>
+#if defined(WIN32)
+	#define GLFW_EXPOSE_NATIVE_WIN32
+#elif defined(__APPLE__)
+	#define GLFW_EXPOSE_NATIVE_COCOA
 #endif
+#include <GLFW/glfw3native.h>
 
 #include <iostream>
 
@@ -21,10 +17,6 @@ namespace utils
 {
 	skygfx::BackendType ChooseBackendTypeViaConsole()
 	{
-#ifdef EMSCRIPTEN
-		return skygfx::GetDefaultBackend().value();
-#endif
-
 		static const std::map<skygfx::BackendType, std::string> backend_names = {
 			{ skygfx::BackendType::D3D11, "D3D11" },
 			{ skygfx::BackendType::D3D12, "D3D12" },
@@ -59,8 +51,6 @@ namespace utils
 		return glfwGetWin32Window(window);
 #elif defined(GLFW_EXPOSE_NATIVE_COCOA)
 		return glfwGetCocoaWindow(window);
-#elif defined(EMSCRIPTEN)
-		return window;
 #endif
 	}
 
@@ -88,10 +78,6 @@ namespace utils
 	std::tuple<GLFWwindow*, void*, uint32_t, uint32_t> SpawnWindow(uint32_t width, uint32_t height, const std::string& title)
 	{
 		auto window = glfwCreateWindow((int)width, (int)height, title.c_str(), NULL, NULL);
-
-#ifdef EMSCRIPTEN
-		emscripten_set_window_title(title.c_str());
-#endif
 
 		auto monitor = glfwGetPrimaryMonitor();
 		auto video_mode = glfwGetVideoMode(monitor);
