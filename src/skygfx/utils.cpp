@@ -220,7 +220,7 @@ void utils::Mesh::setIndices(const Indices& value)
 }
 
 void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
-	float mipmap_bias, const Light& light, const glm::vec3& eye_position)
+	float mipmap_bias, std::optional<Light> light, const glm::vec3& eye_position)
 {
 	struct alignas(16) Settings
 	{
@@ -298,7 +298,15 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 	skygfx::SetTopology(topology);
 	skygfx::SetVertexBuffer(vertex_buffer);
 
-	const auto& drawing_type = mesh.getDrawingType();
+	auto drawing_type = mesh.getDrawingType();
+
+	if (!drawing_type.has_value())
+	{
+		if (mesh.getIndices().empty())
+			drawing_type = Mesh::DrawVertices{};
+		else
+			drawing_type = Mesh::DrawIndexedVertices{};
+	}
 
 	std::visit(cases{
 		[&](const Mesh::DrawVertices& draw) {
@@ -316,11 +324,11 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 			skygfx::DrawIndexed(draw.index_count.value_or(static_cast<uint32_t>(indices.size())),
 				draw.index_offset);
 		}
-	}, drawing_type);
+	}, drawing_type.value());
 }
 
 void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-	const Material& material, float mipmap_bias, const Light& light)
+	const Material& material, float mipmap_bias, std::optional<Light> light)
 {
 	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 

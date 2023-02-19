@@ -8,8 +8,9 @@ namespace skygfx::utils
 	{
 	public:
 		using Vertex = Vertex::PositionColorTextureNormal;
+		using Index = uint32_t;
 		using Vertices = std::vector<Vertex>;
-		using Indices = std::vector<uint32_t>;
+		using Indices = std::vector<Index>;
 		
 		struct DrawVertices
 		{
@@ -35,13 +36,13 @@ namespace skygfx::utils
 		void setIndices(const Indices& value);
 
 		const auto& getDrawingType() const { return mDrawingType; }
-		void setDrawingType(DrawingType value) { mDrawingType = value; }
+		void setDrawingType(std::optional<DrawingType> value) { mDrawingType = value; }
 
 	private:
 		Topology mTopology = Topology::TriangleList;
 		Vertices mVertices;
 		Indices mIndices;
-		DrawingType mDrawingType = DrawVertices{};
+		std::optional<DrawingType> mDrawingType;
 
 	public:		
 		const auto& getVertexBuffer() const { return *mVertexBuffer; }
@@ -87,10 +88,10 @@ namespace skygfx::utils
 		float shininess = 32.0f; // TODO: only material has shininess
 	};
 
-	using Light = std::optional<std::variant<DirectionalLight, PointLight>>;
+	using Light = std::variant<DirectionalLight, PointLight>;
 
 	void DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material = {},
-		float mipmap_bias = 0.0f, const Light& light = std::nullopt,
+		float mipmap_bias = 0.0f, std::optional<Light> light = std::nullopt,
 		const glm::vec3& eye_position = { 0.0f, 0.0f, 0.0f });
 
 	struct OrthogonalCamera {};
@@ -109,7 +110,7 @@ namespace skygfx::utils
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
 	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-		const Material& material = {}, float mipmap_bias = 0.0f, const Light& light = std::nullopt);
+		const Material& material = {}, float mipmap_bias = 0.0f, std::optional<Light> light = std::nullopt);
 
 	// buffer will be recreated if it doesnt have enough space
 	// TODO: make with move semantics instead of shared_ptrs
