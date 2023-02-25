@@ -202,14 +202,14 @@ public:
 			throw std::runtime_error(pixel_shader_error_string);
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
-			{ Vertex::Attribute::Format::R32F, DXGI_FORMAT_R32_FLOAT },
-			{ Vertex::Attribute::Format::R32G32F, DXGI_FORMAT_R32G32_FLOAT },
-			{ Vertex::Attribute::Format::R32G32B32F, DXGI_FORMAT_R32G32B32_FLOAT },
-			{ Vertex::Attribute::Format::R32G32B32A32F, DXGI_FORMAT_R32G32B32A32_FLOAT },
-			{ Vertex::Attribute::Format::R8UN, DXGI_FORMAT_R8_UNORM },
-			{ Vertex::Attribute::Format::R8G8UN, DXGI_FORMAT_R8G8_UNORM },
-			//	{ Vertex::Attribute::Format::R8G8B8UN, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
-			{ Vertex::Attribute::Format::R8G8B8A8UN, DXGI_FORMAT_R8G8B8A8_UNORM }
+			{ Vertex::Attribute::Format::Float1, DXGI_FORMAT_R32_FLOAT },
+			{ Vertex::Attribute::Format::Float2, DXGI_FORMAT_R32G32_FLOAT },
+			{ Vertex::Attribute::Format::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
+			{ Vertex::Attribute::Format::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
+			{ Vertex::Attribute::Format::Byte1, DXGI_FORMAT_R8_UNORM },
+			{ Vertex::Attribute::Format::Byte2, DXGI_FORMAT_R8G8_UNORM },
+			//	{ Vertex::Attribute::Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
+			{ Vertex::Attribute::Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
 		};
 
 		UINT i = 0;
@@ -654,7 +654,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	createMainRenderTarget(width, height);
 
 	begin();
-	setRenderTarget(nullptr);
+	setRenderTarget(std::nullopt);
 }
 
 BackendD3D12::~BackendD3D12()
@@ -770,7 +770,7 @@ void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 		gScissorDirty = true;
 }
 
-void BackendD3D12::setRenderTarget(std::nullptr_t value)
+void BackendD3D12::setRenderTarget(std::nullopt_t value)
 {
 	gRenderTarget = nullptr;
 

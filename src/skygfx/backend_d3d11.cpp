@@ -151,14 +151,14 @@ public:
 			NULL, pixel_shader.GetAddressOf());
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
-			{ Vertex::Attribute::Format::R32F, DXGI_FORMAT_R32_FLOAT },
-			{ Vertex::Attribute::Format::R32G32F, DXGI_FORMAT_R32G32_FLOAT },
-			{ Vertex::Attribute::Format::R32G32B32F, DXGI_FORMAT_R32G32B32_FLOAT },
-			{ Vertex::Attribute::Format::R32G32B32A32F, DXGI_FORMAT_R32G32B32A32_FLOAT },
-			{ Vertex::Attribute::Format::R8UN, DXGI_FORMAT_R8_UNORM },
-			{ Vertex::Attribute::Format::R8G8UN, DXGI_FORMAT_R8G8_UNORM },
-			//	{ Vertex::Attribute::Format::R8G8B8UN, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
-			{ Vertex::Attribute::Format::R8G8B8A8UN, DXGI_FORMAT_R8G8B8A8_UNORM }
+			{ Vertex::Attribute::Format::Float1, DXGI_FORMAT_R32_FLOAT },
+			{ Vertex::Attribute::Format::Float2, DXGI_FORMAT_R32G32_FLOAT },
+			{ Vertex::Attribute::Format::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
+			{ Vertex::Attribute::Format::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
+			{ Vertex::Attribute::Format::Byte1, DXGI_FORMAT_R8_UNORM },
+			{ Vertex::Attribute::Format::Byte2, DXGI_FORMAT_R8G8_UNORM },
+			//	{ Vertex::Attribute::Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
+			{ Vertex::Attribute::Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
 		};
 
 		std::vector<D3D11_INPUT_ELEMENT_DESC> input;
@@ -460,7 +460,7 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 		gViewportDirty = true;
 }
 
-void BackendD3D11::setRenderTarget(std::nullptr_t value)
+void BackendD3D11::setRenderTarget(std::nullopt_t value)
 {
 	gContext->OMSetRenderTargets(1, gMainRenderTarget.render_target_view.GetAddressOf(),
 		gMainRenderTarget.depth_stencil_view.Get());

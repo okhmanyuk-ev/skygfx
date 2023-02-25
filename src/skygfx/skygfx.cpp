@@ -6,9 +6,6 @@
 #include "backend_vk.h"
 #include "backend_mtl.h"
 
-#include <stdexcept>
-#include <cassert>
-
 using namespace skygfx;
 
 static Backend* gBackend = nullptr;

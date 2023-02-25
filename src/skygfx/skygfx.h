@@ -4,6 +4,10 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <variant>
+#include <stdexcept>
+#include <cassert>
+#include <memory>
 #include <unordered_set>
 #include <unordered_map>
 #include <glm/glm.hpp>
