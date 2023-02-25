@@ -361,7 +361,7 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 		gDevice.GetAddressOf(), NULL, gContext.GetAddressOf());
 
 	createMainRenderTarget(width, height);
-	setRenderTarget(nullptr);
+	setRenderTarget(std::nullopt);
 }
 
 BackendD3D11::~BackendD3D11()
@@ -378,7 +378,7 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	destroyMainRenderTarget();
 	gSwapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
 	createMainRenderTarget(width, height);
-	setRenderTarget(nullptr); // TODO: do it when nullptr was before
+	setRenderTarget(std::nullopt); // TODO: do it when nullptr was before
 
 	if (!gViewport.has_value())
 		gViewportDirty = true;
