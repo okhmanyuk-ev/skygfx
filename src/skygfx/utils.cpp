@@ -220,7 +220,8 @@ void utils::Mesh::setIndices(const Indices& value)
 }
 
 void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
-	float mipmap_bias, std::optional<Light> light, const glm::vec3& eye_position)
+	std::optional<DrawCommand> draw_command, float mipmap_bias, std::optional<Light> light,
+	const glm::vec3& eye_position)
 {
 	struct alignas(16) Settings
 	{
@@ -298,24 +299,22 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 	skygfx::SetTopology(topology);
 	skygfx::SetVertexBuffer(vertex_buffer);
 
-	auto drawing_type = mesh.getDrawingType();
-
-	if (!drawing_type.has_value())
+	if (!draw_command.has_value())
 	{
 		if (mesh.getIndices().empty())
-			drawing_type = Mesh::DrawVertices{};
+			draw_command = DrawVerticesCommand{};
 		else
-			drawing_type = Mesh::DrawIndexedVertices{};
+			draw_command = DrawVerticesCommand{};
 	}
 
 	std::visit(cases{
-		[&](const Mesh::DrawVertices& draw) {
+		[&](const DrawVerticesCommand& draw) {
 			const auto& vertices = mesh.getVertices();
 		
 			skygfx::Draw(draw.vertex_count.value_or(static_cast<uint32_t>(vertices.size())),
 				draw.vertex_offset);
 		},
-		[&](const Mesh::DrawIndexedVertices& draw) {
+		[&](const DrawIndexedVerticesCommand& draw) {
 			const auto& indices = mesh.getIndices();
 			const auto& index_buffer = mesh.getIndexBuffer();
 			
@@ -324,11 +323,12 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 			skygfx::DrawIndexed(draw.index_count.value_or(static_cast<uint32_t>(indices.size())),
 				draw.index_offset);
 		}
-	}, drawing_type.value());
+	}, draw_command.value());
 }
 
 void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-	const Material& material, float mipmap_bias, std::optional<Light> light)
+	const Material& material, std::optional<DrawCommand> draw_command,
+	float mipmap_bias, std::optional<Light> light)
 {
 	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 
@@ -365,7 +365,7 @@ void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& mo
 	
 	matrices.model = model;
 
-	DrawMesh(mesh, matrices, material, mipmap_bias, light, eye_position);
+	DrawMesh(mesh, matrices, material, draw_command, mipmap_bias, light, eye_position);
 }
 
 std::shared_ptr<skygfx::VertexBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride)
