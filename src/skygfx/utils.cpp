@@ -304,15 +304,17 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 		if (mesh.getIndices().empty())
 			draw_command = DrawVerticesCommand{};
 		else
-			draw_command = DrawVerticesCommand{};
+			draw_command = DrawIndexedVerticesCommand{};
 	}
 
 	std::visit(cases{
 		[&](const DrawVerticesCommand& draw) {
 			const auto& vertices = mesh.getVertices();
-		
-			Draw(draw.vertex_count.value_or(static_cast<uint32_t>(vertices.size())),
-				draw.vertex_offset);
+			
+			auto vertex_count = draw.vertex_count.value_or(static_cast<uint32_t>(vertices.size()));
+			auto vertex_offset = draw.vertex_offset;
+
+			Draw(vertex_count, vertex_offset);
 		},
 		[&](const DrawIndexedVerticesCommand& draw) {
 			const auto& indices = mesh.getIndices();
@@ -320,8 +322,10 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 			
 			SetIndexBuffer(index_buffer);
 			
-			DrawIndexed(draw.index_count.value_or(static_cast<uint32_t>(indices.size())),
-				draw.index_offset);
+			auto index_count = draw.index_count.value_or(static_cast<uint32_t>(indices.size()));
+			auto index_offset = draw.index_offset;
+
+			DrawIndexed(index_count, index_offset);
 		}
 	}, draw_command.value());
 }
