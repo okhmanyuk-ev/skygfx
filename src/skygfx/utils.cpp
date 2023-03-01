@@ -326,22 +326,19 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 	}, draw_command.value());
 }
 
-void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-	const Material& material, std::optional<DrawCommand> draw_command,
-	float mipmap_bias, std::optional<Light> light)
+std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const Camera& camera, 
+	std::optional<uint32_t> _width, std::optional<uint32_t> _height)
 {
-	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
+	auto width = (float)_width.value_or(skygfx::GetBackbufferWidth());
+	auto height = (float)_height.value_or(skygfx::GetBackbufferHeight());
 
-	auto width = (float)skygfx::GetBackbufferWidth();
-	auto height = (float)skygfx::GetBackbufferHeight();
-
-	auto matrices = std::visit(cases{
+	return std::visit(cases{
 		[&](const OrthogonalCamera& camera) {
-			return Matrices{
-				.projection = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f),
-				.view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
-					glm::vec3(0.0f, 1.0f, 0.0f))
-			};
+			auto proj = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f);
+			auto view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 
+				glm::vec3(0.0f, 1.0f, 0.0f));
+			auto eye_pos = glm::vec3{ 0.0f, 0.0f, 0.0f };
+			return std::make_tuple(proj, view, eye_pos);
 		},
 		[&](const PerspectiveCamera& camera) {
 			auto sin_yaw = glm::sin(camera.yaw);
@@ -353,19 +350,28 @@ void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& mo
 			auto front = glm::normalize(glm::vec3(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch));
 			auto right = glm::normalize(glm::cross(front, camera.world_up));
 			auto up = glm::normalize(glm::cross(right, front));
-			
-			eye_position = camera.position;
-			
-			return Matrices{
-				.projection = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane),
-				.view = glm::lookAtRH(camera.position, camera.position + front, up)
-			};
+
+			auto proj = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane);
+			auto view = glm::lookAtRH(camera.position, camera.position + front, up);
+
+			return std::make_tuple(proj, view, camera.position);
 		}
 	}, camera);
-	
-	matrices.model = model;
+}
 
-	DrawMesh(mesh, matrices, material, draw_command, mipmap_bias, light, eye_position);
+void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
+	const Material& material, std::optional<DrawCommand> draw_command,
+	float mipmap_bias, std::optional<Light> light)
+{
+	auto [proj, view, eye_pos] = MakeCameraMatrices(camera);
+
+	auto matrices = Matrices{
+		.projection = proj,
+		.view = view,
+		.model = model
+	};
+
+	DrawMesh(mesh, matrices, material, draw_command, mipmap_bias, light, eye_pos);
 }
 
 std::shared_ptr<skygfx::VertexBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride)

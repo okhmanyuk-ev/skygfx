@@ -111,6 +111,9 @@ namespace skygfx::utils
 	
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
+	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(const Camera& camera, 
+		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
+
 	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
 		const Material& material = {}, std::optional<DrawCommand> draw_command = std::nullopt,
 		float mipmap_bias = 0.0f, std::optional<Light> light = std::nullopt);
