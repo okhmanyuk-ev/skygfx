@@ -31,8 +31,8 @@ namespace skygfx::utils
 		const auto& getIndexBuffer() const { return *mIndexBuffer; }
 		
 	private:
-		std::shared_ptr<skygfx::VertexBuffer> mVertexBuffer = nullptr;
-		std::shared_ptr<skygfx::IndexBuffer> mIndexBuffer = nullptr;
+		std::shared_ptr<VertexBuffer> mVertexBuffer = nullptr;
+		std::shared_ptr<IndexBuffer> mIndexBuffer = nullptr;
 	};
 
 	struct DrawVerticesCommand
@@ -122,7 +122,7 @@ namespace skygfx::utils
 	// TODO: make with move semantics instead of shared_ptrs
 	// TODO: try to remove stride argument
 	// TODO: try to make templated version when stride argument will be removed
-	std::shared_ptr<skygfx::VertexBuffer> EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride);
-	std::shared_ptr<skygfx::IndexBuffer> EnsureBufferSpace(std::shared_ptr<skygfx::IndexBuffer> buffer, size_t size, size_t stride);
-	std::shared_ptr<skygfx::UniformBuffer> EnsureBufferSpace(std::shared_ptr<skygfx::UniformBuffer> buffer, size_t size);
+	std::shared_ptr<VertexBuffer> EnsureBufferSpace(std::shared_ptr<VertexBuffer> buffer, size_t size, size_t stride);
+	std::shared_ptr<IndexBuffer> EnsureBufferSpace(std::shared_ptr<IndexBuffer> buffer, size_t size, size_t stride);
+	std::shared_ptr<UniformBuffer> EnsureBufferSpace(std::shared_ptr<UniformBuffer> buffer, size_t size);
 }

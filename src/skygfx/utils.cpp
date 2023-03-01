@@ -252,52 +252,52 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 	{
 		std::visit(cases{
 			[&](const DirectionalLight& directional_light) {
-				static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_directional_light, {
+				static auto shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_directional_light, {
 					"COLOR_TEXTURE_BINDING 0",
 					"NORMAL_TEXTURE_BINDING 1",
 					"SETTINGS_UNIFORM_BINDING 2",
 					"DIRECTIONAL_LIGHT_UNIFORM_BINDING 3"
 				});
 
-				skygfx::SetShader(shader);
-				skygfx::SetTexture(0, color_texture);
-				skygfx::SetTexture(1, normal_texture);
-				skygfx::SetDynamicUniformBuffer(2, settings);
-				skygfx::SetDynamicUniformBuffer(3, directional_light);
+				SetShader(shader);
+				SetTexture(0, color_texture);
+				SetTexture(1, normal_texture);
+				SetDynamicUniformBuffer(2, settings);
+				SetDynamicUniformBuffer(3, directional_light);
 			},
 			[&](const PointLight& point_light) {
-				static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_point_light, {
+				static auto shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_point_light, {
 					"COLOR_TEXTURE_BINDING 0",
 					"NORMAL_TEXTURE_BINDING 1",
 					"SETTINGS_UNIFORM_BINDING 2",
 					"POINT_LIGHT_UNIFORM_BINDING 3"
 				});
 
-				skygfx::SetShader(shader);
-				skygfx::SetTexture(0, color_texture);
-				skygfx::SetTexture(1, normal_texture);
-				skygfx::SetDynamicUniformBuffer(2, settings);
-				skygfx::SetDynamicUniformBuffer(3, point_light);
+				SetShader(shader);
+				SetTexture(0, color_texture);
+				SetTexture(1, normal_texture);
+				SetDynamicUniformBuffer(2, settings);
+				SetDynamicUniformBuffer(3, point_light);
 			},
 		}, light.value());
 	}
 	else
 	{
-		static auto shader = skygfx::Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_no_light, {
+		static auto shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_no_light, {
 			"COLOR_TEXTURE_BINDING 0",
 			"SETTINGS_UNIFORM_BINDING 1"
 		});
 
-		skygfx::SetShader(shader);
-		skygfx::SetTexture(0, color_texture);
-		skygfx::SetDynamicUniformBuffer(1, settings);
+		SetShader(shader);
+		SetTexture(0, color_texture);
+		SetDynamicUniformBuffer(1, settings);
 	}
 
 	auto topology = mesh.getTopology();
 	const auto& vertex_buffer = mesh.getVertexBuffer();
 
-	skygfx::SetTopology(topology);
-	skygfx::SetVertexBuffer(vertex_buffer);
+	SetTopology(topology);
+	SetVertexBuffer(vertex_buffer);
 
 	if (!draw_command.has_value())
 	{
@@ -311,16 +311,16 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 		[&](const DrawVerticesCommand& draw) {
 			const auto& vertices = mesh.getVertices();
 		
-			skygfx::Draw(draw.vertex_count.value_or(static_cast<uint32_t>(vertices.size())),
+			Draw(draw.vertex_count.value_or(static_cast<uint32_t>(vertices.size())),
 				draw.vertex_offset);
 		},
 		[&](const DrawIndexedVerticesCommand& draw) {
 			const auto& indices = mesh.getIndices();
 			const auto& index_buffer = mesh.getIndexBuffer();
 			
-			skygfx::SetIndexBuffer(index_buffer);
+			SetIndexBuffer(index_buffer);
 			
-			skygfx::DrawIndexed(draw.index_count.value_or(static_cast<uint32_t>(indices.size())),
+			DrawIndexed(draw.index_count.value_or(static_cast<uint32_t>(indices.size())),
 				draw.index_offset);
 		}
 	}, draw_command.value());
@@ -329,8 +329,8 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const Camera& camera, 
 	std::optional<uint32_t> _width, std::optional<uint32_t> _height)
 {
-	auto width = (float)_width.value_or(skygfx::GetBackbufferWidth());
-	auto height = (float)_height.value_or(skygfx::GetBackbufferHeight());
+	auto width = (float)_width.value_or(GetBackbufferWidth());
+	auto height = (float)_height.value_or(GetBackbufferHeight());
 
 	return std::visit(cases{
 		[&](const OrthogonalCamera& camera) {
@@ -374,7 +374,7 @@ void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& mo
 	DrawMesh(mesh, matrices, material, draw_command, mipmap_bias, light, eye_pos);
 }
 
-std::shared_ptr<skygfx::VertexBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::VertexBuffer> buffer, size_t size, size_t stride)
+std::shared_ptr<VertexBuffer> utils::EnsureBufferSpace(std::shared_ptr<VertexBuffer> buffer, size_t size, size_t stride)
 {
 	size_t buffer_size = 0;
 
@@ -382,12 +382,12 @@ std::shared_ptr<skygfx::VertexBuffer> utils::EnsureBufferSpace(std::shared_ptr<s
 		buffer_size = buffer->getSize();
 
 	if (buffer_size < size)
-		buffer = std::make_shared<skygfx::VertexBuffer>(size, stride);
+		buffer = std::make_shared<VertexBuffer>(size, stride);
 		
 	return buffer;
 }
 
-std::shared_ptr<skygfx::IndexBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::IndexBuffer> buffer, size_t size, size_t stride)
+std::shared_ptr<IndexBuffer> utils::EnsureBufferSpace(std::shared_ptr<IndexBuffer> buffer, size_t size, size_t stride)
 {
 	size_t buffer_size = 0;
 
@@ -395,12 +395,12 @@ std::shared_ptr<skygfx::IndexBuffer> utils::EnsureBufferSpace(std::shared_ptr<sk
 		buffer_size = buffer->getSize();
 
 	if (buffer_size < size)
-		buffer = std::make_shared<skygfx::IndexBuffer>(size, stride);
+		buffer = std::make_shared<IndexBuffer>(size, stride);
 		
 	return buffer;
 }
 
-std::shared_ptr<skygfx::UniformBuffer> utils::EnsureBufferSpace(std::shared_ptr<skygfx::UniformBuffer> buffer, size_t size)
+std::shared_ptr<UniformBuffer> utils::EnsureBufferSpace(std::shared_ptr<UniformBuffer> buffer, size_t size)
 {
 	size_t buffer_size = 0;
 
@@ -408,7 +408,7 @@ std::shared_ptr<skygfx::UniformBuffer> utils::EnsureBufferSpace(std::shared_ptr<
 		buffer_size = buffer->getSize();
 
 	if (buffer_size < size)
-		buffer = std::make_shared<skygfx::UniformBuffer>(size);
+		buffer = std::make_shared<UniformBuffer>(size);
 		
 	return buffer;
 }
