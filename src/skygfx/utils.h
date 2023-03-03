@@ -27,12 +27,12 @@ namespace skygfx::utils
 		Indices mIndices;
 
 	public:		
-		const auto& getVertexBuffer() const { return *mVertexBuffer; }
-		const auto& getIndexBuffer() const { return *mIndexBuffer; }
+		const auto& getVertexBuffer() const { return mVertexBuffer; }
+		const auto& getIndexBuffer() const { return mIndexBuffer; }
 		
 	private:
-		std::shared_ptr<VertexBuffer> mVertexBuffer = nullptr;
-		std::shared_ptr<IndexBuffer> mIndexBuffer = nullptr;
+		std::optional<VertexBuffer> mVertexBuffer;
+		std::optional<IndexBuffer> mIndexBuffer;
 	};
 
 	struct DrawVerticesCommand
@@ -108,7 +108,7 @@ namespace skygfx::utils
 		float near_plane = 1.0f;
 		float fov = 70.0f;
 	};
-	
+
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(const Camera& camera, 
@@ -117,12 +117,4 @@ namespace skygfx::utils
 	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
 		const Material& material = {}, std::optional<DrawCommand> draw_command = std::nullopt,
 		float mipmap_bias = 0.0f, std::optional<Light> light = std::nullopt);
-
-	// buffer will be recreated if it doesnt have enough space
-	// TODO: make with move semantics instead of shared_ptrs
-	// TODO: try to remove stride argument
-	// TODO: try to make templated version when stride argument will be removed
-	std::shared_ptr<VertexBuffer> EnsureBufferSpace(std::shared_ptr<VertexBuffer> buffer, size_t size, size_t stride);
-	std::shared_ptr<IndexBuffer> EnsureBufferSpace(std::shared_ptr<IndexBuffer> buffer, size_t size, size_t stride);
-	std::shared_ptr<UniformBuffer> EnsureBufferSpace(std::shared_ptr<UniformBuffer> buffer, size_t size);
 }

@@ -204,8 +204,10 @@ void utils::Mesh::setVertices(const Vertices& value)
 	size_t size = value.size() * sizeof(Vertices::value_type);
 	size_t stride = sizeof(Vertices::value_type);
 
-	mVertexBuffer = EnsureBufferSpace(mVertexBuffer, size, stride);
-	mVertexBuffer->write(value);
+	if (!mVertexBuffer.has_value() || mVertexBuffer.value().getSize() < size)
+		mVertexBuffer.emplace(size, stride);
+
+	mVertexBuffer.value().write(value);
 }
 
 void utils::Mesh::setIndices(const Indices& value)
@@ -215,8 +217,10 @@ void utils::Mesh::setIndices(const Indices& value)
 	size_t size = value.size() * sizeof(Indices::value_type);
 	size_t stride = sizeof(Indices::value_type);
 
-	mIndexBuffer = EnsureBufferSpace(mIndexBuffer, size, stride);
-	mIndexBuffer->write(value);
+	if (!mIndexBuffer.has_value() || mIndexBuffer.value().getSize() < size)
+		mIndexBuffer.emplace(size, stride);
+
+	mIndexBuffer.value().write(value);
 }
 
 void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material,
@@ -297,7 +301,7 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 	const auto& vertex_buffer = mesh.getVertexBuffer();
 
 	SetTopology(topology);
-	SetVertexBuffer(vertex_buffer);
+	SetVertexBuffer(vertex_buffer.value());
 
 	if (!draw_command.has_value())
 	{
@@ -320,7 +324,7 @@ void utils::DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material&
 			const auto& indices = mesh.getIndices();
 			const auto& index_buffer = mesh.getIndexBuffer();
 			
-			SetIndexBuffer(index_buffer);
+			SetIndexBuffer(index_buffer.value());
 			
 			auto index_count = draw.index_count.value_or(static_cast<uint32_t>(indices.size()));
 			auto index_offset = draw.index_offset;
@@ -376,43 +380,4 @@ void utils::DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& mo
 	};
 
 	DrawMesh(mesh, matrices, material, draw_command, mipmap_bias, light, eye_pos);
-}
-
-std::shared_ptr<VertexBuffer> utils::EnsureBufferSpace(std::shared_ptr<VertexBuffer> buffer, size_t size, size_t stride)
-{
-	size_t buffer_size = 0;
-
-	if (buffer)
-		buffer_size = buffer->getSize();
-
-	if (buffer_size < size)
-		buffer = std::make_shared<VertexBuffer>(size, stride);
-		
-	return buffer;
-}
-
-std::shared_ptr<IndexBuffer> utils::EnsureBufferSpace(std::shared_ptr<IndexBuffer> buffer, size_t size, size_t stride)
-{
-	size_t buffer_size = 0;
-
-	if (buffer)
-		buffer_size = buffer->getSize();
-
-	if (buffer_size < size)
-		buffer = std::make_shared<IndexBuffer>(size, stride);
-		
-	return buffer;
-}
-
-std::shared_ptr<UniformBuffer> utils::EnsureBufferSpace(std::shared_ptr<UniformBuffer> buffer, size_t size)
-{
-	size_t buffer_size = 0;
-
-	if (buffer)
-		buffer_size = buffer->getSize();
-
-	if (buffer_size < size)
-		buffer = std::make_shared<UniformBuffer>(size);
-		
-	return buffer;
 }
