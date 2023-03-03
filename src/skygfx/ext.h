@@ -2,7 +2,7 @@
 
 #include "skygfx.h"
 
-namespace skygfx::utils
+namespace skygfx::ext
 {
 	class Mesh
 	{
@@ -51,20 +51,8 @@ namespace skygfx::utils
 		DrawVerticesCommand,
 		DrawIndexedVerticesCommand
 	>;
-
-	struct Material
-	{
-		glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-		Texture* color_texture = nullptr;
-		Texture* normal_texture = nullptr;
-	};
 	
-	struct Matrices
-	{
-		glm::mat4 projection = glm::mat4(1.0f);
-		glm::mat4 view = glm::mat4(1.0f);
-		glm::mat4 model = glm::mat4(1.0f);
-	};
+	struct NoLight {};
 
 	struct alignas(16) DirectionalLight
 	{
@@ -88,13 +76,10 @@ namespace skygfx::utils
 	};
 
 	using Light = std::variant<
+		NoLight,
 		DirectionalLight,
 		PointLight
 	>;
-
-	void DrawMesh(const Mesh& mesh, const Matrices& matrices, const Material& material = {},
-		std::optional<DrawCommand> draw_command = std::nullopt, float mipmap_bias = 0.0f,
-		std::optional<Light> light = std::nullopt, const glm::vec3& eye_position = { 0.0f, 0.0f, 0.0f });
 
 	struct OrthogonalCamera {};
 
@@ -114,7 +99,54 @@ namespace skygfx::utils
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(const Camera& camera, 
 		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
 
-	void DrawMesh(const Mesh& mesh, const Camera& camera, const glm::mat4& model,
-		const Material& material = {}, std::optional<DrawCommand> draw_command = std::nullopt,
-		float mipmap_bias = 0.0f, std::optional<Light> light = std::nullopt);
+	namespace commands
+	{
+		struct SetMesh { Mesh* mesh; };
+		struct SetLight { Light light; };
+		struct SetColorTexture { Texture* color_texture; };
+		struct SetNormalTexture { Texture* normal_texture; };
+		struct SetColor { glm::vec4 color; };
+		struct SetProjectionMatrix { glm::mat4 projection_matrix; };
+		struct SetViewMatrix { glm::mat4 view_matrix; };
+		struct SetModelMatrix { glm::mat4 model_matrix; };
+		struct SetCamera { Camera camera; std::optional<uint32_t> width = std::nullopt; std::optional<uint32_t> height = std::nullopt; };
+		struct SetEyePosition { glm::vec3 eye_position; };
+		struct SetMipmapBias { float mipmap_bias; };
+		struct Callback { std::function<void()> func; };
+		struct Draw { std::optional<DrawCommand> draw_command; };
+	}
+
+	using Command = std::variant<
+		commands::SetMesh,
+		commands::SetLight,
+		commands::SetColorTexture,
+		commands::SetNormalTexture,
+		commands::SetColor,
+		commands::SetProjectionMatrix,
+		commands::SetViewMatrix,
+		commands::SetModelMatrix,
+		commands::SetCamera,
+		commands::SetEyePosition,
+		commands::SetMipmapBias,
+		commands::Callback,
+		commands::Draw
+	>;
+
+	using Commands = std::vector<Command>;
+
+	void SetMesh(Commands& cmds, Mesh* mesh);
+	void SetLight(Commands& cmds, Light light);
+	void SetColorTexture(Commands& cmds, Texture* color_texture);
+	void SetNormalTexture(Commands& cmds, Texture* normal_texture);
+	void SetColor(Commands& cmds, glm::vec4 color);
+	void SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix);
+	void SetViewMatrix(Commands& cmds, glm::mat4 view_matrix);
+	void SetModelMatrix(Commands& cmds, glm::mat4 model_matrix);
+	void SetCamera(Commands& cmds, Camera camera);
+	void SetEyePosition(Commands& cmds, glm::vec3 eye_position);
+	void SetMipmapBias(Commands& cmds, float mipmap_bias);
+	void Callback(Commands& cmds, std::function<void()> func);
+	void Draw(Commands& cmds, std::optional<DrawCommand> draw_command);
+
+	void ExecuteCommands(const Commands& cmds);
 }
