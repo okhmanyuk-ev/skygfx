@@ -1,5 +1,5 @@
 #include "imgui_helper.h"
-#include <skygfx/utils.h>
+#include <skygfx/ext.h>
 #include <imgui.h>
 
 ImguiHelper::ImguiHelper()
@@ -37,7 +37,7 @@ void ImguiHelper::draw()
 
 	auto display_scale = ImGui::GetIO().DisplayFramebufferScale;
 
-	auto camera = skygfx::utils::OrthogonalCamera{};
+	auto camera = skygfx::ext::OrthogonalCamera{};
 	auto model = glm::scale(glm::mat4(1.0f), { display_scale.x, display_scale.y, 1.0f });
 
 	auto draw_data = ImGui::GetDrawData();
@@ -45,15 +45,15 @@ void ImguiHelper::draw()
 
 	for (int i = 0; i < draw_data->CmdListsCount; i++)
 	{
-		const auto cmds = draw_data->CmdLists[i];
+		const auto cmdlist = draw_data->CmdLists[i];
 
 		uint32_t index_offset = 0;
 
-		for (const auto& cmd : cmds->CmdBuffer)
+		for (const auto& cmd : cmdlist->CmdBuffer)
 		{
 			if (cmd.UserCallback)
 			{
-				cmd.UserCallback(cmds, &cmd);
+				cmd.UserCallback(cmdlist, &cmd);
 			}
 			else
 			{
@@ -62,16 +62,16 @@ void ImguiHelper::draw()
 					.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
 				});
 
-				auto vertices = skygfx::utils::Mesh::Vertices();
+				auto vertices = skygfx::ext::Mesh::Vertices();
 				
 				for (uint32_t i = 0; i < cmd.ElemCount; i++)
 				{
-					auto index = cmds->IdxBuffer[i + index_offset];
-					const auto& vertex = cmds->VtxBuffer[index];
+					auto index = cmdlist->IdxBuffer[i + index_offset];
+					const auto& vertex = cmdlist->VtxBuffer[index];
 
 					auto color = (uint8_t*)&vertex.col;
 
-					vertices.push_back(skygfx::utils::Mesh::Vertex{
+					vertices.push_back(skygfx::ext::Mesh::Vertex{
 						.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
 						.color = {
 							color[0] / 255.0f,
@@ -83,15 +83,15 @@ void ImguiHelper::draw()
 					});
 				}
 
-				static auto mesh = skygfx::utils::Mesh();
+				mMesh.setVertices(vertices);
 				
-				mesh.setVertices(vertices);
-				
-				auto material = skygfx::utils::Material{
-					.color_texture = (skygfx::Texture*)cmd.TextureId
-				};
-				
-				skygfx::utils::DrawMesh(mesh, camera, model, material);
+				skygfx::ext::Commands cmds;
+				skygfx::ext::SetMesh(cmds, &mMesh);
+				skygfx::ext::SetCamera(cmds, camera);
+				skygfx::ext::SetModelMatrix(cmds, model);
+				skygfx::ext::SetColorTexture(cmds, (skygfx::Texture*)cmd.TextureId);
+				skygfx::ext::Draw(cmds);
+				skygfx::ext::ExecuteCommands(cmds);
 			}
 			index_offset += cmd.ElemCount;
 		}
