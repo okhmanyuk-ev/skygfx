@@ -256,10 +256,10 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> ext::Make
 	}, camera);
 }
 
-void ext::SetMesh(Commands& cmds, Mesh* mesh)
+void ext::SetMesh(Commands& cmds, const Mesh* mesh)
 {
 	cmds.push_back(commands::SetMesh{
-		.mesh = mesh
+		.mesh = const_cast<Mesh*>(mesh)
 	});
 }
 
@@ -340,10 +340,10 @@ void ext::Callback(Commands& cmds, std::function<void()> func)
 	});
 }
 
-void ext::InsertSubcommands(Commands& cmds, Commands* subcommands)
+void ext::InsertSubcommands(Commands& cmds, const Commands* subcommands)
 {
 	cmds.push_back(commands::InsertSubcommands{
-		.subcommands = subcommands
+		.subcommands = const_cast<Commands*>(subcommands)
 	});
 }
 

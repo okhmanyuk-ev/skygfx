@@ -109,7 +109,7 @@ namespace skygfx::ext
 		struct SetProjectionMatrix { glm::mat4 projection_matrix; };
 		struct SetViewMatrix { glm::mat4 view_matrix; };
 		struct SetModelMatrix { glm::mat4 model_matrix; };
-		struct SetCamera { Camera camera; std::optional<uint32_t> width = std::nullopt; std::optional<uint32_t> height = std::nullopt; };
+		struct SetCamera { Camera camera; std::optional<uint32_t> width; std::optional<uint32_t> height; };
 		struct SetEyePosition { glm::vec3 eye_position; };
 		struct SetMipmapBias { float mipmap_bias; };
 		struct Callback { std::function<void()> func; };
@@ -141,7 +141,7 @@ namespace skygfx::ext
 		struct InsertSubcommands { Commands* subcommands; };
 	}
 
-	void SetMesh(Commands& cmds, Mesh* mesh);
+	void SetMesh(Commands& cmds, const Mesh* mesh);
 	void SetLight(Commands& cmds, Light light);
 	void SetColorTexture(Commands& cmds, Texture* color_texture);
 	void SetNormalTexture(Commands& cmds, Texture* normal_texture);
@@ -153,8 +153,8 @@ namespace skygfx::ext
 	void SetEyePosition(Commands& cmds, glm::vec3 eye_position);
 	void SetMipmapBias(Commands& cmds, float mipmap_bias);
 	void Callback(Commands& cmds, std::function<void()> func);
-	void InsertSubcommands(Commands& cmds, Commands* subcommands);
-	void Draw(Commands& cmds, std::optional<DrawCommand> draw_command);
+	void InsertSubcommands(Commands& cmds, const Commands* subcommands);
+	void Draw(Commands& cmds, std::optional<DrawCommand> draw_command = std::nullopt);
 
 	void ExecuteCommands(const Commands& cmds);
 }
