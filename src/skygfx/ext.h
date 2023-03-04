@@ -113,6 +113,7 @@ namespace skygfx::ext
 		struct SetEyePosition { glm::vec3 eye_position; };
 		struct SetMipmapBias { float mipmap_bias; };
 		struct Callback { std::function<void()> func; };
+		struct InsertSubcommands;
 		struct Draw { std::optional<DrawCommand> draw_command; };
 	}
 
@@ -129,10 +130,16 @@ namespace skygfx::ext
 		commands::SetEyePosition,
 		commands::SetMipmapBias,
 		commands::Callback,
+		commands::InsertSubcommands,
 		commands::Draw
 	>;
 
 	using Commands = std::vector<Command>;
+
+	namespace commands
+	{
+		struct InsertSubcommands { Commands* subcommands; };
+	}
 
 	void SetMesh(Commands& cmds, Mesh* mesh);
 	void SetLight(Commands& cmds, Light light);
@@ -146,6 +153,7 @@ namespace skygfx::ext
 	void SetEyePosition(Commands& cmds, glm::vec3 eye_position);
 	void SetMipmapBias(Commands& cmds, float mipmap_bias);
 	void Callback(Commands& cmds, std::function<void()> func);
+	void InsertSubcommands(Commands& cmds, Commands* subcommands);
 	void Draw(Commands& cmds, std::optional<DrawCommand> draw_command);
 
 	void ExecuteCommands(const Commands& cmds);

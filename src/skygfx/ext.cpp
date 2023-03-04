@@ -340,6 +340,13 @@ void ext::Callback(Commands& cmds, std::function<void()> func)
 	});
 }
 
+void ext::InsertSubcommands(Commands& cmds, Commands* subcommands)
+{
+	cmds.push_back(commands::InsertSubcommands{
+		.subcommands = subcommands
+	});
+}
+
 void ext::Draw(Commands& cmds, std::optional<DrawCommand> draw_command)
 {
 	cmds.push_back(commands::Draw{
@@ -357,20 +364,24 @@ void ext::ExecuteCommands(const Commands& cmds)
 
 	Shader* shader = nullptr;
 
-	glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	Texture* color_texture = nullptr;
 	Texture* normal_texture = nullptr;
 	bool material_dirty = true;
 
-	glm::mat4 projection = glm::mat4(1.0f);
-	glm::mat4 view = glm::mat4(1.0f);
-	glm::mat4 model = glm::mat4(1.0f);
-	glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
-	float mipmap_bias = 0.0f;
-	bool settings_dirty = true;
-	
-	for (const auto& _cmd : cmds)
+	struct alignas(16) Settings
 	{
+		glm::mat4 projection = glm::mat4(1.0f);
+		glm::mat4 view = glm::mat4(1.0f);
+		glm::mat4 model = glm::mat4(1.0f);
+		alignas(16) glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
+		float mipmap_bias = 0.0f;
+		alignas(16) glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	};
+
+	auto settings = Settings{};
+	bool settings_dirty = true;
+
+	std::function<void(const Command&)> execute_command = [&](const Command& _cmd) {
 		std::visit(cases{
 			[&](const commands::SetMesh& cmd) {
 				if (mesh == cmd.mesh)
@@ -384,43 +395,55 @@ void ext::ExecuteCommands(const Commands& cmds)
 				light_dirty = true;
 			},
 			[&](const commands::SetColorTexture& cmd) {
+				if (color_texture == cmd.color_texture)
+					return;
+
 				color_texture = cmd.color_texture;
 				material_dirty = true;
 			},
 			[&](const commands::SetNormalTexture& cmd) {
+				if (normal_texture == cmd.normal_texture)
+					return;
+				
 				normal_texture = cmd.normal_texture;
 				material_dirty = true;
 			},
 			[&](const commands::SetColor& cmd) {
-				color = cmd.color;
+				settings.color = cmd.color;
 				settings_dirty = true;
 			},
 			[&](const commands::SetProjectionMatrix& cmd) {
-				projection = cmd.projection_matrix;
+				settings.projection = cmd.projection_matrix;
 				settings_dirty = true;
 			},
 			[&](const commands::SetViewMatrix& cmd) {
-				view = cmd.view_matrix;
+				settings.view = cmd.view_matrix;
 				settings_dirty = true;
 			},
 			[&](const commands::SetModelMatrix& cmd) {
-				model = cmd.model_matrix;
+				settings.model = cmd.model_matrix;
 				settings_dirty = true;
 			},
 			[&](const commands::SetCamera& cmd) {
-				std::tie(projection, view, eye_position) = MakeCameraMatrices(cmd.camera, cmd.height, cmd.width);
+				std::tie(settings.projection, settings.view, settings.eye_position) = MakeCameraMatrices(cmd.camera, cmd.height, cmd.width);
 				settings_dirty = true;
 			},
 			[&](const commands::SetEyePosition& cmd) {
-				eye_position = cmd.eye_position;
+				settings.eye_position = cmd.eye_position;
 				settings_dirty = true;
 			},
 			[&](const commands::SetMipmapBias& cmd) {
-				mipmap_bias = cmd.mipmap_bias;
+				settings.mipmap_bias = cmd.mipmap_bias;
 				settings_dirty = true;
 			},
 			[&](const commands::Callback& cmd) {
 				cmd.func();
+			},
+			[&](const commands::InsertSubcommands& cmd) {
+				for (const auto& subcommand : *cmd.subcommands)
+				{
+					execute_command(subcommand);
+				}
 			},
 			[&](const commands::Draw& cmd) {
 				assert(mesh != nullptr);
@@ -522,25 +545,6 @@ void ext::ExecuteCommands(const Commands& cmds)
 
 				if (settings_dirty)
 				{
-					struct alignas(16) Settings
-					{
-						glm::mat4 projection = glm::mat4(1.0f);
-						glm::mat4 view = glm::mat4(1.0f);
-						glm::mat4 model = glm::mat4(1.0f);
-						alignas(16) glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
-						float mipmap_bias = 0.0f;
-						alignas(16) glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-					};
-
-					auto settings = Settings{
-						.projection = projection,
-						.view = view,
-						.model = model,
-						.eye_position = eye_position,
-						.mipmap_bias = mipmap_bias,
-						.color = color
-					};
-
 					std::visit(cases{
 						[&](const NoLight& no_light) {
 							SetDynamicUniformBuffer(1, settings);
@@ -584,5 +588,10 @@ void ext::ExecuteCommands(const Commands& cmds)
 				}, draw_command.value());
 			}
 		}, _cmd);
+	};
+	
+	for (const auto& cmd : cmds)
+	{
+		execute_command(cmd);
 	}
 }
