@@ -1205,6 +1205,7 @@ void BackendGL::prepareForDrawing()
 	if (gShaderDirty)
 	{
 		gShader->apply();
+		gVertexBufferDirty = true;
 		gShaderDirty = false;
 	}
 
