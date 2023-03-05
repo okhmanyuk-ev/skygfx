@@ -264,7 +264,7 @@ void ext::SetMesh(Commands& cmds, const Mesh* mesh)
 void ext::SetLight(Commands& cmds, Light light)
 {
 	cmds.push_back(commands::SetLight{
-		.light = light
+		.light = std::move(light)
 	});
 }
 
@@ -285,42 +285,45 @@ void ext::SetNormalTexture(Commands& cmds, Texture* normal_texture)
 void ext::SetColor(Commands& cmds, glm::vec4 color)
 {
 	cmds.push_back(commands::SetColor{
-		.color = color
+		.color = std::move(color)
 	});
 }
 
 void ext::SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix)
 {
 	cmds.push_back(commands::SetProjectionMatrix{
-		.projection_matrix = projection_matrix
+		.projection_matrix = std::move(projection_matrix)
 	});
 }
 
 void ext::SetViewMatrix(Commands& cmds, glm::mat4 view_matrix)
 {
 	cmds.push_back(commands::SetViewMatrix{
-		.view_matrix = view_matrix
+		.view_matrix = std::move(view_matrix)
 	});
 }
 
 void ext::SetModelMatrix(Commands& cmds, glm::mat4 model_matrix)
 {
 	cmds.push_back(commands::SetModelMatrix{
-		.model_matrix = model_matrix
+		.model_matrix = std::move(model_matrix)
 	});
 }
 
-void ext::SetCamera(Commands& cmds, Camera camera)
+void ext::SetCamera(Commands& cmds, Camera camera, std::optional<uint32_t> width,
+		std::optional<uint32_t> height)
 {
 	cmds.push_back(commands::SetCamera{
-		.camera = camera
+		.camera = std::move(camera),
+		.width = width,
+		.height = height
 	});
 }
 
 void ext::SetEyePosition(Commands& cmds, glm::vec3 eye_position)
 {
 	cmds.push_back(commands::SetEyePosition{
-		.eye_position = eye_position	
+		.eye_position = std::move(eye_position)
 	});
 }
 
@@ -348,7 +351,7 @@ void ext::InsertSubcommands(Commands& cmds, const Commands* subcommands)
 void ext::Draw(Commands& cmds, std::optional<DrawCommand> draw_command)
 {
 	cmds.push_back(commands::Draw{
-		.draw_command = draw_command
+		.draw_command = std::move(draw_command)
 	});
 }
 
@@ -374,9 +377,8 @@ void ext::ExecuteCommands(const Commands& cmds)
 		alignas(16) glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 		float mipmap_bias = 0.0f;
 		alignas(16) glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-	};
+	} settings;
 
-	auto settings = Settings{};
 	bool settings_dirty = true;
 
 	std::function<void(const Command&)> execute_command = [&](const Command& _cmd) {

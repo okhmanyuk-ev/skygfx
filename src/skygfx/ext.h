@@ -149,7 +149,8 @@ namespace skygfx::ext
 	void SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix);
 	void SetViewMatrix(Commands& cmds, glm::mat4 view_matrix);
 	void SetModelMatrix(Commands& cmds, glm::mat4 model_matrix);
-	void SetCamera(Commands& cmds, Camera camera);
+	void SetCamera(Commands& cmds, Camera camera, std::optional<uint32_t> width = std::nullopt,
+		std::optional<uint32_t> height = std::nullopt);
 	void SetEyePosition(Commands& cmds, glm::vec3 eye_position);
 	void SetMipmapBias(Commands& cmds, float mipmap_bias);
 	void Callback(Commands& cmds, std::function<void()> func);
