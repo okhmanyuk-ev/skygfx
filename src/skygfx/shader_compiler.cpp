@@ -193,11 +193,7 @@ std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool 
 	options.force_flattened_io_blocks = force_flattened_io_blocks;
 	compiler.set_common_options(options);
 	
-	bool fix_varyings = es && version <= 300;
-
-#if defined(SKYGFX_PLATFORM_MACOS)
-	fix_varyings = true;
-#endif
+	bool fix_varyings = (es && version <= 300) || force_flattened_io_blocks;
 
 	if (fix_varyings)
 	{

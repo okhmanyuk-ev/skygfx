@@ -186,7 +186,7 @@ public:
 		options.es = false;
 		options.version = 450;
 		options.enable_420pack_extension = true;
-		options.force_flattened_io_blocks = false;
+		options.force_flattened_io_blocks = true;
 #elif defined(SKYGFX_PLATFORM_MACOS)
 		options.es = false;
 		options.version = 410;
@@ -618,7 +618,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	int attribs[] =
 	{
 		WGL_CONTEXT_MAJOR_VERSION_ARB, 4,
-		WGL_CONTEXT_MINOR_VERSION_ARB, 4,
+		WGL_CONTEXT_MINOR_VERSION_ARB, 5,
 		WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
 		WGL_CONTEXT_FLAGS_ARB, /*WGL_CONTEXT_DEBUG_BIT_ARB*/0,
 		0

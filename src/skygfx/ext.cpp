@@ -366,7 +366,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 
 	Texture* color_texture = nullptr;
 	Texture* normal_texture = nullptr;
-	bool material_dirty = true;
+	bool textures_dirty = true;
 
 	struct alignas(16) Settings
 	{
@@ -399,14 +399,14 @@ void ext::ExecuteCommands(const Commands& cmds)
 					return;
 
 				color_texture = cmd.color_texture;
-				material_dirty = true;
+				textures_dirty = true;
 			},
 			[&](const commands::SetNormalTexture& cmd) {
 				if (normal_texture == cmd.normal_texture)
 					return;
 				
 				normal_texture = cmd.normal_texture;
-				material_dirty = true;
+				textures_dirty = true;
 			},
 			[&](const commands::SetColor& cmd) {
 				settings.color = cmd.color;
@@ -500,7 +500,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 					if (shader != prev_shader)
 					{
 						SetShader(*shader);
-						material_dirty = true;
+						textures_dirty = true;
 						settings_dirty = true;
 					}
 
@@ -518,7 +518,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 					light_dirty = false;
 				}
 
-				if (material_dirty)
+				if (textures_dirty)
 				{
 					uint32_t white_pixel = 0xFFFFFFFF;
 					static auto white_pixel_texture = Texture(1, 1, 4, &white_pixel);
@@ -540,7 +540,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 						},
 					}, light);
 
-					material_dirty = false;
+					textures_dirty = false;
 				}
 
 				if (settings_dirty)
