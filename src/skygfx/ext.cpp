@@ -359,7 +359,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 	Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
-	Light light;
+	Light light = NoLight{};
 	bool light_dirty = true;
 
 	Shader* shader = nullptr;
@@ -387,7 +387,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 				if (mesh == cmd.mesh)
 					return;
 
-				mesh = const_cast<Mesh*>(cmd.mesh);
+				mesh = cmd.mesh;
 				mesh_dirty = true;
 			},
 			[&](const commands::SetLight& cmd) {
