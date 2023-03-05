@@ -16,10 +16,10 @@ namespace skygfx::ext
 		void setTopology(Topology value) { mTopology = value; }
 
 		const auto& getVertices() const { return mVertices; }
-		void setVertices(const Vertices& value);
+		void setVertices(Vertices value);
 
 		const auto& getIndices() const { return mIndices; }
-		void setIndices(const Indices& value);
+		void setIndices(Indices value);
 
 	private:
 		Topology mTopology = Topology::TriangleList;

@@ -197,10 +197,8 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
-void ext::Mesh::setVertices(const Vertices& value)
+void ext::Mesh::setVertices(Vertices value)
 {
-	mVertices = value;
-
 	size_t size = value.size() * sizeof(Vertices::value_type);
 	size_t stride = sizeof(Vertices::value_type);
 
@@ -208,12 +206,11 @@ void ext::Mesh::setVertices(const Vertices& value)
 		mVertexBuffer.emplace(size, stride);
 
 	mVertexBuffer.value().write(value);
+	mVertices = std::move(value);
 }
 
-void ext::Mesh::setIndices(const Indices& value)
+void ext::Mesh::setIndices(Indices value)
 {
-	mIndices = value;
-	
 	size_t size = value.size() * sizeof(Indices::value_type);
 	size_t stride = sizeof(Indices::value_type);
 
@@ -221,6 +218,7 @@ void ext::Mesh::setIndices(const Indices& value)
 		mIndexBuffer.emplace(size, stride);
 
 	mIndexBuffer.value().write(value);
+	mIndices = std::move(value);
 }
 
 std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> ext::MakeCameraMatrices(const Camera& camera, 
