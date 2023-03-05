@@ -199,6 +199,9 @@ void main()
 
 void ext::Mesh::setVertices(Vertices value)
 {
+	if (value.empty())
+		return;
+
 	size_t size = value.size() * sizeof(Vertices::value_type);
 	size_t stride = sizeof(Vertices::value_type);
 
@@ -211,6 +214,9 @@ void ext::Mesh::setVertices(Vertices value)
 
 void ext::Mesh::setIndices(Indices value)
 {
+	if (value.empty())
+		return;
+
 	size_t size = value.size() * sizeof(Indices::value_type);
 	size_t stride = sizeof(Indices::value_type);
 
