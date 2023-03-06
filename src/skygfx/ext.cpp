@@ -622,9 +622,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 	}
 }
 
-void ext::passes::Blur::execute(const RenderTarget& src, const RenderTarget& dst)
-{
-	const std::string _vertex_shader_code = R"(
+const std::string pass_vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -642,12 +640,12 @@ void main()
 	gl_Position = vec4(aPosition, 1.0);
 })";
 
-	const std::string _fragment_shader_code = R"(
+const std::string blur_fragment_shader_code = R"(
 #version 450 core
 
 layout(location = 0) out vec4 result;
 layout(location = 0) in struct { vec2 tex_coord; } In;
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sTexture;
+layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform Settings
 {
@@ -661,28 +659,64 @@ void main()
 
 	vec2 off1 = vec2(1.3846153846) * settings.direction / settings.resolution;
 	vec2 off2 = vec2(3.2307692308) * settings.direction / settings.resolution;
-			
-	result += texture(sTexture, In.tex_coord) * 0.2270270270;
-	
-	result += texture(sTexture, In.tex_coord + off1) * 0.3162162162;
-	result += texture(sTexture, In.tex_coord - off1) * 0.3162162162;
 
-	result += texture(sTexture, In.tex_coord + off2) * 0.0702702703;
-	result += texture(sTexture, In.tex_coord - off2) * 0.0702702703;
+	result += texture(sColorTexture, In.tex_coord) * 0.2270270270;
+
+	result += texture(sColorTexture, In.tex_coord + off1) * 0.3162162162;
+	result += texture(sColorTexture, In.tex_coord - off1) * 0.3162162162;
+
+	result += texture(sColorTexture, In.tex_coord + off2) * 0.0702702703;
+	result += texture(sColorTexture, In.tex_coord - off2) * 0.0702702703;
 })";
 
-	static const auto vertex_buffer = VertexBuffer(std::vector<Vertex::PositionTexture>{
-		{ { -1.0f, -1.0f, 0.0f }, { 0.0f, 1.0f } },
-		{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
-		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f } },
-		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f } },
-	});
+const std::string bright_filter_fragment_shader_code = R"(
+#version 450 core
 
-	static const auto index_buffer = IndexBuffer(std::vector<uint32_t>{ 
-		0, 1, 2, 0, 2, 3 
-	});
+layout(location = 0) out vec4 result;
+layout(location = 0) in struct { vec2 tex_coord; } In;
+layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
 
-	static const auto shader = Shader(Vertex::PositionTexture::Layout, _vertex_shader_code, _fragment_shader_code, {
+void main()
+{
+	result = texture(sColorTexture, In.tex_coord);
+	float threshold = 0.9; // TODO: uniform
+	float luminance = dot(vec3(0.2125, 0.7154, 0.0721), result.xyz);
+	luminance = max(0.0, luminance - threshold);
+	result *= sign(luminance);
+})";
+
+const std::string grayscale_fragment_shader_code = R"(
+#version 450 core
+
+layout(location = 0) out vec4 result;
+layout(location = 0) in struct { vec2 tex_coord; } In;
+layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
+
+void main()
+{
+	result = texture(sColorTexture, In.tex_coord);
+	float intensity = 1.0; // TODO: uniform
+	float gray = dot(result.rgb, vec3(0.299, 0.587, 0.114));
+	result.rgb = mix(result.rgb, vec3(gray), intensity);
+})";
+
+const std::vector<Vertex::PositionTexture> pass_vertices = {
+	{ { -1.0f, -1.0f, 0.0f }, { 0.0f, 1.0f } },
+	{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
+	{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f } },
+	{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f } },
+};
+
+const std::vector<uint32_t> pass_indices = {
+	0, 1, 2, 0, 2, 3
+};
+
+void ext::passes::Blur::execute(const RenderTarget& src, const RenderTarget& dst)
+{
+	static const auto vertex_buffer = VertexBuffer(pass_vertices);
+	static const auto index_buffer = IndexBuffer(pass_indices);
+
+	static const auto shader = Shader(Vertex::PositionTexture::Layout, pass_vertex_shader_code, blur_fragment_shader_code, {
 		"COLOR_TEXTURE_BINDING 0",
 		"SETTINGS_UNIFORM_BINDING 1"
 	});
@@ -725,52 +759,10 @@ void main()
 
 void ext::passes::BrightFilter::execute(const RenderTarget& src, const RenderTarget& dst)
 {
-	const std::string bright_filter_vertex_shader_code = R"(
-#version 450 core
+	static const auto vertex_buffer = VertexBuffer(pass_vertices);
+	static const auto index_buffer = IndexBuffer(pass_indices);
 
-layout(location = POSITION_LOCATION) in vec3 aPosition;
-layout(location = TEXCOORD_LOCATION) in vec2 aTexCoord;
-
-layout(location = 0) out struct { vec2 tex_coord; } Out;
-out gl_PerVertex { vec4 gl_Position; };
-
-void main()
-{
-	Out.tex_coord = aTexCoord;
-#ifdef FLIP_TEXCOORD_Y
-	Out.tex_coord.y = 1.0 - Out.tex_coord.y;
-#endif
-	gl_Position = vec4(aPosition, 1.0);
-})";
-
-	const std::string bright_filter_fragment_shader_code = R"(
-#version 450 core
-
-layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec2 tex_coord; } In;
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sTexture;
-
-void main()
-{
-	result = texture(sTexture, In.tex_coord);
-	float threshold = 0.9; // TODO: uniform
-	float luminance = dot(vec3(0.2125, 0.7154, 0.0721), result.xyz);
-	luminance = max(0.0, luminance - threshold);
-	result *= sign(luminance);
-})";
-
-	static const auto vertex_buffer = VertexBuffer(std::vector<Vertex::PositionTexture>{
-		{ { -1.0f, -1.0f, 0.0f }, { 0.0f, 1.0f } },
-		{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
-		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f } },
-		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f } },
-	});
-
-	static const auto index_buffer = IndexBuffer(std::vector<uint32_t>{ 
-		0, 1, 2, 0, 2, 3 
-	});
-
-	static const auto bright_filter_shader = Shader(Vertex::PositionTexture::Layout, bright_filter_vertex_shader_code, bright_filter_fragment_shader_code, {
+	static const auto bright_filter_shader = Shader(Vertex::PositionTexture::Layout, pass_vertex_shader_code, bright_filter_fragment_shader_code, {
 		"COLOR_TEXTURE_BINDING 0"
 	});
 
@@ -823,51 +815,10 @@ void ext::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& ds
 
 void ext::passes::Grayscale::execute(const RenderTarget& src, const RenderTarget& dst)
 {
-	const std::string _vertex_shader_code = R"(
-#version 450 core
+	static const auto vertex_buffer = VertexBuffer(pass_vertices);
+	static const auto index_buffer = IndexBuffer(pass_indices);
 
-layout(location = POSITION_LOCATION) in vec3 aPosition;
-layout(location = TEXCOORD_LOCATION) in vec2 aTexCoord;
-
-layout(location = 0) out struct { vec2 tex_coord; } Out;
-out gl_PerVertex { vec4 gl_Position; };
-
-void main()
-{
-	Out.tex_coord = aTexCoord;
-#ifdef FLIP_TEXCOORD_Y
-	Out.tex_coord.y = 1.0 - Out.tex_coord.y;
-#endif
-	gl_Position = vec4(aPosition, 1.0);
-})";
-
-	const std::string _fragment_shader_code = R"(
-#version 450 core
-
-layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec2 tex_coord; } In;
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sTexture;
-
-void main()
-{
-	result = texture(sTexture, In.tex_coord);
-	float intensity = 1.0; // TODO: uniform
-	float gray = dot(result.rgb, vec3(0.299, 0.587, 0.114));
-	result.rgb = mix(result.rgb, vec3(gray), intensity);
-})";
-
-	static const auto vertex_buffer = VertexBuffer(std::vector<Vertex::PositionTexture>{
-		{ { -1.0f, -1.0f, 0.0f }, { 0.0f, 1.0f } },
-		{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
-		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f } },
-		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f } },
-	});
-
-	static const auto index_buffer = IndexBuffer(std::vector<uint32_t>{ 
-		0, 1, 2, 0, 2, 3 
-	});
-
-	static const auto shader = Shader(Vertex::PositionTexture::Layout, _vertex_shader_code, _fragment_shader_code, {
+	static const auto shader = Shader(Vertex::PositionTexture::Layout, pass_vertex_shader_code, grayscale_fragment_shader_code, {
 		"COLOR_TEXTURE_BINDING 0"
 	});
 
