@@ -101,10 +101,10 @@ namespace skygfx::ext
 
 	namespace commands
 	{
-		struct SetMesh { Mesh* mesh; };
+		struct SetMesh { const Mesh* mesh; };
 		struct SetLight { Light light; };
-		struct SetColorTexture { Texture* color_texture; };
-		struct SetNormalTexture { Texture* normal_texture; };
+		struct SetColorTexture { const Texture* color_texture; };
+		struct SetNormalTexture { const Texture* normal_texture; };
 		struct SetColor { glm::vec4 color; };
 		struct SetProjectionMatrix { glm::mat4 projection_matrix; };
 		struct SetViewMatrix { glm::mat4 view_matrix; };
@@ -143,8 +143,8 @@ namespace skygfx::ext
 
 	void SetMesh(Commands& cmds, const Mesh* mesh);
 	void SetLight(Commands& cmds, Light light);
-	void SetColorTexture(Commands& cmds, Texture* color_texture);
-	void SetNormalTexture(Commands& cmds, Texture* normal_texture);
+	void SetColorTexture(Commands& cmds, const Texture* color_texture);
+	void SetNormalTexture(Commands& cmds, const Texture* normal_texture);
 	void SetColor(Commands& cmds, glm::vec4 color);
 	void SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix);
 	void SetViewMatrix(Commands& cmds, glm::mat4 view_matrix);

@@ -2,7 +2,7 @@
 
 using namespace skygfx;
 
-static const std::string vertex_shader_code = R"(
+const std::string vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -28,10 +28,7 @@ layout(location = 0) out struct
 	vec3 normal;
 } Out;
 
-out gl_PerVertex
-{
-	vec4 gl_Position;
-};
+out gl_PerVertex { vec4 gl_Position; };
 
 void main()
 {
@@ -45,7 +42,7 @@ void main()
 	gl_Position = settings.projection * settings.view * settings.model * vec4(aPosition, 1.0);
 })";
 
-static const std::string fragment_shader_code_no_light = R"(
+const std::string fragment_shader_code_no_light = R"(
 #version 450 core
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
@@ -77,7 +74,7 @@ void main()
 	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 })";
 
-static const std::string fragment_shader_code_directional_light = R"(
+const std::string fragment_shader_code_directional_light = R"(
 #version 450 core
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
@@ -132,7 +129,7 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
-static const std::string fragment_shader_code_point_light = R"(
+const std::string fragment_shader_code_point_light = R"(
 #version 450 core
 
 layout(binding = POINT_LIGHT_UNIFORM_BINDING) uniform _light
@@ -263,7 +260,7 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> ext::Make
 void ext::SetMesh(Commands& cmds, const Mesh* mesh)
 {
 	cmds.push_back(commands::SetMesh{
-		.mesh = const_cast<Mesh*>(mesh)
+		.mesh = mesh
 	});
 }
 
@@ -274,14 +271,14 @@ void ext::SetLight(Commands& cmds, Light light)
 	});
 }
 
-void ext::SetColorTexture(Commands& cmds, Texture* color_texture)
+void ext::SetColorTexture(Commands& cmds, const Texture* color_texture)
 {
 	cmds.push_back(commands::SetColorTexture{
 		.color_texture = color_texture
 	});
 }
 
-void ext::SetNormalTexture(Commands& cmds, Texture* normal_texture)
+void ext::SetNormalTexture(Commands& cmds, const Texture* normal_texture)
 {
 	cmds.push_back(commands::SetNormalTexture{
 		.normal_texture = normal_texture
@@ -407,7 +404,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 				if (mesh == cmd.mesh)
 					return;
 
-				mesh = cmd.mesh;
+				mesh = const_cast<Mesh*>(cmd.mesh);
 				mesh_dirty = true;
 			},
 			[&](const commands::SetLight& cmd) {
@@ -418,14 +415,14 @@ void ext::ExecuteCommands(const Commands& cmds)
 				if (color_texture == cmd.color_texture)
 					return;
 
-				color_texture = cmd.color_texture;
+				color_texture = const_cast<Texture*>(cmd.color_texture);
 				textures_dirty = true;
 			},
 			[&](const commands::SetNormalTexture& cmd) {
 				if (normal_texture == cmd.normal_texture)
 					return;
 				
-				normal_texture = cmd.normal_texture;
+				normal_texture = const_cast<Texture*>(cmd.normal_texture);
 				textures_dirty = true;
 			},
 			[&](const commands::SetColor& cmd) {
