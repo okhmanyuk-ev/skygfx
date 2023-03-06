@@ -158,4 +158,47 @@ namespace skygfx::ext
 	void Draw(Commands& cmds, std::optional<DrawCommand> draw_command = std::nullopt);
 
 	void ExecuteCommands(const Commands& cmds);
+
+	namespace passes
+	{
+		class Pass
+		{
+		public:
+			virtual void execute(const RenderTarget& src, const RenderTarget& dst) = 0;
+		};
+
+		class Blur : public Pass
+		{
+		public:
+			void execute(const RenderTarget& src, const RenderTarget& dst) override;
+
+		private:
+			std::optional<RenderTarget> mBlurTarget;
+		};
+
+		class BrightFilter : public Pass
+		{
+		public:
+			void execute(const RenderTarget& src, const RenderTarget& dst) override;
+		};
+
+		class Bloom : public Pass
+		{
+		public:
+			void execute(const RenderTarget& src, const RenderTarget& dst) override;
+
+		private:
+			std::optional<RenderTarget> mBrightTarget;
+			std::optional<RenderTarget> mBlurTarget;
+			BrightFilter mBrightFilter;
+			Blur mBlurPostprocess;
+		};
+
+		class Grayscale : public Pass
+		{
+		public:
+			void execute(const RenderTarget& src, const RenderTarget& dst) override;
+		};
+
+	}
 }
