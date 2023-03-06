@@ -102,10 +102,10 @@ int main()
 
 	skygfx::ext::passes::Bloom bloom_pass;
 
-	auto ensureTargetSizes = [&](auto& target) {
+	auto ensureTargetSize = [&](auto& target) {
 		int win_width;
 		int win_height;
-		glfwGetWindowSize(window, &win_width, &win_height);
+		glfwGetFramebufferSize(window, &win_width, &win_height);
 
 		if (!target.has_value() || target.value().getWidth() != win_width || target.value().getHeight() != win_height)
 			target.emplace(win_width, win_height);
@@ -113,8 +113,8 @@ int main()
 
 	while (!glfwWindowShouldClose(window))
 	{
-		ensureTargetSizes(src_target);
-		ensureTargetSizes(dst_target);
+		ensureTargetSize(src_target);
+		ensureTargetSize(dst_target);
 
 		auto time = (float)glfwGetTime();
 
