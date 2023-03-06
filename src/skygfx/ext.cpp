@@ -363,6 +363,20 @@ void ext::Draw(Commands& cmds, std::optional<DrawCommand> draw_command)
 
 void ext::ExecuteCommands(const Commands& cmds)
 {
+	static std::optional<Mesh> rect_mesh;
+
+	if (!rect_mesh.has_value())
+	{
+		rect_mesh.emplace();
+		rect_mesh.value().setVertices({
+			{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
+			{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
+			{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
+			{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
+		});
+		rect_mesh.value().setIndices({ 0, 1, 2, 0, 2, 3 });
+	}
+
 	Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
@@ -452,7 +466,8 @@ void ext::ExecuteCommands(const Commands& cmds)
 				}
 			},
 			[&](const commands::Draw& cmd) {
-				assert(mesh != nullptr);
+				if (mesh == nullptr)
+					mesh = &rect_mesh.value();
 
 				if (mesh_dirty)
 				{
