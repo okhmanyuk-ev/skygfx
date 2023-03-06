@@ -12,6 +12,12 @@ namespace skygfx::ext
 		using Vertices = std::vector<Vertex>;
 		using Indices = std::vector<Index>;
 
+	public:
+		Mesh();
+		Mesh(Vertices vertices);
+		Mesh(Vertices vertices, Indices indices);
+
+	public:
 		auto getTopology() const { return mTopology; }
 		void setTopology(Topology value) { mTopology = value; }
 

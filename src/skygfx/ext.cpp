@@ -194,6 +194,21 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
+ext::Mesh::Mesh()
+{
+}
+
+ext::Mesh::Mesh(Vertices vertices)
+{
+	setVertices(std::move(vertices));
+}
+
+ext::Mesh::Mesh(Vertices vertices, Indices indices)
+{
+	setVertices(std::move(vertices));
+	setIndices(std::move(indices));
+}
+
 void ext::Mesh::setVertices(Vertices value)
 {
 	if (value.empty())
@@ -360,19 +375,12 @@ void ext::Draw(Commands& cmds, std::optional<DrawCommand> draw_command)
 
 void ext::ExecuteCommands(const Commands& cmds)
 {
-	static std::optional<Mesh> rect_mesh;
-
-	if (!rect_mesh.has_value())
-	{
-		rect_mesh.emplace();
-		rect_mesh.value().setVertices({
-			{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
-			{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
-			{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
-			{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
-		});
-		rect_mesh.value().setIndices({ 0, 1, 2, 0, 2, 3 });
-	}
+	static auto default_mesh = Mesh({
+		{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
+		{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
+		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
+		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
+	}, { 0, 1, 2, 0, 2, 3 });
 
 	Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
@@ -464,7 +472,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 			},
 			[&](const commands::Draw& cmd) {
 				if (mesh == nullptr)
-					mesh = &rect_mesh.value();
+					mesh = &default_mesh;
 
 				if (mesh_dirty)
 				{
