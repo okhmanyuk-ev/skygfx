@@ -100,3 +100,11 @@ target_include_directories(09_imgui PUBLIC
 	lib/imgui/backends
 )
 target_link_libraries(09_imgui glfw skygfx imgui)
+
+# 10 - bloom
+
+add_executable(10_bloom 10_bloom/main.cpp ${RESOURCES})
+target_link_libraries(10_bloom glfw skygfx)
+target_include_directories(10_bloom PUBLIC lib/stb)
+set_target_properties(10_bloom PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(10_bloom PROPERTIES RESOURCE ${RESOURCES})
