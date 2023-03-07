@@ -42,7 +42,7 @@ void main()
 	gl_Position = settings.projection * settings.view * settings.model * vec4(aPosition, 1.0);
 })";
 
-const std::string fragment_shader_code_no_light = R"(
+const std::string fragment_shader_code = R"(
 #version 450 core
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
@@ -66,27 +66,9 @@ layout(location = 0) in struct
 } In;
 
 layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
+layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
-void main()
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-})";
-
-const std::string fragment_shader_code_directional_light = R"(
-#version 450 core
-
-layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
-{
-	mat4 projection;
-	mat4 view;
-	mat4 model;
-	vec3 eye_position;
-	float mipmap_bias;
-	vec4 color;
-} settings;
-
+#ifdef DIRECTIONAL_LIGHT_UNIFORM_BINDING
 layout(binding = DIRECTIONAL_LIGHT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
@@ -96,25 +78,8 @@ layout(binding = DIRECTIONAL_LIGHT_UNIFORM_BINDING) uniform _light
 	float shininess;
 } light;
 
-layout(location = 0) in struct
+vec4 calcDirectionalLight()
 {
-	vec3 frag_position;
-	vec4 color;
-	vec2 tex_coord;
-	vec3 normal;
-} In;
-
-layout(location = 0) out vec4 result;
-
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
-layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
-
-void main()
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 	
 	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
@@ -126,12 +91,11 @@ void main()
 
 	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
 
-	result *= vec4(intensity, 1.0);
-})";
+	return vec4(intensity, 1.0);
+}
+#endif
 
-const std::string fragment_shader_code_point_light = R"(
-#version 450 core
-
+#ifdef POINT_LIGHT_UNIFORM_BINDING
 layout(binding = POINT_LIGHT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
@@ -144,34 +108,8 @@ layout(binding = POINT_LIGHT_UNIFORM_BINDING) uniform _light
 	float shininess;
 } light;
 
-layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
+vec4 calcPointLight()
 {
-	mat4 projection;
-	mat4 view;
-	mat4 model;
-	vec3 eye_position;
-	float mipmap_bias;
-	vec4 color;
-} settings;
-
-layout(location = 0) in struct {
-	vec3 frag_position;
-	vec4 color;
-	vec2 tex_coord;
-	vec3 normal;
-} In;
-
-layout(location = 0) out vec4 result;
-
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
-layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
-
-void main()
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 
 	vec3 light_offset = light.position - In.frag_position;
@@ -191,7 +129,21 @@ void main()
 
 	intensity *= attenuation;
 
-	result *= vec4(intensity, 1.0);
+	return vec4(intensity, 1.0);
+}
+#endif
+
+void main()
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+#ifdef DIRECTIONAL_LIGHT_UNIFORM_BINDING
+	result *= calcDirectionalLight();
+#endif
+#ifdef POINT_LIGHT_UNIFORM_BINDING
+	result *= calcPointLight();
+#endif
 })";
 
 ext::Mesh::Mesh()
@@ -497,14 +449,14 @@ void ext::ExecuteCommands(const Commands& cmds)
 
 					auto shader = std::visit(cases{
 						[&](const NoLight& no_light) {
-							static auto no_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_no_light, {
+							static auto no_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
 								"COLOR_TEXTURE_BINDING 0",
 								"SETTINGS_UNIFORM_BINDING 1"
 							});
 							return &no_light_shader;
 						},
 						[&](const DirectionalLight& directional_light) {
-							static auto directional_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_directional_light, {
+							static auto directional_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
 								"COLOR_TEXTURE_BINDING 0",
 								"NORMAL_TEXTURE_BINDING 1",
 								"SETTINGS_UNIFORM_BINDING 2",
@@ -513,7 +465,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 							return &directional_light_shader;
 						},
 						[&](const PointLight& point_light) {
-							static auto point_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code_point_light, {
+							static auto point_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
 								"COLOR_TEXTURE_BINDING 0",
 								"NORMAL_TEXTURE_BINDING 1",
 								"SETTINGS_UNIFORM_BINDING 2",
