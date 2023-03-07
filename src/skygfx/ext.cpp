@@ -66,7 +66,10 @@ layout(location = 0) in struct
 } In;
 
 layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
+
+#ifdef NORMAL_TEXTURE_BINDING
 layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
+#endif
 
 #ifdef DIRECTIONAL_LIGHT_UNIFORM_BINDING
 layout(binding = DIRECTIONAL_LIGHT_UNIFORM_BINDING) uniform _light
