@@ -58,33 +58,62 @@ namespace skygfx::ext
 		DrawIndexedVerticesCommand
 	>;
 	
-	struct NoLight {};
-
-	struct alignas(16) DirectionalLight
+	namespace effects
 	{
-		alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-		alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-		alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-		alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-		float shininess = 32.0f; // TODO: only material has shininess
-	};
+		struct alignas(16) DirectionalLight
+		{
+			alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+			float shininess = 32.0f;
 
-	struct alignas(16) PointLight
-	{
-		alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-		alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-		alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-		alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-		float constant_attenuation = 0.0f;
-		float linear_attenuation = 0.00128f;
-		float quadratic_attenuation = 0.0f;
-		float shininess = 32.0f; // TODO: only material has shininess
-	};
+			static const std::string Shader;
+		};
 
-	using Light = std::variant<
-		NoLight,
-		DirectionalLight,
-		PointLight
+		struct alignas(16) PointLight
+		{
+			alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+			float constant_attenuation = 0.0f;
+			float linear_attenuation = 0.00128f;
+			float quadratic_attenuation = 0.0f;
+			float shininess = 32.0f;
+
+			static const std::string Shader;
+		};
+
+		struct alignas(16) GaussianBlur
+		{
+			glm::vec2 direction;
+			glm::vec2 resolution;
+
+			static const std::string Shader;
+		};
+
+		struct alignas(16) BrightFilter
+		{
+			float threshold = 0.9f;
+
+			static const std::string Shader;
+		};
+
+		struct alignas(16) Grayscale
+		{
+			float intensity = 1.0f;
+
+			static const std::string Shader;
+		};
+	}
+
+	using Effect = std::variant<
+		effects::DirectionalLight,
+		effects::PointLight,
+		effects::GaussianBlur,
+		effects::BrightFilter,
+		effects::Grayscale
 	>;
 
 	struct OrthogonalCamera {};
@@ -108,14 +137,14 @@ namespace skygfx::ext
 	namespace commands
 	{
 		struct SetMesh { const Mesh* mesh; };
-		struct SetLight { Light light; };
+		struct SetEffect { std::optional<Effect> effect; };
 		struct SetColorTexture { const Texture* color_texture; };
 		struct SetNormalTexture { const Texture* normal_texture; };
 		struct SetColor { glm::vec4 color; };
 		struct SetProjectionMatrix { glm::mat4 projection_matrix; };
 		struct SetViewMatrix { glm::mat4 view_matrix; };
 		struct SetModelMatrix { glm::mat4 model_matrix; };
-		struct SetCamera { Camera camera; std::optional<uint32_t> width; std::optional<uint32_t> height; };
+		struct SetCamera { Camera camera/*TODO: should be nullable*/; std::optional<uint32_t> width; std::optional<uint32_t> height; };
 		struct SetEyePosition { glm::vec3 eye_position; };
 		struct SetMipmapBias { float mipmap_bias; };
 		struct Callback { std::function<void()> func; };
@@ -125,7 +154,7 @@ namespace skygfx::ext
 
 	using Command = std::variant<
 		commands::SetMesh,
-		commands::SetLight,
+		commands::SetEffect,
 		commands::SetColorTexture,
 		commands::SetNormalTexture,
 		commands::SetColor,
@@ -148,7 +177,7 @@ namespace skygfx::ext
 	}
 
 	void SetMesh(Commands& cmds, const Mesh* mesh);
-	void SetLight(Commands& cmds, Light light);
+	void SetEffect(Commands& cmds, std::optional<Effect> effect);
 	void SetColorTexture(Commands& cmds, const Texture* color_texture);
 	void SetNormalTexture(Commands& cmds, const Texture* normal_texture);
 	void SetColor(Commands& cmds, glm::vec4 color);
@@ -205,6 +234,5 @@ namespace skygfx::ext
 		public:
 			void execute(const RenderTarget& src, const RenderTarget& dst) override;
 		};
-
 	}
 }

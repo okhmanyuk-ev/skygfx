@@ -66,13 +66,24 @@ layout(location = 0) in struct
 } In;
 
 layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
-
-#ifdef NORMAL_TEXTURE_BINDING
 layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
+
+#ifdef EFFECT_FUNC
+void EFFECT_FUNC(inout vec4);
 #endif
 
-#ifdef DIRECTIONAL_LIGHT_UNIFORM_BINDING
-layout(binding = DIRECTIONAL_LIGHT_UNIFORM_BINDING) uniform _light
+void main()
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+#ifdef EFFECT_FUNC
+	EFFECT_FUNC(result);
+#endif
+})";
+
+const std::string ext::effects::DirectionalLight::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
 	vec3 ambient;
@@ -81,7 +92,7 @@ layout(binding = DIRECTIONAL_LIGHT_UNIFORM_BINDING) uniform _light
 	float shininess;
 } light;
 
-vec4 calcDirectionalLight()
+void effect(inout vec4 result)
 {
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 	
@@ -94,12 +105,11 @@ vec4 calcDirectionalLight()
 
 	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
 
-	return vec4(intensity, 1.0);
-}
-#endif
+	result *= vec4(intensity, 1.0);
+})";
 
-#ifdef POINT_LIGHT_UNIFORM_BINDING
-layout(binding = POINT_LIGHT_UNIFORM_BINDING) uniform _light
+const std::string ext::effects::PointLight::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
 	vec3 ambient;
@@ -111,7 +121,7 @@ layout(binding = POINT_LIGHT_UNIFORM_BINDING) uniform _light
 	float shininess;
 } light;
 
-vec4 calcPointLight()
+void effect(inout vec4 result)
 {
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 
@@ -132,22 +142,57 @@ vec4 calcPointLight()
 
 	intensity *= attenuation;
 
-	return vec4(intensity, 1.0);
-}
-#endif
-
-void main()
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-#ifdef DIRECTIONAL_LIGHT_UNIFORM_BINDING
-	result *= calcDirectionalLight();
-#endif
-#ifdef POINT_LIGHT_UNIFORM_BINDING
-	result *= calcPointLight();
-#endif
+	result *= vec4(intensity, 1.0);
 })";
+
+const std::string ext::effects::GaussianBlur::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _blur
+{
+	vec2 direction;
+	vec2 resolution;
+} blur;
+
+void effect(inout vec4 result)
+{
+	result = vec4(0.0);
+
+	vec2 off1 = vec2(1.3846153846) * blur.direction / blur.resolution;
+	vec2 off2 = vec2(3.2307692308) * blur.direction / blur.resolution;
+
+	result += texture(sColorTexture, In.tex_coord) * 0.2270270270;
+
+	result += texture(sColorTexture, In.tex_coord + off1) * 0.3162162162;
+	result += texture(sColorTexture, In.tex_coord - off1) * 0.3162162162;
+
+	result += texture(sColorTexture, In.tex_coord + off2) * 0.0702702703;
+	result += texture(sColorTexture, In.tex_coord - off2) * 0.0702702703;
+})";
+
+const std::string ext::effects::BrightFilter::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _bright
+{
+	float threshold;
+} bright;
+
+void effect(inout vec4 result)
+{
+	float luminance = dot(vec3(0.2125, 0.7154, 0.0721), result.xyz);
+	luminance = max(0.0, luminance - bright.threshold);
+	result *= sign(luminance);
+})";
+
+const std::string ext::effects::Grayscale::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _grayscale
+{
+	float intensity;
+} grayscale;
+
+void effect(inout vec4 result)
+{
+	float gray = dot(result.rgb, vec3(0.299, 0.587, 0.114));
+	result.rgb = mix(result.rgb, vec3(gray), grayscale.intensity);
+})";
+
 
 ext::Mesh::Mesh()
 {
@@ -234,10 +279,10 @@ void ext::SetMesh(Commands& cmds, const Mesh* mesh)
 	});
 }
 
-void ext::SetLight(Commands& cmds, Light light)
+void ext::SetEffect(Commands& cmds, std::optional<Effect> effect)
 {
-	cmds.push_back(commands::SetLight{
-		.light = std::move(light)
+	cmds.push_back(commands::SetEffect{
+		.effect = std::move(effect)
 	});
 }
 
@@ -340,8 +385,8 @@ void ext::ExecuteCommands(const Commands& cmds)
 	Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
-	Light light = NoLight{};
-	bool light_dirty = true;
+	std::optional<Effect> effect;
+	bool effect_dirty = true;
 
 	Shader* shader = nullptr;
 
@@ -370,9 +415,9 @@ void ext::ExecuteCommands(const Commands& cmds)
 				mesh = const_cast<Mesh*>(cmd.mesh);
 				mesh_dirty = true;
 			},
-			[&](const commands::SetLight& cmd) {
-				light = cmd.light;
-				light_dirty = true;
+			[&](const commands::SetEffect& cmd) {
+				effect = cmd.effect;
+				effect_dirty = true;
 			},
 			[&](const commands::SetColorTexture& cmd) {
 				if (color_texture == cmd.color_texture)
@@ -446,57 +491,47 @@ void ext::ExecuteCommands(const Commands& cmds)
 					mesh_dirty = false;
 				}
 
-				if (light_dirty)
+				if (effect_dirty)
 				{
-					auto prev_shader = shader;
-
-					auto shader = std::visit(cases{
-						[&](const NoLight& no_light) {
-							static auto no_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
-								"COLOR_TEXTURE_BINDING 0",
-								"SETTINGS_UNIFORM_BINDING 1"
-							});
-							return &no_light_shader;
-						},
-						[&](const DirectionalLight& directional_light) {
-							static auto directional_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
-								"COLOR_TEXTURE_BINDING 0",
-								"NORMAL_TEXTURE_BINDING 1",
-								"SETTINGS_UNIFORM_BINDING 2",
-								"DIRECTIONAL_LIGHT_UNIFORM_BINDING 3"
-							});
-							return &directional_light_shader;
-						},
-						[&](const PointLight& point_light) {
-							static auto point_light_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
-								"COLOR_TEXTURE_BINDING 0",
-								"NORMAL_TEXTURE_BINDING 1",
-								"SETTINGS_UNIFORM_BINDING 2",
-								"POINT_LIGHT_UNIFORM_BINDING 3"
-							});
-							return &point_light_shader;
-						},
-					}, light);
-
-					if (shader != prev_shader)
+					if (!effect.has_value())
 					{
-						SetShader(*shader);
-						textures_dirty = true;
-						settings_dirty = true;
+						static auto default_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
+							"COLOR_TEXTURE_BINDING 0",
+							"NORMAL_TEXTURE_BINDING 1",
+							"SETTINGS_UNIFORM_BINDING 2"
+						});
+						shader = &default_shader;
+					}
+					else
+					{
+						shader = std::visit(cases{
+							[&](const auto& effect) {
+								using T = std::decay_t<decltype(effect)>;
+								auto effect_shader_func = T::Shader;
+								static auto effect_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code + effect_shader_func, {
+									"COLOR_TEXTURE_BINDING 0",
+									"NORMAL_TEXTURE_BINDING 1",
+									"SETTINGS_UNIFORM_BINDING 2",
+									"EFFECT_UNIFORM_BINDING 3",
+									"EFFECT_FUNC effect"
+								});
+								return &effect_shader;
+							},
+						}, effect.value());
 					}
 
-					std::visit(cases{
-						[&](const NoLight& no_light) {
-						},
-						[&](const DirectionalLight& directional_light) {
-							SetDynamicUniformBuffer(3, directional_light);
-						},
-						[&](const PointLight& point_light) {
-							SetDynamicUniformBuffer(3, point_light);
-						},
-					}, light);
+					SetShader(*shader);
 
-					light_dirty = false;
+					if (effect.has_value())
+					{
+						std::visit(cases{
+							[&](const auto& effect) {
+								SetDynamicUniformBuffer(3, effect);
+							},
+						}, effect.value());
+					}
+
+					effect_dirty = false;
 				}
 
 				if (textures_dirty)
@@ -507,37 +542,15 @@ void ext::ExecuteCommands(const Commands& cmds)
 					const auto& _color_texture = color_texture != nullptr ? *color_texture : white_pixel_texture;
 					const auto& _normal_texture = normal_texture != nullptr ? *normal_texture : white_pixel_texture;
 
-					std::visit(cases{
-						[&](const NoLight& no_light) {
-							SetTexture(0, _color_texture);
-						},
-						[&](const DirectionalLight& directional_light) {
-							SetTexture(0, _color_texture);
-							SetTexture(1, _normal_texture);
-						},
-						[&](const PointLight& point_light) {
-							SetTexture(0, _color_texture);
-							SetTexture(1, _normal_texture);
-						},
-					}, light);
-
+					SetTexture(0, _color_texture);
+					SetTexture(1, _normal_texture);
+					
 					textures_dirty = false;
 				}
 
 				if (settings_dirty)
 				{
-					std::visit(cases{
-						[&](const NoLight& no_light) {
-							SetDynamicUniformBuffer(1, settings);
-						},
-						[&](const DirectionalLight& directional_light) {
-							SetDynamicUniformBuffer(2, settings);
-						},
-						[&](const PointLight& point_light) {
-							SetDynamicUniformBuffer(2, settings);
-						},
-					}, light);
-
+					SetDynamicUniformBuffer(2, settings);
 					settings_dirty = false;
 				}
 
@@ -577,157 +590,48 @@ void ext::ExecuteCommands(const Commands& cmds)
 	}
 }
 
-const std::string pass_vertex_shader_code = R"(
-#version 450 core
-
-layout(location = POSITION_LOCATION) in vec3 aPosition;
-layout(location = TEXCOORD_LOCATION) in vec2 aTexCoord;
-
-layout(location = 0) out struct { vec2 tex_coord; } Out;
-out gl_PerVertex { vec4 gl_Position; };
-
-void main()
-{
-	Out.tex_coord = aTexCoord;
-#ifdef FLIP_TEXCOORD_Y
-	Out.tex_coord.y = 1.0 - Out.tex_coord.y;
-#endif
-	gl_Position = vec4(aPosition, 1.0);
-})";
-
-const std::string blur_fragment_shader_code = R"(
-#version 450 core
-
-layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec2 tex_coord; } In;
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
-
-layout(binding = SETTINGS_UNIFORM_BINDING) uniform Settings
-{
-	vec2 direction;
-	vec2 resolution;
-} settings;
-
-void main()
-{
-	result = vec4(0.0);
-
-	vec2 off1 = vec2(1.3846153846) * settings.direction / settings.resolution;
-	vec2 off2 = vec2(3.2307692308) * settings.direction / settings.resolution;
-
-	result += texture(sColorTexture, In.tex_coord) * 0.2270270270;
-
-	result += texture(sColorTexture, In.tex_coord + off1) * 0.3162162162;
-	result += texture(sColorTexture, In.tex_coord - off1) * 0.3162162162;
-
-	result += texture(sColorTexture, In.tex_coord + off2) * 0.0702702703;
-	result += texture(sColorTexture, In.tex_coord - off2) * 0.0702702703;
-})";
-
-const std::string bright_filter_fragment_shader_code = R"(
-#version 450 core
-
-layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec2 tex_coord; } In;
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
-
-void main()
-{
-	result = texture(sColorTexture, In.tex_coord);
-	float threshold = 0.9; // TODO: uniform
-	float luminance = dot(vec3(0.2125, 0.7154, 0.0721), result.xyz);
-	luminance = max(0.0, luminance - threshold);
-	result *= sign(luminance);
-})";
-
-const std::string grayscale_fragment_shader_code = R"(
-#version 450 core
-
-layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec2 tex_coord; } In;
-layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
-
-void main()
-{
-	result = texture(sColorTexture, In.tex_coord);
-	float intensity = 1.0; // TODO: uniform
-	float gray = dot(result.rgb, vec3(0.299, 0.587, 0.114));
-	result.rgb = mix(result.rgb, vec3(gray), intensity);
-})";
-
-const std::vector<Vertex::PositionTexture> pass_vertices = {
-	{ { -1.0f, -1.0f, 0.0f }, { 0.0f, 1.0f } },
-	{ { -1.0f,  1.0f, 0.0f }, { 0.0f, 0.0f } },
-	{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f } },
-	{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f } },
-};
-
-const std::vector<uint32_t> pass_indices = {
-	0, 1, 2, 0, 2, 3
-};
-
 void ext::passes::Blur::execute(const RenderTarget& src, const RenderTarget& dst)
 {
-	static const auto vertex_buffer = VertexBuffer(pass_vertices);
-	static const auto index_buffer = IndexBuffer(pass_indices);
-
-	static const auto shader = Shader(Vertex::PositionTexture::Layout, pass_vertex_shader_code, blur_fragment_shader_code, {
-		"COLOR_TEXTURE_BINDING 0",
-		"SETTINGS_UNIFORM_BINDING 1"
-	});
-
-	struct alignas(16) Settings
-	{
-		glm::vec2 direction;
-		glm::vec2 resolution;
-	};
-
 	if (!mBlurTarget.has_value() || mBlurTarget.value().getWidth() != src.getWidth() || mBlurTarget.value().getHeight() != src.getHeight())
 		mBlurTarget.emplace(src.getWidth(), src.getHeight());
 
-	SetTopology(Topology::TriangleList);
-	SetShader(shader);
-	SetVertexBuffer(vertex_buffer);
-	SetIndexBuffer(index_buffer);
+	auto resolution = glm::vec2{ static_cast<float>(src.getWidth()), static_cast<float>(src.getHeight()) };
 
-	// horizontal pass
-
-	SetDynamicUniformBuffer(1, Settings{
-		.direction = { 1.0f, 0.0f },
-		.resolution = { static_cast<float>(src.getWidth()), static_cast<float>(src.getHeight()) }
-	});
 	SetRenderTarget(mBlurTarget.value());
-	SetTexture(0, src);
 	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-	DrawIndexed(6);
 
-	// vertical pass
-
-	SetDynamicUniformBuffer(1, Settings{
-		.direction = { 0.0f, 1.0f },
-		.resolution = { static_cast<float>(src.getWidth()), static_cast<float>(src.getHeight()) }
+	ExecuteCommands({
+		commands::SetColorTexture{ &src },
+		commands::SetEffect{
+			effects::GaussianBlur{
+				.direction = { 1.0f, 0.0f },
+				.resolution = resolution
+			}
+		},
+		commands::Draw{},
+		commands::SetEffect{
+			effects::GaussianBlur{
+				.direction = { 0.0f, 1.0f },
+				.resolution = resolution
+			}
+		},
+		commands::Callback{ [&] {
+			SetRenderTarget(dst);		
+		} },
+		commands::SetColorTexture{ &mBlurTarget.value() },
+		commands::Draw{}
 	});
-	SetRenderTarget(dst);
-	SetTexture(0, mBlurTarget.value());
-	DrawIndexed(6);
 }
 
 void ext::passes::BrightFilter::execute(const RenderTarget& src, const RenderTarget& dst)
 {
-	static const auto vertex_buffer = VertexBuffer(pass_vertices);
-	static const auto index_buffer = IndexBuffer(pass_indices);
-
-	static const auto bright_filter_shader = Shader(Vertex::PositionTexture::Layout, pass_vertex_shader_code, bright_filter_fragment_shader_code, {
-		"COLOR_TEXTURE_BINDING 0"
-	});
-
-	SetTopology(Topology::TriangleList);
-	SetShader(bright_filter_shader);
-	SetVertexBuffer(vertex_buffer);
-	SetIndexBuffer(index_buffer);
 	SetRenderTarget(dst);
-	SetTexture(0, src);
-	DrawIndexed(6);
+
+	ExecuteCommands({
+		commands::SetColorTexture{ &src },
+		commands::SetEffect{ effects::BrightFilter{} },
+		commands::Draw{},
+	});
 }
 
 void ext::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& dst)
@@ -770,18 +674,11 @@ void ext::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& ds
 
 void ext::passes::Grayscale::execute(const RenderTarget& src, const RenderTarget& dst)
 {
-	static const auto vertex_buffer = VertexBuffer(pass_vertices);
-	static const auto index_buffer = IndexBuffer(pass_indices);
-
-	static const auto shader = Shader(Vertex::PositionTexture::Layout, pass_vertex_shader_code, grayscale_fragment_shader_code, {
-		"COLOR_TEXTURE_BINDING 0"
-	});
-
-	SetTopology(Topology::TriangleList);
-	SetShader(shader);
-	SetVertexBuffer(vertex_buffer);
-	SetIndexBuffer(index_buffer);
 	SetRenderTarget(dst);
-	SetTexture(0, src);
-	DrawIndexed(6);
+
+	ExecuteCommands({
+		commands::SetColorTexture{ &src },
+		commands::SetEffect{ effects::Grayscale{} },
+		commands::Draw{},
+	});
 }

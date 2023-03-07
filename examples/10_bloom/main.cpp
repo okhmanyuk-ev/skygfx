@@ -81,7 +81,7 @@ int main()
 		.position = glm::vec3{ -500.0f, 200.0f, 0.0f }
 	};
 
-	const auto light = skygfx::ext::DirectionalLight{
+	const auto light = skygfx::ext::effects::DirectionalLight{
 		.direction = { 1.0f, 0.5f, 0.5f },
 		.ambient = { 0.25f, 0.25f, 0.25f },
 		.diffuse = { 1.0f, 1.0f, 1.0f },
@@ -128,7 +128,7 @@ int main()
 		skygfx::ext::ExecuteCommands({
 			skygfx::ext::commands::SetMesh{ &cube_mesh },
 			skygfx::ext::commands::SetCamera{ camera },
-			skygfx::ext::commands::SetLight{ light },
+			skygfx::ext::commands::SetEffect{ light },
 			skygfx::ext::commands::SetColorTexture{ &texture },
 			skygfx::ext::commands::SetModelMatrix{ model },
 			skygfx::ext::commands::Draw{}
