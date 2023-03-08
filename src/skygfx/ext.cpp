@@ -272,17 +272,21 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> ext::Make
 	}, camera);
 }
 
+Shader ext::MakeEffectShader(const std::string& effect_shader_func)
+{
+	return Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code + effect_shader_func, {
+		"COLOR_TEXTURE_BINDING 0",
+		"NORMAL_TEXTURE_BINDING 1",
+		"SETTINGS_UNIFORM_BINDING 2",
+		"EFFECT_UNIFORM_BINDING 3",
+		"EFFECT_FUNC effect"
+	});
+}
+
 void ext::SetMesh(Commands& cmds, const Mesh* mesh)
 {
 	cmds.push_back(commands::SetMesh{
 		.mesh = mesh
-	});
-}
-
-void ext::SetEffect(Commands& cmds, std::optional<Effect> effect)
-{
-	cmds.push_back(commands::SetEffect{
-		.effect = std::move(effect)
 	});
 }
 
@@ -385,10 +389,11 @@ void ext::ExecuteCommands(const Commands& cmds)
 	Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
-	std::optional<Effect> effect;
-	bool effect_dirty = true;
-
 	Shader* shader = nullptr;
+	bool shader_dirty = true;
+
+	std::function<void(uint32_t binding)> setup_uniform_buffer_func = nullptr;
+	bool uniform_dirty = true;
 
 	Texture* color_texture = nullptr;
 	Texture* normal_texture = nullptr;
@@ -416,8 +421,10 @@ void ext::ExecuteCommands(const Commands& cmds)
 				mesh_dirty = true;
 			},
 			[&](const commands::SetEffect& cmd) {
-				effect = cmd.effect;
-				effect_dirty = true;
+				shader = cmd.shader;
+				setup_uniform_buffer_func = cmd.setup_uniform_buffer_func;
+				shader_dirty = true;
+				uniform_dirty = true;
 			},
 			[&](const commands::SetColorTexture& cmd) {
 				if (color_texture == cmd.color_texture)
@@ -491,47 +498,24 @@ void ext::ExecuteCommands(const Commands& cmds)
 					mesh_dirty = false;
 				}
 
-				if (effect_dirty)
+				if (shader_dirty)
 				{
-					if (!effect.has_value())
-					{
-						static auto default_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
-							"COLOR_TEXTURE_BINDING 0",
-							"NORMAL_TEXTURE_BINDING 1",
-							"SETTINGS_UNIFORM_BINDING 2"
-						});
-						shader = &default_shader;
-					}
-					else
-					{
-						shader = std::visit(cases{
-							[&](const auto& effect) {
-								using T = std::decay_t<decltype(effect)>;
-								auto effect_shader_func = T::Shader;
-								static auto effect_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code + effect_shader_func, {
-									"COLOR_TEXTURE_BINDING 0",
-									"NORMAL_TEXTURE_BINDING 1",
-									"SETTINGS_UNIFORM_BINDING 2",
-									"EFFECT_UNIFORM_BINDING 3",
-									"EFFECT_FUNC effect"
-								});
-								return &effect_shader;
-							},
-						}, effect.value());
-					}
+					static auto default_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
+						"COLOR_TEXTURE_BINDING 0",
+						"NORMAL_TEXTURE_BINDING 1",
+						"SETTINGS_UNIFORM_BINDING 2"
+					});
 
-					SetShader(*shader);
+					SetShader(shader == nullptr ? default_shader : *shader);
+					shader_dirty = false;
+				}
 
-					if (effect.has_value())
-					{
-						std::visit(cases{
-							[&](const auto& effect) {
-								SetDynamicUniformBuffer(3, effect);
-							},
-						}, effect.value());
-					}
+				if (uniform_dirty)
+				{
+					if (setup_uniform_buffer_func != nullptr)
+						setup_uniform_buffer_func(3);
 
-					effect_dirty = false;
+					uniform_dirty = false;
 				}
 
 				if (textures_dirty)

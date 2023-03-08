@@ -108,12 +108,9 @@ namespace skygfx::ext
 		};
 	}
 
-	using Effect = std::variant<
+	using Light = std::variant<
 		effects::DirectionalLight,
-		effects::PointLight,
-		effects::GaussianBlur,
-		effects::BrightFilter,
-		effects::Grayscale
+		effects::PointLight
 	>;
 
 	struct OrthogonalCamera {};
@@ -134,10 +131,28 @@ namespace skygfx::ext
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(const Camera& camera, 
 		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
 
+	Shader MakeEffectShader(const std::string& effect_shader_func);
+	
 	namespace commands
 	{
+		struct SetEffect
+		{
+			SetEffect() {}
+
+			template<class T>
+			SetEffect(T value) {
+				static auto _shader = MakeEffectShader(T::Shader);
+				shader = &_shader;
+				setup_uniform_buffer_func = [value = std::move(value)](uint32_t binding) {
+					SetDynamicUniformBuffer(binding, value);
+				};
+			}
+
+			std::function<void(uint32_t binding)> setup_uniform_buffer_func = nullptr;
+			Shader* shader = nullptr;
+		};
+
 		struct SetMesh { const Mesh* mesh; };
-		struct SetEffect { std::optional<Effect> effect; };
 		struct SetColorTexture { const Texture* color_texture; };
 		struct SetNormalTexture { const Texture* normal_texture; };
 		struct SetColor { glm::vec4 color; };
@@ -177,7 +192,13 @@ namespace skygfx::ext
 	}
 
 	void SetMesh(Commands& cmds, const Mesh* mesh);
-	void SetEffect(Commands& cmds, std::optional<Effect> effect);
+
+	template<class T>
+	void SetEffect(Commands& cmds, T effect)
+	{
+		cmds.push_back(commands::SetEffect{ std::move(effect) });
+	}
+	
 	void SetColorTexture(Commands& cmds, const Texture* color_texture);
 	void SetNormalTexture(Commands& cmds, const Texture* normal_texture);
 	void SetColor(Commands& cmds, glm::vec4 color);
