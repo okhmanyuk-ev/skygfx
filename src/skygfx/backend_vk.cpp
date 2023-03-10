@@ -248,16 +248,22 @@ const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 
 class ShaderVK
 {
-	friend class BackendVK;
-
+public:
+	const auto& getVkPipelineLayout() const { return mPipelineLayout; }
+	const auto& getVkVertexShaderModule() const { return mVertexShaderModule; }
+	const auto& getVkFragmentShaderModule() const { return mFragmentShaderModule; }
+	const auto& getVkVertexInputBindingDescription() const { return mVertexInputBindingDescription; }
+	const auto& getVkVertexInputAttributeDescriptions() const { return mVertexInputAttributeDescriptions; }
+	const auto& getVkRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
+	
 private:
-	vk::raii::DescriptorSetLayout descriptor_set_layout = nullptr;
-	vk::raii::PipelineLayout pipeline_layout = nullptr;
-	vk::raii::ShaderModule vertex_shader_module = nullptr;
-	vk::raii::ShaderModule fragment_shader_module = nullptr;
-	vk::VertexInputBindingDescription vertex_input_binding_description;
-	std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
-	std::vector<vk::DescriptorSetLayoutBinding> required_descriptor_bindings;
+	vk::raii::DescriptorSetLayout mDescriptorSetLayout = nullptr;
+	vk::raii::PipelineLayout mPipelineLayout = nullptr;
+	vk::raii::ShaderModule mVertexShaderModule = nullptr;
+	vk::raii::ShaderModule mFragmentShaderModule = nullptr;
+	vk::VertexInputBindingDescription mVertexInputBindingDescription;
+	std::vector<vk::VertexInputAttributeDescription> mVertexInputAttributeDescriptions;
+	std::vector<vk::DescriptorSetLayoutBinding> mRequiredDescriptorBindings;
 
 public:
 	ShaderVK(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -286,7 +292,7 @@ public:
 			{
 				bool overwritten = false;
 
-				for (auto& _binding : required_descriptor_bindings)
+				for (auto& _binding : mRequiredDescriptorBindings)
 				{
 					if (_binding.binding != binding)
 						continue;
@@ -305,21 +311,21 @@ public:
 					.setBinding(binding)
 					.setStageFlags(StageMap.at(reflection.stage));
 
-				required_descriptor_bindings.push_back(descriptor_set_layout_binding);
+				mRequiredDescriptorBindings.push_back(descriptor_set_layout_binding);
 			}
 		}
 
 		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
 			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
-			.setBindings(required_descriptor_bindings);
+			.setBindings(mRequiredDescriptorBindings);
 
-		descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
+		mDescriptorSetLayout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
 		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
 			.setSetLayoutCount(1)
-			.setPSetLayouts(&*descriptor_set_layout);
+			.setPSetLayouts(&*mDescriptorSetLayout);
 
-		pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
+		mPipelineLayout = gDevice.createPipelineLayout(pipeline_layout_create_info);
 
 		auto vertex_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(vertex_shader_spirv);
@@ -327,8 +333,8 @@ public:
 		auto fragment_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(fragment_shader_spirv);
 
-		vertex_shader_module = gDevice.createShaderModule(vertex_shader_module_create_info);
-		fragment_shader_module = gDevice.createShaderModule(fragment_shader_module_create_info);
+		mVertexShaderModule = gDevice.createShaderModule(vertex_shader_module_create_info);
+		mFragmentShaderModule = gDevice.createShaderModule(fragment_shader_module_create_info);
 
 		static const std::unordered_map<Vertex::Attribute::Format, vk::Format> Format = {
 			{ Vertex::Attribute::Format::Float1, vk::Format::eR32Sfloat },
@@ -341,7 +347,7 @@ public:
 			{ Vertex::Attribute::Format::Byte4, vk::Format::eR8G8B8A8Unorm }
 		};
 
-		vertex_input_binding_description = vk::VertexInputBindingDescription()
+		mVertexInputBindingDescription = vk::VertexInputBindingDescription()
 			.setStride(static_cast<uint32_t>(layout.stride))
 			.setInputRate(vk::VertexInputRate::eVertex)
 			.setBinding(0);
@@ -356,19 +362,22 @@ public:
 				.setFormat(Format.at(attrib.format))
 				.setOffset(static_cast<uint32_t>(attrib.offset));
 
-			vertex_input_attribute_descriptions.push_back(vertex_input_attribute_description);
+			mVertexInputAttributeDescriptions.push_back(vertex_input_attribute_description);
 		}
 	}
 };
 
 class TextureVK
 {
-	friend class BackendVK;
+public:
+	const auto& getVkImage() const { return mImage; }
+	const auto& getVkImageView() const { return mImageView; }
+	const auto& getVkDeviceMemory() const { return mDeviceMemory; }
 
 private:
-	vk::raii::Image image = nullptr;
-	vk::raii::ImageView image_view = nullptr;
-	vk::raii::DeviceMemory device_memory = nullptr;
+	vk::raii::Image mImage = nullptr;
+	vk::raii::ImageView mImageView = nullptr;
+	vk::raii::DeviceMemory mDeviceMemory = nullptr;
 
 public:
 	TextureVK(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
@@ -393,18 +402,18 @@ public:
 			.setSharingMode(vk::SharingMode::eExclusive)
 			.setInitialLayout(vk::ImageLayout::eUndefined);
 
-		image = gDevice.createImage(image_create_info);
+		mImage = gDevice.createImage(image_create_info);
 
-		auto memory_requirements = image.getMemoryRequirements();
+		auto memory_requirements = mImage.getMemoryRequirements();
 
 		auto memory_allocate_info = vk::MemoryAllocateInfo()
 			.setAllocationSize(memory_requirements.size)
 			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, 
 				memory_requirements.memoryTypeBits));
 
-		device_memory = gDevice.allocateMemory(memory_allocate_info);
+		mDeviceMemory = gDevice.allocateMemory(memory_allocate_info);
 	
-		image.bindMemory(*device_memory, 0);
+		mImage.bindMemory(*mDeviceMemory, 0);
 
 		auto image_subresource_range = vk::ImageSubresourceRange()
 			.setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -412,12 +421,12 @@ public:
 			.setLayerCount(1);
 
 		auto image_view_create_info = vk::ImageViewCreateInfo()
-			.setImage(*image)
+			.setImage(*mImage)
 			.setViewType(vk::ImageViewType::e2D)
 			.setFormat(vk::Format::eR8G8B8A8Unorm)
 			.setSubresourceRange(image_subresource_range);
 
-		image_view = gDevice.createImageView(image_view_create_info);
+		mImageView = gDevice.createImageView(image_view_create_info);
 
 		if (memory)
 		{
@@ -447,7 +456,7 @@ public:
 			upload_buffer_memory.unmapMemory();
 
 			OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-				SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
 					vk::ImageLayout::eTransferDstOptimal);
 
 				auto image_subresource_layers = vk::ImageSubresourceLayers()
@@ -458,9 +467,9 @@ public:
 					.setImageSubresource(image_subresource_layers)
 					.setImageExtent({ width, height, 1 });
 
-				cmdbuf.copyBufferToImage(*upload_buffer, *image, vk::ImageLayout::eTransferDstOptimal, { region });
+				cmdbuf.copyBufferToImage(*upload_buffer, *mImage, vk::ImageLayout::eTransferDstOptimal, { region });
 
-				SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
 					vk::ImageLayout::eTransferSrcOptimal);
 
 				for (uint32_t i = 1; i < mip_levels; i++)
@@ -471,7 +480,7 @@ public:
 						.setLayerCount(1)
 						.setLevelCount(1);
 
-					SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+					SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
 						vk::ImageLayout::eTransferDstOptimal, mip_subresource_range);
 
 					auto src_subresource = vk::ImageSubresourceLayers()
@@ -490,10 +499,10 @@ public:
 						.setSrcOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(width >> (i - 1)), int32_t(height >> (i - 1)), 1 } })
 						.setDstOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(width >> i), int32_t(height >> i), 1 } });
 
-					cmdbuf.blitImage(*image, vk::ImageLayout::eTransferSrcOptimal, *image,
+					cmdbuf.blitImage(*mImage, vk::ImageLayout::eTransferSrcOptimal, *mImage,
 						vk::ImageLayout::eTransferDstOptimal, { mip_region }, vk::Filter::eLinear);
 
-					SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+					SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
 						vk::ImageLayout::eTransferSrcOptimal, mip_subresource_range);
 				}
 
@@ -502,7 +511,7 @@ public:
 					.setLayerCount(1)
 					.setLevelCount(mip_levels);
 
-				SetImageLayout(cmdbuf, *image, vk::Format::eUndefined, vk::ImageLayout::eTransferSrcOptimal,
+				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eTransferSrcOptimal,
 					vk::ImageLayout::eShaderReadOnlyOptimal, subresource_range);
 			});
 		}
@@ -512,9 +521,14 @@ public:
 class RenderTargetVK
 {
 public:
-	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture)
+	auto getTexture() const { return mTexture; }
+
+private:
+	TextureVK* mTexture;
+
+public:
+	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture) : mTexture(_texture)
 	{
-		assert(false); // render targets are not implemented in vulkan backend by now
 	}
 
 	~RenderTargetVK()
@@ -524,11 +538,13 @@ public:
 
 class BufferVK
 {
-	friend class BackendVK;
+public:
+	const auto& getVkBuffer() const { return mBuffer; }
+	const auto& getVkDeviceMemory() const { return mDeviceMemory; }
 
 private:
-	vk::raii::Buffer buffer = nullptr;
-	vk::raii::DeviceMemory device_memory = nullptr;
+	vk::raii::Buffer mBuffer = nullptr;
+	vk::raii::DeviceMemory mDeviceMemory = nullptr;
 
 public:
 	BufferVK(size_t size, vk::BufferUsageFlags usage)
@@ -538,61 +554,63 @@ public:
 			.setUsage(usage)
 			.setSharingMode(vk::SharingMode::eExclusive);
 
-		buffer = gDevice.createBuffer(buffer_create_info);
+		mBuffer = gDevice.createBuffer(buffer_create_info);
 
-		auto memory_requirements = buffer.getMemoryRequirements();
+		auto memory_requirements = mBuffer.getMemoryRequirements();
 
 		auto memory_allocate_info = vk::MemoryAllocateInfo()
 			.setAllocationSize(memory_requirements.size)
 			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
 
-		device_memory = gDevice.allocateMemory(memory_allocate_info);
+		mDeviceMemory = gDevice.allocateMemory(memory_allocate_info);
 		
-		buffer.bindMemory(*device_memory, 0);
+		mBuffer.bindMemory(*mDeviceMemory, 0);
 	}
 
 	void write(void* memory, size_t size)
 	{
-		auto mem = device_memory.mapMemory(0, VK_WHOLE_SIZE);
+		auto mem = mDeviceMemory.mapMemory(0, VK_WHOLE_SIZE);
 		memcpy(mem, memory, size);
-		device_memory.unmapMemory();
+		mDeviceMemory.unmapMemory();
 	}
 };
 
 class VertexBufferVK : public BufferVK
 {
-	friend class BackendVK;
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 
 private:
-	size_t stride = 0;
+	size_t mStride = 0;
 
 public:
-	VertexBufferVK(size_t size, size_t _stride) :
+	VertexBufferVK(size_t size, size_t stride) :
 		BufferVK(size, vk::BufferUsageFlagBits::eVertexBuffer),
-		stride(_stride)
+		mStride(stride)
 	{
 	}
 };
 
 class IndexBufferVK : public BufferVK
 {
-	friend class BackendVK;
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 
 private:
-	size_t stride = 0;
+	size_t mStride = 0;
 
 public:
-	IndexBufferVK(size_t size, size_t _stride) :
+	IndexBufferVK(size_t size, size_t stride) :
 		BufferVK(size, vk::BufferUsageFlagBits::eIndexBuffer),
-		stride(_stride)
+		mStride(stride)
 	{
 	}
 };
 
 class UniformBufferVK : public BufferVK
 {
-	friend class BackendVK;
-
 public:
 	UniformBufferVK(size_t size) :
 		BufferVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
@@ -1016,14 +1034,16 @@ void BackendVK::present()
 
 	const auto& render_complete_semaphore = gFrames.at(gSemaphoreIndex).render_complete_semaphore;
 
-	vk::PipelineStageFlags wait_dst_stage_mask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+	auto wait_dst_stage_mask = vk::PipelineStageFlags{
+		vk::PipelineStageFlagBits::eColorAttachmentOutput
+	};
 
 	auto submit_info = vk::SubmitInfo()
 		.setPWaitDstStageMask(&wait_dst_stage_mask)
 		.setWaitSemaphoreCount(1)
 		.setPWaitSemaphores(&*image_acquired_semaphore)
 		.setCommandBufferCount(1)
-		.setPCommandBuffers(&*frame.command_buffer)
+		.setPCommandBuffers(&*cmd)
 		.setSignalSemaphoreCount(1)
 		.setPSignalSemaphores(&*render_complete_semaphore);
 
@@ -1169,7 +1189,7 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 {
 	auto buffer = (VertexBufferVK*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
@@ -1190,7 +1210,7 @@ void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 {
 	auto buffer = (IndexBufferVK*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
@@ -1354,14 +1374,14 @@ void BackendVK::prepareForDrawing()
 	
 	if (gVertexBufferDirty)
 	{
-		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->buffer }, { 0 }, nullptr, { gVertexBuffer->stride });
+		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->getVkBuffer() }, { 0 }, nullptr, { gVertexBuffer->getStride() });
 		gVertexBufferDirty = false;
 	}
 
 	if (gIndexBufferDirty)
 	{
-		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->buffer, 0, 
-			gIndexBuffer->stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getVkBuffer(), 0, 
+			gIndexBuffer->getStride() == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
 		gIndexBufferDirty = false;
 	}
 
@@ -1409,12 +1429,12 @@ void BackendVK::prepareForDrawing()
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eVertex)
-				.setModule(*shader->vertex_shader_module)
+				.setModule(*shader->getVkVertexShaderModule())
 				.setPName("main"),
 
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eFragment)
-				.setModule(*shader->fragment_shader_module)
+				.setModule(*shader->getVkFragmentShaderModule())
 				.setPName("main")
 		};
 
@@ -1484,8 +1504,8 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 			.setVertexBindingDescriptionCount(1)
-			.setPVertexBindingDescriptions(&shader->vertex_input_binding_description)
-			.setVertexAttributeDescriptions(shader->vertex_input_attribute_descriptions);
+			.setPVertexBindingDescriptions(&shader->getVkVertexInputBindingDescription())
+			.setVertexAttributeDescriptions(shader->getVkVertexInputAttributeDescriptions());
 
 		auto dynamic_states = {
 			vk::DynamicState::eViewport,
@@ -1508,7 +1528,7 @@ void BackendVK::prepareForDrawing()
 			.setColorAttachmentFormats(gSurfaceFormat.format);
 
 		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
-			.setLayout(*shader->pipeline_layout)
+			.setLayout(*shader->getVkPipelineLayout())
 			.setFlags(vk::PipelineCreateFlagBits())
 			.setStages(pipeline_shader_stage_create_info)
 			.setPVertexInputState(&pipeline_vertex_input_state_create_info)
@@ -1558,9 +1578,9 @@ void BackendVK::prepareForDrawing()
 
 	const auto& sampler = gSamplers.at(gSamplerState);
 
-	auto pipeline_layout = *shader->pipeline_layout;
+	auto pipeline_layout = *shader->getVkPipelineLayout();
 
-	for (const auto& required_descriptor_binding : shader->required_descriptor_bindings)
+	for (const auto& required_descriptor_binding : shader->getVkRequiredDescriptorBindings())
 	{
 		auto binding = required_descriptor_binding.binding;
 
@@ -1576,7 +1596,7 @@ void BackendVK::prepareForDrawing()
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setSampler(*sampler)
-				.setImageView(*texture->image_view)
+				.setImageView(*texture->getVkImageView())
 				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 
 			write_descriptor_set.setPImageInfo(&descriptor_image_info);
@@ -1586,7 +1606,7 @@ void BackendVK::prepareForDrawing()
 			auto buffer = gUniformBuffers.at(binding);
 
 			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
-				.setBuffer(*buffer->buffer)
+				.setBuffer(*buffer->getVkBuffer())
 				.setRange(VK_WHOLE_SIZE);
 
 			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
