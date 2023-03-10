@@ -149,16 +149,22 @@ void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12Graphics
 
 class ShaderD3D12
 {
-	friend class BackendD3D12;
+public:
+	const auto& getD3D12RootSignature() const { return mRootSignature; }
+	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
+	const auto& getBindingToRootIndex() const { return mBindingToRootIndex; }
+	const auto& getD3D12VertexShaderBlob() const { return mVertexShaderBlob; }
+	const auto& getD3D12PixelShaderBlob() const { return mPixelShaderBlob; }
+	const auto& getD3D12Input() const { return mInput; }
 
 private:
-	ComPtr<ID3D12RootSignature> root_signature;
-	std::map<uint32_t, ShaderReflection::Descriptor> required_descriptor_bindings;
-	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> required_descriptor_sets;
-	std::map<uint32_t, uint32_t> binding_to_root_index;
-	ComPtr<ID3DBlob> vertex_shader_blob;
-	ComPtr<ID3DBlob> pixel_shader_blob;
-	std::vector<D3D12_INPUT_ELEMENT_DESC> input;
+	ComPtr<ID3D12RootSignature> mRootSignature;
+	std::map<uint32_t, ShaderReflection::Descriptor> mRequiredDescriptorBindings;
+	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> mRequiredDescriptorSets;
+	std::map<uint32_t, uint32_t> mBindingToRootIndex;
+	ComPtr<ID3DBlob> mVertexShaderBlob;
+	ComPtr<ID3DBlob> mPixelShaderBlob;
+	std::vector<D3D12_INPUT_ELEMENT_DESC> mInput;
 
 public:
 	ShaderD3D12(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
@@ -182,9 +188,9 @@ public:
 		UINT compile_flags = 0;
 #endif
 		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_5_0", compile_flags, 0, 
-			&vertex_shader_blob, &vertex_shader_error);
+			&mVertexShaderBlob, &vertex_shader_error);
 		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_5_0", compile_flags, 0, 
-			&pixel_shader_blob, &pixel_shader_error);
+			&mPixelShaderBlob, &pixel_shader_error);
 
 		std::string vertex_shader_error_string = "";
 		std::string pixel_shader_error_string = "";
@@ -195,10 +201,10 @@ public:
 		if (pixel_shader_error != NULL)
 			pixel_shader_error_string = std::string((char*)pixel_shader_error->GetBufferPointer(), pixel_shader_error->GetBufferSize());
 
-		if (vertex_shader_blob == NULL)
+		if (mVertexShaderBlob == NULL)
 			throw std::runtime_error(vertex_shader_error_string);
 
-		if (pixel_shader_blob == NULL)
+		if (mPixelShaderBlob == NULL)
 			throw std::runtime_error(pixel_shader_error_string);
 
 		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
@@ -216,7 +222,7 @@ public:
 
 		for (auto& attrib : layout.attributes)
 		{
-			input.push_back({ "TEXCOORD", i, Format.at(attrib.format), 0,
+			mInput.push_back({ "TEXCOORD", i, Format.at(attrib.format), 0,
 				static_cast<UINT>(attrib.offset), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
 			i++;
 		}
@@ -228,15 +234,15 @@ public:
 		{
 			for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
 			{
-				if (required_descriptor_bindings.contains(binding))
+				if (mRequiredDescriptorBindings.contains(binding))
 					continue;
 
-				required_descriptor_bindings.insert({ binding, descriptor });
+				mRequiredDescriptorBindings.insert({ binding, descriptor });
 			}
 
 			for (const auto& [set, bindings] : reflection.descriptor_sets)
 			{
-				required_descriptor_sets[reflection.stage][set] = bindings;
+				mRequiredDescriptorSets[reflection.stage][set] = bindings;
 			}
 		}
 
@@ -245,7 +251,7 @@ public:
 			std::vector<D3D12_STATIC_SAMPLER_DESC> static_samplers;
 			std::vector<CD3DX12_DESCRIPTOR_RANGE> ranges(32);
 
-			for (const auto& [binding, descriptor] : required_descriptor_bindings)
+			for (const auto& [binding, descriptor] : mRequiredDescriptorBindings)
 			{
 				CD3DX12_ROOT_PARAMETER param;
 
@@ -267,7 +273,7 @@ public:
 					assert(false);
 				}
 
-				binding_to_root_index.insert({ binding, (uint32_t)params.size() });
+				mBindingToRootIndex.insert({ binding, (uint32_t)params.size() });
 				params.push_back(param);
 			}
 
@@ -284,28 +290,32 @@ public:
 			if (error != NULL)
 				error_string = std::string((char*)error->GetBufferPointer(), error->GetBufferSize());
 
-			gDevice->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&root_signature));
+			gDevice->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&mRootSignature));
 		}
 	}
 };
 
 class TextureD3D12
 {
-	friend class RenderTargetD3D12;
-	friend class BackendD3D12;
+public:
+	auto getWidth() const { return mWidth; }
+	auto getHeight() const { return mHeight; }
+	auto isMipmap() const { return mMipmap; }
+	const auto& getD3D12Texture() const { return mTexture; }
+	const auto& getD3D12SrvHeap() const { return mSrvHeap; }
 
 private:
-	uint32_t width;
-	uint32_t height;
-	bool mipmap;
-	ComPtr<ID3D12Resource> texture;
-	ComPtr<ID3D12DescriptorHeap> srv_heap;
+	uint32_t mWidth;
+	uint32_t mHeight;
+	bool mMipmap;
+	ComPtr<ID3D12Resource> mTexture; // TODO: rename to mResource maybe?
+	ComPtr<ID3D12DescriptorHeap> mSrvHeap;
 	
 public:
-	TextureD3D12(uint32_t _width, uint32_t _height, uint32_t channels, void* memory, bool _mipmap) :
-		width(_width),
-		height(_height),
-		mipmap(_mipmap)
+	TextureD3D12(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+		mWidth(width),
+		mHeight(height),
+		mMipmap(mipmap)
 	{
 		const auto format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -315,24 +325,24 @@ public:
 		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
 		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(texture.GetAddressOf()));
+			D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(mTexture.GetAddressOf()));
 
 		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
 		heap_desc.NumDescriptors = 1;
 		heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(srv_heap.GetAddressOf()));
+		gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(mSrvHeap.GetAddressOf()));
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
 		srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srv_desc.Format = format;
 		srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srv_desc.Texture2D.MipLevels = 1;
-		gDevice->CreateShaderResourceView(texture.Get(), &srv_desc, srv_heap->GetCPUDescriptorHandleForHeapStart());
+		gDevice->CreateShaderResourceView(mTexture.Get(), &srv_desc, mSrvHeap->GetCPUDescriptorHandleForHeapStart());
 
 		if (memory)
 		{
-			auto upload_size = GetRequiredIntermediateSize(texture.Get(), 0, 1);
+			auto upload_size = GetRequiredIntermediateSize(mTexture.Get(), 0, 1);
 			auto upload_desc = CD3DX12_RESOURCE_DESC::Buffer(upload_size);
 			auto upload_prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 
@@ -347,14 +357,14 @@ public:
 			subersource_data.SlicePitch = width * height * channels;
 
 			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(),
+				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(),
 					D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
 
 				cmdlist->ResourceBarrier(1, &barrier);
 
-				UpdateSubresources(cmdlist, texture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
+				UpdateSubresources(cmdlist, mTexture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
 
-				barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture.Get(),
+				barrier = CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(),
 					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
 				cmdlist->ResourceBarrier(1, &barrier);
@@ -374,28 +384,32 @@ public:
 
 class RenderTargetD3D12
 {
-	friend class BackendD3D12;
+public:
+	const auto& getD3D12RtvHeap() const { return mRtvHeap; }
+	const auto& getD3D12DsvHeap() const { return mDsvHeap; }
+	const auto& getD3D12DepthStencilRecource() const { return mDepthStencilResource; }
+	const auto& getTexture() const { return *mTexture; }
 
 private:
-	ComPtr<ID3D12DescriptorHeap> rtv_heap;
-	ComPtr<ID3D12DescriptorHeap> dsv_heap;
-	ComPtr<ID3D12Resource> depth_stencil_resource;
-	TextureD3D12* texture_data;
+	ComPtr<ID3D12DescriptorHeap> mRtvHeap;
+	ComPtr<ID3D12DescriptorHeap> mDsvHeap;
+	ComPtr<ID3D12Resource> mDepthStencilResource;
+	TextureD3D12* mTexture;
 
 public:
-	RenderTargetD3D12(uint32_t width, uint32_t height, TextureD3D12* _texture_data) : texture_data(_texture_data)
+	RenderTargetD3D12(uint32_t width, uint32_t height, TextureD3D12* texture) : mTexture(texture)
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
 		rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		rtv_heap_desc.NumDescriptors = 1;
-		gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(rtv_heap.GetAddressOf()));
+		gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf()));
 
 		D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {};
 		rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 		rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 
-		gDevice->CreateRenderTargetView(texture_data->texture.Get(), &rtv_desc,
-			rtv_heap->GetCPUDescriptorHandleForHeapStart());
+		gDevice->CreateRenderTargetView(texture->getD3D12Texture().Get(), &rtv_desc,
+			mRtvHeap->GetCPUDescriptorHandleForHeapStart());
 			
 		auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 		auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT,
@@ -404,22 +418,22 @@ public:
 		depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 		gDevice->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc,
-			D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(depth_stencil_resource.GetAddressOf()));
+			D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(mDepthStencilResource.GetAddressOf()));
 
 		D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
 		dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 		dsv_heap_desc.NumDescriptors = 1;
-		gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(dsv_heap.GetAddressOf()));
+		gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(mDsvHeap.GetAddressOf()));
 
 		D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
 		dsv_desc.Format = depth_desc.Format;
 		dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 		
-		gDevice->CreateDepthStencilView(depth_stencil_resource.Get(), &dsv_desc,
-			dsv_heap->GetCPUDescriptorHandleForHeapStart());
+		gDevice->CreateDepthStencilView(mDepthStencilResource.Get(), &dsv_desc,
+			mDsvHeap->GetCPUDescriptorHandleForHeapStart());
 
 		OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture_data->texture.Get(),
+			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture->getD3D12Texture().Get(),
 				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 			cmdlist->ResourceBarrier(1, &barrier);
@@ -429,8 +443,6 @@ public:
 
 class BufferD3D12
 {
-	friend class BackendD3D12;
-
 protected:
 	std::vector<ComPtr<ID3D12Resource>> buffers;
 	uint32_t buffer_index = 0;
@@ -857,11 +869,11 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 	const std::optional<uint8_t>& stencil)
 {
 	const auto& rtv = gRenderTarget ? 
-		gRenderTarget->rtv_heap->GetCPUDescriptorHandleForHeapStart() : 
+		gRenderTarget->getD3D12RtvHeap()->GetCPUDescriptorHandleForHeapStart() : 
 		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
 
 	const auto& dsv = gRenderTarget ?
-		gRenderTarget->dsv_heap->GetCPUDescriptorHandleForHeapStart() :
+		gRenderTarget->getD3D12DsvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
 	if (color.has_value())
@@ -899,14 +911,14 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 {
 	auto dst_texture = (TextureD3D12*)dst_texture_handle;
 
-	assert(dst_texture->width == size.x);
-	assert(dst_texture->height == size.y);
+	assert(dst_texture->getWidth() == size.x);
+	assert(dst_texture->getHeight() == size.y);
 
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
 	auto rtv_resource = gRenderTarget ? 
-		gRenderTarget->texture_data->texture : 
+		gRenderTarget->getTexture().getD3D12Texture() : 
 		gMainRenderTarget.frames[gFrameIndex].resource;
 
 	auto desc = rtv_resource->GetDesc();
@@ -969,7 +981,7 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 
 		D3D12_TEXTURE_COPY_LOCATION dst_loc = {};
 		dst_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-		dst_loc.pResource = dst_texture->texture.Get();
+		dst_loc.pResource = dst_texture->getD3D12Texture().Get();
 		dst_loc.SubresourceIndex = 0;
 
 		gCommandList->CopyTextureRegion(&dst_loc, dst_x, dst_y, 0, &src_loc, &box);
@@ -979,7 +991,7 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 
 		gCommandList->ResourceBarrier(1, &barrier);
 
-		if (dst_texture->mipmap)
+		if (dst_texture->isMipmap())
 			dst_texture->generateMips();
 	}
 }
@@ -1072,12 +1084,12 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		rasterizer_state.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->vertex_shader_blob.Get());
-		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->pixel_shader_blob.Get());
-		pso_desc.InputLayout = { shader->input.data(), (UINT)shader->input.size() };
+		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->getD3D12VertexShaderBlob().Get());
+		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->getD3D12PixelShaderBlob().Get());
+		pso_desc.InputLayout = { shader->getD3D12Input().data(), (UINT)shader->getD3D12Input().size() };
 		pso_desc.NodeMask = 1;
 		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pso_desc.pRootSignature = shader->root_signature.Get();
+		pso_desc.pRootSignature = shader->getD3D12RootSignature().Get();
 		pso_desc.SampleMask = UINT_MAX;
 		pso_desc.NumRenderTargets = 1;
 		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1092,11 +1104,11 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 	}
 
 	auto rtv_cpu_descriptor = gRenderTarget ?
-		gRenderTarget->rtv_heap->GetCPUDescriptorHandleForHeapStart() :
+		gRenderTarget->getD3D12RtvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
 
 	auto dsv_cpu_descriptor = gRenderTarget ? 
-		gRenderTarget->dsv_heap->GetCPUDescriptorHandleForHeapStart() :
+		gRenderTarget->getD3D12DsvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
 	gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
@@ -1104,17 +1116,17 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
 	gCommandList->SetPipelineState(pipeline_state);
 
-	gCommandList->SetGraphicsRootSignature(shader->root_signature.Get());
+	gCommandList->SetGraphicsRootSignature(shader->getD3D12RootSignature().Get());
 
-	for (const auto& [binding, descriptor] : shader->required_descriptor_bindings)
+	for (const auto& [binding, descriptor] : shader->getRequiredDescriptorBindings())
 	{
-		auto root_index = shader->binding_to_root_index.at(binding);
+		auto root_index = shader->getBindingToRootIndex().at(binding);
 
 		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
 			const auto& texture = gTextures.at(binding);
-			gCommandList->SetDescriptorHeaps(1, texture->srv_heap.GetAddressOf());
-			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->srv_heap->GetGPUDescriptorHandleForHeapStart());
+			gCommandList->SetDescriptorHeaps(1, texture->getD3D12SrvHeap().GetAddressOf());
+			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->getD3D12SrvHeap()->GetGPUDescriptorHandleForHeapStart());
 		}
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
@@ -1142,8 +1154,8 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		}
 		else
 		{
-			width = static_cast<float>(gRenderTarget->texture_data->width);
-			height = static_cast<float>(gRenderTarget->texture_data->height);
+			width = static_cast<float>(gRenderTarget->getTexture().getWidth());
+			height = static_cast<float>(gRenderTarget->getTexture().getHeight());
 		}
 
 		if (gViewportDirty)
