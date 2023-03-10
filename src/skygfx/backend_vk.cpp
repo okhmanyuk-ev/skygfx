@@ -286,14 +286,14 @@ public:
 			{
 				bool overwritten = false;
 
-				for (auto& binding : required_descriptor_bindings)
+				for (auto& _binding : required_descriptor_bindings)
 				{
-					if (binding.binding == binding)
-					{
-						binding.stageFlags |= StageMap.at(reflection.stage);
-						overwritten = true;
-						break;
-					}
+					if (_binding.binding != binding)
+						continue;
+
+					_binding.stageFlags |= StageMap.at(reflection.stage);
+					overwritten = true;
+					break;
 				}
 
 				if (overwritten)
