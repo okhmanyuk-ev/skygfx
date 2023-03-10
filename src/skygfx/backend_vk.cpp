@@ -9,6 +9,8 @@ using namespace skygfx;
 class ShaderVK;
 class UniformBufferVK;
 class TextureVK;
+class VertexBufferVK;
+class IndexBufferVK;
 
 struct PipelineStateVK
 {
@@ -102,6 +104,15 @@ static bool gDepthModeDirty = true;
 
 static CullMode gCullMode = CullMode::None;
 static bool gCullModeDirty = true;
+
+static Topology gTopology = Topology::TriangleList;
+static bool gTopologyDirty = true;
+
+static VertexBufferVK* gVertexBuffer = nullptr;
+static bool gVertexBufferDirty = true;
+
+static IndexBufferVK* gIndexBuffer = nullptr;
+static bool gIndexBufferDirty = true;
 
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
@@ -777,25 +788,27 @@ void BackendVK::resize(uint32_t width, uint32_t height)
 
 void BackendVK::setTopology(Topology topology)
 {
-	static const std::unordered_map<Topology, vk::PrimitiveTopology> TopologyMap = {
-		{ Topology::PointList, vk::PrimitiveTopology::ePointList },
-		{ Topology::LineList, vk::PrimitiveTopology::eLineList },
-		{ Topology::LineStrip, vk::PrimitiveTopology::eLineStrip },
-		{ Topology::TriangleList, vk::PrimitiveTopology::eTriangleList },
-		{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
-	};
+	if (gTopology == topology)
+		return;
 
-	gCommandBuffer.setPrimitiveTopology(TopologyMap.at(topology));
+	gTopology = topology;
+	gTopologyDirty = true;
 }
 
 void BackendVK::setViewport(std::optional<Viewport> viewport)
 {
+	if (gViewport == viewport)
+		return;
+
 	gViewport = viewport;
 	gViewportDirty = true;
 }
 
 void BackendVK::setScissor(std::optional<Scissor> scissor)
 {
+	if (gScissor == scissor)
+		return;
+
 	gScissor = scissor;
 	gScissorDirty = true;
 }
@@ -822,13 +835,23 @@ void BackendVK::setShader(ShaderHandle* handle)
 void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferVK*)handle;
-	gCommandBuffer.bindVertexBuffers2(0, { *buffer->buffer }, { 0 }, nullptr, { buffer->stride });
+
+	if (buffer == gVertexBuffer)
+		return;
+
+	gVertexBuffer = buffer;
+	gVertexBufferDirty = true;
 }
 
 void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferVK*)handle;
-	gCommandBuffer.bindIndexBuffer(*buffer->buffer, 0, buffer->stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+
+	if (buffer == gIndexBuffer)
+		return;
+
+	gIndexBuffer = buffer;
+	gIndexBufferDirty = true;
 }
 
 void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
@@ -1029,8 +1052,12 @@ void BackendVK::begin()
 	assert(!gWorking);
 	gWorking = true;
 
+	gTopologyDirty = true;
 	gViewportDirty = true;
 	gScissorDirty = true;
+	gCullModeDirty = true;
+	gVertexBufferDirty = true;
+	gIndexBufferDirty = true;
 
 	auto inheritance_rendering_info = vk::CommandBufferInheritanceRenderingInfo()
 		.setColorAttachmentCount(1)
@@ -1323,6 +1350,35 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 
 void BackendVK::prepareForDrawing()
 {
+	assert(gVertexBuffer);
+	
+	if (gVertexBufferDirty)
+	{
+		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->buffer }, { 0 }, nullptr, { gVertexBuffer->stride });
+		gVertexBufferDirty = false;
+	}
+
+	if (gIndexBufferDirty)
+	{
+		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->buffer, 0, 
+			gIndexBuffer->stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+		gIndexBufferDirty = false;
+	}
+
+	if (gTopologyDirty)
+	{
+		static const std::unordered_map<Topology, vk::PrimitiveTopology> TopologyMap = {
+			{ Topology::PointList, vk::PrimitiveTopology::ePointList },
+			{ Topology::LineList, vk::PrimitiveTopology::eLineList },
+			{ Topology::LineStrip, vk::PrimitiveTopology::eLineStrip },
+			{ Topology::TriangleList, vk::PrimitiveTopology::eTriangleList },
+			{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
+		};
+
+		gCommandBuffer.setPrimitiveTopology(TopologyMap.at(gTopology));
+		gTopologyDirty = false;
+	}
+
 	if (gDepthModeDirty)
 	{
 		// TODO: this depth options should work only when dynamic state enabled, 
@@ -1573,8 +1629,6 @@ void BackendVK::prepareForDrawing()
 
 	if (gCullModeDirty)
 	{
-		// NOTE: bug with vkCmdSetCullMode have been fixed in NVIDIA Vulkan 1.3.212 developer driver 473.50 
-
 		const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
 			{ CullMode::None, vk::CullModeFlagBits::eNone },
 			{ CullMode::Front, vk::CullModeFlagBits::eFront },
