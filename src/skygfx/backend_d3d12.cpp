@@ -71,6 +71,10 @@ static ComPtr<ID3D12CommandAllocator> gCommandAllocator;
 static ComPtr<ID3D12CommandQueue> gCommandQueue;
 static ComPtr<IDXGISwapChain3> gSwapChain;
 static ComPtr<ID3D12GraphicsCommandList> gCommandList;
+static ComPtr<ID3D12DescriptorHeap> gDescriptorHeap;
+static CD3DX12_CPU_DESCRIPTOR_HANDLE gDescriptorHeapCpuHandle;
+static CD3DX12_GPU_DESCRIPTOR_HANDLE gDescriptorHeapGpuHandle;
+static UINT gDescriptorHandleIncrementSize = 0;
 
 static struct 
 {
@@ -93,7 +97,7 @@ static ComPtr<ID3D12Fence> gFence;
 static UINT64 gFenceValue;
 
 static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
-static std::unordered_map<uint32_t, D3D12_GPU_VIRTUAL_ADDRESS> gUniformBuffers;
+static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
 static RenderTargetD3D12* gRenderTarget = nullptr;
 
 static std::unordered_set<BufferD3D12*> gUsedBuffersInThisFrame;
@@ -152,7 +156,7 @@ class ShaderD3D12
 public:
 	const auto& getD3D12RootSignature() const { return mRootSignature; }
 	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
-	const auto& getBindingToRootIndex() const { return mBindingToRootIndex; }
+	const auto& getBindingToRootIndexMap() const { return mBindingToRootIndexMap; }
 	const auto& getD3D12VertexShaderBlob() const { return mVertexShaderBlob; }
 	const auto& getD3D12PixelShaderBlob() const { return mPixelShaderBlob; }
 	const auto& getD3D12Input() const { return mInput; }
@@ -161,7 +165,7 @@ private:
 	ComPtr<ID3D12RootSignature> mRootSignature;
 	std::map<uint32_t, ShaderReflection::Descriptor> mRequiredDescriptorBindings;
 	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> mRequiredDescriptorSets;
-	std::map<uint32_t, uint32_t> mBindingToRootIndex;
+	std::map<uint32_t, uint32_t> mBindingToRootIndexMap;
 	ComPtr<ID3DBlob> mVertexShaderBlob;
 	ComPtr<ID3DBlob> mPixelShaderBlob;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInput;
@@ -273,7 +277,7 @@ public:
 					assert(false);
 				}
 
-				mBindingToRootIndex.insert({ binding, (uint32_t)params.size() });
+				mBindingToRootIndexMap.insert({ binding, (uint32_t)params.size() });
 				params.push_back(param);
 			}
 
@@ -302,14 +306,14 @@ public:
 	auto getHeight() const { return mHeight; }
 	auto isMipmap() const { return mMipmap; }
 	const auto& getD3D12Texture() const { return mTexture; }
-	const auto& getD3D12SrvHeap() const { return mSrvHeap; }
+	auto getGpuDescriptorHandle() const { return mGpuDescriptorHandle; }
 
 private:
 	uint32_t mWidth;
 	uint32_t mHeight;
 	bool mMipmap;
-	ComPtr<ID3D12Resource> mTexture; // TODO: rename to mResource maybe?
-	ComPtr<ID3D12DescriptorHeap> mSrvHeap;
+	ComPtr<ID3D12Resource> mTexture;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE mGpuDescriptorHandle;
 	
 public:
 	TextureD3D12(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
@@ -327,18 +331,17 @@ public:
 		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
 			D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(mTexture.GetAddressOf()));
 
-		D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-		heap_desc.NumDescriptors = 1;
-		heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(mSrvHeap.GetAddressOf()));
-
 		D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
 		srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srv_desc.Format = format;
 		srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srv_desc.Texture2D.MipLevels = 1;
-		gDevice->CreateShaderResourceView(mTexture.Get(), &srv_desc, mSrvHeap->GetCPUDescriptorHandleForHeapStart());
+		gDevice->CreateShaderResourceView(mTexture.Get(), &srv_desc, gDescriptorHeapCpuHandle);
+
+		mGpuDescriptorHandle = gDescriptorHeapGpuHandle;
+
+		gDescriptorHeapCpuHandle.Offset(1, gDescriptorHandleIncrementSize);
+		gDescriptorHeapGpuHandle.Offset(1, gDescriptorHandleIncrementSize);
 
 		if (memory)
 		{
@@ -502,7 +505,7 @@ public:
 		used = false;
 	}
 
-	D3D12_GPU_VIRTUAL_ADDRESS get_current_gpu_virtual_address() const
+	D3D12_GPU_VIRTUAL_ADDRESS getCurrentGpuVirtualAddress() const
 	{
 		return buffers.at(buffer_index)->GetGPUVirtualAddress();
 	}
@@ -632,6 +635,17 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 		NULL, IID_PPV_ARGS(gCommandList.GetAddressOf()));
 	
 	gCommandList->Close();
+	
+	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
+	heap_desc.NumDescriptors = 1000; // TODO: make more dynamic
+	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gDescriptorHeap.GetAddressOf()));
+
+	gDescriptorHandleIncrementSize = gDevice->GetDescriptorHandleIncrementSize(heap_desc.Type);
+
+	gDescriptorHeapCpuHandle = gDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	gDescriptorHeapGpuHandle = gDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
 
 	DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {};
 	swapchain_desc.BufferCount = NUM_BACK_BUFFERS;
@@ -803,7 +817,7 @@ void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 	auto buffer = (VertexBufferD3D12*)handle;
 
 	D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
-	buffer_view.BufferLocation = buffer->get_current_gpu_virtual_address();
+	buffer_view.BufferLocation = buffer->getCurrentGpuVirtualAddress();
 	buffer_view.SizeInBytes = (UINT)buffer->page_size;
 	buffer_view.StrideInBytes = (UINT)buffer->stride;
 
@@ -818,7 +832,7 @@ void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 	auto buffer = (IndexBufferD3D12*)handle;
 
 	D3D12_INDEX_BUFFER_VIEW buffer_view = {};
-	buffer_view.BufferLocation = buffer->get_current_gpu_virtual_address();
+	buffer_view.BufferLocation = buffer->getCurrentGpuVirtualAddress();
 	buffer_view.SizeInBytes = (UINT)buffer->page_size;
 	buffer_view.Format = buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 
@@ -832,7 +846,7 @@ void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 {
 	auto buffer = (UniformBufferD3D12*)handle;
 
-	gUniformBuffers[binding] = buffer->get_current_gpu_virtual_address();
+	gUniformBuffers[binding] = buffer;
 
 	buffer->mark_used(); // TODO: there is no guarantee that this buffer will be used in drawcall
 	gUsedBuffersInThisFrame.insert(buffer); // TODO: there is no guarantee that this buffer will be used in drawcall
@@ -1118,20 +1132,24 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 
 	gCommandList->SetGraphicsRootSignature(shader->getD3D12RootSignature().Get());
 
-	for (const auto& [binding, descriptor] : shader->getRequiredDescriptorBindings())
+	gCommandList->SetDescriptorHeaps(1, gDescriptorHeap.GetAddressOf());
+
+	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
+	const auto& binding_to_root_index_map = shader->getBindingToRootIndexMap();
+	
+	for (const auto& [binding, descriptor] : required_descriptor_bindings)
 	{
-		auto root_index = shader->getBindingToRootIndex().at(binding);
+		auto root_index = binding_to_root_index_map.at(binding);
 
 		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
 			const auto& texture = gTextures.at(binding);
-			gCommandList->SetDescriptorHeaps(1, texture->getD3D12SrvHeap().GetAddressOf());
-			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->getD3D12SrvHeap()->GetGPUDescriptorHandleForHeapStart());
+			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->getGpuDescriptorHandle());
 		}
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
-			const auto& gpu_virtual_address = gUniformBuffers.at(binding);
-			gCommandList->SetGraphicsRootConstantBufferView(root_index, gpu_virtual_address);
+			auto uniform_buffer = gUniformBuffers.at(binding);
+			gCommandList->SetGraphicsRootConstantBufferView(root_index, uniform_buffer->getCurrentGpuVirtualAddress());
 		}
 		else
 		{
