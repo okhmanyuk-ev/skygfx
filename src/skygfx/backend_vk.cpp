@@ -63,7 +63,6 @@ static ExecuteList gExecuteAfterPresent;
 
 struct FrameVK
 {
-	vk::raii::CommandBuffer command_buffer = nullptr;
 	vk::raii::Fence fence = nullptr;
 	vk::raii::ImageView backbuffer_color_image_view = nullptr;
 	vk::raii::Semaphore image_acquired_semaphore = nullptr;
@@ -781,7 +780,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
 		.setCommandBufferCount(1)
-		.setLevel(vk::CommandBufferLevel::eSecondary)
+		.setLevel(vk::CommandBufferLevel::ePrimary)
 		.setCommandPool(*gCommandPool);
 
 	auto command_buffers = gDevice.allocateCommandBuffers(command_buffer_allocate_info);
@@ -987,24 +986,50 @@ void BackendVK::present()
 {
 	end(); 
 
+	const auto& render_complete_semaphore = gFrames.at(gSemaphoreIndex).render_complete_semaphore;
+
+	auto present_info = vk::PresentInfoKHR()
+		.setWaitSemaphoreCount(1)
+		.setPWaitSemaphores(&*render_complete_semaphore)
+		.setSwapchainCount(1)
+		.setPSwapchains(&*gSwapchain)
+		.setPImageIndices(&gFrameIndex);
+
+	auto present_result = gQueue.presentKHR(present_info);
+
+	gQueue.waitIdle();
+
+	gExecuteAfterPresent.flush();
+	
+	gSemaphoreIndex = (gSemaphoreIndex + 1) % gFrames.size();
+
+	begin();
+}
+
+void BackendVK::begin()
+{
 	const auto& image_acquired_semaphore = gFrames.at(gSemaphoreIndex).image_acquired_semaphore;
 
 	auto [result, image_index] = gSwapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
 
 	gFrameIndex = image_index;
 
-	const auto& frame = gFrames.at(gFrameIndex);
+	assert(!gWorking);
+	gWorking = true;
 
-	auto wait_result = gDevice.waitForFences({ *frame.fence }, true, UINT64_MAX);
-
-	gDevice.resetFences({ *frame.fence });
+	gTopologyDirty = true;
+	gViewportDirty = true;
+	gScissorDirty = true;
+	gCullModeDirty = true;
+	gVertexBufferDirty = true;
+	gIndexBufferDirty = true;
 
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	const auto& cmd = frame.command_buffer;
+	gCommandBuffer.begin(begin_info);
 
-	cmd.begin(begin_info);
+	const auto& frame = gFrames.at(gFrameIndex);
 
 	auto color_attachment = vk::RenderingAttachmentInfo()
 		.setImageView(*frame.backbuffer_color_image_view)
@@ -1024,15 +1049,27 @@ void BackendVK::present()
 		.setColorAttachmentCount(1)
 		.setPColorAttachments(&color_attachment)
 		.setPDepthAttachment(&depth_stencil_attachment)
-		.setPStencilAttachment(&depth_stencil_attachment)
-		.setFlags(vk::RenderingFlagBits::eContentsSecondaryCommandBuffers);
+		.setPStencilAttachment(&depth_stencil_attachment);
 
-	cmd.beginRendering(rendering_info);
-	cmd.executeCommands({ *gCommandBuffer });
-	cmd.endRendering();
-	cmd.end();
+	gCommandBuffer.beginRendering(rendering_info);
+}
+
+void BackendVK::end()
+{
+	assert(gWorking);
+	gWorking = false;
+
+	gCommandBuffer.endRendering();
+	gCommandBuffer.end();
+
+	const auto& frame = gFrames.at(gFrameIndex);
+
+	auto wait_result = gDevice.waitForFences({ *frame.fence }, true, UINT64_MAX);
+
+	gDevice.resetFences({ *frame.fence });
 
 	const auto& render_complete_semaphore = gFrames.at(gSemaphoreIndex).render_complete_semaphore;
+	const auto& image_acquired_semaphore = gFrames.at(gSemaphoreIndex).image_acquired_semaphore;
 
 	auto wait_dst_stage_mask = vk::PipelineStageFlags{
 		vk::PipelineStageFlagBits::eColorAttachmentOutput
@@ -1043,65 +1080,11 @@ void BackendVK::present()
 		.setWaitSemaphoreCount(1)
 		.setPWaitSemaphores(&*image_acquired_semaphore)
 		.setCommandBufferCount(1)
-		.setPCommandBuffers(&*cmd)
+		.setPCommandBuffers(&*gCommandBuffer)
 		.setSignalSemaphoreCount(1)
 		.setPSignalSemaphores(&*render_complete_semaphore);
 
-	gQueue.submit({ submit_info }, *frame.fence); // TODO: can be called with no fence, check it out
-
-	auto present_info = vk::PresentInfoKHR()
-		.setWaitSemaphoreCount(1)
-		.setPWaitSemaphores(&*render_complete_semaphore)
-		.setSwapchainCount(1)
-		.setPSwapchains(&*gSwapchain)
-		.setPImageIndices(&gFrameIndex);
-
-	auto present_result = gQueue.presentKHR(present_info);
-
-	gQueue.waitIdle();
-
-	gExecuteAfterPresent.flush();
-	
-	gSemaphoreIndex = (gSemaphoreIndex + 1) % gFrames.size(); // TODO: maybe gFrameIndex can be used for both
-
-	begin();
-}
-
-void BackendVK::begin()
-{
-	assert(!gWorking);
-	gWorking = true;
-
-	gTopologyDirty = true;
-	gViewportDirty = true;
-	gScissorDirty = true;
-	gCullModeDirty = true;
-	gVertexBufferDirty = true;
-	gIndexBufferDirty = true;
-
-	auto inheritance_rendering_info = vk::CommandBufferInheritanceRenderingInfo()
-		.setColorAttachmentCount(1)
-		.setPColorAttachmentFormats(&gSurfaceFormat.format)
-		.setDepthAttachmentFormat(gDepthStencil.format)
-		.setStencilAttachmentFormat(gDepthStencil.format)
-		.setRasterizationSamples(vk::SampleCountFlagBits::e1);
-
-	auto inheritance_info = vk::CommandBufferInheritanceInfo()
-		.setPNext(&inheritance_rendering_info);
-
-	auto begin_info = vk::CommandBufferBeginInfo()
-		.setFlags(vk::CommandBufferUsageFlagBits::eRenderPassContinue)
-		.setPInheritanceInfo(&inheritance_info);
-
-	gCommandBuffer.begin(begin_info);
-}
-
-void BackendVK::end()
-{
-	assert(gWorking);
-	gWorking = false;
-
-	gCommandBuffer.end();
+	gQueue.submit({ submit_info }, *frame.fence);
 }
 
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
@@ -1280,14 +1263,6 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 	for (auto& backbuffer : backbuffers)
 	{
 		auto frame = FrameVK();
-
-		auto buffer_allocate_info = vk::CommandBufferAllocateInfo()
-			.setCommandBufferCount(1)
-			.setLevel(vk::CommandBufferLevel::ePrimary)
-			.setCommandPool(*gCommandPool);
-
-		auto command_buffers = gDevice.allocateCommandBuffers(buffer_allocate_info);
-		frame.command_buffer = std::move(command_buffers.at(0));
 
 		auto fence_info = vk::FenceCreateInfo()
 			.setFlags(vk::FenceCreateFlagBits::eSignaled);
@@ -1488,7 +1463,7 @@ void BackendVK::prepareForDrawing()
 		if (blend_mode.color_mask.alpha)
 			color_mask |= vk::ColorComponentFlagBits::eA;
 
-		auto pipeline_color_blent_attachment_state = vk::PipelineColorBlendAttachmentState()
+		auto pipeline_color_blend_attachment_state = vk::PipelineColorBlendAttachmentState()
 			.setBlendEnable(true)
 			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src_blend))
 			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst_blend))
@@ -1500,7 +1475,7 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
 			.setAttachmentCount(1)
-			.setPAttachments(&pipeline_color_blent_attachment_state);
+			.setPAttachments(&pipeline_color_blend_attachment_state);
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 			.setVertexBindingDescriptionCount(1)
@@ -1525,7 +1500,9 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
 			.setColorAttachmentCount(1)
-			.setColorAttachmentFormats(gSurfaceFormat.format);
+			.setColorAttachmentFormats(gSurfaceFormat.format)
+			.setDepthAttachmentFormat(gDepthStencil.format)
+			.setStencilAttachmentFormat(gDepthStencil.format);
 
 		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
 			.setLayout(*shader->getVkPipelineLayout())
