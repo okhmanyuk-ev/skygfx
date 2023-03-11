@@ -9,6 +9,7 @@ using namespace skygfx;
 class ShaderVK;
 class UniformBufferVK;
 class TextureVK;
+class RenderTargetVK;
 class VertexBufferVK;
 class IndexBufferVK;
 
@@ -16,16 +17,21 @@ struct PipelineStateVK
 {
 	ShaderVK* shader = nullptr;
 	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
+	RenderTargetVK* render_target = nullptr; // TODO: see how we do it in Metal, we can remove this field from here!
 
 	bool operator==(const PipelineStateVK& value) const
 	{
-		return shader == value.shader && blend_mode == value.blend_mode;
+		return 
+			shader == value.shader &&
+			blend_mode == value.blend_mode &&
+			render_target == value.render_target;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateVK,
 	t.shader,
-	t.blend_mode);
+	t.blend_mode,
+	t.render_target);
 
 struct SamplerStateVK
 {
@@ -112,6 +118,9 @@ static bool gVertexBufferDirty = true;
 
 static IndexBufferVK* gIndexBuffer = nullptr;
 static bool gIndexBufferDirty = true;
+
+static RenderTargetVK* gRenderTarget = nullptr;
+static bool gRenderTargetDirty = true;
 
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
@@ -372,14 +381,21 @@ public:
 	const auto& getVkImage() const { return mImage; }
 	const auto& getVkImageView() const { return mImageView; }
 	const auto& getVkDeviceMemory() const { return mDeviceMemory; }
+	auto getFormat() const { return vk::Format::eR8G8B8A8Unorm; }
+	auto getWidth() const { return mWidth; }
+	auto getHeight() const { return mHeight; }
 
 private:
 	vk::raii::Image mImage = nullptr;
 	vk::raii::ImageView mImageView = nullptr;
 	vk::raii::DeviceMemory mDeviceMemory = nullptr;
+	uint32_t mWidth = 0;
+	uint32_t mHeight = 0;
 
 public:
-	TextureVK(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+	TextureVK(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+		mWidth(width),
+		mHeight(height)
 	{
 		uint32_t mip_levels = 1;
 
@@ -390,14 +406,14 @@ public:
 
 		auto image_create_info = vk::ImageCreateInfo()
 			.setImageType(vk::ImageType::e2D)
-			.setFormat(vk::Format::eR8G8B8A8Unorm)
+			.setFormat(getFormat())
 			.setExtent({ width, height, 1 })
 			.setMipLevels(mip_levels)
 			.setArrayLayers(1)
 			.setSamples(vk::SampleCountFlagBits::e1)
 			.setTiling(vk::ImageTiling::eOptimal)
 			.setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst 
-				| vk::ImageUsageFlagBits::eTransferSrc)
+				| vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eColorAttachment)
 			.setSharingMode(vk::SharingMode::eExclusive)
 			.setInitialLayout(vk::ImageLayout::eUndefined);
 
@@ -439,8 +455,6 @@ public:
 			auto upload_buffer = gDevice.createBuffer(buffer_create_info);
 
 			auto req = upload_buffer.getMemoryRequirements();
-
-			//bd->BufferMemoryAlignment = (bd->BufferMemoryAlignment > req.alignment) ? bd->BufferMemoryAlignment : req.alignment;
 
 			auto memory_allocate_info = vk::MemoryAllocateInfo()
 				.setAllocationSize(req.size)
@@ -521,13 +535,65 @@ class RenderTargetVK
 {
 public:
 	auto getTexture() const { return mTexture; }
+	auto getDepthStencilFormat() const { return mDepthStencilFormat; }
+	const auto& getVkDepthStencilImage() const { return mDepthStencilImage; }
+	const auto& getVkDepthStencilView() const { return mDepthStencilView; }
+	const auto& getVkDepthStencilMemory() const { return mDepthStencilMemory; }
 
 private:
 	TextureVK* mTexture;
+	vk::Format mDepthStencilFormat = vk::Format::eD32SfloatS8Uint;
+	vk::raii::Image mDepthStencilImage = nullptr;
+	vk::raii::ImageView mDepthStencilView = nullptr;
+	vk::raii::DeviceMemory mDepthStencilMemory = nullptr;
 
 public:
 	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture) : mTexture(_texture)
 	{
+		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+			SetImageLayout(cmdbuf, *getTexture()->getVkImage(), vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+				vk::ImageLayout::eShaderReadOnlyOptimal);
+		});
+
+		auto depth_stencil_image_create_info = vk::ImageCreateInfo()
+			.setImageType(vk::ImageType::e2D)
+			.setFormat(mDepthStencilFormat)
+			.setExtent({ width, height, 1 })
+			.setMipLevels(1)
+			.setArrayLayers(1)
+			.setSamples(vk::SampleCountFlagBits::e1)
+			.setTiling(vk::ImageTiling::eOptimal)
+			.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
+
+		mDepthStencilImage = gDevice.createImage(depth_stencil_image_create_info);
+
+		auto depth_stencil_mem_req = mDepthStencilImage.getMemoryRequirements();
+
+		auto depth_stencil_memory_allocate_info = vk::MemoryAllocateInfo()
+			.setAllocationSize(depth_stencil_mem_req.size)
+			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, depth_stencil_mem_req.memoryTypeBits));
+
+		mDepthStencilMemory = gDevice.allocateMemory(depth_stencil_memory_allocate_info);
+
+		mDepthStencilImage.bindMemory(*mDepthStencilMemory, 0);
+
+		auto depth_stencil_view_subresource_range = vk::ImageSubresourceRange()
+			.setLevelCount(1)
+			.setLayerCount(1)
+			.setAspectMask(vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
+
+		auto depth_stencil_view_create_info = vk::ImageViewCreateInfo()
+			.setViewType(vk::ImageViewType::e2D)
+			.setImage(*mDepthStencilImage)
+			.setFormat(mDepthStencilFormat)
+			.setSubresourceRange(depth_stencil_view_subresource_range);
+
+		mDepthStencilView = gDevice.createImageView(depth_stencil_view_create_info);
+
+		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+			SetImageLayout(cmdbuf, *mDepthStencilImage, mDepthStencilFormat, vk::ImageLayout::eUndefined,
+				vk::ImageLayout::eDepthStencilAttachmentOptimal);
+		});
 	}
 
 	~RenderTargetVK()
@@ -616,6 +682,47 @@ public:
 	{
 	}
 };
+
+static void beginRenderPass()
+{
+	auto color_texture = gRenderTarget ?
+		*gRenderTarget->getTexture()->getVkImageView() :
+		*gFrames.at(gFrameIndex).backbuffer_color_image_view;
+
+	auto depth_stencil_texture = gRenderTarget ?
+		*gRenderTarget->getVkDepthStencilView() :
+		*gDepthStencil.view;
+
+	auto color_attachment = vk::RenderingAttachmentInfo()
+		.setImageView(color_texture)
+		.setImageLayout(vk::ImageLayout::eAttachmentOptimal)
+		.setLoadOp(vk::AttachmentLoadOp::eLoad)
+		.setStoreOp(vk::AttachmentStoreOp::eStore);
+
+	auto depth_stencil_attachment = vk::RenderingAttachmentInfo()
+		.setImageView(*gDepthStencil.view)
+		.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
+		.setLoadOp(vk::AttachmentLoadOp::eLoad)
+		.setStoreOp(vk::AttachmentStoreOp::eStore);
+
+	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gWidth;
+	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gHeight;
+
+	auto rendering_info = vk::RenderingInfo()
+		.setRenderArea({ { 0, 0 }, { width, height } })
+		.setLayerCount(1)
+		.setColorAttachmentCount(1)
+		.setPColorAttachments(&color_attachment)
+		.setPDepthAttachment(&depth_stencil_attachment)
+		.setPStencilAttachment(&depth_stencil_attachment);
+
+	gCommandBuffer.beginRendering(rendering_info);
+}
+
+static void endRenderPass()
+{
+	gCommandBuffer.endRendering();
+}
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
@@ -800,7 +907,9 @@ BackendVK::~BackendVK()
 
 void BackendVK::resize(uint32_t width, uint32_t height)
 {
+	end();
 	createSwapchain(width, height);
+	begin();
 }
 
 void BackendVK::setTopology(Topology topology)
@@ -838,15 +947,30 @@ void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 
 void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 {
+	auto render_target = (RenderTargetVK*)handle;
+
+	if (gRenderTarget == render_target)
+		return;
+
+	gPipelineState.render_target = render_target; // TODO: see how we do it in metal, we dont need this field!
+	gRenderTarget = render_target;
+	gRenderTargetDirty = true;
 }
 
 void BackendVK::setRenderTarget(std::nullopt_t value)
 {
+	if (gRenderTarget == nullptr)
+		return;
+
+	gPipelineState.render_target = nullptr; // TODO: see how we do it in metal, we dont need this field!
+	gRenderTarget = nullptr;
+	gRenderTargetDirty = true;
 }
 
 void BackendVK::setShader(ShaderHandle* handle)
 {
-	gPipelineState.shader = (ShaderVK*)handle;
+	auto shader = (ShaderVK*)handle;
+	gPipelineState.shader = shader;
 }
 
 void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
@@ -917,10 +1041,16 @@ void BackendVK::setTextureAddress(TextureAddress value)
 void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-		auto clear_rect = vk::ClearRect()
+	endRenderPass();
+	beginRenderPass();
+
+	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gWidth;
+	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gHeight;
+
+	auto clear_rect = vk::ClearRect()
 		.setBaseArrayLayer(0)
 		.setLayerCount(1)
-		.setRect({ { 0, 0 }, { gWidth, gHeight } });
+		.setRect({ { 0, 0 }, { width, height } });
 
 	if (color.has_value())
 	{
@@ -997,10 +1127,8 @@ void BackendVK::present()
 
 	auto present_result = gQueue.presentKHR(present_info);
 
-	gQueue.waitIdle();
-
 	gExecuteAfterPresent.flush();
-	
+
 	gSemaphoreIndex = (gSemaphoreIndex + 1) % gFrames.size();
 
 	begin();
@@ -1028,30 +1156,7 @@ void BackendVK::begin()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	gCommandBuffer.begin(begin_info);
-
-	const auto& frame = gFrames.at(gFrameIndex);
-
-	auto color_attachment = vk::RenderingAttachmentInfo()
-		.setImageView(*frame.backbuffer_color_image_view)
-		.setImageLayout(vk::ImageLayout::eAttachmentOptimal)
-		.setLoadOp(vk::AttachmentLoadOp::eDontCare)
-		.setStoreOp(vk::AttachmentStoreOp::eStore);
-
-	auto depth_stencil_attachment = vk::RenderingAttachmentInfo()
-		.setImageView(*gDepthStencil.view)
-		.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
-		.setLoadOp(vk::AttachmentLoadOp::eDontCare)
-		.setStoreOp(vk::AttachmentStoreOp::eStore);
-
-	auto rendering_info = vk::RenderingInfo()
-		.setRenderArea({ { 0, 0 }, { gWidth, gHeight } })
-		.setLayerCount(1)
-		.setColorAttachmentCount(1)
-		.setPColorAttachments(&color_attachment)
-		.setPDepthAttachment(&depth_stencil_attachment)
-		.setPStencilAttachment(&depth_stencil_attachment);
-
-	gCommandBuffer.beginRendering(rendering_info);
+	beginRenderPass();
 }
 
 void BackendVK::end()
@@ -1059,7 +1164,7 @@ void BackendVK::end()
 	assert(gWorking);
 	gWorking = false;
 
-	gCommandBuffer.endRendering();
+	endRenderPass();
 	gCommandBuffer.end();
 
 	const auto& frame = gFrames.at(gFrameIndex);
@@ -1085,6 +1190,7 @@ void BackendVK::end()
 		.setPSignalSemaphores(&*render_complete_semaphore);
 
 	gQueue.submit({ submit_info }, *frame.fence);
+	gQueue.waitIdle();
 }
 
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
@@ -1345,6 +1451,14 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 
 void BackendVK::prepareForDrawing()
 {
+	if (gRenderTargetDirty)
+	{
+		endRenderPass();
+		beginRenderPass();
+
+		gRenderTargetDirty = false;
+	}
+
 	assert(gVertexBuffer);
 	
 	if (gVertexBufferDirty)
@@ -1397,6 +1511,8 @@ void BackendVK::prepareForDrawing()
 
 	auto shader = gPipelineState.shader;
 	const auto& blend_mode = gPipelineState.blend_mode;
+	auto render_target = gPipelineState.render_target;
+
 	assert(shader);
 
 	if (!gPipelineStates.contains(gPipelineState))
@@ -1498,11 +1614,16 @@ void BackendVK::prepareForDrawing()
 		auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
 			.setDynamicStates(dynamic_states);
 
+		auto color_attachment_formats = {
+			render_target ? render_target->getTexture()->getFormat() : gSurfaceFormat.format
+		};
+
+		auto depth_stencil_format = render_target ? render_target->getDepthStencilFormat() : gDepthStencil.format;
+
 		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
-			.setColorAttachmentCount(1)
-			.setColorAttachmentFormats(gSurfaceFormat.format)
-			.setDepthAttachmentFormat(gDepthStencil.format)
-			.setStencilAttachmentFormat(gDepthStencil.format);
+			.setColorAttachmentFormats(color_attachment_formats)
+			.setDepthAttachmentFormat(depth_stencil_format)
+			.setStencilAttachmentFormat(depth_stencil_format);
 
 		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
 			.setLayout(*shader->getVkPipelineLayout())
