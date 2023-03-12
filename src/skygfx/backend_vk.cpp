@@ -1064,12 +1064,11 @@ void BackendVK::setBlendMode(const BlendMode& value)
 
 void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	auto prev_depth_mode = gDepthMode;
+	if (gDepthMode != depth_mode)
+		return;
 
 	gDepthMode = depth_mode;
-
-	if (prev_depth_mode != gDepthMode)
-		gDepthModeDirty = true;
+	gDepthModeDirty = true;
 }
 
 void BackendVK::setStencilMode(std::optional<StencilMode> stencil_mode)
@@ -1154,7 +1153,7 @@ void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
 	EnsureRenderPassActivated();
-	gCommandBuffer.draw(vertex_count, 0, vertex_offset, 0);
+	gCommandBuffer.draw(vertex_count, 1, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
