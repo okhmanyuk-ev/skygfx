@@ -25,6 +25,8 @@ class BufferD3D12;
 class ShaderD3D12;
 class TextureD3D12;
 class RenderTargetD3D12;
+class VertexBufferD3D12;
+class IndexBufferD3D12;
 class UniformBufferD3D12;
 
 struct RasterizerStateD3D12
@@ -100,8 +102,6 @@ static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
 static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
 static RenderTargetD3D12* gRenderTarget = nullptr;
 
-static std::unordered_set<BufferD3D12*> gUsedBuffersInThisFrame;
-
 static PipelineStateD3D12 gPipelineState;
 static std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> gPipelineStates;
 
@@ -114,11 +114,21 @@ static std::optional<Scissor> gScissor;
 static bool gScissorDirty = true;
 
 static D3D_PRIMITIVE_TOPOLOGY gTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-static std::optional<D3D12_INDEX_BUFFER_VIEW> gIndexBuffer;
-static std::optional<D3D12_VERTEX_BUFFER_VIEW> gVertexBuffer;
+
+static IndexBufferD3D12* gIndexBuffer = nullptr;
+static bool gIndexBufferDirty = true;
+
+static VertexBufferD3D12* gVertexBuffer = nullptr;
+static bool gVertexBufferDirty = true;
 
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
+
+using StagingObjectD3D12 = std::variant<
+	ComPtr<ID3D12Resource>
+>;
+
+static std::vector<StagingObjectD3D12> gStagingObjects;
 
 void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12GraphicsCommandList*)> func)
 {
@@ -444,97 +454,88 @@ public:
 	}
 };
 
+ComPtr<ID3D12Resource> CreateBuffer(size_t size)
+{
+	ComPtr<ID3D12Resource> result;
+
+	auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE,
+		D3D12_MEMORY_POOL_L0);
+	auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
+
+	gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
+		D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(result.GetAddressOf()));
+
+	return result;
+}
+
 class BufferD3D12
 {
-protected:
-	std::vector<ComPtr<ID3D12Resource>> buffers;
-	uint32_t buffer_index = 0;
-	size_t page_size = 0;
-	bool used = false;
+public:
+	const auto& getD3D12Buffer() const { return mBuffer; }
+	auto getSize() const { return mSize; }
+
+private:
+	ComPtr<ID3D12Resource> mBuffer;
+	size_t mSize;
 
 public:
-	BufferD3D12(size_t _size) : page_size(_size)
+	BufferD3D12(size_t size) : mSize(size)
 	{
-		buffers.push_back(createBufferResource(page_size));
+		mBuffer = CreateBuffer(size);
 	}
 
-	ComPtr<ID3D12Resource> createBufferResource(size_t size)
+	void write(void* memory, size_t size)
 	{
-		ComPtr<ID3D12Resource> result;
-
-		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-		auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
-
-		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
-			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(result.GetAddressOf()));
-
-		return result;
-	}
-
-	void write(void* memory, size_t size_to_write)
-	{
-		assert(size_to_write <= page_size);
-
-		if (used)
-		{
-			buffer_index += 1;
-			used = false;
-		}
-
-		if (buffer_index >= buffers.size())
-		{
-			buffers.push_back(createBufferResource(page_size));
-		}
-
-		const auto& buffer = buffers.at(buffer_index);
+		auto staging_buffer = CreateBuffer(size);
 
 		void* cpu_memory = nullptr;
-		buffer->Map(0, NULL, &cpu_memory);
-		memcpy(cpu_memory, memory, size_to_write);
-		buffer->Unmap(0, NULL);
-	}
+		staging_buffer->Map(0, NULL, &cpu_memory);
+		memcpy(cpu_memory, memory, size);
+		staging_buffer->Unmap(0, NULL);
 
-	void mark_used()
-	{
-		used = true;
-	}
+		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(),
+			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
 
-	void reset_index()
-	{
-		buffer_index = 0;
-		used = false;
-	}
+		gCommandList->ResourceBarrier(1, &barrier);
+		gCommandList->CopyBufferRegion(mBuffer.Get(), 0, staging_buffer.Get(), 0, (UINT64)size);
 
-	D3D12_GPU_VIRTUAL_ADDRESS getCurrentGpuVirtualAddress() const
-	{
-		return buffers.at(buffer_index)->GetGPUVirtualAddress();
+		barrier = CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
+
+		gCommandList->ResourceBarrier(1, &barrier);
+
+		gStagingObjects.push_back(staging_buffer);
 	}
 };
 
 class VertexBufferD3D12 : public BufferD3D12
 {
-	friend class BackendD3D12;
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 
 private:
-	size_t stride = 0;
+	size_t mStride = 0;
 
 public:
-	VertexBufferD3D12(size_t _size, size_t _stride) : BufferD3D12(_size),
-		stride(_stride)
+	VertexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size),
+		mStride(stride)
 	{
 	}
 };
 
 class IndexBufferD3D12 : public BufferD3D12
 {
-	friend class BackendD3D12;
+public:
+	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 
 private:
-	size_t stride = 0;
+	size_t mStride = 0;
 
 public:
-	IndexBufferD3D12(size_t _size, size_t _stride) : BufferD3D12(_size),
-		stride(_stride)
+	IndexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size),
+		mStride(stride)
 	{
 	}
 };
@@ -546,10 +547,8 @@ int RoundUp(int num, int factor)
 
 class UniformBufferD3D12 : public BufferD3D12
 {
-	friend class BackendD3D12;
-
 public:
-	UniformBufferD3D12(size_t _size) : BufferD3D12(RoundUp((int)_size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT))
+	UniformBufferD3D12(size_t size) : BufferD3D12(RoundUp((int)size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT))
 	{
 	}
 };
@@ -688,6 +687,7 @@ BackendD3D12::~BackendD3D12()
 	end();
 	WaitForGpu();
 	gExecuteAfterPresent.flush();
+	gStagingObjects.clear();
 	destroyMainRenderTarget();
 	gSwapChain.Reset();
 	gDevice.Reset();
@@ -787,7 +787,12 @@ void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 
 void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 {
-	gRenderTarget = (RenderTargetD3D12*)handle;
+	auto render_target = (RenderTargetD3D12*)handle;
+		
+	if (gRenderTarget == render_target)
+		return;
+
+	gRenderTarget = render_target;
 
 	if (!gViewport.has_value())
 		gViewportDirty = true;
@@ -798,6 +803,9 @@ void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendD3D12::setRenderTarget(std::nullopt_t value)
 {
+	if (gRenderTarget == nullptr)
+		return;
+
 	gRenderTarget = nullptr;
 
 	if (!gViewport.has_value())
@@ -815,41 +823,29 @@ void BackendD3D12::setShader(ShaderHandle* handle)
 void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferD3D12*)handle;
-
-	D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
-	buffer_view.BufferLocation = buffer->getCurrentGpuVirtualAddress();
-	buffer_view.SizeInBytes = (UINT)buffer->page_size;
-	buffer_view.StrideInBytes = (UINT)buffer->stride;
-
-	gVertexBuffer = buffer_view;
-
-	buffer->mark_used(); // TODO: there is no guarantee that this buffer will be used in drawcall
-	gUsedBuffersInThisFrame.insert(buffer); // TODO: there is no guarantee that this buffer will be used in drawcall
+	
+	if (gVertexBuffer == buffer)
+		return;
+	
+	gVertexBuffer = buffer;
+	gVertexBufferDirty = true;
 }
 
 void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferD3D12*)handle;
 
-	D3D12_INDEX_BUFFER_VIEW buffer_view = {};
-	buffer_view.BufferLocation = buffer->getCurrentGpuVirtualAddress();
-	buffer_view.SizeInBytes = (UINT)buffer->page_size;
-	buffer_view.Format = buffer->stride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+	if (gIndexBuffer == buffer)
+		return;
 
-	gIndexBuffer = buffer_view;
-
-	buffer->mark_used(); // TODO: there is no guarantee that this buffer will be used in drawcall
-	gUsedBuffersInThisFrame.insert(buffer); // TODO: there is no guarantee that this buffer will be used in drawcall
+	gIndexBuffer = buffer;
+	gIndexBufferDirty = true;
 }
 
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferD3D12*)handle;
-
 	gUniformBuffers[binding] = buffer;
-
-	buffer->mark_used(); // TODO: there is no guarantee that this buffer will be used in drawcall
-	gUsedBuffersInThisFrame.insert(buffer); // TODO: there is no guarantee that this buffer will be used in drawcall
 }
 
 void BackendD3D12::setBlendMode(const BlendMode& value)
@@ -1149,7 +1145,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
 			auto uniform_buffer = gUniformBuffers.at(binding);
-			gCommandList->SetGraphicsRootConstantBufferView(root_index, uniform_buffer->getCurrentGpuVirtualAddress());
+			gCommandList->SetGraphicsRootConstantBufferView(root_index, uniform_buffer->getD3D12Buffer()->GetGPUVirtualAddress());
 		}
 		else
 		{
@@ -1209,14 +1205,29 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 
 	gCommandList->IASetPrimitiveTopology(gTopology);
 
-	if (indexed)
+	if (indexed && gIndexBufferDirty)
 	{
-		const auto& value = gIndexBuffer.value();
-		gCommandList->IASetIndexBuffer(&value);
+		D3D12_INDEX_BUFFER_VIEW buffer_view = {};
+		buffer_view.BufferLocation = gIndexBuffer->getD3D12Buffer()->GetGPUVirtualAddress();
+		buffer_view.SizeInBytes = (UINT)gIndexBuffer->getSize();
+		buffer_view.Format = gIndexBuffer->getStride() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+
+		gCommandList->IASetIndexBuffer(&buffer_view);
+
+		gIndexBufferDirty = false;
 	}
 
-	const auto& vertex_buffer = gVertexBuffer.value();
-	gCommandList->IASetVertexBuffers(0, 1, &vertex_buffer);
+	if (gVertexBufferDirty)
+	{
+		D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
+		buffer_view.BufferLocation = gVertexBuffer->getD3D12Buffer()->GetGPUVirtualAddress();
+		buffer_view.SizeInBytes = (UINT)gVertexBuffer->getSize();
+		buffer_view.StrideInBytes = (UINT)gVertexBuffer->getStride();
+
+		gCommandList->IASetVertexBuffers(0, 1, &buffer_view);
+
+		gVertexBufferDirty = false;
+	}
 }
 
 void BackendD3D12::present()
@@ -1225,15 +1236,8 @@ void BackendD3D12::present()
 	bool vsync = false;
 	gSwapChain->Present(vsync ? 1 : 0, 0);
 	MoveToNextFrame();
-
-	for (auto buffer : gUsedBuffersInThisFrame)
-	{
-		buffer->reset_index();
-	}
-
-	gUsedBuffersInThisFrame.clear();
-
 	gExecuteAfterPresent.flush();
+	gStagingObjects.clear();
 	begin();
 }
 
@@ -1321,7 +1325,7 @@ void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* mem
 {
 	auto buffer = (VertexBufferD3D12*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 IndexBufferHandle* BackendD3D12::createIndexBuffer(size_t size, size_t stride)
@@ -1334,7 +1338,7 @@ void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, void* memor
 {
 	auto buffer = (IndexBufferD3D12*)handle;
 	buffer->write(memory, size);
-	buffer->stride = stride;
+	buffer->setStride(stride);
 }
 
 void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
