@@ -257,12 +257,12 @@ const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 class ShaderVK
 {
 public:
-	const auto& getVkPipelineLayout() const { return mPipelineLayout; }
-	const auto& getVkVertexShaderModule() const { return mVertexShaderModule; }
-	const auto& getVkFragmentShaderModule() const { return mFragmentShaderModule; }
-	const auto& getVkVertexInputBindingDescription() const { return mVertexInputBindingDescription; }
-	const auto& getVkVertexInputAttributeDescriptions() const { return mVertexInputAttributeDescriptions; }
-	const auto& getVkRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
+	const auto& getPipelineLayout() const { return mPipelineLayout; }
+	const auto& getVertexShaderModule() const { return mVertexShaderModule; }
+	const auto& getFragmentShaderModule() const { return mFragmentShaderModule; }
+	const auto& getVertexInputBindingDescription() const { return mVertexInputBindingDescription; }
+	const auto& getVertexInputAttributeDescriptions() const { return mVertexInputAttributeDescriptions; }
+	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
 	
 private:
 	vk::raii::DescriptorSetLayout mDescriptorSetLayout = nullptr;
@@ -378,9 +378,9 @@ public:
 class TextureVK
 {
 public:
-	const auto& getVkImage() const { return mImage; }
-	const auto& getVkImageView() const { return mImageView; }
-	const auto& getVkDeviceMemory() const { return mDeviceMemory; }
+	const auto& getImage() const { return mImage; }
+	const auto& getImageView() const { return mImageView; }
+	const auto& getDeviceMemory() const { return mDeviceMemory; }
 	auto getFormat() const { return vk::Format::eR8G8B8A8Unorm; }
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
@@ -536,9 +536,9 @@ class RenderTargetVK
 public:
 	auto getTexture() const { return mTexture; }
 	auto getDepthStencilFormat() const { return mDepthStencilFormat; }
-	const auto& getVkDepthStencilImage() const { return mDepthStencilImage; }
-	const auto& getVkDepthStencilView() const { return mDepthStencilView; }
-	const auto& getVkDepthStencilMemory() const { return mDepthStencilMemory; }
+	const auto& getDepthStencilImage() const { return mDepthStencilImage; }
+	const auto& getDepthStencilView() const { return mDepthStencilView; }
+	const auto& getDepthStencilMemory() const { return mDepthStencilMemory; }
 
 private:
 	TextureVK* mTexture;
@@ -551,7 +551,7 @@ public:
 	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture) : mTexture(_texture)
 	{
 		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-			SetImageLayout(cmdbuf, *getTexture()->getVkImage(), vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+			SetImageLayout(cmdbuf, *getTexture()->getImage(), vk::Format::eUndefined, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::eShaderReadOnlyOptimal);
 		});
 
@@ -604,8 +604,8 @@ public:
 class BufferVK
 {
 public:
-	const auto& getVkBuffer() const { return mBuffer; }
-	const auto& getVkDeviceMemory() const { return mDeviceMemory; }
+	const auto& getBuffer() const { return mBuffer; }
+	const auto& getDeviceMemory() const { return mDeviceMemory; }
 
 private:
 	vk::raii::Buffer mBuffer = nullptr;
@@ -686,11 +686,11 @@ public:
 static void beginRenderPass()
 {
 	auto color_texture = gRenderTarget ?
-		*gRenderTarget->getTexture()->getVkImageView() :
+		*gRenderTarget->getTexture()->getImageView() :
 		*gFrames.at(gFrameIndex).backbuffer_color_image_view;
 
 	auto depth_stencil_texture = gRenderTarget ?
-		*gRenderTarget->getVkDepthStencilView() :
+		*gRenderTarget->getDepthStencilView() :
 		*gDepthStencil.view;
 
 	auto color_attachment = vk::RenderingAttachmentInfo()
@@ -1463,13 +1463,13 @@ void BackendVK::prepareForDrawing()
 	
 	if (gVertexBufferDirty)
 	{
-		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->getVkBuffer() }, { 0 }, nullptr, { gVertexBuffer->getStride() });
+		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->getBuffer() }, { 0 }, nullptr, { gVertexBuffer->getStride() });
 		gVertexBufferDirty = false;
 	}
 
 	if (gIndexBufferDirty)
 	{
-		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getVkBuffer(), 0, 
+		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getBuffer(), 0,
 			gIndexBuffer->getStride() == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
 		gIndexBufferDirty = false;
 	}
@@ -1520,12 +1520,12 @@ void BackendVK::prepareForDrawing()
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eVertex)
-				.setModule(*shader->getVkVertexShaderModule())
+				.setModule(*shader->getVertexShaderModule())
 				.setPName("main"),
 
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eFragment)
-				.setModule(*shader->getVkFragmentShaderModule())
+				.setModule(*shader->getFragmentShaderModule())
 				.setPName("main")
 		};
 
@@ -1595,8 +1595,8 @@ void BackendVK::prepareForDrawing()
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 			.setVertexBindingDescriptionCount(1)
-			.setPVertexBindingDescriptions(&shader->getVkVertexInputBindingDescription())
-			.setVertexAttributeDescriptions(shader->getVkVertexInputAttributeDescriptions());
+			.setPVertexBindingDescriptions(&shader->getVertexInputBindingDescription())
+			.setVertexAttributeDescriptions(shader->getVertexInputAttributeDescriptions());
 
 		auto dynamic_states = {
 			vk::DynamicState::eViewport,
@@ -1626,7 +1626,7 @@ void BackendVK::prepareForDrawing()
 			.setStencilAttachmentFormat(depth_stencil_format);
 
 		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
-			.setLayout(*shader->getVkPipelineLayout())
+			.setLayout(*shader->getPipelineLayout())
 			.setFlags(vk::PipelineCreateFlagBits())
 			.setStages(pipeline_shader_stage_create_info)
 			.setPVertexInputState(&pipeline_vertex_input_state_create_info)
@@ -1676,9 +1676,9 @@ void BackendVK::prepareForDrawing()
 
 	const auto& sampler = gSamplers.at(gSamplerState);
 
-	auto pipeline_layout = *shader->getVkPipelineLayout();
+	auto pipeline_layout = *shader->getPipelineLayout();
 
-	for (const auto& required_descriptor_binding : shader->getVkRequiredDescriptorBindings())
+	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
 	{
 		auto binding = required_descriptor_binding.binding;
 
@@ -1694,7 +1694,7 @@ void BackendVK::prepareForDrawing()
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setSampler(*sampler)
-				.setImageView(*texture->getVkImageView())
+				.setImageView(*texture->getImageView())
 				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
 
 			write_descriptor_set.setPImageInfo(&descriptor_image_info);
@@ -1704,7 +1704,7 @@ void BackendVK::prepareForDrawing()
 			auto buffer = gUniformBuffers.at(binding);
 
 			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
-				.setBuffer(*buffer->getVkBuffer())
+				.setBuffer(*buffer->getBuffer())
 				.setRange(VK_WHOLE_SIZE);
 
 			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
