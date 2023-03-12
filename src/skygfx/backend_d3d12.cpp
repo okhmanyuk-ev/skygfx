@@ -154,12 +154,12 @@ void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12Graphics
 class ShaderD3D12
 {
 public:
-	const auto& getD3D12RootSignature() const { return mRootSignature; }
+	const auto& getRootSignature() const { return mRootSignature; }
 	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
 	const auto& getBindingToRootIndexMap() const { return mBindingToRootIndexMap; }
-	const auto& getD3D12VertexShaderBlob() const { return mVertexShaderBlob; }
-	const auto& getD3D12PixelShaderBlob() const { return mPixelShaderBlob; }
-	const auto& getD3D12Input() const { return mInput; }
+	const auto& getVertexShaderBlob() const { return mVertexShaderBlob; }
+	const auto& getPixelShaderBlob() const { return mPixelShaderBlob; }
+	const auto& getInput() const { return mInput; }
 
 private:
 	ComPtr<ID3D12RootSignature> mRootSignature;
@@ -388,9 +388,9 @@ public:
 class RenderTargetD3D12
 {
 public:
-	const auto& getD3D12RtvHeap() const { return mRtvHeap; }
-	const auto& getD3D12DsvHeap() const { return mDsvHeap; }
-	const auto& getD3D12DepthStencilRecource() const { return mDepthStencilResource; }
+	const auto& getRtvHeap() const { return mRtvHeap; }
+	const auto& getDsvHeap() const { return mDsvHeap; }
+	const auto& getDepthStencilRecource() const { return mDepthStencilResource; }
 	const auto& getTexture() const { return *mTexture; }
 
 private:
@@ -883,11 +883,11 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 	const std::optional<uint8_t>& stencil)
 {
 	const auto& rtv = gRenderTarget ? 
-		gRenderTarget->getD3D12RtvHeap()->GetCPUDescriptorHandleForHeapStart() : 
+		gRenderTarget->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
 
 	const auto& dsv = gRenderTarget ?
-		gRenderTarget->getD3D12DsvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gRenderTarget->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
 	if (color.has_value())
@@ -932,7 +932,7 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		return;
 
 	auto rtv_resource = gRenderTarget ? 
-		gRenderTarget->getTexture().getD3D12Texture() : 
+		gRenderTarget->getTexture().getD3D12Texture() :
 		gMainRenderTarget.frames[gFrameIndex].resource;
 
 	auto desc = rtv_resource->GetDesc();
@@ -1098,12 +1098,12 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		rasterizer_state.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->getD3D12VertexShaderBlob().Get());
-		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->getD3D12PixelShaderBlob().Get());
-		pso_desc.InputLayout = { shader->getD3D12Input().data(), (UINT)shader->getD3D12Input().size() };
+		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->getVertexShaderBlob().Get());
+		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->getPixelShaderBlob().Get());
+		pso_desc.InputLayout = { shader->getInput().data(), (UINT)shader->getInput().size() };
 		pso_desc.NodeMask = 1;
 		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pso_desc.pRootSignature = shader->getD3D12RootSignature().Get();
+		pso_desc.pRootSignature = shader->getRootSignature().Get();
 		pso_desc.SampleMask = UINT_MAX;
 		pso_desc.NumRenderTargets = 1;
 		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1118,11 +1118,11 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 	}
 
 	auto rtv_cpu_descriptor = gRenderTarget ?
-		gRenderTarget->getD3D12RtvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gRenderTarget->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
 
 	auto dsv_cpu_descriptor = gRenderTarget ? 
-		gRenderTarget->getD3D12DsvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gRenderTarget->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
 	gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
@@ -1130,7 +1130,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
 	gCommandList->SetPipelineState(pipeline_state);
 
-	gCommandList->SetGraphicsRootSignature(shader->getD3D12RootSignature().Get());
+	gCommandList->SetGraphicsRootSignature(shader->getRootSignature().Get());
 
 	gCommandList->SetDescriptorHeaps(1, gDescriptorHeap.GetAddressOf());
 
