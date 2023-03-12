@@ -10,6 +10,7 @@
 #include <dxgi1_4.h>
 #include <dxgidebug.h>
 #include <d3dx12.h>
+#include <d3d12generatemips.h>
 
 #pragma comment(lib, "d3d12")
 #pragma comment(lib, "d3dcompiler")
@@ -124,11 +125,7 @@ static bool gVertexBufferDirty = true;
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
 
-using StagingObjectD3D12 = std::variant<
-	ComPtr<ID3D12Resource>
->;
-
-static std::vector<StagingObjectD3D12> gStagingObjects;
+static std::vector<ComPtr<ID3D12DeviceChild>> gStagingObjects;
 
 void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12GraphicsCommandList*)> func)
 {
@@ -147,10 +144,10 @@ void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12Graphics
 	device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(), NULL, 
 		IID_PPV_ARGS(cmd_list.GetAddressOf()));
 
-	ComPtr<ID3D12Fence> fence = NULL;
+	ComPtr<ID3D12Fence> fence;
 	device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf()));
 
-	HANDLE event = CreateEvent(0, 0, 0, 0);
+	auto event = CreateEvent(0, 0, 0, 0);
 
 	func(cmd_list.Get());
 	cmd_list->Close();
@@ -333,8 +330,16 @@ public:
 	{
 		const auto format = DXGI_FORMAT_R8G8B8A8_UNORM;
 
+		uint32_t mip_levels = 1;
+
+		if (mipmap)
+		{
+			mip_levels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
+		}
+
+
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height);
+		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, (UINT16)mip_levels);
 
 		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
@@ -345,7 +350,7 @@ public:
 		srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srv_desc.Format = format;
 		srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srv_desc.Texture2D.MipLevels = 1;
+		srv_desc.Texture2D.MipLevels = mip_levels;
 		gDevice->CreateShaderResourceView(mTexture.Get(), &srv_desc, gDescriptorHeapCpuHandle);
 
 		mGpuDescriptorHandle = gDescriptorHeapGpuHandle;
@@ -392,6 +397,7 @@ public:
 
 	void generateMips()
 	{
+		D3D12GenerateMips(gDevice.Get(), gCommandQueue.Get(), mTexture.Get());
 	}
 };
 
@@ -1153,9 +1159,6 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		}
 	}
 
-	gViewportDirty = true; // TODO: everything should work without this two lines
-	gScissorDirty = true;
-
 	if (gViewportDirty || gScissorDirty)
 	{
 		float width;
@@ -1250,6 +1253,11 @@ void BackendD3D12::begin()
 
 	gCommandList->Reset(gCommandAllocator.Get(), NULL);
 	gCommandList->ResourceBarrier(1, &barrier);
+
+	gViewportDirty = true;
+	gScissorDirty = true;
+	gIndexBufferDirty = true;
+	gVertexBufferDirty = true;
 }
 
 void BackendD3D12::end()

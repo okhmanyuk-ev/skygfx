@@ -179,8 +179,15 @@ if (NOT EMSCRIPTEN)
 	target_link_libraries(${PROJECT_NAME} vulkan)
 endif()
 
-# d3d12
+# d3dx12
 
-if(WIN32)
-	target_include_directories(${PROJECT_NAME} PUBLIC lib/d3d12)
+if(WIN32)	
+	file(GLOB D3DX12_SRC
+		lib/d3dx12/*.cpp 
+		lib/d3dx12/*.h
+	)
+	add_library(d3dx12 STATIC ${D3DX12_SRC})
+	target_include_directories(d3dx12 PUBLIC lib/d3dx12)
+	target_link_libraries(${PROJECT_NAME} d3dx12)
+	set_property(TARGET d3dx12 PROPERTY FOLDER ${LIBS_FOLDER})
 endif()
