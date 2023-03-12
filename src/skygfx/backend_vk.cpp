@@ -67,6 +67,13 @@ static uint32_t gHeight = 0;
 static const uint32_t gMinImageCount = 2; // TODO: https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
 static ExecuteList gExecuteAfterPresent;
 
+using StagingObjectVK = std::variant<
+	vk::raii::Buffer,
+	vk::raii::DeviceMemory
+>;
+
+static std::vector<StagingObjectVK> gStagingObjects;
+
 struct FrameVK
 {
 	vk::raii::Fence fence = nullptr;
@@ -120,7 +127,6 @@ static IndexBufferVK* gIndexBuffer = nullptr;
 static bool gIndexBufferDirty = true;
 
 static RenderTargetVK* gRenderTarget = nullptr;
-static bool gRenderTargetDirty = true;
 
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
@@ -242,6 +248,33 @@ static void SetImageLayout(const vk::raii::CommandBuffer& cmd, vk::Image image,
 
 	return cmd.pipelineBarrier(src_stage, dst_stage, {}, nullptr, nullptr, image_memory_barrier);
 }
+
+static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t size, vk::BufferUsageFlags usage = {})
+{
+	auto buffer_create_info = vk::BufferCreateInfo()
+		.setSize(size)
+		.setUsage(vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst | usage)
+		.setSharingMode(vk::SharingMode::eExclusive);
+
+	auto buffer = gDevice.createBuffer(buffer_create_info);
+
+	auto memory_requirements = buffer.getMemoryRequirements();
+
+	auto memory_allocate_info = vk::MemoryAllocateInfo()
+		.setAllocationSize(memory_requirements.size)
+		.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
+
+	auto device_memory = gDevice.allocateMemory(memory_allocate_info);
+
+	buffer.bindMemory(*device_memory, 0);
+
+	return { std::move(buffer), std::move(device_memory) };
+}
+
+static void BeginRenderPass();
+static void EndRenderPass();
+static void EnsureRenderPassActivated();
+static void EnsureRenderPassDeactivated();
 
 const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 	{ ComparisonFunc::Always, vk::CompareOp::eAlways },
@@ -613,30 +646,27 @@ private:
 
 public:
 	BufferVK(size_t size, vk::BufferUsageFlags usage)
-	{		
-		auto buffer_create_info = vk::BufferCreateInfo()
-			.setSize(size)
-			.setUsage(usage)
-			.setSharingMode(vk::SharingMode::eExclusive);
-
-		mBuffer = gDevice.createBuffer(buffer_create_info);
-
-		auto memory_requirements = mBuffer.getMemoryRequirements();
-
-		auto memory_allocate_info = vk::MemoryAllocateInfo()
-			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
-
-		mDeviceMemory = gDevice.allocateMemory(memory_allocate_info);
-		
-		mBuffer.bindMemory(*mDeviceMemory, 0);
+	{
+		std::tie(mBuffer, mDeviceMemory) = CreateBuffer(size, usage);
 	}
 
 	void write(void* memory, size_t size)
 	{
-		auto mem = mDeviceMemory.mapMemory(0, VK_WHOLE_SIZE);
+		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size);
+
+		auto mem = staging_buffer_memory.mapMemory(0, VK_WHOLE_SIZE);
 		memcpy(mem, memory, size);
-		mDeviceMemory.unmapMemory();
+		staging_buffer_memory.unmapMemory();
+
+		auto region = vk::BufferCopy()
+			.setSize(size);
+
+		EnsureRenderPassDeactivated();
+
+		gCommandBuffer.copyBuffer(*staging_buffer, *mBuffer, { region });
+
+		gStagingObjects.push_back(std::move(staging_buffer));
+		gStagingObjects.push_back(std::move(staging_buffer_memory));
 	}
 };
 
@@ -683,8 +713,13 @@ public:
 	}
 };
 
-static void beginRenderPass()
+static bool gRenderPassActive = false;
+
+static void BeginRenderPass()
 {
+	assert(!gRenderPassActive);
+	gRenderPassActive = true;
+
 	auto color_texture = gRenderTarget ?
 		*gRenderTarget->getTexture()->getImageView() :
 		*gFrames.at(gFrameIndex).backbuffer_color_image_view;
@@ -700,7 +735,7 @@ static void beginRenderPass()
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
 
 	auto depth_stencil_attachment = vk::RenderingAttachmentInfo()
-		.setImageView(*gDepthStencil.view)
+		.setImageView(depth_stencil_texture)
 		.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
 		.setLoadOp(vk::AttachmentLoadOp::eLoad)
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
@@ -719,9 +754,28 @@ static void beginRenderPass()
 	gCommandBuffer.beginRendering(rendering_info);
 }
 
-static void endRenderPass()
+static void EndRenderPass()
 {
+	assert(gRenderPassActive);
+	gRenderPassActive = false;
+
 	gCommandBuffer.endRendering();
+}
+
+static void EnsureRenderPassActivated()
+{
+	if (gRenderPassActive)
+		return;
+
+	BeginRenderPass();
+}
+
+static void EnsureRenderPassDeactivated()
+{
+	if (!gRenderPassActive)
+		return;
+
+	EndRenderPass();
 }
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
@@ -902,6 +956,7 @@ BackendVK::~BackendVK()
 {
 	end();
 	gExecuteAfterPresent.flush();
+	gStagingObjects.clear();
 	delete gContext;
 }
 
@@ -954,7 +1009,7 @@ void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 
 	gPipelineState.render_target = render_target; // TODO: see how we do it in metal, we dont need this field!
 	gRenderTarget = render_target;
-	gRenderTargetDirty = true;
+	EnsureRenderPassDeactivated();
 }
 
 void BackendVK::setRenderTarget(std::nullopt_t value)
@@ -964,7 +1019,7 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 
 	gPipelineState.render_target = nullptr; // TODO: see how we do it in metal, we dont need this field!
 	gRenderTarget = nullptr;
-	gRenderTargetDirty = true;
+	EnsureRenderPassDeactivated();
 }
 
 void BackendVK::setShader(ShaderHandle* handle)
@@ -1041,8 +1096,7 @@ void BackendVK::setTextureAddress(TextureAddress value)
 void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	endRenderPass();
-	beginRenderPass();
+	EnsureRenderPassActivated();
 
 	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gWidth;
 	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gHeight;
@@ -1099,12 +1153,14 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
+	EnsureRenderPassActivated();
 	gCommandBuffer.draw(vertex_count, 0, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing();
+	EnsureRenderPassActivated();
 	gCommandBuffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
 
@@ -1128,6 +1184,7 @@ void BackendVK::present()
 	auto present_result = gQueue.presentKHR(present_info);
 
 	gExecuteAfterPresent.flush();
+	gStagingObjects.clear();
 
 	gSemaphoreIndex = (gSemaphoreIndex + 1) % gFrames.size();
 
@@ -1156,7 +1213,6 @@ void BackendVK::begin()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
 	gCommandBuffer.begin(begin_info);
-	beginRenderPass();
 }
 
 void BackendVK::end()
@@ -1164,7 +1220,7 @@ void BackendVK::end()
 	assert(gWorking);
 	gWorking = false;
 
-	endRenderPass();
+	EnsureRenderPassDeactivated();
 	gCommandBuffer.end();
 
 	const auto& frame = gFrames.at(gFrameIndex);
@@ -1451,14 +1507,6 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 
 void BackendVK::prepareForDrawing()
 {
-	if (gRenderTargetDirty)
-	{
-		endRenderPass();
-		beginRenderPass();
-
-		gRenderTargetDirty = false;
-	}
-
 	assert(gVertexBuffer);
 	
 	if (gVertexBufferDirty)
