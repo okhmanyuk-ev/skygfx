@@ -193,6 +193,25 @@ namespace skygfx
 		TriangleStrip
 	};
 
+	enum class TopologyKind
+	{
+		Points,
+		Lines,
+		Triangles
+	};
+
+	inline TopologyKind GetTopologyKind(Topology topology)
+	{
+		static const std::map<Topology, TopologyKind> TopologyKindMap = {
+			{ Topology::PointList, TopologyKind::Points },
+			{ Topology::LineList, TopologyKind::Lines},
+			{ Topology::LineStrip, TopologyKind::Lines },
+			{ Topology::TriangleList, TopologyKind::Triangles },
+			{ Topology::TriangleStrip, TopologyKind::Triangles }
+		};
+		return TopologyKindMap.at(topology);
+	}
+
 	struct Viewport
 	{
 		glm::vec2 position = { 0.0f, 0.0f };
