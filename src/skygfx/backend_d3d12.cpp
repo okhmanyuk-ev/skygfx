@@ -50,6 +50,7 @@ struct PipelineStateD3D12
 	RasterizerStateD3D12 rasterizer_state;
 	std::optional<DepthMode> depth_mode;
 	BlendMode blend_mode = BlendStates::Opaque;
+	TopologyKind topology_kind = TopologyKind::Triangles;
 	
 	bool operator==(const PipelineStateD3D12& value) const
 	{
@@ -57,7 +58,8 @@ struct PipelineStateD3D12
 			shader == value.shader &&
 			rasterizer_state == value.rasterizer_state &&
 			depth_mode == value.depth_mode &&
-			blend_mode == value.blend_mode;
+			blend_mode == value.blend_mode &&
+			topology_kind == value.topology_kind;
 	}
 };
 
@@ -65,7 +67,8 @@ SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
 	t.shader,
 	t.rasterizer_state,
 	t.depth_mode,
-	t.blend_mode);
+	t.blend_mode,
+	t.topology_kind);
 
 static int const NUM_BACK_BUFFERS = 2;
 
@@ -114,7 +117,8 @@ static bool gViewportDirty = true;
 static std::optional<Scissor> gScissor;
 static bool gScissorDirty = true;
 
-static D3D_PRIMITIVE_TOPOLOGY gTopology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+static Topology gTopology = Topology::TriangleList;
+static bool gTopologyDirty = true;
 
 static IndexBufferD3D12* gIndexBuffer = nullptr;
 static bool gIndexBufferDirty = true;
@@ -758,15 +762,12 @@ void BackendD3D12::resize(uint32_t width, uint32_t height)
 
 void BackendD3D12::setTopology(Topology topology)
 {
-	const static std::unordered_map<Topology, D3D_PRIMITIVE_TOPOLOGY> TopologyMap = {
-		{ Topology::PointList, D3D_PRIMITIVE_TOPOLOGY_POINTLIST },
-		{ Topology::LineList, D3D_PRIMITIVE_TOPOLOGY_LINELIST },
-		{ Topology::LineStrip, D3D_PRIMITIVE_TOPOLOGY_LINESTRIP },
-		{ Topology::TriangleList, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST },
-		{ Topology::TriangleStrip, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP }
-	};
+	if (gTopology == topology)
+		return;
 
-	gTopology = TopologyMap.at(topology);
+	gTopology = topology;
+	gTopologyDirty = true;
+	gPipelineState.topology_kind = GetTopologyKind(topology);
 }
 
 void BackendD3D12::setViewport(std::optional<Viewport> viewport)
@@ -1099,12 +1100,20 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		rasterizer_state.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
 
+		const static std::unordered_map<TopologyKind, D3D12_PRIMITIVE_TOPOLOGY_TYPE> TopologyTypeMap = {
+			{ TopologyKind::Points, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT },
+			{ TopologyKind::Lines, D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE },
+			{ TopologyKind::Triangles, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE }
+		};
+
+		auto topology_type = TopologyTypeMap.at(gPipelineState.topology_kind);
+
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
 		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->getVertexShaderBlob().Get());
 		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->getPixelShaderBlob().Get());
 		pso_desc.InputLayout = { shader->getInput().data(), (UINT)shader->getInput().size() };
 		pso_desc.NodeMask = 1;
-		pso_desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		pso_desc.PrimitiveTopologyType = topology_type;
 		pso_desc.pRootSignature = shader->getRootSignature().Get();
 		pso_desc.SampleMask = UINT_MAX;
 		pso_desc.NumRenderTargets = 1;
@@ -1206,7 +1215,21 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		}
 	}
 
-	gCommandList->IASetPrimitiveTopology(gTopology);
+	if (gTopologyDirty)
+	{
+		const static std::unordered_map<Topology, D3D_PRIMITIVE_TOPOLOGY> TopologyMap = {
+			{ Topology::PointList, D3D_PRIMITIVE_TOPOLOGY_POINTLIST },
+			{ Topology::LineList, D3D_PRIMITIVE_TOPOLOGY_LINELIST },
+			{ Topology::LineStrip, D3D_PRIMITIVE_TOPOLOGY_LINESTRIP },
+			{ Topology::TriangleList, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST },
+			{ Topology::TriangleStrip, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP }
+		};
+
+		auto topology = TopologyMap.at(gTopology);
+		gCommandList->IASetPrimitiveTopology(topology);
+
+		gTopologyDirty = false;
+	}
 
 	if (indexed && gIndexBufferDirty)
 	{
@@ -1254,6 +1277,7 @@ void BackendD3D12::begin()
 	gCommandList->Reset(gCommandAllocator.Get(), NULL);
 	gCommandList->ResourceBarrier(1, &barrier);
 
+	gTopologyDirty = true;
 	gViewportDirty = true;
 	gScissorDirty = true;
 	gIndexBufferDirty = true;
