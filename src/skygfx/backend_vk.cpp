@@ -16,7 +16,7 @@ class IndexBufferVK;
 struct PipelineStateVK
 {
 	ShaderVK* shader = nullptr;
-	BlendMode blend_mode = BlendMode(Blend::One, Blend::One);
+	BlendMode blend_mode = BlendStates::AlphaBlend;
 	RenderTargetVK* render_target = nullptr; // TODO: see how we do it in Metal, we can remove this field from here!
 
 	bool operator==(const PipelineStateVK& value) const
