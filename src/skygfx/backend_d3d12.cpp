@@ -487,11 +487,21 @@ public:
 private:
 	ComPtr<ID3D12Resource> mBuffer;
 	size_t mSize;
+	D3D12_RESOURCE_STATES mState = D3D12_RESOURCE_STATE_COMMON;
 
 public:
 	BufferD3D12(size_t size) : mSize(size)
 	{
 		mBuffer = CreateBuffer(size);
+	}
+
+	void transition(D3D12_RESOURCE_STATES state)
+	{
+		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(),
+			mState, state);
+
+		gCommandList->ResourceBarrier(1, &barrier);
+		mState = state;
 	}
 
 	void write(void* memory, size_t size)
@@ -503,16 +513,10 @@ public:
 		memcpy(cpu_memory, memory, size);
 		staging_buffer->Unmap(0, NULL);
 
-		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(),
-			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
-
-		gCommandList->ResourceBarrier(1, &barrier);
+		auto prev_state = mState;
+		transition(D3D12_RESOURCE_STATE_COPY_DEST);
 		gCommandList->CopyBufferRegion(mBuffer.Get(), 0, staging_buffer.Get(), 0, (UINT64)size);
-
-		barrier = CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(),
-			D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON);
-
-		gCommandList->ResourceBarrier(1, &barrier);
+		transition(prev_state);
 
 		gStagingObjects.push_back(staging_buffer);
 	}
@@ -531,6 +535,7 @@ public:
 	VertexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size),
 		mStride(stride)
 	{
+		transition(D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	}
 };
 
@@ -547,6 +552,7 @@ public:
 	IndexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size),
 		mStride(stride)
 	{
+		transition(D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	}
 };
 
@@ -560,6 +566,7 @@ class UniformBufferD3D12 : public BufferD3D12
 public:
 	UniformBufferD3D12(size_t size) : BufferD3D12(RoundUp((int)size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT))
 	{
+		transition(D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	}
 };
 
