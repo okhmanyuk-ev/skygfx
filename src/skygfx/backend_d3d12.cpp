@@ -980,6 +980,9 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		dst_y = -pos.y;
 	}
 
+	if (pos.y >= (int)back_h || pos.x >= (int)back_w)
+		return;
+
 	src_w = glm::min(src_w, (UINT)back_w);
 	src_h = glm::min(src_h, (UINT)back_h);
 
@@ -991,33 +994,30 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	box.front = 0;
 	box.back = 1;
 
-	if (pos.y < (int)back_h && pos.x < (int)back_w) // TODO: use return instead adding scope
-	{
-		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
-			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
 
-		gCommandList->ResourceBarrier(1, &barrier);
+	gCommandList->ResourceBarrier(1, &barrier);
 
-		D3D12_TEXTURE_COPY_LOCATION src_loc = {};
-		src_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-		src_loc.pResource = rtv_resource.Get();
-		src_loc.SubresourceIndex = 0;
+	D3D12_TEXTURE_COPY_LOCATION src_loc = {};
+	src_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	src_loc.pResource = rtv_resource.Get();
+	src_loc.SubresourceIndex = 0;
 
-		D3D12_TEXTURE_COPY_LOCATION dst_loc = {};
-		dst_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-		dst_loc.pResource = dst_texture->getD3D12Texture().Get();
-		dst_loc.SubresourceIndex = 0;
+	D3D12_TEXTURE_COPY_LOCATION dst_loc = {};
+	dst_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+	dst_loc.pResource = dst_texture->getD3D12Texture().Get();
+	dst_loc.SubresourceIndex = 0;
 
-		gCommandList->CopyTextureRegion(&dst_loc, dst_x, dst_y, 0, &src_loc, &box);
+	gCommandList->CopyTextureRegion(&dst_loc, dst_x, dst_y, 0, &src_loc, &box);
 
-		barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
-			D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
+		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-		gCommandList->ResourceBarrier(1, &barrier);
+	gCommandList->ResourceBarrier(1, &barrier);
 
-		if (dst_texture->isMipmap())
-			dst_texture->generateMips();
-	}
+	if (dst_texture->isMipmap())
+		dst_texture->generateMips();
 }
 
 void BackendD3D12::prepareForDrawing(bool indexed)
