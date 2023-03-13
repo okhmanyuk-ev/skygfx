@@ -11,6 +11,7 @@
 #include <dxgidebug.h>
 #include <d3dx12.h>
 #include <d3d12generatemips.h>
+#include <DirectXHelpers.h>
 
 #pragma comment(lib, "d3d12")
 #pragma comment(lib, "d3dcompiler")
@@ -292,20 +293,10 @@ public:
 				params.push_back(param);
 			}
 
-			CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc((UINT)params.size(), params.data(), (UINT)static_samplers.size(),
+			auto desc = CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC((UINT)params.size(), params.data(), (UINT)static_samplers.size(),
 				static_samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-			ComPtr<ID3DBlob> blob;
-			ComPtr<ID3DBlob> error;
-
-			D3DX12SerializeVersionedRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error);
-
-			std::string error_string;
-
-			if (error != NULL)
-				error_string = std::string((char*)error->GetBufferPointer(), error->GetBufferSize());
-
-			gDevice->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&mRootSignature));
+			DirectX::CreateRootSignature(gDevice.Get(), &desc.Desc_1_0, mRootSignature.GetAddressOf());
 		}
 	}
 };
@@ -341,7 +332,6 @@ public:
 			mip_levels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
 		}
 
-
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, (UINT16)mip_levels);
 
@@ -350,12 +340,7 @@ public:
 		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
 			D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(mTexture.GetAddressOf()));
 
-		D3D12_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
-		srv_desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srv_desc.Format = format;
-		srv_desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srv_desc.Texture2D.MipLevels = mip_levels;
-		gDevice->CreateShaderResourceView(mTexture.Get(), &srv_desc, gDescriptorHeapCpuHandle);
+		DirectX::CreateShaderResourceView(gDevice.Get(), mTexture.Get(), gDescriptorHeapCpuHandle);
 
 		mGpuDescriptorHandle = gDescriptorHeapGpuHandle;
 
@@ -379,17 +364,11 @@ public:
 			subersource_data.SlicePitch = width * height * channels;
 
 			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-				auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(),
-					D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
-
-				cmdlist->ResourceBarrier(1, &barrier);
+				auto barrier = DirectX::ScopedBarrier(cmdlist, { 
+					CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST) 
+				});
 
 				UpdateSubresources(cmdlist, mTexture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
-
-				barrier = CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(),
-					D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
-				cmdlist->ResourceBarrier(1, &barrier);
 			});
 
 			if (mipmap)
@@ -427,13 +406,9 @@ public:
 		rtv_heap_desc.NumDescriptors = 1;
 		gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf()));
 
-		D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {};
-		rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-
-		gDevice->CreateRenderTargetView(texture->getD3D12Texture().Get(), &rtv_desc,
+		DirectX::CreateRenderTargetView(gDevice.Get(), texture->getD3D12Texture().Get(),
 			mRtvHeap->GetCPUDescriptorHandleForHeapStart());
-			
+
 		auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 		auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT,
 			(UINT64)width, (UINT)height, 1, 1);
@@ -451,15 +426,13 @@ public:
 		D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
 		dsv_desc.Format = depth_desc.Format;
 		dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-		
+
 		gDevice->CreateDepthStencilView(mDepthStencilResource.Get(), &dsv_desc,
 			mDsvHeap->GetCPUDescriptorHandleForHeapStart());
 
 		OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-			auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(texture->getD3D12Texture().Get(),
+			DirectX::TransitionResource(cmdlist, texture->getD3D12Texture().Get(),
 				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-			cmdlist->ResourceBarrier(1, &barrier);
 		});
 	}
 };
@@ -487,21 +460,20 @@ public:
 private:
 	ComPtr<ID3D12Resource> mBuffer;
 	size_t mSize;
-	D3D12_RESOURCE_STATES mState = D3D12_RESOURCE_STATE_COMMON;
+	D3D12_RESOURCE_STATES mState;
 
 public:
-	BufferD3D12(size_t size) : mSize(size)
+	BufferD3D12(size_t size, D3D12_RESOURCE_STATES state) : mSize(size), mState(state)
 	{
 		mBuffer = CreateBuffer(size);
-	}
 
-	void transition(D3D12_RESOURCE_STATES state)
-	{
-		auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(),
-			mState, state);
-
-		gCommandList->ResourceBarrier(1, &barrier);
-		mState = state;
+		if (state != D3D12_RESOURCE_STATE_COMMON)
+		{
+			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
+				DirectX::TransitionResource(cmdlist, mBuffer.Get(),
+					D3D12_RESOURCE_STATE_COMMON, state);
+			});
+		}
 	}
 
 	void write(void* memory, size_t size)
@@ -513,10 +485,11 @@ public:
 		memcpy(cpu_memory, memory, size);
 		staging_buffer->Unmap(0, NULL);
 
-		auto prev_state = mState;
-		transition(D3D12_RESOURCE_STATE_COPY_DEST);
+		auto barrier = DirectX::ScopedBarrier(gCommandList.Get(), {
+			CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(), mState, D3D12_RESOURCE_STATE_COPY_DEST)
+		});
+
 		gCommandList->CopyBufferRegion(mBuffer.Get(), 0, staging_buffer.Get(), 0, (UINT64)size);
-		transition(prev_state);
 
 		gStagingObjects.push_back(staging_buffer);
 	}
@@ -532,10 +505,9 @@ private:
 	size_t mStride = 0;
 
 public:
-	VertexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size),
+	VertexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER),
 		mStride(stride)
 	{
-		transition(D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	}
 };
 
@@ -549,24 +521,17 @@ private:
 	size_t mStride = 0;
 
 public:
-	IndexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size),
+	IndexBufferD3D12(size_t size, size_t stride) : BufferD3D12(size, D3D12_RESOURCE_STATE_INDEX_BUFFER),
 		mStride(stride)
 	{
-		transition(D3D12_RESOURCE_STATE_INDEX_BUFFER);
 	}
 };
-
-int RoundUp(int num, int factor)
-{
-	return num + factor - 1 - (num + factor - 1) % factor;
-}
 
 class UniformBufferD3D12 : public BufferD3D12
 {
 public:
-	UniformBufferD3D12(size_t size) : BufferD3D12(RoundUp((int)size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT))
+	UniformBufferD3D12(size_t size) : BufferD3D12(DirectX::AlignUp((int)size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER)
 	{
-		transition(D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 	}
 };
 
@@ -715,7 +680,7 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
 		gSwapChain->GetBuffer(i, IID_PPV_ARGS(gMainRenderTarget.frames[i].resource.GetAddressOf()));
-		gDevice->CreateRenderTargetView(gMainRenderTarget.frames[i].resource.Get(), NULL, 
+		DirectX::CreateRenderTargetView(gDevice.Get(), gMainRenderTarget.frames[i].resource.Get(),
 			gMainRenderTarget.frames[i].rtv_descriptor);
 	}
 
