@@ -9,9 +9,9 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <dxgidebug.h>
-#include <d3dx12.h>
-#include <d3d12generatemips.h>
-#include <DirectXHelpers.h>
+#include <d3dx12/d3dx12.h>
+#include <d3dx12/d3d12generatemips.h>
+#include <d3dx12/DirectXHelpers.h>
 
 #pragma comment(lib, "d3d12")
 #pragma comment(lib, "d3dcompiler")
