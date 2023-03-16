@@ -12,6 +12,7 @@
 #include <d3dx12/d3dx12.h>
 #include <d3dx12/d3d12generatemips.h>
 #include <d3dx12/DirectXHelpers.h>
+#include <d3dx12/PlatformHelpers.h>
 
 #pragma comment(lib, "d3d12")
 #pragma comment(lib, "d3dcompiler")
@@ -22,6 +23,7 @@
 
 using Microsoft::WRL::ComPtr;
 using namespace skygfx;
+using namespace DirectX;
 
 class BufferD3D12;
 class ShaderD3D12;
@@ -296,7 +298,7 @@ public:
 			auto desc = CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC((UINT)params.size(), params.data(), (UINT)static_samplers.size(),
 				static_samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-			DirectX::CreateRootSignature(gDevice.Get(), &desc.Desc_1_0, mRootSignature.GetAddressOf());
+			CreateRootSignature(gDevice.Get(), &desc.Desc_1_0, mRootSignature.GetAddressOf());
 		}
 	}
 };
@@ -340,7 +342,7 @@ public:
 		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
 			D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(mTexture.GetAddressOf()));
 
-		DirectX::CreateShaderResourceView(gDevice.Get(), mTexture.Get(), gDescriptorHeapCpuHandle);
+		CreateShaderResourceView(gDevice.Get(), mTexture.Get(), gDescriptorHeapCpuHandle);
 
 		mGpuDescriptorHandle = gDescriptorHeapGpuHandle;
 
@@ -364,7 +366,7 @@ public:
 			subersource_data.SlicePitch = width * height * channels;
 
 			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-				auto barrier = DirectX::ScopedBarrier(cmdlist, { 
+				auto barrier = ScopedBarrier(cmdlist, { 
 					CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST) 
 				});
 
@@ -406,7 +408,7 @@ public:
 		rtv_heap_desc.NumDescriptors = 1;
 		gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf()));
 
-		DirectX::CreateRenderTargetView(gDevice.Get(), texture->getD3D12Texture().Get(),
+		CreateRenderTargetView(gDevice.Get(), texture->getD3D12Texture().Get(),
 			mRtvHeap->GetCPUDescriptorHandleForHeapStart());
 
 		auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -431,7 +433,7 @@ public:
 			mDsvHeap->GetCPUDescriptorHandleForHeapStart());
 
 		OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-			DirectX::TransitionResource(cmdlist, texture->getD3D12Texture().Get(),
+			TransitionResource(cmdlist, texture->getD3D12Texture().Get(),
 				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		});
 	}
@@ -470,7 +472,7 @@ public:
 		if (state != D3D12_RESOURCE_STATE_COMMON)
 		{
 			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-				DirectX::TransitionResource(cmdlist, mBuffer.Get(),
+				TransitionResource(cmdlist, mBuffer.Get(),
 					D3D12_RESOURCE_STATE_COMMON, state);
 			});
 		}
@@ -485,7 +487,7 @@ public:
 		memcpy(cpu_memory, memory, size);
 		staging_buffer->Unmap(0, NULL);
 
-		auto barrier = DirectX::ScopedBarrier(gCommandList.Get(), {
+		auto barrier = ScopedBarrier(gCommandList.Get(), {
 			CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(), mState, D3D12_RESOURCE_STATE_COPY_DEST)
 		});
 
@@ -530,7 +532,7 @@ public:
 class UniformBufferD3D12 : public BufferD3D12
 {
 public:
-	UniformBufferD3D12(size_t size) : BufferD3D12(DirectX::AlignUp((int)size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER)
+	UniformBufferD3D12(size_t size) : BufferD3D12(AlignUp((int)size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER)
 	{
 	}
 };
@@ -563,7 +565,13 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
 	debug->EnableDebugLayer();
 
-	D3D12CreateDevice(NULL, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gDevice.GetAddressOf()));
+	ComPtr<IDXGIFactory4> dxgi_factory;
+	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
+	
+	IDXGIAdapter1* adapter;
+	dxgi_factory->EnumAdapters1(0, &adapter);
+
+	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gDevice.GetAddressOf()));
 
 	ComPtr<ID3D12InfoQueue> info_queue;
 	gDevice.As(&info_queue);
@@ -644,9 +652,6 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	DXGI_SWAP_CHAIN_FULLSCREEN_DESC fs_swapchain_desc = { 0 };
 	fs_swapchain_desc.Windowed = TRUE;
 
-	ComPtr<IDXGIFactory4> dxgi_factory;
-	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
-
 	ComPtr<IDXGISwapChain1> swapchain;
 	dxgi_factory->CreateSwapChainForHwnd(gCommandQueue.Get(), (HWND)window,
 		&swapchain_desc, &fs_swapchain_desc, NULL, swapchain.GetAddressOf());
@@ -680,7 +685,7 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
 		gSwapChain->GetBuffer(i, IID_PPV_ARGS(gMainRenderTarget.frames[i].resource.GetAddressOf()));
-		DirectX::CreateRenderTargetView(gDevice.Get(), gMainRenderTarget.frames[i].resource.Get(),
+		CreateRenderTargetView(gDevice.Get(), gMainRenderTarget.frames[i].resource.Get(),
 			gMainRenderTarget.frames[i].rtv_descriptor);
 	}
 
