@@ -71,14 +71,15 @@ int main()
 
 	int tex_width = 0;
 	int tex_height = 0;
-	void* tex_memory = stbi_load("assets/bricks.png", &tex_width, &tex_height, nullptr, 4); // TODO: this image has 3 channels, we must can load that type of images
+	int tex_channels = 4;
+	void* tex_memory = stbi_load("assets/bricks.jpg", &tex_width, &tex_height, nullptr, tex_channels);
 
-	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory, true);
+	auto texture = skygfx::Texture(tex_width, tex_height, tex_channels, tex_memory, true);
 
 	const auto camera = skygfx::ext::PerspectiveCamera{
 		.yaw = 0.0f,
 		.pitch = glm::radians(-25.0f),
-		.position = glm::vec3{ -500.0f, 200.0f, 0.0f }
+		.position = { -500.0f, 200.0f, 0.0f }
 	};
 
 	const auto light = skygfx::ext::effects::DirectionalLight{

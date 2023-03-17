@@ -67,9 +67,10 @@ int main()
 
 	int tex_width = 0;
 	int tex_height = 0;
-	void* tex_memory = stbi_load("assets/bricks.png", &tex_width, &tex_height, nullptr, 4); // TODO: this image has 3 channels, we must can load that type of images
+	int tex_channels = 4;
+	void* tex_memory = stbi_load("assets/bricks.jpg", &tex_width, &tex_height, nullptr, tex_channels);
 
-	auto texture = skygfx::Texture(tex_width, tex_height, 4/*TODO: no magic numbers should be*/, tex_memory);
+	auto texture = skygfx::Texture(tex_width, tex_height, tex_channels, tex_memory);
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);
