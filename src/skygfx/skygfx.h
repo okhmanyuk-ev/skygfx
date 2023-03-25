@@ -90,6 +90,9 @@ namespace skygfx
 	{
 	public:
 		Buffer(size_t size);
+		Buffer(Buffer&& other) noexcept;
+
+		Buffer& operator=(Buffer&& other) noexcept;
 
 		auto getSize() const { return mSize; }
 
@@ -102,7 +105,10 @@ namespace skygfx
 	public:
 		VertexBuffer(size_t size, size_t stride);
 		VertexBuffer(void* memory, size_t size, size_t stride);
+		VertexBuffer(VertexBuffer&& other) noexcept;
 		~VertexBuffer();
+
+		VertexBuffer& operator=(VertexBuffer&& other) noexcept;
 
 		template<class T>
 		explicit VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
@@ -135,7 +141,10 @@ namespace skygfx
 	public:
 		IndexBuffer(size_t size, size_t stride);
 		IndexBuffer(void* memory, size_t size, size_t stride);
+		IndexBuffer(IndexBuffer&& other) noexcept;
 		~IndexBuffer();
+
+		IndexBuffer& operator=(IndexBuffer&& other) noexcept;
 
 		template<class T>
 		explicit IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
@@ -168,7 +177,10 @@ namespace skygfx
 	public:
 		UniformBuffer(size_t size);
 		UniformBuffer(void* memory, size_t size);
+		UniformBuffer(UniformBuffer&& other) noexcept;
 		~UniformBuffer();
+
+		UniformBuffer& operator=(UniformBuffer&& other) noexcept;
 
 		template <class T>
 		explicit UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}

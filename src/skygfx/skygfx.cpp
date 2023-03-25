@@ -62,6 +62,25 @@ Buffer::Buffer(size_t size) : mSize(size)
 	assert(size > 0);
 }
 
+Buffer::Buffer(Buffer&& other) noexcept
+{
+	if (this == &other)
+		return;
+
+	mSize = other.mSize;
+	other.mSize = 0;
+}
+
+Buffer& Buffer::operator=(Buffer&& other) noexcept
+{
+	if (this == &other)
+		return *this;
+
+	mSize = other.mSize;
+	other.mSize = 0;
+	return *this;
+}
+
 // vertex buffer
 
 VertexBuffer::VertexBuffer(size_t size, size_t stride) : Buffer(size)
@@ -74,10 +93,31 @@ VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride) : VertexBuf
 	write(memory, size, stride);
 }
 
+VertexBuffer::VertexBuffer(VertexBuffer&& other) noexcept : Buffer(std::move(other))
+{
+	if (this == &other)
+		return;
+
+	mVertexBufferHandle = other.mVertexBufferHandle;
+	other.mVertexBufferHandle = nullptr;
+}
+
 VertexBuffer::~VertexBuffer()
 {
-	if (gBackend)
+	if (gBackend && mVertexBufferHandle)
 		gBackend->destroyVertexBuffer(mVertexBufferHandle);
+}
+
+VertexBuffer& VertexBuffer::operator=(VertexBuffer&& other) noexcept
+{
+	Buffer::operator=(std::move(other));
+
+	if (this == &other)
+		return *this;
+
+	mVertexBufferHandle = other.mVertexBufferHandle;
+	other.mVertexBufferHandle = nullptr;
+	return *this;
 }
 
 void VertexBuffer::write(void* memory, size_t size, size_t stride)
@@ -97,10 +137,31 @@ IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride) : IndexBuffer
 	write(memory, size, stride);
 }
 
+IndexBuffer::IndexBuffer(IndexBuffer&& other) noexcept : Buffer(std::move(other))
+{
+	if (this == &other)
+		return;
+
+	mIndexBufferHandle = other.mIndexBufferHandle;
+	other.mIndexBufferHandle = nullptr;
+}
+
 IndexBuffer::~IndexBuffer()
 {
-	if (gBackend)
+	if (gBackend && mIndexBufferHandle)
 		gBackend->destroyIndexBuffer(mIndexBufferHandle);
+}
+
+IndexBuffer& IndexBuffer::operator=(IndexBuffer&& other) noexcept
+{
+	Buffer::operator=(std::move(other));
+
+	if (this == &other)
+		return *this;
+
+	mIndexBufferHandle = other.mIndexBufferHandle;
+	other.mIndexBufferHandle = nullptr;
+	return *this;
 }
 
 void IndexBuffer::write(void* memory, size_t size, size_t stride)
@@ -120,10 +181,31 @@ UniformBuffer::UniformBuffer(void* memory, size_t size) : UniformBuffer(size)
 	write(memory, size);
 }
 
+UniformBuffer::UniformBuffer(UniformBuffer&& other) noexcept : Buffer(std::move(other))
+{
+	if (this == &other)
+		return;
+
+	mUniformBufferHandle = other.mUniformBufferHandle;
+	other.mUniformBufferHandle = nullptr;
+}
+
 UniformBuffer::~UniformBuffer()
 {
-	if (gBackend)
+	if (gBackend && mUniformBufferHandle)
 		gBackend->destroyUniformBuffer(mUniformBufferHandle);
+}
+
+UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) noexcept
+{
+	Buffer::operator=(std::move(other));
+
+	if (this == &other)
+		return *this;
+
+	mUniformBufferHandle = other.mUniformBufferHandle;
+	other.mUniformBufferHandle = nullptr;
+	return *this;
 }
 
 void UniformBuffer::write(void* memory, size_t size)
