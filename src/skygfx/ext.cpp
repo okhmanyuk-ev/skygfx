@@ -422,7 +422,11 @@ void ext::ExecuteCommands(const Commands& cmds)
 			},
 			[&](const commands::SetEffect& cmd) {
 				shader = cmd.shader;
-				uniform_data = const_cast<std::vector<uint8_t>*>(&cmd.uniform_data);
+				if (shader)
+					uniform_data = const_cast<std::vector<uint8_t>*>(&cmd.uniform_data);
+				else
+					uniform_data = nullptr;
+
 				shader_dirty = true;
 				uniform_dirty = true;
 			},
