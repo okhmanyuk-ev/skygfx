@@ -12,9 +12,9 @@ static Backend* gBackend = nullptr;
 static glm::u32vec2 gSize = { 0, 0 };
 static std::optional<glm::u32vec2> gRenderTargetSize;
 static BackendType gBackendType = BackendType::OpenGL;
-static std::shared_ptr<VertexBuffer> gDynamicVertexBuffer;
-static std::shared_ptr<IndexBuffer> gDynamicIndexBuffer;
-static std::unordered_map<uint32_t, std::shared_ptr<UniformBuffer>> gDynamicUniformBuffers;
+static std::optional<VertexBuffer> gDynamicVertexBuffer;
+static std::optional<IndexBuffer> gDynamicIndexBuffer;
+static std::unordered_map<uint32_t, UniformBuffer> gDynamicUniformBuffers;
 
 // texture
 
@@ -301,11 +301,11 @@ void skygfx::SetDynamicVertexBuffer(void* memory, size_t size, size_t stride)
 		vertex_buffer_size = gDynamicVertexBuffer->getSize();
 
 	if (vertex_buffer_size < size)
-		gDynamicVertexBuffer = std::make_shared<skygfx::VertexBuffer>(memory, size, stride);
+		gDynamicVertexBuffer.emplace(memory, size, stride);
 	else
 		gDynamicVertexBuffer->write(memory, size, stride);
 
-	SetVertexBuffer(*gDynamicVertexBuffer);
+	SetVertexBuffer(gDynamicVertexBuffer.value());
 }
 
 void skygfx::SetDynamicIndexBuffer(void* memory, size_t size, size_t stride)
@@ -318,38 +318,27 @@ void skygfx::SetDynamicIndexBuffer(void* memory, size_t size, size_t stride)
 		index_buffer_size = gDynamicIndexBuffer->getSize();
 
 	if (index_buffer_size < size)
-		gDynamicIndexBuffer = std::make_shared<skygfx::IndexBuffer>(memory, size, stride);
+		gDynamicIndexBuffer.emplace(memory, size, stride);
 	else
 		gDynamicIndexBuffer->write(memory, size, stride);
 
-	SetIndexBuffer(*gDynamicIndexBuffer);
+	SetIndexBuffer(gDynamicIndexBuffer.value());
 }
 
 void skygfx::SetDynamicUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	assert(size > 0);
 
-	std::shared_ptr<skygfx::UniformBuffer> uniform_buffer = nullptr;
-
-	if (gDynamicUniformBuffers.contains(binding))
-		uniform_buffer = gDynamicUniformBuffers.at(binding);
-
-	size_t uniform_buffer_size = 0;
-
-	if (uniform_buffer)
-		uniform_buffer_size = uniform_buffer->getSize();
-
-	if (uniform_buffer_size < size)
+	if (!gDynamicUniformBuffers.contains(binding) || gDynamicUniformBuffers.at(binding).getSize() < size)
 	{
-		uniform_buffer = std::make_shared<skygfx::UniformBuffer>(memory, size);
-		gDynamicUniformBuffers[binding] = uniform_buffer;
-	}
-	else
-	{
-		uniform_buffer->write(memory, size);
+		gDynamicUniformBuffers.erase(binding);
+		gDynamicUniformBuffers.emplace(binding, size);
 	}
 
-	SetUniformBuffer(binding, *uniform_buffer);
+	auto& buffer = gDynamicUniformBuffers.at(binding);
+	buffer.write(memory, size);
+
+	SetUniformBuffer(binding, buffer);
 }
 
 uint32_t skygfx::GetWidth()
