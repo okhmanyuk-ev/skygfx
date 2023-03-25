@@ -143,13 +143,11 @@ namespace skygfx::ext
 			SetEffect(T value) {
 				static auto _shader = MakeEffectShader(T::Shader);
 				shader = &_shader;
-				setup_uniform_buffer_func = [value = std::move(value)](uint32_t binding) {
-					SetDynamicUniformBuffer(binding, value);
-				};
+				uniform_data.insert(uniform_data.end(), reinterpret_cast<uint8_t*>(&value), 
+					reinterpret_cast<uint8_t*>(&value) + sizeof(T));
 			}
-
-			std::function<void(uint32_t binding)> setup_uniform_buffer_func = nullptr;
 			Shader* shader = nullptr;
+			std::vector<uint8_t> uniform_data;
 		};
 
 		struct SetMesh { const Mesh* mesh; };
@@ -159,7 +157,7 @@ namespace skygfx::ext
 		struct SetProjectionMatrix { glm::mat4 projection_matrix; };
 		struct SetViewMatrix { glm::mat4 view_matrix; };
 		struct SetModelMatrix { glm::mat4 model_matrix; };
-		struct SetCamera { Camera camera/*TODO: should be nullable*/; std::optional<uint32_t> width; std::optional<uint32_t> height; };
+		struct SetCamera { Camera camera; std::optional<uint32_t> width; std::optional<uint32_t> height; };
 		struct SetEyePosition { glm::vec3 eye_position; };
 		struct SetMipmapBias { float mipmap_bias; };
 		struct Callback { std::function<void()> func; };

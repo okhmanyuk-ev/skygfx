@@ -70,8 +70,8 @@ int main()
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);
-	skygfx::SetDynamicVertexBuffer(vertices);
-	skygfx::SetDynamicIndexBuffer(indices);
+	skygfx::SetVertexBuffer(vertices);
+	skygfx::SetIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -80,7 +80,7 @@ int main()
 		matrices.model = glm::mat4(1.0f);
 		matrices.model = glm::translate(matrices.model, { glm::sin(time * 2.0f) * 0.5f, 0.0f, 0.0f });
 
-		skygfx::SetDynamicUniformBuffer(0, matrices);
+		skygfx::SetUniformBuffer(0, matrices);
 
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));

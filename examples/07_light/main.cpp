@@ -171,9 +171,9 @@ int main()
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);
-	skygfx::SetDynamicVertexBuffer(vertices);
-	skygfx::SetDynamicIndexBuffer(indices);
-	skygfx::SetDynamicUniformBuffer(2, light);
+	skygfx::SetVertexBuffer(vertices);
+	skygfx::SetIndexBuffer(indices);
+	skygfx::SetUniformBuffer(2, light);
 	skygfx::SetCullMode(skygfx::CullMode::Back);
 	skygfx::SetTexture(0, texture);
 
@@ -187,7 +187,7 @@ int main()
 		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
 		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
 
-		skygfx::SetDynamicUniformBuffer(1, matrices);
+		skygfx::SetUniformBuffer(1, matrices);
 
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));

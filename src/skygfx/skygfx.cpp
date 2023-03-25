@@ -12,9 +12,9 @@ static Backend* gBackend = nullptr;
 static glm::u32vec2 gSize = { 0, 0 };
 static std::optional<glm::u32vec2> gRenderTargetSize;
 static BackendType gBackendType = BackendType::OpenGL;
-static std::optional<VertexBuffer> gDynamicVertexBuffer;
-static std::optional<IndexBuffer> gDynamicIndexBuffer;
-static std::unordered_map<uint32_t, UniformBuffer> gDynamicUniformBuffers;
+static std::optional<VertexBuffer> gVertexBuffer;
+static std::optional<IndexBuffer> gIndexBuffer;
+static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
 
 // texture
 
@@ -251,9 +251,9 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 
 void skygfx::Finalize()
 {
-	gDynamicIndexBuffer.reset();
-	gDynamicVertexBuffer.reset();
-	gDynamicUniformBuffers.clear();
+	gIndexBuffer.reset();
+	gVertexBuffer.reset();
+	gUniformBuffers.clear();
 
 	delete gBackend;
 	gBackend = nullptr;
@@ -373,51 +373,52 @@ void skygfx::Present()
 	gBackend->present();
 }
 
-void skygfx::SetDynamicVertexBuffer(void* memory, size_t size, size_t stride)
+void skygfx::SetVertexBuffer(void* memory, size_t size, size_t stride)
 {
 	assert(size > 0);
 	
 	size_t vertex_buffer_size = 0;
 
-	if (gDynamicVertexBuffer)
-		vertex_buffer_size = gDynamicVertexBuffer->getSize();
+	if (gVertexBuffer.has_value())
+		vertex_buffer_size = gVertexBuffer->getSize();
 
 	if (vertex_buffer_size < size)
-		gDynamicVertexBuffer.emplace(memory, size, stride);
+		gVertexBuffer.emplace(memory, size, stride);
 	else
-		gDynamicVertexBuffer->write(memory, size, stride);
+		gVertexBuffer.value().write(memory, size, stride);
 
-	SetVertexBuffer(gDynamicVertexBuffer.value());
+	SetVertexBuffer(gVertexBuffer.value());
 }
 
-void skygfx::SetDynamicIndexBuffer(void* memory, size_t size, size_t stride)
+void skygfx::SetIndexBuffer(void* memory, size_t size, size_t stride)
 {
 	assert(size > 0);
 
 	size_t index_buffer_size = 0;
 
-	if (gDynamicIndexBuffer)
-		index_buffer_size = gDynamicIndexBuffer->getSize();
+	if (gIndexBuffer.has_value())
+		index_buffer_size = gIndexBuffer->getSize();
 
 	if (index_buffer_size < size)
-		gDynamicIndexBuffer.emplace(memory, size, stride);
+		gIndexBuffer.emplace(memory, size, stride);
 	else
-		gDynamicIndexBuffer->write(memory, size, stride);
+		gIndexBuffer.value().write(memory, size, stride);
 
-	SetIndexBuffer(gDynamicIndexBuffer.value());
+	SetIndexBuffer(gIndexBuffer.value());
 }
 
-void skygfx::SetDynamicUniformBuffer(uint32_t binding, void* memory, size_t size)
+void skygfx::SetUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	assert(size > 0);
+	
+	if (!gUniformBuffers.contains(binding))
+		gUniformBuffers.emplace(binding, size);
 
-	if (!gDynamicUniformBuffers.contains(binding) || gDynamicUniformBuffers.at(binding).getSize() < size)
-	{
-		gDynamicUniformBuffers.erase(binding);
-		gDynamicUniformBuffers.emplace(binding, size);
-	}
+	auto& buffer = gUniformBuffers.at(binding);
 
-	auto& buffer = gDynamicUniformBuffers.at(binding);
+	if (buffer.getSize() < size)
+		buffer = UniformBuffer(size);
+
 	buffer.write(memory, size);
 
 	SetUniformBuffer(binding, buffer);

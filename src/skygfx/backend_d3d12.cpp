@@ -567,7 +567,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 
 	ComPtr<IDXGIFactory4> dxgi_factory;
 	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
-	
+
 	IDXGIAdapter1* adapter;
 	dxgi_factory->EnumAdapters1(0, &adapter);
 

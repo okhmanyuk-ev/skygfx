@@ -392,7 +392,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 	Shader* shader = nullptr;
 	bool shader_dirty = true;
 
-	std::function<void(uint32_t binding)> setup_uniform_buffer_func = nullptr;
+	std::vector<uint8_t>* uniform_data = nullptr;
 	bool uniform_dirty = true;
 
 	Texture* color_texture = nullptr;
@@ -422,7 +422,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 			},
 			[&](const commands::SetEffect& cmd) {
 				shader = cmd.shader;
-				setup_uniform_buffer_func = cmd.setup_uniform_buffer_func;
+				uniform_data = const_cast<std::vector<uint8_t>*>(&cmd.uniform_data);
 				shader_dirty = true;
 				uniform_dirty = true;
 			},
@@ -512,9 +512,10 @@ void ext::ExecuteCommands(const Commands& cmds)
 
 				if (uniform_dirty)
 				{
-					if (setup_uniform_buffer_func != nullptr)
-						setup_uniform_buffer_func(3);
-
+					if (uniform_data != nullptr)
+					{
+						SetUniformBuffer(3, uniform_data->data(), uniform_data->size());
+					}
 					uniform_dirty = false;
 				}
 
@@ -534,7 +535,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 
 				if (settings_dirty)
 				{
-					SetDynamicUniformBuffer(2, settings);
+					SetUniformBuffer(2, settings);
 					settings_dirty = false;
 				}
 

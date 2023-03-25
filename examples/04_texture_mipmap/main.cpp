@@ -85,14 +85,14 @@ int main()
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);
 	skygfx::SetTexture(0, texture);
-	skygfx::SetDynamicVertexBuffer(vertices);
-	skygfx::SetDynamicIndexBuffer(indices);
+	skygfx::SetVertexBuffer(vertices);
+	skygfx::SetIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
 		settings.mipmap_bias = glm::abs(glm::mod(static_cast<float>(glfwGetTime() * 4.0f), 16.0f) - 8.0f);
 
-		skygfx::SetDynamicUniformBuffer(1, settings);
+		skygfx::SetUniformBuffer(1, settings);
 		
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));

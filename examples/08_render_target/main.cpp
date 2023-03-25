@@ -203,8 +203,8 @@ int main()
 	skygfx::SetRenderTarget(target);
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetCullMode(skygfx::CullMode::None);
-	skygfx::SetDynamicVertexBuffer(triangle_vertices);
-	skygfx::SetDynamicIndexBuffer(triangle_indices);
+	skygfx::SetVertexBuffer(triangle_vertices);
+	skygfx::SetIndexBuffer(triangle_indices);
 	skygfx::SetShader(triangle_shader);
 	skygfx::Clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
 	skygfx::DrawIndexed(static_cast<uint32_t>(triangle_indices.size()));
@@ -214,9 +214,9 @@ int main()
 	skygfx::SetRenderTarget(std::nullopt);
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetCullMode(skygfx::CullMode::Back);
-	skygfx::SetDynamicVertexBuffer(cube_vertices);
-	skygfx::SetDynamicIndexBuffer(cube_indices);
-	skygfx::SetDynamicUniformBuffer(2, light);
+	skygfx::SetVertexBuffer(cube_vertices);
+	skygfx::SetIndexBuffer(cube_indices);
+	skygfx::SetUniformBuffer(2, light);
 	skygfx::SetTexture(0, target); // render targets can be pushed as textures
 	skygfx::SetShader(cube_shader);
 
@@ -230,7 +230,7 @@ int main()
 		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
 		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
 
-		skygfx::SetDynamicUniformBuffer(1, matrices);
+		skygfx::SetUniformBuffer(1, matrices);
 
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		skygfx::DrawIndexed(static_cast<uint32_t>(cube_indices.size()));

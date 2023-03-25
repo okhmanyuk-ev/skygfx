@@ -479,40 +479,40 @@ namespace skygfx
 	
 	void Present();
 
-	void SetDynamicVertexBuffer(void* memory, size_t size, size_t stride);
+	void SetVertexBuffer(void* memory, size_t size, size_t stride);
 
 	template<class T>
-	void SetDynamicVertexBuffer(T* memory, size_t count)
+	void SetVertexBuffer(T* memory, size_t count)
 	{
-		SetDynamicVertexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+		SetVertexBuffer((void*)memory, count * sizeof(T), sizeof(T));
 	}
 
 	template<class T>
-	void SetDynamicVertexBuffer(const std::vector<T>& values)
+	void SetVertexBuffer(const std::vector<T>& values)
 	{
-		SetDynamicVertexBuffer(values.data(), values.size());
+		SetVertexBuffer(values.data(), values.size());
 	}
 
-	void SetDynamicIndexBuffer(void* memory, size_t size, size_t stride);
+	void SetIndexBuffer(void* memory, size_t size, size_t stride);
 
 	template<class T>
-	void SetDynamicIndexBuffer(T* memory, size_t count)
+	void SetIndexBuffer(T* memory, size_t count)
 	{
-		SetDynamicIndexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+		SetIndexBuffer((void*)memory, count * sizeof(T), sizeof(T));
 	}
 
 	template<class T>
-	void SetDynamicIndexBuffer(const std::vector<T>& values)
+	void SetIndexBuffer(const std::vector<T>& values)
 	{
-		SetDynamicIndexBuffer(values.data(), values.size());
+		SetIndexBuffer(values.data(), values.size());
 	}
 
-	void SetDynamicUniformBuffer(uint32_t binding, void* memory, size_t size);
+	void SetUniformBuffer(uint32_t binding,	void* memory, size_t size);
 
 	template <class T>
-	void SetDynamicUniformBuffer(uint32_t binding, const T& value)
+	void SetUniformBuffer(uint32_t binding, const T& value)
 	{
-		SetDynamicUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
+		SetUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
 	}
 
 	uint32_t GetWidth();

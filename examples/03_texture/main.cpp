@@ -75,8 +75,8 @@ int main()
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);
 	skygfx::SetTexture(0, texture);
-	skygfx::SetDynamicVertexBuffer(vertices);
-	skygfx::SetDynamicIndexBuffer(indices);
+	skygfx::SetVertexBuffer(vertices);
+	skygfx::SetIndexBuffer(indices);
 
 	while (!glfwWindowShouldClose(window))
 	{
