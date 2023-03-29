@@ -106,6 +106,9 @@ namespace skygfx::ext
 
 			static const std::string Shader;
 		};
+
+		template <typename T>
+		concept Effect = requires { T::Shader; } && std::is_same<std::remove_const_t<decltype(T::Shader)>, std::string>::value;
 	}
 
 	using Light = std::variant<
@@ -132,14 +135,14 @@ namespace skygfx::ext
 		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
-	
+
 	namespace commands
 	{
 		struct SetEffect
 		{
 			SetEffect() {}
 
-			template<class T>
+			template<effects::Effect T>
 			SetEffect(T value) {
 				static auto _shader = MakeEffectShader(T::Shader);
 				shader = &_shader;
@@ -192,11 +195,13 @@ namespace skygfx::ext
 	void SetMesh(Commands& cmds, const Mesh* mesh);
 
 	template<class T>
-	void SetEffect(Commands& cmds, T effect)
+	concept EffectCommandConstructible = std::is_constructible_v<commands::SetEffect, T>;
+
+	void SetEffect(Commands& cmds, EffectCommandConstructible auto effect)
 	{
 		cmds.push_back(commands::SetEffect{ std::move(effect) });
 	}
-	
+
 	void SetColorTexture(Commands& cmds, const Texture* color_texture);
 	void SetNormalTexture(Commands& cmds, const Texture* normal_texture);
 	void SetColor(Commands& cmds, glm::vec4 color);
