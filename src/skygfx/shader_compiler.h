@@ -12,7 +12,9 @@ namespace skygfx
 	{
 		Vertex,
 		Fragment,
-		Raygen
+		Raygen,
+		Miss,
+		ClosestHit
 	};
 
 	std::vector<uint32_t> CompileGlslToSpirv(ShaderStage stage, const std::string& code,

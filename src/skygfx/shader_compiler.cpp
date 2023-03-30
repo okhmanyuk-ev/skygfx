@@ -120,7 +120,9 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 	static const std::unordered_map<ShaderStage, EShLanguage> StageMap = {
 		{ ShaderStage::Vertex, EShLangVertex },
 		{ ShaderStage::Fragment, EShLangFragment },
-		{ ShaderStage::Raygen, EShLangRayGen }
+		{ ShaderStage::Raygen, EShLangRayGen },
+		{ ShaderStage::Miss, EShLangMiss },
+		{ ShaderStage::ClosestHit, EShLangClosestHit }
 	};
 
 	glslang::InitializeProcess();

@@ -271,6 +271,20 @@ static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t 
 	return { std::move(buffer), std::move(device_memory) };
 }
 
+static vk::DeviceAddress GetBufferDeviceAddress(vk::Buffer buffer)
+{
+	auto info = vk::BufferDeviceAddressInfo()
+		.setBuffer(buffer);
+
+	return gDevice.getBufferAddress(info);
+};
+
+static void WriteToBuffer(vk::raii::DeviceMemory& memory, const void* data, size_t size) {
+	auto ptr = memory.mapMemory(0, size);
+	memcpy(ptr, data, size);
+	memory.unmapMemory();
+};
+
 static void BeginRenderPass();
 static void EndRenderPass();
 static void EnsureRenderPassActivated();
@@ -446,7 +460,8 @@ public:
 			.setSamples(vk::SampleCountFlagBits::e1)
 			.setTiling(vk::ImageTiling::eOptimal)
 			.setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst 
-				| vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eColorAttachment)
+				| vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eColorAttachment
+				| vk::ImageUsageFlagBits::eStorage)
 			.setSharingMode(vk::SharingMode::eExclusive)
 			.setInitialLayout(vk::ImageLayout::eUndefined);
 
@@ -485,7 +500,7 @@ public:
 				.setUsage(vk::BufferUsageFlagBits::eTransferSrc)
 				.setSharingMode(vk::SharingMode::eExclusive);
 
-			auto upload_buffer = gDevice.createBuffer(buffer_create_info);
+			auto upload_buffer = gDevice.createBuffer(buffer_create_info); // TODO: use CreateBuffer() func
 
 			auto req = upload_buffer.getMemoryRequirements();
 
@@ -497,9 +512,7 @@ public:
 
 			upload_buffer.bindMemory(*upload_buffer_memory, 0);
 
-			auto map = upload_buffer_memory.mapMemory(0, size);
-			memcpy(map, memory, size);
-			upload_buffer_memory.unmapMemory();
+			WriteToBuffer(upload_buffer_memory, memory, size);
 
 			OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
 				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
@@ -585,7 +598,7 @@ public:
 	{
 		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
 			SetImageLayout(cmdbuf, *getTexture()->getImage(), vk::Format::eUndefined, vk::ImageLayout::eUndefined,
-				vk::ImageLayout::eShaderReadOnlyOptimal);
+				vk::ImageLayout::eGeneral);
 		});
 
 		auto depth_stencil_image_create_info = vk::ImageCreateInfo()
@@ -654,9 +667,7 @@ public:
 	{
 		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size);
 
-		auto mem = staging_buffer_memory.mapMemory(0, VK_WHOLE_SIZE);
-		memcpy(mem, memory, size);
-		staging_buffer_memory.unmapMemory();
+		WriteToBuffer(staging_buffer_memory, memory, size);
 
 		auto region = vk::BufferCopy()
 			.setSize(size);
@@ -681,7 +692,7 @@ private:
 
 public:
 	VertexBufferVK(size_t size, size_t stride) :
-		BufferVK(size, vk::BufferUsageFlagBits::eVertexBuffer),
+		BufferVK(size, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR),
 		mStride(stride)
 	{
 	}
@@ -698,7 +709,7 @@ private:
 
 public:
 	IndexBufferVK(size_t size, size_t stride) :
-		BufferVK(size, vk::BufferUsageFlagBits::eIndexBuffer),
+		BufferVK(size, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR),
 		mStride(stride)
 	{
 	}
@@ -778,6 +789,11 @@ static void EnsureRenderPassDeactivated()
 	EndRenderPass();
 }
 
+static vk::IndexType GetIndexTypeFromStride(size_t stride)
+{
+	return stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32;
+}
+
 static void PrepareForDrawing()
 {
 	assert(gVertexBuffer);
@@ -790,8 +806,7 @@ static void PrepareForDrawing()
 
 	if (gIndexBufferDirty)
 	{
-		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getBuffer(), 0,
-			gIndexBuffer->getStride() == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getBuffer(), 0, GetIndexTypeFromStride(gIndexBuffer->getStride()));
 		gIndexBufferDirty = false;
 	}
 
@@ -1018,7 +1033,7 @@ static void PrepareForDrawing()
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setSampler(*sampler)
 				.setImageView(*texture->getImageView())
-				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+				.setImageLayout(vk::ImageLayout::eGeneral);
 
 			write_descriptor_set.setPImageInfo(&descriptor_image_info);
 		}
@@ -1081,56 +1096,6 @@ static void PrepareForDrawing()
 
 		gCullModeDirty = false;
 	}
-}
-
-const std::string raygen_code = R"(
-#version 460
-
-void main()
-{
-	todo
-})";
-
-static void PrepareForRaytracing()
-{
-	static std::optional<vk::raii::Pipeline> pipeline;
-
-	if (!pipeline.has_value())
-	{
-		static auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code);
-
-		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
-			.setCode(raygen_shader_spirv);
-
-		static auto raygen_module = gDevice.createShaderModule(raygen_shader_module_create_info);
-
-		auto pipeline_shader_stage_create_info = {
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eRaygenKHR)
-				.setModule(*raygen_module)
-				.setPName("main")
-		};
-
-		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
-			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR);
-			//.setBindings(required_descriptor_bindings); // no bindings if no textures and no ubos
-
-		static auto descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
-
-		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
-			.setSetLayoutCount(1)
-			.setPSetLayouts(&*descriptor_set_layout);
-
-		static auto pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
-
-		auto raytracing_pipeline_create_info = vk::RayTracingPipelineCreateInfoKHR()
-			.setLayout(*pipeline_layout)
-			.setStages(pipeline_shader_stage_create_info);
-
-		pipeline = gDevice.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
-	}
-
-	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline.value());
 }
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
@@ -1237,7 +1202,10 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setQueuePriorities(queue_priority);
 
 	auto device_features = gPhysicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2,
-		vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>();
+		vk::PhysicalDeviceVulkan13Features, 
+		vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
+		vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+		vk::PhysicalDeviceBufferAddressFeaturesEXT>();
 
 	//auto device_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2, 
 	//	vk::PhysicalDeviceVulkan13Properties>(); // TODO: unused
@@ -1527,21 +1495,435 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 {
 }
 
+const std::string raygen_code = R"(
+#version 460
+
+#extension GL_EXT_ray_tracing : require
+
+layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(set = 0, binding = 1, rgba8) uniform image2D image;
+
+layout(location = 0) rayPayloadEXT vec3 hitValue;
+
+void main()
+{
+	const vec2 uv = vec2(gl_LaunchIDEXT.xy) / vec2(gl_LaunchSizeEXT.xy - 1);
+
+	const vec3 origin = vec3(uv.x, 1.0f - uv.y, -1.0f);
+	const vec3 direction = vec3(0.0f, 0.0f, 1.0f);
+
+	const uint rayFlags = gl_RayFlagsNoneEXT;
+	const uint cullMask = 0xFF;
+	const uint sbtRecordOffset = 0;
+	const uint sbtRecordStride = 0;
+	const uint missIndex = 0;
+	const float tmin = 0.0f;
+	const float tmax = 10.0f;
+	const int payloadLocation = 0;
+
+    hitValue = vec3(0.0);
+
+	traceRayEXT(topLevelAS, rayFlags, cullMask, sbtRecordOffset, sbtRecordStride, missIndex,
+		origin, tmin, direction, tmax, payloadLocation);
+
+	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0));
+})";
+
+const std::string miss_code = R"(
+#version 460
+#extension GL_EXT_ray_tracing : enable
+
+layout(location = 0) rayPayloadInEXT vec3 hitValue;
+
+void main()
+{
+	hitValue = vec3(0.0, 0.0, 0.2);
+})";
+
+const std::string closesthit_code = R"(
+#version 460
+#extension GL_EXT_ray_tracing : enable
+
+layout(location = 0) rayPayloadInEXT vec3 hitValue;
+hitAttributeEXT vec3 attribs;
+
+void main()
+{
+	const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+	hitValue = barycentricCoords;
+})";
+
+template<typename T>
+inline T AlignUp(T size, size_t alignment) noexcept
+{
+	if (alignment > 0)
+	{
+		assert(((alignment - 1) & alignment) == 0);
+		auto mask = static_cast<T>(alignment - 1);
+		return (size + mask) & ~mask;
+	}
+	return size;
+}
+
+static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress> CreateBottomLevelAccelerationStrucutre(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const vk::TransformMatrixKHR& transform)
+{
+	using vertex_t = glm::vec3;
+	using index_t = uint32_t;
+
+	static auto [vertex_buffer, vertex_buffer_memory] = CreateBuffer(vertices.size() * sizeof(vertex_t),
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	static auto [index_buffer, index_buffer_memory] = CreateBuffer(indices.size() * sizeof(index_t),
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	static auto [transform_buffer, transform_buffer_memory] = CreateBuffer(sizeof(transform), 
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	WriteToBuffer(vertex_buffer_memory, vertices.data(), vertices.size() * sizeof(vertex_t));
+	WriteToBuffer(index_buffer_memory, indices.data(), indices.size() * sizeof(index_t));
+	WriteToBuffer(transform_buffer_memory, &transform, sizeof(transform));
+
+	auto vertex_buffer_device_address = GetBufferDeviceAddress(*vertex_buffer);
+	auto index_buffer_device_address = GetBufferDeviceAddress(*index_buffer);
+	auto transform_buffer_device_address = GetBufferDeviceAddress(*transform_buffer);
+
+	auto blas_triangles = vk::AccelerationStructureGeometryTrianglesDataKHR()
+		.setVertexFormat(vk::Format::eR32G32B32Sfloat)
+		.setVertexData(vertex_buffer_device_address)
+		.setMaxVertex(vertices.size())
+		.setVertexStride(sizeof(vertex_t))
+		.setIndexType(GetIndexTypeFromStride(sizeof(index_t)))
+		.setIndexData(index_buffer_device_address)
+		.setTransformData(transform_buffer_device_address);
+
+	auto blas_geometry_data = vk::AccelerationStructureGeometryDataKHR()
+		.setTriangles(blas_triangles);
+
+	auto blas_geometry = vk::AccelerationStructureGeometryKHR()
+		.setGeometryType(vk::GeometryTypeKHR::eTriangles)
+		.setGeometry(blas_geometry_data)
+		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
+
+	auto blas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
+		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+		.setGeometryCount(1)
+		.setPGeometries(&blas_geometry);
+
+	auto blas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
+		vk::AccelerationStructureBuildTypeKHR::eDevice, blas_build_geometry_info, { 1 });
+		
+	static auto [blas_buffer, blas_memory] = CreateBuffer(blas_build_sizes.accelerationStructureSize,
+		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+
+	auto blas_create_info = vk::AccelerationStructureCreateInfoKHR()
+		.setBuffer(*blas_buffer)
+		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+		.setSize(blas_build_sizes.accelerationStructureSize);
+
+	auto blas = gDevice.createAccelerationStructureKHR(blas_create_info);
+
+	static auto [blas_scratch_buffer, blas_scratch_memory] = CreateBuffer(blas_build_sizes.buildScratchSize,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto blas_scratch_buffer_addr = GetBufferDeviceAddress(*blas_scratch_buffer);
+
+	blas_build_geometry_info
+		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+		.setDstAccelerationStructure(*blas)
+		.setScratchData(blas_scratch_buffer_addr);
+
+	auto blas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
+		.setPrimitiveCount(1);
+
+	auto blas_build_geometry_infos = { blas_build_geometry_info };
+	std::vector blas_build_range_infos = { &blas_build_range_info };
+		
+	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+		cmdbuf.buildAccelerationStructuresKHR(blas_build_geometry_infos, blas_build_range_infos);
+	});
+
+	auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
+		.setAccelerationStructure(*blas);
+
+	auto blas_device_address = gDevice.getAccelerationStructureAddressKHR(blas_device_address_info);
+
+	return { std::move(blas), blas_device_address };
+}
+
+static vk::raii::AccelerationStructureKHR CreateTopLevelAccelerationStructure(const vk::TransformMatrixKHR& transform, const vk::DeviceAddress& bottom_level_acceleration_structure_device_address)
+{
+	auto tlas_instance = vk::AccelerationStructureInstanceKHR()
+		.setTransform(transform)
+		.setMask(0xFF)
+		.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
+		.setAccelerationStructureReference(bottom_level_acceleration_structure_device_address);
+
+	static auto [instance_buffer, instance_buffer_memory] = CreateBuffer(sizeof(tlas_instance),
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	WriteToBuffer(instance_buffer_memory, &tlas_instance, sizeof(tlas_instance));
+
+	auto instance_buffer_addr = GetBufferDeviceAddress(*instance_buffer);
+
+	auto tlas_instances = vk::AccelerationStructureGeometryInstancesDataKHR()
+		.setArrayOfPointers(false)
+		.setData(instance_buffer_addr);
+
+	auto tlas_geometry_data = vk::AccelerationStructureGeometryDataKHR()
+		.setInstances(tlas_instances);
+
+	auto tlas_geometry = vk::AccelerationStructureGeometryKHR()
+		.setGeometryType(vk::GeometryTypeKHR::eInstances)
+		.setGeometry(tlas_geometry_data)
+		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
+
+	auto tlas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
+		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
+		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+		.setGeometryCount(1)
+		.setPGeometries(&tlas_geometry);
+
+	auto tlas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
+		vk::AccelerationStructureBuildTypeKHR::eDevice, tlas_build_geometry_info, { 1 });
+
+	static auto [tlas_buffer, tlas_memory] = CreateBuffer(tlas_build_sizes.accelerationStructureSize,
+		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+
+	auto tlas_create_info = vk::AccelerationStructureCreateInfoKHR()
+		.setBuffer(*tlas_buffer)
+		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
+		.setSize(tlas_build_sizes.accelerationStructureSize);
+
+	auto tlas = gDevice.createAccelerationStructureKHR(tlas_create_info);
+
+	static auto [tlas_scratch_buffer, tlas_scratch_memory] = CreateBuffer(tlas_build_sizes.buildScratchSize,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto tlas_scratch_buffer_addr = GetBufferDeviceAddress(*tlas_scratch_buffer);
+
+	tlas_build_geometry_info
+		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+		.setDstAccelerationStructure(*tlas)
+		.setScratchData(tlas_scratch_buffer_addr);
+
+	auto tlas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
+		.setPrimitiveCount(1);
+
+	auto tlas_build_geometry_infos = { tlas_build_geometry_info };
+	std::vector tlas_build_range_infos = { &tlas_build_range_info };
+
+	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+		cmdbuf.buildAccelerationStructuresKHR(tlas_build_geometry_infos, tlas_build_range_infos);
+	});
+
+	return std::move(tlas);
+}
+
 void BackendVK::dispatchRays()
 {
 	EnsureRenderPassDeactivated();
-	PrepareForRaytracing();
 
-	auto raygenShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
-	auto missShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
-	auto hitShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
-	auto callableShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
+	const std::vector<glm::vec3> vertices = {
+		{ 0.25f, 0.25f, 0.0f },
+		{ 0.75f, 0.25f, 0.0f },
+		{ 0.50f, 0.75f, 0.0f },
+	};
+
+	const std::vector<uint32_t> indices = { 0, 1, 2 };
+
+	auto transform_matrix = vk::TransformMatrixKHR()
+		.setMatrix({
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f
+		});
+
+	static std::optional<vk::raii::Pipeline> pipeline;
+	static std::optional<vk::raii::PipelineLayout> pipeline_layout;
+	static auto [blas, blas_device_address] = CreateBottomLevelAccelerationStrucutre(vertices, indices, transform_matrix);
+	static vk::raii::AccelerationStructureKHR tlas = CreateTopLevelAccelerationStructure(transform_matrix, blas_device_address);
+
+	if (!pipeline.has_value())
+	{
+		static auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code);
+		static auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code);
+		static auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code);
+
+		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
+			.setCode(raygen_shader_spirv);
+
+		auto miss_shader_module_create_info = vk::ShaderModuleCreateInfo()
+			.setCode(miss_shader_spirv);
+		
+		auto closesthit_shader_module_create_info = vk::ShaderModuleCreateInfo()
+			.setCode(closesthit_shader_spirv);
+
+		static auto raygen_module = gDevice.createShaderModule(raygen_shader_module_create_info);
+		static auto miss_module = gDevice.createShaderModule(miss_shader_module_create_info);
+		static auto closesthit_module = gDevice.createShaderModule(closesthit_shader_module_create_info);
+
+		auto pipeline_shader_stage_create_info = {
+			vk::PipelineShaderStageCreateInfo()
+				.setStage(vk::ShaderStageFlagBits::eRaygenKHR)
+				.setModule(*raygen_module)
+				.setPName("main"),
+
+			vk::PipelineShaderStageCreateInfo()
+				.setStage(vk::ShaderStageFlagBits::eMissKHR)
+				.setModule(*miss_module)
+				.setPName("main"),
+
+			vk::PipelineShaderStageCreateInfo()
+				.setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
+				.setModule(*closesthit_module)
+				.setPName("main")
+		};
+
+		auto required_descriptor_bindings = {
+			vk::DescriptorSetLayoutBinding()
+				.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+				.setDescriptorCount(1)
+				.setBinding(0)
+				.setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
+
+			vk::DescriptorSetLayoutBinding()
+				.setDescriptorType(vk::DescriptorType::eStorageImage)
+				.setDescriptorCount(1)
+				.setBinding(1)
+				.setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR)
+		};
+
+		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
+			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
+			.setBindings(required_descriptor_bindings);
+
+		static auto descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
+
+		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
+			.setSetLayoutCount(1)
+			.setPSetLayouts(&*descriptor_set_layout);
+
+		pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
+
+		auto raytracing_shader_groups = { 
+			vk::RayTracingShaderGroupCreateInfoKHR() // raygen
+				.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+				.setGeneralShader(0)
+				.setClosestHitShader(VK_SHADER_UNUSED_KHR)
+				.setAnyHitShader(VK_SHADER_UNUSED_KHR)
+				.setIntersectionShader(VK_SHADER_UNUSED_KHR),
+
+			vk::RayTracingShaderGroupCreateInfoKHR() // miss
+				.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+				.setGeneralShader(1)
+				.setClosestHitShader(VK_SHADER_UNUSED_KHR)
+				.setAnyHitShader(VK_SHADER_UNUSED_KHR)
+				.setIntersectionShader(VK_SHADER_UNUSED_KHR),
+
+			vk::RayTracingShaderGroupCreateInfoKHR() // closesthit
+				.setType(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup)
+				.setGeneralShader(VK_SHADER_UNUSED_KHR)
+				.setClosestHitShader(2)
+				.setAnyHitShader(VK_SHADER_UNUSED_KHR)
+				.setIntersectionShader(VK_SHADER_UNUSED_KHR)
+		};
+
+		auto raytracing_pipeline_create_info = vk::RayTracingPipelineCreateInfoKHR()
+			.setLayout(*pipeline_layout.value())
+			.setStages(pipeline_shader_stage_create_info)
+			.setGroups(raytracing_shader_groups)
+			.setMaxPipelineRayRecursionDepth(1);
+
+		pipeline = gDevice.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
+	}
+
+	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline.value());
+
+	auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
+		.setAccelerationStructureCount(1)
+		.setPAccelerationStructures(&*tlas);
+
+	gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout.value(), 0, {
+		vk::WriteDescriptorSet()
+			.setDstBinding(0)
+			.setDescriptorCount(1)
+			.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+			.setPNext(&write_descriptor_set_acceleration_structure),
+	});
+
+	assert(gRenderTarget != nullptr);
+
+	auto render_target_image_view = *gRenderTarget->getTexture()->getImageView();
+
+	auto descriptor_image_info = vk::DescriptorImageInfo()
+		.setImageLayout(vk::ImageLayout::eGeneral)
+		.setImageView(render_target_image_view);
+
+	gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout.value(), 0, {
+		vk::WriteDescriptorSet()
+			.setDstBinding(1)
+			.setDescriptorCount(1)
+			.setDescriptorType(vk::DescriptorType::eStorageImage)
+			.setPImageInfo(&descriptor_image_info)
+	});
+
+	static std::optional<vk::StridedDeviceAddressRegionKHR> raygen_shader_binding_table;
+	static std::optional<vk::StridedDeviceAddressRegionKHR> miss_shader_binding_table;
+	static std::optional<vk::StridedDeviceAddressRegionKHR> hit_shader_binding_table;
+	auto callable_shader_binding_table = vk::StridedDeviceAddressRegionKHR();
+
+	if (!raygen_shader_binding_table.has_value())
+	{
+		VkPhysicalDeviceRayTracingPipelinePropertiesKHR ray_tracing_pipeline_properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
+
+		VkPhysicalDeviceProperties2 prop2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+		prop2.pNext = &ray_tracing_pipeline_properties;
+		vkGetPhysicalDeviceProperties2(*gPhysicalDevice, &prop2);
+
+		auto handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
+		auto handle_size_aligned = AlignUp(handle_size, ray_tracing_pipeline_properties.shaderGroupHandleAlignment);
+
+		static auto [raygen_binding_table_buffer, raygen_binding_table_memory] = CreateBuffer(handle_size_aligned,
+			vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		static auto [miss_binding_table_buffer, miss_binding_table_memory] = CreateBuffer(handle_size_aligned, 
+			vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		static auto [closesthit_binding_table_buffer, closesthit_binding_table_memory] = CreateBuffer(handle_size_aligned,
+			vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		auto group_count = 3; // 3 shader groups
+		auto sbt_size = group_count * handle_size_aligned;
+
+		auto shader_handle_storage = pipeline.value().getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, sbt_size);
+
+		WriteToBuffer(raygen_binding_table_memory, shader_handle_storage.data(), handle_size);
+		WriteToBuffer(miss_binding_table_memory, shader_handle_storage.data() + handle_size_aligned, handle_size);
+		WriteToBuffer(closesthit_binding_table_memory, shader_handle_storage.data() + (handle_size_aligned * 2), handle_size);
+
+		raygen_shader_binding_table = vk::StridedDeviceAddressRegionKHR()
+			.setStride(handle_size_aligned)
+			.setSize(handle_size_aligned)
+			.setDeviceAddress(GetBufferDeviceAddress(*raygen_binding_table_buffer));
+
+		miss_shader_binding_table = vk::StridedDeviceAddressRegionKHR()
+			.setStride(handle_size_aligned)
+			.setSize(handle_size_aligned)
+			.setDeviceAddress(GetBufferDeviceAddress(*miss_binding_table_buffer));
+
+		hit_shader_binding_table = vk::StridedDeviceAddressRegionKHR()
+			.setStride(handle_size_aligned)
+			.setSize(handle_size_aligned)
+			.setDeviceAddress(GetBufferDeviceAddress(*closesthit_binding_table_buffer));
+	}
+
 	uint32_t width = 800;
 	uint32_t height = 600;
 	uint32_t depth = 1;
 
-	gCommandBuffer.traceRaysKHR(raygenShaderBindingTable, missShaderBindingTable, hitShaderBindingTable,
-		callableShaderBindingTable, width, height, depth);
+	gCommandBuffer.traceRaysKHR(raygen_shader_binding_table.value(), miss_shader_binding_table.value(), hit_shader_binding_table.value(),
+		callable_shader_binding_table, width, height, depth);
 }
 
 void BackendVK::present()
