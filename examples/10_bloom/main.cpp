@@ -122,7 +122,7 @@ int main()
 		auto model = glm::mat4(1.0f);
 		model = glm::scale(model, { scale, scale, scale });
 		model = glm::rotate(model, time, { 0.0f, 1.0f, 0.0f });
-		
+
 		skygfx::SetRenderTarget(src_target.value());
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 
@@ -146,7 +146,7 @@ int main()
 			skygfx::ext::commands::SetColorTexture{ &dst_target.value() },
 			skygfx::ext::commands::Draw{}
 		});
-	
+
 		skygfx::Present();
 
 		glfwPollEvents();
@@ -155,6 +155,6 @@ int main()
 	skygfx::Finalize();
 
 	glfwTerminate();
-	
+
 	return 0;
 }

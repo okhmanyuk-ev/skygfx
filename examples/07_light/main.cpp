@@ -199,6 +199,6 @@ int main()
 	skygfx::Finalize();
 
 	glfwTerminate();
-	
+
 	return 0;
 }
