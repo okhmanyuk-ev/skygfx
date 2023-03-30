@@ -108,3 +108,8 @@ target_link_libraries(10_bloom glfw skygfx)
 target_include_directories(10_bloom PUBLIC lib/stb)
 set_target_properties(10_bloom PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(10_bloom PROPERTIES RESOURCE ${RESOURCES})
+
+# 11 - raytracing triangle
+
+add_executable(11_raytracing_triangle 11_raytracing_triangle/main.cpp ${RESOURCES})
+target_link_libraries(11_raytracing_triangle glfw skygfx)

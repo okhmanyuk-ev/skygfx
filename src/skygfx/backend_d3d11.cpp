@@ -705,6 +705,11 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	}
 }
 
+void BackendD3D11::dispatchRays()
+{
+	assert(!"feature not supported by this api");
+}
+
 void BackendD3D11::present()
 {
 	bool vsync = false; // TODO: globalize this var

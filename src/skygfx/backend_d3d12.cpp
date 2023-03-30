@@ -990,6 +990,10 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		dst_texture->generateMips();
 }
 
+void BackendD3D12::dispatchRays()
+{
+}
+
 void BackendD3D12::prepareForDrawing(bool indexed)
 {
 	auto shader = gPipelineState.shader;

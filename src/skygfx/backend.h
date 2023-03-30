@@ -35,6 +35,8 @@ namespace skygfx
 
 		virtual void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) = 0;
 
+		virtual void dispatchRays() = 0;
+
 		virtual void present() = 0;
 
 		virtual TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 

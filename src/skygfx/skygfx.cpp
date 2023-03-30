@@ -368,6 +368,11 @@ void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Textu
 	gBackend->readPixels(pos, size, dst_texture);
 }
 
+void skygfx::DispatchRays()
+{
+	gBackend->dispatchRays();
+}
+
 void skygfx::Present()
 {
 	gBackend->present();

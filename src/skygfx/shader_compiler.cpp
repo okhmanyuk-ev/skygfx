@@ -122,6 +122,7 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 		{
 		case ShaderStage::Vertex: return EShLangVertex;
 		case ShaderStage::Fragment: return EShLangFragment;
+		case ShaderStage::Raygen: return EShLangRayGen;
 		default: throw std::runtime_error("Unknown shader stage"); return EShLangVertex;
 		}
 	};
@@ -144,7 +145,7 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 
 	shader.setPreamble(preamble.c_str());
 
-	auto messages = (EShMessages)(EShMsgSpvRules | EShMsgVulkanRules);
+	auto messages = (EShMessages)(EShMsgSpvRules | EShMsgVulkanRules | EShMsgEnhanced);
 
 	if (!shader.parse(&DefaultTBuiltInResource, 100, false, messages))
 	{

@@ -11,7 +11,8 @@ namespace skygfx
 	enum class ShaderStage
 	{
 		Vertex,
-		Fragment
+		Fragment,
+		Raygen
 	};
 
 	std::vector<uint32_t> CompileGlslToSpirv(ShaderStage stage, const std::string& code,

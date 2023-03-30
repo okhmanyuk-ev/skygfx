@@ -38,6 +38,8 @@ namespace skygfx
 
 		void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) override;
 
+		void dispatchRays() override;
+
 		void present() override;
 
 		TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 
@@ -67,7 +69,6 @@ namespace skygfx
 		void createSwapchain(uint32_t width, uint32_t height);
 		void begin();
 		void end();
-		void prepareForDrawing();
 	};
 }
 

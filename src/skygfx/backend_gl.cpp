@@ -1074,6 +1074,11 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
+void BackendGL::dispatchRays()
+{
+	assert(!"feature not supported by this api");
+}
+
 void BackendGL::present()
 {
 	CheckErrors();

@@ -778,6 +778,361 @@ static void EnsureRenderPassDeactivated()
 	EndRenderPass();
 }
 
+static void PrepareForDrawing()
+{
+	assert(gVertexBuffer);
+	
+	if (gVertexBufferDirty)
+	{
+		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->getBuffer() }, { 0 }, nullptr, { gVertexBuffer->getStride() });
+		gVertexBufferDirty = false;
+	}
+
+	if (gIndexBufferDirty)
+	{
+		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getBuffer(), 0,
+			gIndexBuffer->getStride() == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
+		gIndexBufferDirty = false;
+	}
+
+	if (gTopologyDirty)
+	{
+		static const std::unordered_map<Topology, vk::PrimitiveTopology> TopologyMap = {
+			{ Topology::PointList, vk::PrimitiveTopology::ePointList },
+			{ Topology::LineList, vk::PrimitiveTopology::eLineList },
+			{ Topology::LineStrip, vk::PrimitiveTopology::eLineStrip },
+			{ Topology::TriangleList, vk::PrimitiveTopology::eTriangleList },
+			{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
+		};
+
+		gCommandBuffer.setPrimitiveTopology(TopologyMap.at(gTopology));
+		gTopologyDirty = false;
+	}
+
+	if (gDepthModeDirty)
+	{
+		// TODO: this depth options should work only when dynamic state enabled, 
+		// but now it working only when dynamic state turned off. wtf is going on?
+		// WTR: try to uncomment dynamic state depth values, try to move this block to end of this function
+
+		if (gDepthMode.has_value())
+		{
+			gCommandBuffer.setDepthTestEnable(true);
+			gCommandBuffer.setDepthWriteEnable(true);
+			gCommandBuffer.setDepthCompareOp(CompareOpMap.at(gDepthMode.value().func));
+		}
+		else
+		{
+			gCommandBuffer.setDepthTestEnable(false);
+			gCommandBuffer.setDepthWriteEnable(false);
+		}
+
+		gDepthModeDirty = false;
+	}
+
+	auto shader = gPipelineState.shader;
+	const auto& blend_mode = gPipelineState.blend_mode;
+	auto render_target = gPipelineState.render_target;
+
+	assert(shader);
+
+	if (!gPipelineStates.contains(gPipelineState))
+	{
+		auto pipeline_shader_stage_create_info = {
+			vk::PipelineShaderStageCreateInfo()
+				.setStage(vk::ShaderStageFlagBits::eVertex)
+				.setModule(*shader->getVertexShaderModule())
+				.setPName("main"),
+
+			vk::PipelineShaderStageCreateInfo()
+				.setStage(vk::ShaderStageFlagBits::eFragment)
+				.setModule(*shader->getFragmentShaderModule())
+				.setPName("main")
+		};
+
+		auto pipeline_input_assembly_state_create_info = vk::PipelineInputAssemblyStateCreateInfo()
+			.setTopology(vk::PrimitiveTopology::eTriangleList);
+
+		auto pipeline_viewport_state_create_info = vk::PipelineViewportStateCreateInfo()
+			.setViewportCount(1)
+			.setScissorCount(1);
+
+		auto pipeline_rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo()
+			.setPolygonMode(vk::PolygonMode::eFill);
+
+		auto pipeline_multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo()
+			.setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+		auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
+
+		static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
+			{ Blend::One, vk::BlendFactor::eOne },
+			{ Blend::Zero, vk::BlendFactor::eZero },
+			{ Blend::SrcColor, vk::BlendFactor::eSrcColor },
+			{ Blend::InvSrcColor, vk::BlendFactor::eOneMinusSrcColor },
+			{ Blend::SrcAlpha, vk::BlendFactor::eSrcAlpha },
+			{ Blend::InvSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha },
+			{ Blend::DstColor, vk::BlendFactor::eDstColor },
+			{ Blend::InvDstColor, vk::BlendFactor::eOneMinusDstColor },
+			{ Blend::DstAlpha, vk::BlendFactor::eDstAlpha },
+			{ Blend::InvDstAlpha, vk::BlendFactor::eOneMinusDstAlpha }
+		};
+
+		static const std::unordered_map<BlendFunction, vk::BlendOp> BlendFuncMap = {
+			{ BlendFunction::Add, vk::BlendOp::eAdd },
+			{ BlendFunction::Subtract, vk::BlendOp::eSubtract },
+			{ BlendFunction::ReverseSubtract, vk::BlendOp::eReverseSubtract },
+			{ BlendFunction::Min, vk::BlendOp::eMin },
+			{ BlendFunction::Max, vk::BlendOp::eMax },
+		};
+
+		auto color_mask = vk::ColorComponentFlags();
+
+		if (blend_mode.color_mask.red)
+			color_mask |= vk::ColorComponentFlagBits::eR;
+
+		if (blend_mode.color_mask.green)
+			color_mask |= vk::ColorComponentFlagBits::eG;
+
+		if (blend_mode.color_mask.blue)
+			color_mask |= vk::ColorComponentFlagBits::eB;
+
+		if (blend_mode.color_mask.alpha)
+			color_mask |= vk::ColorComponentFlagBits::eA;
+
+		auto pipeline_color_blend_attachment_state = vk::PipelineColorBlendAttachmentState()
+			.setBlendEnable(true)
+			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src_blend))
+			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst_blend))
+			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_blend_func))
+			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src_blend))
+			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst_blend))
+			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_blend_func))
+			.setColorWriteMask(color_mask);
+
+		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
+			.setAttachmentCount(1)
+			.setPAttachments(&pipeline_color_blend_attachment_state);
+
+		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
+			.setVertexBindingDescriptionCount(1)
+			.setPVertexBindingDescriptions(&shader->getVertexInputBindingDescription())
+			.setVertexAttributeDescriptions(shader->getVertexInputAttributeDescriptions());
+
+		auto dynamic_states = {
+			vk::DynamicState::eViewport,
+			vk::DynamicState::eScissor,
+			vk::DynamicState::ePrimitiveTopology,
+			vk::DynamicState::eLineWidth,
+			vk::DynamicState::eCullMode,
+			vk::DynamicState::eFrontFace,
+			vk::DynamicState::eVertexInputBindingStride,
+		//	vk::DynamicState::eDepthTestEnable, // TODO: this depth values should be uncommented
+		//	vk::DynamicState::eDepthCompareOp,
+		//	vk::DynamicState::eDepthWriteEnable
+		};
+
+		auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
+			.setDynamicStates(dynamic_states);
+
+		auto color_attachment_formats = {
+			render_target ? render_target->getTexture()->getFormat() : gSurfaceFormat.format
+		};
+
+		auto depth_stencil_format = render_target ? render_target->getDepthStencilFormat() : gDepthStencil.format;
+
+		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
+			.setColorAttachmentFormats(color_attachment_formats)
+			.setDepthAttachmentFormat(depth_stencil_format)
+			.setStencilAttachmentFormat(depth_stencil_format);
+
+		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
+			.setLayout(*shader->getPipelineLayout())
+			.setFlags(vk::PipelineCreateFlagBits())
+			.setStages(pipeline_shader_stage_create_info)
+			.setPVertexInputState(&pipeline_vertex_input_state_create_info)
+			.setPInputAssemblyState(&pipeline_input_assembly_state_create_info)
+			.setPViewportState(&pipeline_viewport_state_create_info)
+			.setPRasterizationState(&pipeline_rasterization_state_create_info)
+			.setPMultisampleState(&pipeline_multisample_state_create_info)
+			.setPDepthStencilState(&pipeline_depth_stencil_state_create_info)
+			.setPColorBlendState(&pipeline_color_blend_state_create_info)
+			.setPDynamicState(&pipeline_dynamic_state_create_info)
+			.setRenderPass(nullptr)
+			.setPNext(&pipeline_rendering_create_info);
+
+		auto pipeline = gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info);
+
+		gPipelineStates.insert({ gPipelineState, std::move(pipeline) });
+	}
+
+	const auto& pipeline = gPipelineStates.at(gPipelineState);
+
+	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+
+	if (!gSamplers.contains(gSamplerState))
+	{
+		static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
+			{ Sampler::Linear, vk::Filter::eLinear },
+			{ Sampler::Nearest, vk::Filter::eNearest },
+		};
+
+		static const std::unordered_map<TextureAddress, vk::SamplerAddressMode> AddressModeMap = {
+			{ TextureAddress::Clamp, vk::SamplerAddressMode::eClampToEdge },
+			{ TextureAddress::Wrap, vk::SamplerAddressMode::eRepeat },
+			{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
+		};
+
+		auto sampler_create_info = vk::SamplerCreateInfo()
+			.setMagFilter(FilterMap.at(gSamplerState.sampler))
+			.setMinFilter(FilterMap.at(gSamplerState.sampler))
+			.setMipmapMode(vk::SamplerMipmapMode::eLinear)
+			.setAddressModeU(AddressModeMap.at(gSamplerState.texture_address))
+			.setAddressModeV(AddressModeMap.at(gSamplerState.texture_address))
+			.setAddressModeW(AddressModeMap.at(gSamplerState.texture_address))
+			.setMinLod(-1000)
+			.setMaxLod(1000)
+			.setMaxAnisotropy(1.0f);
+
+		gSamplers.insert({ gSamplerState, gDevice.createSampler(sampler_create_info) });
+	}
+
+	const auto& sampler = gSamplers.at(gSamplerState);
+
+	auto pipeline_layout = *shader->getPipelineLayout();
+
+	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
+	{
+		auto binding = required_descriptor_binding.binding;
+
+		auto write_descriptor_set = vk::WriteDescriptorSet()
+			.setDescriptorCount(1)
+			.setDstBinding(binding)
+			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
+			.setDescriptorType(required_descriptor_binding.descriptorType);
+
+		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
+		{
+			auto texture = gTextures.at(binding);
+
+			auto descriptor_image_info = vk::DescriptorImageInfo()
+				.setSampler(*sampler)
+				.setImageView(*texture->getImageView())
+				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
+
+			write_descriptor_set.setPImageInfo(&descriptor_image_info);
+		}
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
+		{
+			auto buffer = gUniformBuffers.at(binding);
+
+			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
+				.setBuffer(*buffer->getBuffer())
+				.setRange(VK_WHOLE_SIZE);
+
+			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
+		}
+		else
+		{
+			assert(false);
+		}
+
+		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+	}
+
+	if (gViewportDirty)
+	{
+		auto value = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
+
+		auto viewport = vk::Viewport()
+			.setX(value.position.x)
+			.setY(value.size.y - value.position.y)
+			.setWidth(value.size.x)
+			.setHeight(-value.size.y)
+			.setMinDepth(value.min_depth)
+			.setMaxDepth(value.max_depth);
+
+		gCommandBuffer.setViewport(0, { viewport });
+		gViewportDirty = false;
+	}
+
+	if (gScissorDirty)
+	{
+		auto value = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
+
+		auto rect = vk::Rect2D()
+			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
+			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
+
+		gCommandBuffer.setScissor(0, { rect });
+		gScissorDirty = false;
+	}
+
+	if (gCullModeDirty)
+	{
+		const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
+			{ CullMode::None, vk::CullModeFlagBits::eNone },
+			{ CullMode::Front, vk::CullModeFlagBits::eFront },
+			{ CullMode::Back, vk::CullModeFlagBits::eBack },
+		};
+
+		gCommandBuffer.setFrontFace(vk::FrontFace::eClockwise);
+		gCommandBuffer.setCullMode(CullModeMap.at(gCullMode));
+
+		gCullModeDirty = false;
+	}
+}
+
+const std::string raygen_code = R"(
+#version 460
+
+void main()
+{
+	todo
+})";
+
+static void PrepareForRaytracing()
+{
+	static std::optional<vk::raii::Pipeline> pipeline;
+
+	if (!pipeline.has_value())
+	{
+		static auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code);
+
+		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
+			.setCode(raygen_shader_spirv);
+
+		static auto raygen_module = gDevice.createShaderModule(raygen_shader_module_create_info);
+
+		auto pipeline_shader_stage_create_info = {
+			vk::PipelineShaderStageCreateInfo()
+				.setStage(vk::ShaderStageFlagBits::eRaygenKHR)
+				.setModule(*raygen_module)
+				.setPName("main")
+		};
+
+		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
+			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR);
+			//.setBindings(required_descriptor_bindings); // no bindings if no textures and no ubos
+
+		static auto descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
+
+		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
+			.setSetLayoutCount(1)
+			.setPSetLayouts(&*descriptor_set_layout);
+
+		static auto pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
+
+		auto raytracing_pipeline_create_info = vk::RayTracingPipelineCreateInfoKHR()
+			.setLayout(*pipeline_layout)
+			.setStages(pipeline_shader_stage_create_info);
+
+		pipeline = gDevice.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
+	}
+
+	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline.value());
+}
+
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
 #if defined(SKYGFX_PLATFORM_WINDOWS)
@@ -867,7 +1222,12 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto device_extensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME
+		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+
+		// raytracing
+		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
 	};
 
 	auto queue_priority = { 1.0f };
@@ -877,7 +1237,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setQueuePriorities(queue_priority);
 
 	auto device_features = gPhysicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2,
-		vk::PhysicalDeviceVulkan13Features>();
+		vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceRayTracingPipelineFeaturesKHR>();
 
 	//auto device_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2, 
 	//	vk::PhysicalDeviceVulkan13Properties>(); // TODO: unused
@@ -1151,20 +1511,37 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 
 void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
-	prepareForDrawing();
+	PrepareForDrawing();
 	EnsureRenderPassActivated();
 	gCommandBuffer.draw(vertex_count, 1, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
-	prepareForDrawing();
+	PrepareForDrawing();
 	EnsureRenderPassActivated();
 	gCommandBuffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
 
 void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
+}
+
+void BackendVK::dispatchRays()
+{
+	EnsureRenderPassDeactivated();
+	PrepareForRaytracing();
+
+	auto raygenShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
+	auto missShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
+	auto hitShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
+	auto callableShaderBindingTable = vk::StridedDeviceAddressRegionKHR();
+	uint32_t width = 800;
+	uint32_t height = 600;
+	uint32_t depth = 1;
+
+	gCommandBuffer.traceRaysKHR(raygenShaderBindingTable, missShaderBindingTable, hitShaderBindingTable,
+		callableShaderBindingTable, width, height, depth);
 }
 
 void BackendVK::present()
@@ -1502,309 +1879,6 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 		SetImageLayout(cmdbuf, *gDepthStencil.image, gDepthStencil.format, vk::ImageLayout::eUndefined,
 			vk::ImageLayout::eDepthStencilAttachmentOptimal);
 	});
-}
-
-void BackendVK::prepareForDrawing()
-{
-	assert(gVertexBuffer);
-	
-	if (gVertexBufferDirty)
-	{
-		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->getBuffer() }, { 0 }, nullptr, { gVertexBuffer->getStride() });
-		gVertexBufferDirty = false;
-	}
-
-	if (gIndexBufferDirty)
-	{
-		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getBuffer(), 0,
-			gIndexBuffer->getStride() == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32);
-		gIndexBufferDirty = false;
-	}
-
-	if (gTopologyDirty)
-	{
-		static const std::unordered_map<Topology, vk::PrimitiveTopology> TopologyMap = {
-			{ Topology::PointList, vk::PrimitiveTopology::ePointList },
-			{ Topology::LineList, vk::PrimitiveTopology::eLineList },
-			{ Topology::LineStrip, vk::PrimitiveTopology::eLineStrip },
-			{ Topology::TriangleList, vk::PrimitiveTopology::eTriangleList },
-			{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
-		};
-
-		gCommandBuffer.setPrimitiveTopology(TopologyMap.at(gTopology));
-		gTopologyDirty = false;
-	}
-
-	if (gDepthModeDirty)
-	{
-		// TODO: this depth options should work only when dynamic state enabled, 
-		// but now it working only when dynamic state turned off. wtf is going on?
-		// WTR: try to uncomment dynamic state depth values, try to move this block to end of this function
-
-		if (gDepthMode.has_value())
-		{
-			gCommandBuffer.setDepthTestEnable(true);
-			gCommandBuffer.setDepthWriteEnable(true);
-			gCommandBuffer.setDepthCompareOp(CompareOpMap.at(gDepthMode.value().func));
-		}
-		else
-		{
-			gCommandBuffer.setDepthTestEnable(false);
-			gCommandBuffer.setDepthWriteEnable(false);
-		}
-
-		gDepthModeDirty = false;
-	}
-
-	auto shader = gPipelineState.shader;
-	const auto& blend_mode = gPipelineState.blend_mode;
-	auto render_target = gPipelineState.render_target;
-
-	assert(shader);
-
-	if (!gPipelineStates.contains(gPipelineState))
-	{
-		auto pipeline_shader_stage_create_info = {
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eVertex)
-				.setModule(*shader->getVertexShaderModule())
-				.setPName("main"),
-
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eFragment)
-				.setModule(*shader->getFragmentShaderModule())
-				.setPName("main")
-		};
-
-		auto pipeline_input_assembly_state_create_info = vk::PipelineInputAssemblyStateCreateInfo()
-			.setTopology(vk::PrimitiveTopology::eTriangleList);
-
-		auto pipeline_viewport_state_create_info = vk::PipelineViewportStateCreateInfo()
-			.setViewportCount(1)
-			.setScissorCount(1);
-
-		auto pipeline_rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo()
-			.setPolygonMode(vk::PolygonMode::eFill);
-
-		auto pipeline_multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo()
-			.setRasterizationSamples(vk::SampleCountFlagBits::e1);
-
-		auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
-
-		static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
-			{ Blend::One, vk::BlendFactor::eOne },
-			{ Blend::Zero, vk::BlendFactor::eZero },
-			{ Blend::SrcColor, vk::BlendFactor::eSrcColor },
-			{ Blend::InvSrcColor, vk::BlendFactor::eOneMinusSrcColor },
-			{ Blend::SrcAlpha, vk::BlendFactor::eSrcAlpha },
-			{ Blend::InvSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha },
-			{ Blend::DstColor, vk::BlendFactor::eDstColor },
-			{ Blend::InvDstColor, vk::BlendFactor::eOneMinusDstColor },
-			{ Blend::DstAlpha, vk::BlendFactor::eDstAlpha },
-			{ Blend::InvDstAlpha, vk::BlendFactor::eOneMinusDstAlpha }
-		};
-
-		static const std::unordered_map<BlendFunction, vk::BlendOp> BlendFuncMap = {
-			{ BlendFunction::Add, vk::BlendOp::eAdd },
-			{ BlendFunction::Subtract, vk::BlendOp::eSubtract },
-			{ BlendFunction::ReverseSubtract, vk::BlendOp::eReverseSubtract },
-			{ BlendFunction::Min, vk::BlendOp::eMin },
-			{ BlendFunction::Max, vk::BlendOp::eMax },
-		};
-
-		auto color_mask = vk::ColorComponentFlags();
-
-		if (blend_mode.color_mask.red)
-			color_mask |= vk::ColorComponentFlagBits::eR;
-
-		if (blend_mode.color_mask.green)
-			color_mask |= vk::ColorComponentFlagBits::eG;
-
-		if (blend_mode.color_mask.blue)
-			color_mask |= vk::ColorComponentFlagBits::eB;
-
-		if (blend_mode.color_mask.alpha)
-			color_mask |= vk::ColorComponentFlagBits::eA;
-
-		auto pipeline_color_blend_attachment_state = vk::PipelineColorBlendAttachmentState()
-			.setBlendEnable(true)
-			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src_blend))
-			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst_blend))
-			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_blend_func))
-			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src_blend))
-			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst_blend))
-			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_blend_func))
-			.setColorWriteMask(color_mask);
-
-		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
-			.setAttachmentCount(1)
-			.setPAttachments(&pipeline_color_blend_attachment_state);
-
-		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
-			.setVertexBindingDescriptionCount(1)
-			.setPVertexBindingDescriptions(&shader->getVertexInputBindingDescription())
-			.setVertexAttributeDescriptions(shader->getVertexInputAttributeDescriptions());
-
-		auto dynamic_states = {
-			vk::DynamicState::eViewport,
-			vk::DynamicState::eScissor,
-			vk::DynamicState::ePrimitiveTopology,
-			vk::DynamicState::eLineWidth,
-			vk::DynamicState::eCullMode,
-			vk::DynamicState::eFrontFace,
-			vk::DynamicState::eVertexInputBindingStride,
-		//	vk::DynamicState::eDepthTestEnable, // TODO: this depth values should be uncommented
-		//	vk::DynamicState::eDepthCompareOp,
-		//	vk::DynamicState::eDepthWriteEnable
-		};
-
-		auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
-			.setDynamicStates(dynamic_states);
-
-		auto color_attachment_formats = {
-			render_target ? render_target->getTexture()->getFormat() : gSurfaceFormat.format
-		};
-
-		auto depth_stencil_format = render_target ? render_target->getDepthStencilFormat() : gDepthStencil.format;
-
-		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
-			.setColorAttachmentFormats(color_attachment_formats)
-			.setDepthAttachmentFormat(depth_stencil_format)
-			.setStencilAttachmentFormat(depth_stencil_format);
-
-		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
-			.setLayout(*shader->getPipelineLayout())
-			.setFlags(vk::PipelineCreateFlagBits())
-			.setStages(pipeline_shader_stage_create_info)
-			.setPVertexInputState(&pipeline_vertex_input_state_create_info)
-			.setPInputAssemblyState(&pipeline_input_assembly_state_create_info)
-			.setPViewportState(&pipeline_viewport_state_create_info)
-			.setPRasterizationState(&pipeline_rasterization_state_create_info)
-			.setPMultisampleState(&pipeline_multisample_state_create_info)
-			.setPDepthStencilState(&pipeline_depth_stencil_state_create_info)
-			.setPColorBlendState(&pipeline_color_blend_state_create_info)
-			.setPDynamicState(&pipeline_dynamic_state_create_info)
-			.setRenderPass(nullptr)
-			.setPNext(&pipeline_rendering_create_info);
-
-		gPipelineStates.insert({ gPipelineState, gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info) });
-	}
-
-	const auto& pipeline = gPipelineStates.at(gPipelineState);
-
-	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
-
-	if (!gSamplers.contains(gSamplerState))
-	{
-		static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
-			{ Sampler::Linear, vk::Filter::eLinear },
-			{ Sampler::Nearest, vk::Filter::eNearest },
-		};
-
-		static const std::unordered_map<TextureAddress, vk::SamplerAddressMode> AddressModeMap = {
-			{ TextureAddress::Clamp, vk::SamplerAddressMode::eClampToEdge },
-			{ TextureAddress::Wrap, vk::SamplerAddressMode::eRepeat },
-			{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
-		};
-
-		auto sampler_create_info = vk::SamplerCreateInfo()
-			.setMagFilter(FilterMap.at(gSamplerState.sampler))
-			.setMinFilter(FilterMap.at(gSamplerState.sampler))
-			.setMipmapMode(vk::SamplerMipmapMode::eLinear)
-			.setAddressModeU(AddressModeMap.at(gSamplerState.texture_address))
-			.setAddressModeV(AddressModeMap.at(gSamplerState.texture_address))
-			.setAddressModeW(AddressModeMap.at(gSamplerState.texture_address))
-			.setMinLod(-1000)
-			.setMaxLod(1000)
-			.setMaxAnisotropy(1.0f);
-
-		gSamplers.insert({ gSamplerState, gDevice.createSampler(sampler_create_info) });
-	}
-
-	const auto& sampler = gSamplers.at(gSamplerState);
-
-	auto pipeline_layout = *shader->getPipelineLayout();
-
-	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
-	{
-		auto binding = required_descriptor_binding.binding;
-
-		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDescriptorCount(1)
-			.setDstBinding(binding)
-			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
-			.setDescriptorType(required_descriptor_binding.descriptorType);
-
-		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
-		{
-			auto texture = gTextures.at(binding);
-
-			auto descriptor_image_info = vk::DescriptorImageInfo()
-				.setSampler(*sampler)
-				.setImageView(*texture->getImageView())
-				.setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal);
-
-			write_descriptor_set.setPImageInfo(&descriptor_image_info);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
-		{
-			auto buffer = gUniformBuffers.at(binding);
-
-			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
-				.setBuffer(*buffer->getBuffer())
-				.setRange(VK_WHOLE_SIZE);
-
-			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
-		}
-		else
-		{
-			assert(false);
-		}
-
-		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
-	}
-
-	if (gViewportDirty)
-	{
-		auto value = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
-
-		auto viewport = vk::Viewport()
-			.setX(value.position.x)
-			.setY(value.size.y - value.position.y)
-			.setWidth(value.size.x)
-			.setHeight(-value.size.y)
-			.setMinDepth(value.min_depth)
-			.setMaxDepth(value.max_depth);
-
-		gCommandBuffer.setViewport(0, { viewport });
-		gViewportDirty = false;
-	}
-
-	if (gScissorDirty)
-	{
-		auto value = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
-
-		auto rect = vk::Rect2D()
-			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
-			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
-
-		gCommandBuffer.setScissor(0, { rect });
-		gScissorDirty = false;
-	}
-
-	if (gCullModeDirty)
-	{
-		const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
-			{ CullMode::None, vk::CullModeFlagBits::eNone },
-			{ CullMode::Front, vk::CullModeFlagBits::eFront },
-			{ CullMode::Back, vk::CullModeFlagBits::eBack },
-		};
-
-		gCommandBuffer.setFrontFace(vk::FrontFace::eClockwise);
-		gCommandBuffer.setCullMode(CullModeMap.at(gCullMode));
-
-		gCullModeDirty = false;
-	}
 }
 
 #endif
