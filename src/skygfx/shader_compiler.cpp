@@ -117,23 +117,18 @@ const TBuiltInResource DefaultTBuiltInResource = {
 
 std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::string& code, const std::vector<std::string>& defines)
 {
-	auto translateShaderStage = [](ShaderStage stage) {
-		switch (stage)
-		{
-		case ShaderStage::Vertex: return EShLangVertex;
-		case ShaderStage::Fragment: return EShLangFragment;
-		case ShaderStage::Raygen: return EShLangRayGen;
-		default: throw std::runtime_error("Unknown shader stage"); return EShLangVertex;
-		}
+	static const std::unordered_map<ShaderStage, EShLanguage> StageMap = {
+		{ ShaderStage::Vertex, EShLangVertex },
+		{ ShaderStage::Fragment, EShLangFragment },
+		{ ShaderStage::Raygen, EShLangRayGen }
 	};
 
 	glslang::InitializeProcess();
+	
+	auto _stage = StageMap.at(stage);
+	glslang::TShader shader(_stage);
 
 	auto str = code.c_str();
-
-	auto translated_stage = translateShaderStage(stage);
-
-	glslang::TShader shader(translated_stage);
 	shader.setStrings(&str, 1);
 
 	std::string preamble;
@@ -144,8 +139,9 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 	}
 
 	shader.setPreamble(preamble.c_str());
+	shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_6);
 
-	auto messages = (EShMessages)(EShMsgSpvRules | EShMsgVulkanRules | EShMsgEnhanced);
+	auto messages = EShMessages(EShMsgSpvRules | EShMsgVulkanRules | EShMsgEnhanced);
 
 	if (!shader.parse(&DefaultTBuiltInResource, 100, false, messages))
 	{
@@ -162,7 +158,7 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 		throw std::runtime_error(info_log);
 	}
 
-	auto intermediate = program.getIntermediate(translated_stage);
+	auto intermediate = program.getIntermediate(_stage);
 
 	std::vector<uint32_t> result;
 	glslang::GlslangToSpv(*intermediate, result);
