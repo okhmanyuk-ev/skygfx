@@ -18,6 +18,7 @@ namespace skygfx
 		virtual void setRenderTarget(RenderTargetHandle* handle) = 0;
 		virtual void setRenderTarget(std::nullopt_t value) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
+		virtual void setRaytracingShader(RaytracingShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
@@ -36,7 +37,7 @@ namespace skygfx
 
 		virtual void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) = 0;
 
-		virtual void dispatchRays() = 0;
+		virtual void dispatchRays(uint32_t width, uint32_t height, uint32_t depth) = 0;
 
 		virtual void present() = 0;
 
@@ -50,6 +51,10 @@ namespace skygfx
 		virtual ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyShader(ShaderHandle* handle) = 0;
+
+		virtual RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+			const std::string& closesthit_code, const std::vector<std::string>& defines) = 0;
+		virtual void destroyRaytracingShader(RaytracingShaderHandle* handle) = 0;
 
 		virtual VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) = 0;
 		virtual void destroyVertexBuffer(VertexBufferHandle* handle) = 0;

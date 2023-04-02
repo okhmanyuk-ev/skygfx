@@ -7,6 +7,7 @@
 using namespace skygfx;
 
 class ShaderVK;
+class RaytracingShaderVK;
 class UniformBufferVK;
 class AccelerationStructureVK;
 class TextureVK;
@@ -33,6 +34,20 @@ SKYGFX_MAKE_HASHABLE(PipelineStateVK,
 	t.shader,
 	t.blend_mode,
 	t.render_target);
+
+struct RaytracingPipelineStateVK
+{
+	RaytracingShaderVK* shader = nullptr;
+
+	bool operator==(const RaytracingPipelineStateVK& value) const
+	{
+		return
+			shader == value.shader;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(RaytracingPipelineStateVK,
+	t.shader);
 
 struct SamplerStateVK
 {
@@ -109,6 +124,9 @@ static bool gViewportDirty = true;
 
 static PipelineStateVK gPipelineState;
 static std::unordered_map<PipelineStateVK, vk::raii::Pipeline> gPipelineStates;
+
+static RaytracingPipelineStateVK gRaytracingPipelineState;
+static std::unordered_map<RaytracingPipelineStateVK, vk::raii::Pipeline> gRaytracingPipelineStates;
 
 static SamplerStateVK gSamplerState;
 static std::unordered_map<SamplerStateVK, vk::raii::Sampler> gSamplers;
@@ -303,6 +321,16 @@ const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 	{ ComparisonFunc::GreaterEqual, vk::CompareOp::eGreaterOrEqual }
 };
 
+const static std::unordered_map<ShaderStage, vk::ShaderStageFlagBits> ShaderStageMap = {
+	{ ShaderStage::Vertex, vk::ShaderStageFlagBits::eVertex },
+	{ ShaderStage::Fragment, vk::ShaderStageFlagBits::eFragment }
+};
+
+const static std::unordered_map<ShaderReflection::Descriptor::Type, vk::DescriptorType> ShaderTypeMap = {
+	{ ShaderReflection::Descriptor::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
+	{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer }
+};
+
 class ShaderVK
 {
 public:
@@ -331,16 +359,6 @@ public:
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
-		static const std::unordered_map<ShaderStage, vk::ShaderStageFlagBits> StageMap = {
-			{ ShaderStage::Vertex, vk::ShaderStageFlagBits::eVertex },
-			{ ShaderStage::Fragment, vk::ShaderStageFlagBits::eFragment }
-		};
-
-		static const std::unordered_map<ShaderReflection::Descriptor::Type, vk::DescriptorType> TypeMap = {
-			{ ShaderReflection::Descriptor::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
-			{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer }
-		};
-
 		for (const auto& spirv : { vertex_shader_spirv, fragment_shader_spirv })
 		{
 			auto reflection = MakeSpirvReflection(spirv);
@@ -354,7 +372,7 @@ public:
 					if (_binding.binding != binding)
 						continue;
 
-					_binding.stageFlags |= StageMap.at(reflection.stage);
+					_binding.stageFlags |= ShaderStageMap.at(reflection.stage);
 					overwritten = true;
 					break;
 				}
@@ -363,10 +381,10 @@ public:
 					continue;
 
 				auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding()
-					.setDescriptorType(TypeMap.at(descriptor.type))
+					.setDescriptorType(ShaderTypeMap.at(descriptor.type))
 					.setDescriptorCount(1)
 					.setBinding(binding)
-					.setStageFlags(StageMap.at(reflection.stage));
+					.setStageFlags(ShaderStageMap.at(reflection.stage));
 
 				mRequiredDescriptorBindings.push_back(descriptor_set_layout_binding);
 			}
@@ -421,6 +439,41 @@ public:
 
 			mVertexInputAttributeDescriptions.push_back(vertex_input_attribute_description);
 		}
+	}
+};
+
+class RaytracingShaderVK
+{
+public:
+	const auto& getRaygenShaderModule() const { return mRaygenShaderModule; }
+	const auto& getMissShaderModule() const { return mMissShaderModule; }
+	const auto& getClosestHitShaderModule() const { return mClosestHitShaderModule; }
+
+private:
+	vk::raii::ShaderModule mRaygenShaderModule = nullptr;
+	vk::raii::ShaderModule mMissShaderModule = nullptr;
+	vk::raii::ShaderModule mClosestHitShaderModule = nullptr;
+
+public:
+	RaytracingShaderVK(const std::string& raygen_code, const std::string& miss_code,
+		const std::string& closesthit_code, std::vector<std::string> defines)
+	{
+		auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code);
+		auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code);
+		auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code);
+
+		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
+			.setCode(raygen_shader_spirv);
+
+		auto miss_shader_module_create_info = vk::ShaderModuleCreateInfo()
+			.setCode(miss_shader_spirv);
+
+		auto closesthit_shader_module_create_info = vk::ShaderModuleCreateInfo()
+			.setCode(closesthit_shader_spirv);
+
+		mRaygenShaderModule = gDevice.createShaderModule(raygen_shader_module_create_info);
+		mMissShaderModule = gDevice.createShaderModule(miss_shader_module_create_info);
+		mClosestHitShaderModule = gDevice.createShaderModule(closesthit_shader_module_create_info);
 	}
 };
 
@@ -1540,6 +1593,12 @@ void BackendVK::setShader(ShaderHandle* handle)
 	gPipelineState.shader = shader;
 }
 
+void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
+{
+	auto shader = (RaytracingShaderVK*)handle;
+	gRaytracingPipelineState.shader = shader;
+}
+
 void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferVK*)handle;
@@ -1684,64 +1743,6 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 {
 }
 
-const std::string raygen_code = R"(
-#version 460
-
-#extension GL_EXT_ray_tracing : require
-
-layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(set = 0, binding = 1, rgba8) uniform image2D image;
-
-layout(location = 0) rayPayloadEXT vec3 hitValue;
-
-void main()
-{
-	const vec2 uv = vec2(gl_LaunchIDEXT.xy) / vec2(gl_LaunchSizeEXT.xy - 1);
-
-	const vec3 origin = vec3(uv.x, 1.0f - uv.y, -1.0f);
-	const vec3 direction = vec3(0.0f, 0.0f, 1.0f);
-
-	const uint rayFlags = gl_RayFlagsNoneEXT;
-	const uint cullMask = 0xFF;
-	const uint sbtRecordOffset = 0;
-	const uint sbtRecordStride = 0;
-	const uint missIndex = 0;
-	const float tmin = 0.0f;
-	const float tmax = 10.0f;
-	const int payloadLocation = 0;
-
-    hitValue = vec3(0.0);
-
-	traceRayEXT(topLevelAS, rayFlags, cullMask, sbtRecordOffset, sbtRecordStride, missIndex,
-		origin, tmin, direction, tmax, payloadLocation);
-
-	imageStore(image, ivec2(gl_LaunchIDEXT.xy), vec4(hitValue, 0.0));
-})";
-
-const std::string miss_code = R"(
-#version 460
-#extension GL_EXT_ray_tracing : enable
-
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
-
-void main()
-{
-	hitValue = vec3(0.0, 0.0, 0.2);
-})";
-
-const std::string closesthit_code = R"(
-#version 460
-#extension GL_EXT_ray_tracing : enable
-
-layout(location = 0) rayPayloadInEXT vec3 hitValue;
-hitAttributeEXT vec3 attribs;
-
-void main()
-{
-	const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
-	hitValue = barycentricCoords;
-})";
-
 template<typename T>
 inline T AlignUp(T size, size_t alignment) noexcept
 {
@@ -1754,46 +1755,33 @@ inline T AlignUp(T size, size_t alignment) noexcept
 	return size;
 }
 
-void BackendVK::dispatchRays()
+void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
+	assert(gRenderTarget != nullptr);
+
 	EnsureRenderPassDeactivated();
 
-	static std::optional<vk::raii::Pipeline> pipeline;
 	static std::optional<vk::raii::PipelineLayout> pipeline_layout;
 
-	if (!pipeline.has_value())
+	auto shader = gRaytracingPipelineState.shader;
+	assert(shader);
+
+	if (!gRaytracingPipelineStates.contains(gRaytracingPipelineState))
 	{
-		static auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code);
-		static auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code);
-		static auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code);
-
-		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
-			.setCode(raygen_shader_spirv);
-
-		auto miss_shader_module_create_info = vk::ShaderModuleCreateInfo()
-			.setCode(miss_shader_spirv);
-		
-		auto closesthit_shader_module_create_info = vk::ShaderModuleCreateInfo()
-			.setCode(closesthit_shader_spirv);
-
-		static auto raygen_module = gDevice.createShaderModule(raygen_shader_module_create_info);
-		static auto miss_module = gDevice.createShaderModule(miss_shader_module_create_info);
-		static auto closesthit_module = gDevice.createShaderModule(closesthit_shader_module_create_info);
-
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eRaygenKHR)
-				.setModule(*raygen_module)
+				.setModule(*shader->getRaygenShaderModule())
 				.setPName("main"),
 
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eMissKHR)
-				.setModule(*miss_module)
+				.setModule(*shader->getMissShaderModule())
 				.setPName("main"),
 
 			vk::PipelineShaderStageCreateInfo()
 				.setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
-				.setModule(*closesthit_module)
+				.setModule(*shader->getClosestHitShaderModule())
 				.setPName("main")
 		};
 
@@ -1852,10 +1840,14 @@ void BackendVK::dispatchRays()
 			.setGroups(raytracing_shader_groups)
 			.setMaxPipelineRayRecursionDepth(1);
 
-		pipeline = gDevice.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
+		auto pipeline = gDevice.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
+
+		gRaytracingPipelineStates.insert({ gRaytracingPipelineState, std::move(pipeline) });
 	}
 
-	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline.value());
+	const auto& pipeline = gRaytracingPipelineStates.at(gRaytracingPipelineState);
+
+	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
 	
 	auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
 		.setAccelerationStructureCount(1)
@@ -1868,8 +1860,6 @@ void BackendVK::dispatchRays()
 			.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
 			.setPNext(&write_descriptor_set_acceleration_structure),
 	});
-
-	assert(gRenderTarget != nullptr);
 
 	auto render_target_image_view = *gRenderTarget->getTexture()->getImageView();
 
@@ -1913,7 +1903,7 @@ void BackendVK::dispatchRays()
 		auto group_count = 3; // 3 shader groups
 		auto sbt_size = group_count * handle_size_aligned;
 
-		auto shader_handle_storage = pipeline.value().getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, sbt_size);
+		auto shader_handle_storage = pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, sbt_size);
 
 		WriteToBuffer(raygen_binding_table_memory, shader_handle_storage.data(), handle_size);
 		WriteToBuffer(miss_binding_table_memory, shader_handle_storage.data() + handle_size_aligned, handle_size);
@@ -1934,10 +1924,6 @@ void BackendVK::dispatchRays()
 			.setSize(handle_size_aligned)
 			.setDeviceAddress(GetBufferDeviceAddress(*closesthit_binding_table_buffer));
 	}
-
-	uint32_t width = 800;
-	uint32_t height = 600;
-	uint32_t depth = 1;
 
 	gCommandBuffer.traceRaysKHR(raygen_shader_binding_table.value(), miss_shader_binding_table.value(), hit_shader_binding_table.value(),
 		callable_shader_binding_table, width, height, depth);
@@ -2085,6 +2071,30 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 				continue;
 
 			gPipelineStates.erase(state);
+		}
+
+		delete shader;
+	});
+}
+
+RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+	const std::string& closesthit_code, const std::vector<std::string>& defines)
+{
+	auto shader = new RaytracingShaderVK(raygen_code, miss_code, closesthit_code, defines);
+	return (RaytracingShaderHandle*)shader;
+}
+
+void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
+{
+	gExecuteAfterPresent.add([handle] {
+		auto shader = (RaytracingShaderVK*)handle;
+
+		for (const auto& [state, pipeline] : gRaytracingPipelineStates)
+		{
+			if (state.shader != shader)
+				continue;
+
+			gRaytracingPipelineStates.erase(state);
 		}
 
 		delete shader;

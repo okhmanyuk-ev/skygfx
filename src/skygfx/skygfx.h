@@ -30,6 +30,7 @@ namespace skygfx
 	using TextureHandle = struct TextureHandle;
 	using RenderTargetHandle = struct RenderTargetHandle;
 	using ShaderHandle = struct ShaderHandle;
+	using RaytracingShaderHandle = struct RaytracingShaderHandle;
 	using VertexBufferHandle = struct VertexBufferHandle;
 	using IndexBufferHandle = struct IndexBufferHandle;
 	using UniformBufferHandle = struct UniformBufferHandle;
@@ -85,6 +86,19 @@ namespace skygfx
 
 	private:
 		ShaderHandle* mShaderHandle = nullptr;
+	};
+
+	class RaytracingShader : private noncopyable
+	{
+	public:
+		RaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+			const std::string& closesthit_code, const std::vector<std::string>& defines = {});
+		virtual ~RaytracingShader();
+
+		operator RaytracingShaderHandle* () { return mRaytracingShaderHandle; }
+
+	private:
+		RaytracingShaderHandle* mRaytracingShaderHandle = nullptr;
 	};
 
 	class Buffer : private noncopyable
@@ -474,6 +488,7 @@ namespace skygfx
 	void SetRenderTarget(const RenderTarget& value);
 	void SetRenderTarget(std::nullopt_t value);
 	void SetShader(const Shader& shader);
+	void SetShader(const RaytracingShader& shader);
 	void SetVertexBuffer(const VertexBuffer& value);
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
@@ -491,7 +506,7 @@ namespace skygfx
 	void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0);
 	void ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture);
 
-	void DispatchRays();
+	void DispatchRays(uint32_t width, uint32_t height, uint32_t depth);
 
 	void Present();
 

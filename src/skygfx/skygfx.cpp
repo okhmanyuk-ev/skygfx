@@ -55,6 +55,20 @@ Shader::~Shader()
 		gBackend->destroyShader(mShaderHandle);
 }
 
+// raytracing shader
+
+RaytracingShader::RaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+	const std::string& closesthit_code, const std::vector<std::string>& defines)
+{
+	mRaytracingShaderHandle = gBackend->createRaytracingShader(raygen_code, miss_code, closesthit_code, defines);
+}
+
+RaytracingShader::~RaytracingShader()
+{
+	if (gBackend)
+		gBackend->destroyRaytracingShader(mRaytracingShaderHandle);
+}
+
 // buffer
 
 Buffer::Buffer(size_t size) : mSize(size)
@@ -316,6 +330,11 @@ void skygfx::SetShader(const Shader& shader)
 	gBackend->setShader(const_cast<Shader&>(shader));
 }
 
+void skygfx::SetShader(const RaytracingShader& shader)
+{
+	gBackend->setRaytracingShader(const_cast<RaytracingShader&>(shader));
+}
+
 void skygfx::SetVertexBuffer(const VertexBuffer& value)
 {
 	gBackend->setVertexBuffer(const_cast<VertexBuffer&>(value));
@@ -387,9 +406,9 @@ void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Textu
 	gBackend->readPixels(pos, size, dst_texture);
 }
 
-void skygfx::DispatchRays()
+void skygfx::DispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
-	gBackend->dispatchRays();
+	gBackend->dispatchRays(width, height, depth);
 }
 
 void skygfx::Present()
