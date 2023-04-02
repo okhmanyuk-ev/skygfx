@@ -8,6 +8,7 @@ using namespace skygfx;
 
 class ShaderVK;
 class UniformBufferVK;
+class AccelerationStructureVK;
 class TextureVK;
 class RenderTargetVK;
 class VertexBufferVK;
@@ -98,6 +99,7 @@ static uint32_t gFrameIndex = 0;
 
 static std::unordered_map<uint32_t, TextureVK*> gTextures;
 static std::unordered_map<uint32_t, UniformBufferVK*> gUniformBuffers;
+static std::unordered_map<uint32_t, AccelerationStructureVK*> gAccelerationStructures;
 
 static std::optional<Scissor> gScissor;
 static bool gScissorDirty = true;
@@ -724,6 +726,193 @@ public:
 	}
 };
 
+static vk::IndexType GetIndexTypeFromStride(size_t stride)
+{
+	return stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32;
+}
+
+static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress> CreateBottomLevelAccelerationStrucutre(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const vk::TransformMatrixKHR& transform)
+{
+	using vertex_t = glm::vec3;
+	using index_t = uint32_t;
+
+	auto [vertex_buffer, vertex_buffer_memory] = CreateBuffer(vertices.size() * sizeof(vertex_t),
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto [index_buffer, index_buffer_memory] = CreateBuffer(indices.size() * sizeof(index_t),
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto [transform_buffer, transform_buffer_memory] = CreateBuffer(sizeof(transform), 
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	WriteToBuffer(vertex_buffer_memory, vertices.data(), vertices.size() * sizeof(vertex_t));
+	WriteToBuffer(index_buffer_memory, indices.data(), indices.size() * sizeof(index_t));
+	WriteToBuffer(transform_buffer_memory, &transform, sizeof(transform));
+
+	auto vertex_buffer_device_address = GetBufferDeviceAddress(*vertex_buffer);
+	auto index_buffer_device_address = GetBufferDeviceAddress(*index_buffer);
+	auto transform_buffer_device_address = GetBufferDeviceAddress(*transform_buffer);
+
+	auto blas_triangles = vk::AccelerationStructureGeometryTrianglesDataKHR()
+		.setVertexFormat(vk::Format::eR32G32B32Sfloat)
+		.setVertexData(vertex_buffer_device_address)
+		.setMaxVertex(static_cast<uint32_t>(vertices.size()))
+		.setVertexStride(sizeof(vertex_t))
+		.setIndexType(GetIndexTypeFromStride(sizeof(index_t)))
+		.setIndexData(index_buffer_device_address)
+		.setTransformData(transform_buffer_device_address);
+
+	auto blas_geometry_data = vk::AccelerationStructureGeometryDataKHR()
+		.setTriangles(blas_triangles);
+
+	auto blas_geometry = vk::AccelerationStructureGeometryKHR()
+		.setGeometryType(vk::GeometryTypeKHR::eTriangles)
+		.setGeometry(blas_geometry_data)
+		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
+
+	auto blas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
+		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+		.setGeometryCount(1)
+		.setPGeometries(&blas_geometry);
+
+	auto blas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
+		vk::AccelerationStructureBuildTypeKHR::eDevice, blas_build_geometry_info, { 1 });
+		
+	static auto [blas_buffer, blas_memory] = CreateBuffer(blas_build_sizes.accelerationStructureSize,
+		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+
+	auto blas_create_info = vk::AccelerationStructureCreateInfoKHR()
+		.setBuffer(*blas_buffer)
+		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+		.setSize(blas_build_sizes.accelerationStructureSize);
+
+	auto blas = gDevice.createAccelerationStructureKHR(blas_create_info);
+
+	auto [blas_scratch_buffer, blas_scratch_memory] = CreateBuffer(blas_build_sizes.buildScratchSize,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto blas_scratch_buffer_addr = GetBufferDeviceAddress(*blas_scratch_buffer);
+
+	blas_build_geometry_info
+		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+		.setDstAccelerationStructure(*blas)
+		.setScratchData(blas_scratch_buffer_addr);
+
+	auto blas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
+		.setPrimitiveCount(1);
+
+	auto blas_build_geometry_infos = { blas_build_geometry_info };
+	std::vector blas_build_range_infos = { &blas_build_range_info };
+		
+	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+		cmdbuf.buildAccelerationStructuresKHR(blas_build_geometry_infos, blas_build_range_infos);
+	});
+
+	auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
+		.setAccelerationStructure(*blas);
+
+	auto blas_device_address = gDevice.getAccelerationStructureAddressKHR(blas_device_address_info);
+
+	return { std::move(blas), blas_device_address };
+}
+
+static vk::raii::AccelerationStructureKHR CreateTopLevelAccelerationStructure(const vk::TransformMatrixKHR& transform, const vk::DeviceAddress& bottom_level_acceleration_structure_device_address)
+{
+	auto tlas_instance = vk::AccelerationStructureInstanceKHR()
+		.setTransform(transform)
+		.setMask(0xFF)
+		.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
+		.setAccelerationStructureReference(bottom_level_acceleration_structure_device_address);
+
+	auto [instance_buffer, instance_buffer_memory] = CreateBuffer(sizeof(tlas_instance),
+		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	WriteToBuffer(instance_buffer_memory, &tlas_instance, sizeof(tlas_instance));
+
+	auto instance_buffer_addr = GetBufferDeviceAddress(*instance_buffer);
+
+	auto tlas_instances = vk::AccelerationStructureGeometryInstancesDataKHR()
+		.setArrayOfPointers(false)
+		.setData(instance_buffer_addr);
+
+	auto tlas_geometry_data = vk::AccelerationStructureGeometryDataKHR()
+		.setInstances(tlas_instances);
+
+	auto tlas_geometry = vk::AccelerationStructureGeometryKHR()
+		.setGeometryType(vk::GeometryTypeKHR::eInstances)
+		.setGeometry(tlas_geometry_data)
+		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
+
+	auto tlas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
+		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
+		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+		.setGeometryCount(1)
+		.setPGeometries(&tlas_geometry);
+
+	auto tlas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
+		vk::AccelerationStructureBuildTypeKHR::eDevice, tlas_build_geometry_info, { 1 });
+
+	static auto [tlas_buffer, tlas_memory] = CreateBuffer(tlas_build_sizes.accelerationStructureSize,
+		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+
+	auto tlas_create_info = vk::AccelerationStructureCreateInfoKHR()
+		.setBuffer(*tlas_buffer)
+		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
+		.setSize(tlas_build_sizes.accelerationStructureSize);
+
+	auto tlas = gDevice.createAccelerationStructureKHR(tlas_create_info);
+
+	auto [tlas_scratch_buffer, tlas_scratch_memory] = CreateBuffer(tlas_build_sizes.buildScratchSize,
+		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto tlas_scratch_buffer_addr = GetBufferDeviceAddress(*tlas_scratch_buffer);
+
+	tlas_build_geometry_info
+		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+		.setDstAccelerationStructure(*tlas)
+		.setScratchData(tlas_scratch_buffer_addr);
+
+	auto tlas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
+		.setPrimitiveCount(1);
+
+	auto tlas_build_geometry_infos = { tlas_build_geometry_info };
+	std::vector tlas_build_range_infos = { &tlas_build_range_info };
+
+	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+		cmdbuf.buildAccelerationStructuresKHR(tlas_build_geometry_infos, tlas_build_range_infos);
+	});
+
+	return std::move(tlas);
+}
+
+class AccelerationStructureVK
+{
+public:
+	const auto& getTopLevelAccelerationStructure() const { return mTopLevelAccelerationStructure; }
+
+private:
+	vk::raii::AccelerationStructureKHR mTopLevelAccelerationStructure = nullptr;
+	vk::raii::AccelerationStructureKHR mBottomLevelAccelerationStructure = nullptr;
+	vk::DeviceAddress mBottomLevelAccelerationStructureDeviceAddress;
+
+public:
+	AccelerationStructureVK(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices)
+	{
+		auto transform = vk::TransformMatrixKHR()
+			.setMatrix({
+				1.0f, 0.0f, 0.0f, 0.0f,
+				0.0f, 1.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 1.0f, 0.0f
+			});
+
+		std::tie(mBottomLevelAccelerationStructure, mBottomLevelAccelerationStructureDeviceAddress) = 
+			CreateBottomLevelAccelerationStrucutre(vertices, indices, transform);
+		mTopLevelAccelerationStructure = CreateTopLevelAccelerationStructure(transform,
+			mBottomLevelAccelerationStructureDeviceAddress);
+	}
+};
+
 static bool gRenderPassActive = false;
 
 static void BeginRenderPass()
@@ -787,11 +976,6 @@ static void EnsureRenderPassDeactivated()
 		return;
 
 	EndRenderPass();
-}
-
-static vk::IndexType GetIndexTypeFromStride(size_t stride)
-{
-	return stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32;
 }
 
 static void PrepareForDrawing()
@@ -1381,8 +1565,13 @@ void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferVK*)handle;
-
 	gUniformBuffers[binding] = buffer;
+}
+
+void BackendVK::setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle)
+{
+	auto acceleration_structure = (AccelerationStructureVK*)handle;
+	gAccelerationStructures[binding] = acceleration_structure;
 }
 
 void BackendVK::setBlendMode(const BlendMode& value)
@@ -1565,184 +1754,12 @@ inline T AlignUp(T size, size_t alignment) noexcept
 	return size;
 }
 
-static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress> CreateBottomLevelAccelerationStrucutre(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const vk::TransformMatrixKHR& transform)
-{
-	using vertex_t = glm::vec3;
-	using index_t = uint32_t;
-
-	static auto [vertex_buffer, vertex_buffer_memory] = CreateBuffer(vertices.size() * sizeof(vertex_t),
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	static auto [index_buffer, index_buffer_memory] = CreateBuffer(indices.size() * sizeof(index_t),
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	static auto [transform_buffer, transform_buffer_memory] = CreateBuffer(sizeof(transform), 
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	WriteToBuffer(vertex_buffer_memory, vertices.data(), vertices.size() * sizeof(vertex_t));
-	WriteToBuffer(index_buffer_memory, indices.data(), indices.size() * sizeof(index_t));
-	WriteToBuffer(transform_buffer_memory, &transform, sizeof(transform));
-
-	auto vertex_buffer_device_address = GetBufferDeviceAddress(*vertex_buffer);
-	auto index_buffer_device_address = GetBufferDeviceAddress(*index_buffer);
-	auto transform_buffer_device_address = GetBufferDeviceAddress(*transform_buffer);
-
-	auto blas_triangles = vk::AccelerationStructureGeometryTrianglesDataKHR()
-		.setVertexFormat(vk::Format::eR32G32B32Sfloat)
-		.setVertexData(vertex_buffer_device_address)
-		.setMaxVertex(vertices.size())
-		.setVertexStride(sizeof(vertex_t))
-		.setIndexType(GetIndexTypeFromStride(sizeof(index_t)))
-		.setIndexData(index_buffer_device_address)
-		.setTransformData(transform_buffer_device_address);
-
-	auto blas_geometry_data = vk::AccelerationStructureGeometryDataKHR()
-		.setTriangles(blas_triangles);
-
-	auto blas_geometry = vk::AccelerationStructureGeometryKHR()
-		.setGeometryType(vk::GeometryTypeKHR::eTriangles)
-		.setGeometry(blas_geometry_data)
-		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
-
-	auto blas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
-		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-		.setGeometryCount(1)
-		.setPGeometries(&blas_geometry);
-
-	auto blas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
-		vk::AccelerationStructureBuildTypeKHR::eDevice, blas_build_geometry_info, { 1 });
-		
-	static auto [blas_buffer, blas_memory] = CreateBuffer(blas_build_sizes.accelerationStructureSize,
-		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
-
-	auto blas_create_info = vk::AccelerationStructureCreateInfoKHR()
-		.setBuffer(*blas_buffer)
-		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-		.setSize(blas_build_sizes.accelerationStructureSize);
-
-	auto blas = gDevice.createAccelerationStructureKHR(blas_create_info);
-
-	static auto [blas_scratch_buffer, blas_scratch_memory] = CreateBuffer(blas_build_sizes.buildScratchSize,
-		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto blas_scratch_buffer_addr = GetBufferDeviceAddress(*blas_scratch_buffer);
-
-	blas_build_geometry_info
-		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-		.setDstAccelerationStructure(*blas)
-		.setScratchData(blas_scratch_buffer_addr);
-
-	auto blas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
-		.setPrimitiveCount(1);
-
-	auto blas_build_geometry_infos = { blas_build_geometry_info };
-	std::vector blas_build_range_infos = { &blas_build_range_info };
-		
-	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-		cmdbuf.buildAccelerationStructuresKHR(blas_build_geometry_infos, blas_build_range_infos);
-	});
-
-	auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
-		.setAccelerationStructure(*blas);
-
-	auto blas_device_address = gDevice.getAccelerationStructureAddressKHR(blas_device_address_info);
-
-	return { std::move(blas), blas_device_address };
-}
-
-static vk::raii::AccelerationStructureKHR CreateTopLevelAccelerationStructure(const vk::TransformMatrixKHR& transform, const vk::DeviceAddress& bottom_level_acceleration_structure_device_address)
-{
-	auto tlas_instance = vk::AccelerationStructureInstanceKHR()
-		.setTransform(transform)
-		.setMask(0xFF)
-		.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
-		.setAccelerationStructureReference(bottom_level_acceleration_structure_device_address);
-
-	static auto [instance_buffer, instance_buffer_memory] = CreateBuffer(sizeof(tlas_instance),
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	WriteToBuffer(instance_buffer_memory, &tlas_instance, sizeof(tlas_instance));
-
-	auto instance_buffer_addr = GetBufferDeviceAddress(*instance_buffer);
-
-	auto tlas_instances = vk::AccelerationStructureGeometryInstancesDataKHR()
-		.setArrayOfPointers(false)
-		.setData(instance_buffer_addr);
-
-	auto tlas_geometry_data = vk::AccelerationStructureGeometryDataKHR()
-		.setInstances(tlas_instances);
-
-	auto tlas_geometry = vk::AccelerationStructureGeometryKHR()
-		.setGeometryType(vk::GeometryTypeKHR::eInstances)
-		.setGeometry(tlas_geometry_data)
-		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
-
-	auto tlas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
-		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
-		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-		.setGeometryCount(1)
-		.setPGeometries(&tlas_geometry);
-
-	auto tlas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
-		vk::AccelerationStructureBuildTypeKHR::eDevice, tlas_build_geometry_info, { 1 });
-
-	static auto [tlas_buffer, tlas_memory] = CreateBuffer(tlas_build_sizes.accelerationStructureSize,
-		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
-
-	auto tlas_create_info = vk::AccelerationStructureCreateInfoKHR()
-		.setBuffer(*tlas_buffer)
-		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
-		.setSize(tlas_build_sizes.accelerationStructureSize);
-
-	auto tlas = gDevice.createAccelerationStructureKHR(tlas_create_info);
-
-	static auto [tlas_scratch_buffer, tlas_scratch_memory] = CreateBuffer(tlas_build_sizes.buildScratchSize,
-		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto tlas_scratch_buffer_addr = GetBufferDeviceAddress(*tlas_scratch_buffer);
-
-	tlas_build_geometry_info
-		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-		.setDstAccelerationStructure(*tlas)
-		.setScratchData(tlas_scratch_buffer_addr);
-
-	auto tlas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
-		.setPrimitiveCount(1);
-
-	auto tlas_build_geometry_infos = { tlas_build_geometry_info };
-	std::vector tlas_build_range_infos = { &tlas_build_range_info };
-
-	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-		cmdbuf.buildAccelerationStructuresKHR(tlas_build_geometry_infos, tlas_build_range_infos);
-	});
-
-	return std::move(tlas);
-}
-
 void BackendVK::dispatchRays()
 {
 	EnsureRenderPassDeactivated();
 
-	const std::vector<glm::vec3> vertices = {
-		{ 0.25f, 0.25f, 0.0f },
-		{ 0.75f, 0.25f, 0.0f },
-		{ 0.50f, 0.75f, 0.0f },
-	};
-
-	const std::vector<uint32_t> indices = { 0, 1, 2 };
-
-	auto transform_matrix = vk::TransformMatrixKHR()
-		.setMatrix({
-			1.0f, 0.0f, 0.0f, 0.0f,
-			0.0f, 1.0f, 0.0f, 0.0f,
-			0.0f, 0.0f, 1.0f, 0.0f
-		});
-
 	static std::optional<vk::raii::Pipeline> pipeline;
 	static std::optional<vk::raii::PipelineLayout> pipeline_layout;
-	static auto [blas, blas_device_address] = CreateBottomLevelAccelerationStrucutre(vertices, indices, transform_matrix);
-	static vk::raii::AccelerationStructureKHR tlas = CreateTopLevelAccelerationStructure(transform_matrix, blas_device_address);
 
 	if (!pipeline.has_value())
 	{
@@ -1839,10 +1856,10 @@ void BackendVK::dispatchRays()
 	}
 
 	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline.value());
-
+	
 	auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
 		.setAccelerationStructureCount(1)
-		.setPAccelerationStructures(&*tlas);
+		.setPAccelerationStructures(&*gAccelerationStructures.at(0)->getTopLevelAccelerationStructure());
 
 	gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout.value(), 0, {
 		vk::WriteDescriptorSet()
@@ -2150,6 +2167,37 @@ void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memo
 {
 	auto buffer = (UniformBufferVK*)handle;
 	buffer->write(memory, size);
+}
+
+AccelerationStructureHandle* BackendVK::createAccelerationStructure(const std::vector<glm::vec3>& vertices,
+	const std::vector<uint32_t>& indices)
+{
+	auto acceleration_structure = new AccelerationStructureVK(vertices, indices);
+	return (AccelerationStructureHandle*)acceleration_structure;
+}
+
+void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle)
+{
+	gExecuteAfterPresent.add([handle] {
+		auto acceleration_structure = (AccelerationStructureVK*)handle;
+
+		auto remove_from_global = [&] {
+			for (const auto& [binding, _acceleration_structure] : gAccelerationStructures)
+			{
+				if (acceleration_structure == _acceleration_structure)
+				{
+					gAccelerationStructures.erase(binding);
+					return false;
+				}
+			}
+
+			return true;
+		};
+
+		while (!remove_from_global()) {}
+
+		delete acceleration_structure;
+	});
 }
 
 void BackendVK::createSwapchain(uint32_t width, uint32_t height)

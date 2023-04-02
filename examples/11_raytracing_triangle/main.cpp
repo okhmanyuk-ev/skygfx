@@ -2,6 +2,14 @@
 #include <skygfx/ext.h>
 #include "../utils/utils.h"
 
+const std::vector<glm::vec3> vertices = {
+	{ 0.25f, 0.25f, 0.0f },
+	{ 0.75f, 0.25f, 0.0f },
+	{ 0.50f, 0.75f, 0.0f },
+};
+
+const std::vector<uint32_t> indices = { 0, 1, 2 };
+
 int main()
 {
 	auto backend_type = skygfx::BackendType::Vulkan;// utils::ChooseBackendTypeViaConsole();
@@ -18,6 +26,9 @@ int main()
 	});
 
 	auto target = skygfx::RenderTarget(800, 600);
+	auto acceleration_structure = skygfx::AccelerationStructure(vertices, indices);
+
+	skygfx::SetAccelerationStructure(0, acceleration_structure);
 
 	while (!glfwWindowShouldClose(window))
 	{

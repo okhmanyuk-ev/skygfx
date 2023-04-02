@@ -24,6 +24,7 @@ namespace skygfx
 		void setVertexBuffer(VertexBufferHandle* handle) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
+		void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) override;
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(std::optional<DepthMode> depth_mode) override;
 		void setStencilMode(std::optional<StencilMode> stencil_mode) override;
@@ -64,6 +65,10 @@ namespace skygfx
 		UniformBufferHandle* createUniformBuffer(size_t size) override;
 		void destroyUniformBuffer(UniformBufferHandle* handle) override;
 		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
+
+		AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
+			const std::vector<uint32_t>& indices) override;
+		void destroyAccelerationStructure(AccelerationStructureHandle* handle) override;
 
 	private:
 		void createSwapchain(uint32_t width, uint32_t height);

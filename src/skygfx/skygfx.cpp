@@ -213,6 +213,20 @@ void UniformBuffer::write(void* memory, size_t size)
 	gBackend->writeUniformBufferMemory(mUniformBufferHandle, memory, size);
 }
 
+// acceleration structure
+
+AccelerationStructure::AccelerationStructure(const std::vector<glm::vec3>& vertices,
+	const std::vector<uint32_t>& indices)
+{
+	mAccelerationStructureHandle = gBackend->createAccelerationStructure(vertices, indices);
+}
+
+AccelerationStructure::~AccelerationStructure()
+{
+	if (gBackend && mAccelerationStructureHandle)
+		gBackend->destroyAccelerationStructure(mAccelerationStructureHandle);
+}
+
 // device
 
 void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type)
@@ -315,6 +329,11 @@ void skygfx::SetIndexBuffer(const IndexBuffer& value)
 void skygfx::SetUniformBuffer(uint32_t binding, const UniformBuffer& value)
 {
 	gBackend->setUniformBuffer(binding, const_cast<UniformBuffer&>(value));
+}
+
+void skygfx::SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value)
+{
+	gBackend->setAccelerationStructure(binding, const_cast<AccelerationStructure&>(value));
 }
 
 void skygfx::SetBlendMode(const BlendMode& value)

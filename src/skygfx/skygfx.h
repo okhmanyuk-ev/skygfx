@@ -33,6 +33,7 @@ namespace skygfx
 	using VertexBufferHandle = struct VertexBufferHandle;
 	using IndexBufferHandle = struct IndexBufferHandle;
 	using UniformBufferHandle = struct UniformBufferHandle;
+	using AccelerationStructureHandle = struct AccelerationStructureHandle;
 
 	class noncopyable
 	{
@@ -194,6 +195,18 @@ namespace skygfx
 
 	private:
 		UniformBufferHandle* mUniformBufferHandle = nullptr;
+	};
+
+	class AccelerationStructure : public noncopyable
+	{
+	public:
+		AccelerationStructure(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices);
+		~AccelerationStructure();
+
+		operator AccelerationStructureHandle* () { return mAccelerationStructureHandle; }
+
+	private:
+		AccelerationStructureHandle* mAccelerationStructureHandle = nullptr;
 	};
 
 	enum class Topology
@@ -464,6 +477,7 @@ namespace skygfx
 	void SetVertexBuffer(const VertexBuffer& value);
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
+	void SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value);
 	void SetBlendMode(const BlendMode& value);
 	void SetDepthMode(const std::optional<DepthMode>& depth_mode);
 	void SetStencilMode(const std::optional<StencilMode>& stencil_mode);

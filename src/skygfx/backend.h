@@ -21,6 +21,7 @@ namespace skygfx
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
+		virtual void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) = 0;
 		virtual void setBlendMode(const BlendMode& value) = 0;
 		virtual void setDepthMode(std::optional<DepthMode> depth_mode) = 0;
 		virtual void setStencilMode(std::optional<StencilMode> stencil_mode) = 0;
@@ -61,5 +62,9 @@ namespace skygfx
 		virtual UniformBufferHandle* createUniformBuffer(size_t size) = 0;
 		virtual void destroyUniformBuffer(UniformBufferHandle* handle) = 0;
 		virtual void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) = 0;
+
+		virtual AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
+			const std::vector<uint32_t>& indices) = 0;
+		virtual void destroyAccelerationStructure(AccelerationStructureHandle* handle) = 0;
 	};
 }
