@@ -7,7 +7,7 @@
 
 #include <d3dcompiler.h>
 #include <d3d12.h>
-#include <dxgi1_4.h>
+#include <dxgi1_6.h>
 #include <dxgidebug.h>
 #include <d3dx12/d3dx12.h>
 #include <d3dx12/d3d12generatemips.h>
@@ -79,7 +79,7 @@ static ComPtr<ID3D12Device> gDevice;
 static ComPtr<ID3D12CommandAllocator> gCommandAllocator;
 static ComPtr<ID3D12CommandQueue> gCommandQueue;
 static ComPtr<IDXGISwapChain3> gSwapChain;
-static ComPtr<ID3D12GraphicsCommandList> gCommandList;
+static ComPtr<ID3D12GraphicsCommandList4> gCommandList;
 static ComPtr<ID3D12DescriptorHeap> gDescriptorHeap;
 static CD3DX12_CPU_DESCRIPTOR_HANDLE gDescriptorHeapCpuHandle;
 static CD3DX12_GPU_DESCRIPTOR_HANDLE gDescriptorHeapGpuHandle;
@@ -565,11 +565,11 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
 	debug->EnableDebugLayer();
 
-	ComPtr<IDXGIFactory4> dxgi_factory;
+	ComPtr<IDXGIFactory6> dxgi_factory;
 	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
 
 	IDXGIAdapter1* adapter;
-	dxgi_factory->EnumAdapters1(0, &adapter);
+	dxgi_factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
 
 	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gDevice.GetAddressOf()));
 
@@ -804,6 +804,10 @@ void BackendD3D12::setShader(ShaderHandle* handle)
 	gPipelineState.shader = (ShaderD3D12*)handle;
 }
 
+void BackendD3D12::setRaytracingShader(RaytracingShaderHandle* handle)
+{
+}
+
 void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferD3D12*)handle;
@@ -830,6 +834,10 @@ void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 {
 	auto buffer = (UniformBufferD3D12*)handle;
 	gUniformBuffers[binding] = buffer;
+}
+
+void BackendD3D12::setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle)
+{
 }
 
 void BackendD3D12::setBlendMode(const BlendMode& value)
@@ -990,8 +998,14 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		dst_texture->generateMips();
 }
 
-void BackendD3D12::dispatchRays()
+void BackendD3D12::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
+	auto desc = D3D12_DISPATCH_RAYS_DESC{};
+	desc.Width = width;
+	desc.Height = height;
+	desc.Depth = depth;
+
+	gCommandList->DispatchRays(&desc);
 }
 
 void BackendD3D12::prepareForDrawing(bool indexed)
@@ -1320,6 +1334,18 @@ void BackendD3D12::destroyShader(ShaderHandle* handle)
 	});
 }
 
+RaytracingShaderHandle* BackendD3D12::createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+	const std::string& closesthit_code, const std::vector<std::string>& defines)
+{
+	//auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code, defines);
+	//auto hlsl_raygen = CompileSpirvToHlsl(raygen_shader_spirv, 60);
+	return nullptr;
+}
+
+void BackendD3D12::destroyRaytracingShader(RaytracingShaderHandle* handle)
+{
+}
+
 VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferD3D12(size, stride);
@@ -1380,6 +1406,16 @@ void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, void* m
 {
 	auto buffer = (UniformBufferD3D12*)handle;
 	buffer->write(memory, size);
+}
+
+AccelerationStructureHandle* BackendD3D12::createAccelerationStructure(const std::vector<glm::vec3>& vertices,
+	const std::vector<uint32_t>& indices)
+{
+	return nullptr;
+}
+
+void BackendD3D12::destroyAccelerationStructure(AccelerationStructureHandle* handle)
+{
 }
 
 #endif

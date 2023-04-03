@@ -7,8 +7,8 @@ const std::string raygen_shader_code = R"(
 
 #extension GL_EXT_ray_tracing : require
 
-layout(set = 0, binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(set = 0, binding = 1, rgba8) uniform image2D image;
+layout(binding = 0) uniform accelerationStructureEXT topLevelAS;
+layout(binding = 1, rgba8) uniform image2D image;
 
 layout(location = 0) rayPayloadEXT vec3 hitValue;
 
@@ -75,7 +75,7 @@ int main()
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Raytracing Triangle");
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Raytraced triangle");
 
 	skygfx::Initialize(native_window, width, height, backend_type);
 
