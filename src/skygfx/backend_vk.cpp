@@ -3,6 +3,7 @@
 #ifdef SKYGFX_HAS_VULKAN
 
 #include <vulkan/vulkan_raii.hpp>
+#include <iostream>
 
 using namespace skygfx;
 
@@ -68,6 +69,7 @@ SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 
 static vk::raii::Context* gContext = nullptr;
 static vk::raii::Instance gInstance = nullptr;
+static vk::raii::DebugUtilsMessengerEXT gDebugUtilsMessenger = nullptr;
 static vk::raii::PhysicalDevice gPhysicalDevice = nullptr;
 static vk::raii::Queue gQueue = nullptr;
 static vk::raii::Device gDevice = nullptr;
@@ -1335,6 +1337,62 @@ static void PrepareForDrawing()
 	}
 }
 
+VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	VkDebugUtilsMessageTypeFlagsEXT messageTypes, VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData,
+	void* /*pUserData*/)
+{
+#if !defined( NDEBUG )
+	if (pCallbackData->messageIdNumber == 648835635)
+	{
+		// UNASSIGNED-khronos-Validation-debug-build-warning-message
+		return VK_FALSE;
+	}
+	if (pCallbackData->messageIdNumber == 767975156)
+	{
+		// UNASSIGNED-BestPractices-vkCreateInstance-specialuse-extension
+		return VK_FALSE;
+	}
+#endif
+
+	std::cerr << vk::to_string(static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(messageSeverity)) << ": "
+		<< vk::to_string(static_cast<vk::DebugUtilsMessageTypeFlagsEXT>(messageTypes)) << ":\n";
+	std::cerr << std::string("\t") << "messageIDName   = <" << pCallbackData->pMessageIdName << ">\n";
+	std::cerr << std::string("\t") << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
+	std::cerr << std::string("\t") << "message         = <" << pCallbackData->pMessage << ">\n";
+	if (0 < pCallbackData->queueLabelCount)
+	{
+		std::cerr << std::string("\t") << "Queue Labels:\n";
+		for (uint32_t i = 0; i < pCallbackData->queueLabelCount; i++)
+		{
+			std::cerr << std::string("\t\t") << "labelName = <" << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
+		}
+	}
+	if (0 < pCallbackData->cmdBufLabelCount)
+	{
+		std::cerr << std::string("\t") << "CommandBuffer Labels:\n";
+		for (uint32_t i = 0; i < pCallbackData->cmdBufLabelCount; i++)
+		{
+			std::cerr << std::string("\t\t") << "labelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
+		}
+	}
+	if (0 < pCallbackData->objectCount)
+	{
+		std::cerr << std::string("\t") << "Objects:\n";
+		for (uint32_t i = 0; i < pCallbackData->objectCount; i++)
+		{
+			std::cerr << std::string("\t\t") << "Object " << i << "\n";
+			std::cerr << std::string("\t\t\t") << "objectType   = " << vk::to_string(static_cast<vk::ObjectType>(pCallbackData->pObjects[i].objectType))
+				<< "\n";
+			std::cerr << std::string("\t\t\t") << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
+			if (pCallbackData->pObjects[i].pObjectName)
+			{
+				std::cerr << std::string("\t\t\t") << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
+			}
+		}
+	}
+	return VK_TRUE;
+}
+
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
 #if defined(SKYGFX_PLATFORM_WINDOWS)
@@ -1366,6 +1424,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 #elif defined(SKYGFX_PLATFORM_MACOS)
 		VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
 #endif
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 	};
 	
 	auto layers = {
@@ -1383,12 +1442,31 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	auto application_info = vk::ApplicationInfo()
 		.setApiVersion(VK_API_VERSION_1_3);
 
-	auto instance_info = vk::InstanceCreateInfo()
+	auto instance_create_info = vk::InstanceCreateInfo()
 		.setPEnabledExtensionNames(extensions)
 		.setPEnabledLayerNames(layers)
 		.setPApplicationInfo(&application_info);
 
-	gInstance = gContext->createInstance(instance_info);
+	auto debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT()
+		.setMessageSeverity(
+			vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+			vk::DebugUtilsMessageSeverityFlagBitsEXT::eError
+		)
+		.setMessageType(
+			vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
+			vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance |
+			vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
+		)
+		.setPfnUserCallback(&DebugUtilsMessengerCallback);
+
+	auto instance_create_info_chain = vk::StructureChain<vk::InstanceCreateInfo, vk::DebugUtilsMessengerCreateInfoEXT>(
+		instance_create_info,
+		debug_utils_messenger_create_info
+	);
+
+	gInstance = gContext->createInstance(instance_create_info_chain.get<vk::InstanceCreateInfo>());
+
+	gDebugUtilsMessenger = gInstance.createDebugUtilsMessengerEXT(debug_utils_messenger_create_info);
 
 	auto devices = gInstance.enumeratePhysicalDevices();
 	size_t device_index = 0;
