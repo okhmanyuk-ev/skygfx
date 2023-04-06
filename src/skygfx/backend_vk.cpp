@@ -275,7 +275,10 @@ static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t 
 {
 	auto buffer_create_info = vk::BufferCreateInfo()
 		.setSize(size)
-		.setUsage(vk::BufferUsageFlagBits::eTransferSrc | vk::BufferUsageFlagBits::eTransferDst | usage)
+		.setUsage(
+			vk::BufferUsageFlagBits::eTransferSrc |
+			vk::BufferUsageFlagBits::eTransferDst |
+			usage)
 		.setSharingMode(vk::SharingMode::eExclusive);
 
 	auto buffer = gDevice.createBuffer(buffer_create_info);
@@ -516,9 +519,13 @@ public:
 			.setArrayLayers(1)
 			.setSamples(vk::SampleCountFlagBits::e1)
 			.setTiling(vk::ImageTiling::eOptimal)
-			.setUsage(vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst 
-				| vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eColorAttachment
-				| vk::ImageUsageFlagBits::eStorage)
+			.setUsage(
+				vk::ImageUsageFlagBits::eSampled |
+				vk::ImageUsageFlagBits::eTransferDst |
+				vk::ImageUsageFlagBits::eTransferSrc |
+				vk::ImageUsageFlagBits::eColorAttachment |
+				vk::ImageUsageFlagBits::eStorage
+			)
 			.setSharingMode(vk::SharingMode::eExclusive)
 			.setInitialLayout(vk::ImageLayout::eUndefined);
 
@@ -548,31 +555,21 @@ public:
 
 		mImageView = gDevice.createImageView(image_view_create_info);
 
+		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+			SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+				vk::ImageLayout::eGeneral);
+		});
+
 		if (memory)
 		{
 			auto size = width * height * channels;
 
-			auto buffer_create_info = vk::BufferCreateInfo()
-				.setSize(size)
-				.setUsage(vk::BufferUsageFlagBits::eTransferSrc)
-				.setSharingMode(vk::SharingMode::eExclusive);
-
-			auto upload_buffer = gDevice.createBuffer(buffer_create_info); // TODO: use CreateBuffer() func
-
-			auto req = upload_buffer.getMemoryRequirements();
-
-			auto memory_allocate_info = vk::MemoryAllocateInfo()
-				.setAllocationSize(req.size)
-				.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, req.memoryTypeBits));
-
-			auto upload_buffer_memory = gDevice.allocateMemory(memory_allocate_info);
-
-			upload_buffer.bindMemory(*upload_buffer_memory, 0);
+			auto [upload_buffer, upload_buffer_memory] = CreateBuffer(size);
 
 			WriteToBuffer(upload_buffer_memory, memory, size);
 
 			OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
+				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eGeneral,
 					vk::ImageLayout::eTransferDstOptimal);
 
 				auto image_subresource_layers = vk::ImageSubresourceLayers()
@@ -628,7 +625,7 @@ public:
 					.setLevelCount(mip_levels);
 
 				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eTransferSrcOptimal,
-					vk::ImageLayout::eShaderReadOnlyOptimal, subresource_range);
+					vk::ImageLayout::eGeneral, subresource_range);
 			});
 		}
 	}
@@ -653,11 +650,6 @@ private:
 public:
 	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture) : mTexture(_texture)
 	{
-		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-			SetImageLayout(cmdbuf, *getTexture()->getImage(), vk::Format::eUndefined, vk::ImageLayout::eUndefined,
-				vk::ImageLayout::eGeneral);
-		});
-
 		auto depth_stencil_image_create_info = vk::ImageCreateInfo()
 			.setImageType(vk::ImageType::e2D)
 			.setFormat(mDepthStencilFormat)
@@ -748,8 +740,7 @@ private:
 	size_t mStride = 0;
 
 public:
-	VertexBufferVK(size_t size, size_t stride) :
-		BufferVK(size, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR),
+	VertexBufferVK(size_t size, size_t stride) : BufferVK(size, vk::BufferUsageFlagBits::eVertexBuffer),
 		mStride(stride)
 	{
 	}
@@ -765,8 +756,7 @@ private:
 	size_t mStride = 0;
 
 public:
-	IndexBufferVK(size_t size, size_t stride) :
-		BufferVK(size, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR),
+	IndexBufferVK(size_t size, size_t stride) : BufferVK(size, vk::BufferUsageFlagBits::eIndexBuffer),
 		mStride(stride)
 	{
 	}
@@ -775,8 +765,7 @@ public:
 class UniformBufferVK : public BufferVK
 {
 public:
-	UniformBufferVK(size_t size) :
-		BufferVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
+	UniformBufferVK(size_t size) : BufferVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
 	{
 	}
 };

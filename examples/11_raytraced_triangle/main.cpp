@@ -70,7 +70,7 @@ const std::vector<uint32_t> indices = { 0, 1, 2 };
 
 int main()
 {
-	auto backend_type = skygfx::BackendType::Vulkan;// utils::ChooseBackendTypeViaConsole();
+	auto backend_type = utils::ChooseBackendTypeViaConsole();
 
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -92,7 +92,7 @@ int main()
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(target);
 		skygfx::SetAccelerationStructure(0, acceleration_structure);
-		skygfx::Clear(glm::vec4{ 1.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		skygfx::DispatchRays(target.getWidth(), target.getHeight(), 1);
 
 		skygfx::SetRenderTarget(std::nullopt);

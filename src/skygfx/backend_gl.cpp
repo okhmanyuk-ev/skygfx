@@ -856,6 +856,10 @@ void BackendGL::setShader(ShaderHandle* handle)
 	gShaderDirty = true;
 }
 
+void BackendGL::setRaytracingShader(RaytracingShaderHandle* handle)
+{
+}
+
 void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferGL*)handle;
@@ -882,6 +886,10 @@ void BackendGL::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferGL*)handle;
 	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->getGLBuffer());
+}
+
+void BackendGL::setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle)
+{
 }
 
 void BackendGL::setBlendMode(const BlendMode& value)
@@ -1074,9 +1082,8 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
-void BackendGL::dispatchRays()
+void BackendGL::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
-	assert(!"feature not supported by this api");
 }
 
 void BackendGL::present()
@@ -1130,6 +1137,16 @@ void BackendGL::destroyShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderGL*)handle;
 	delete shader;
+}
+
+RaytracingShaderHandle* BackendGL::createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+	const std::string& closesthit_code, const std::vector<std::string>& defines)
+{
+	return nullptr;
+}
+
+void BackendGL::destroyRaytracingShader(RaytracingShaderHandle* handle)
+{
 }
 
 VertexBufferHandle* BackendGL::createVertexBuffer(size_t size, size_t stride)
@@ -1200,6 +1217,16 @@ void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, void* memo
 {
 	auto buffer = (UniformBufferGL*)handle;
 	buffer->write(memory, size);
+}
+
+AccelerationStructureHandle* BackendGL::createAccelerationStructure(const std::vector<glm::vec3>& vertices,
+	const std::vector<uint32_t>& indices)
+{
+	return nullptr;
+}
+
+void BackendGL::destroyAccelerationStructure(AccelerationStructureHandle* handle)
+{
 }
 
 void BackendGL::prepareForDrawing()
