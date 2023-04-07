@@ -20,21 +20,24 @@ struct PipelineStateVK
 {
 	ShaderVK* shader = nullptr;
 	BlendMode blend_mode = BlendStates::AlphaBlend;
-	RenderTargetVK* render_target = nullptr; // TODO: see how we do it in Metal, we can remove this field from here!
+	vk::Format color_attachment_format;
+	vk::Format depth_stencil_format;
 
 	bool operator==(const PipelineStateVK& value) const
 	{
 		return 
 			shader == value.shader &&
 			blend_mode == value.blend_mode &&
-			render_target == value.render_target;
+			color_attachment_format == value.color_attachment_format &&
+			depth_stencil_format == value.depth_stencil_format;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateVK,
 	t.shader,
 	t.blend_mode,
-	t.render_target);
+	t.color_attachment_format,
+	t.depth_stencil_format);
 
 struct RaytracingPipelineStateVK
 {
@@ -1075,7 +1078,6 @@ static void PrepareForDrawing()
 
 	auto shader = gPipelineState.shader;
 	const auto& blend_mode = gPipelineState.blend_mode;
-	auto render_target = gPipelineState.render_target;
 
 	assert(shader);
 
@@ -1179,10 +1181,10 @@ static void PrepareForDrawing()
 			.setDynamicStates(dynamic_states);
 
 		auto color_attachment_formats = {
-			render_target ? render_target->getTexture()->getFormat() : gSurfaceFormat.format
+			gPipelineState.color_attachment_format
 		};
 
-		auto depth_stencil_format = render_target ? render_target->getDepthStencilFormat() : gDepthStencil.format;
+		auto depth_stencil_format = gPipelineState.depth_stencil_format;
 
 		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
 			.setColorAttachmentFormats(color_attachment_formats)
@@ -1579,6 +1581,9 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	auto command_buffers = gDevice.allocateCommandBuffers(command_buffer_allocate_info);
 	gCommandBuffer = std::move(command_buffers.at(0));
 
+	gPipelineState.color_attachment_format = gSurfaceFormat.format;
+	gPipelineState.depth_stencil_format = gDepthStencil.format;
+
 	createSwapchain(width, height);
 
 	begin();
@@ -1639,7 +1644,8 @@ void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 	if (gRenderTarget == render_target)
 		return;
 
-	gPipelineState.render_target = render_target; // TODO: see how we do it in metal, we dont need this field!
+	gPipelineState.color_attachment_format = render_target->getTexture()->getFormat();
+	gPipelineState.depth_stencil_format = render_target->getDepthStencilFormat();
 	gRenderTarget = render_target;
 	EnsureRenderPassDeactivated();
 }
@@ -1649,7 +1655,8 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 	if (gRenderTarget == nullptr)
 		return;
 
-	gPipelineState.render_target = nullptr; // TODO: see how we do it in metal, we dont need this field!
+	gPipelineState.color_attachment_format = gSurfaceFormat.format;
+	gPipelineState.depth_stencil_format = gDepthStencil.format;
 	gRenderTarget = nullptr;
 	EnsureRenderPassDeactivated();
 }
