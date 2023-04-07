@@ -1956,11 +1956,8 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	if (!raygen_shader_binding_table.has_value())
 	{
-		VkPhysicalDeviceRayTracingPipelinePropertiesKHR ray_tracing_pipeline_properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
-
-		VkPhysicalDeviceProperties2 prop2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
-		prop2.pNext = &ray_tracing_pipeline_properties;
-		vkGetPhysicalDeviceProperties2(*gPhysicalDevice, &prop2);
+		auto ray_tracing_pipeline_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2,
+			vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
 		auto handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
 		auto handle_size_aligned = AlignUp(handle_size, ray_tracing_pipeline_properties.shaderGroupHandleAlignment);
