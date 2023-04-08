@@ -331,13 +331,69 @@ const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 
 const static std::unordered_map<ShaderStage, vk::ShaderStageFlagBits> ShaderStageMap = {
 	{ ShaderStage::Vertex, vk::ShaderStageFlagBits::eVertex },
-	{ ShaderStage::Fragment, vk::ShaderStageFlagBits::eFragment }
+	{ ShaderStage::Fragment, vk::ShaderStageFlagBits::eFragment },
+	{ ShaderStage::Raygen, vk::ShaderStageFlagBits::eRaygenKHR },
+	{ ShaderStage::Miss, vk::ShaderStageFlagBits::eMissKHR },
+	{ ShaderStage::ClosestHit, vk::ShaderStageFlagBits::eClosestHitKHR }
 };
 
 const static std::unordered_map<ShaderReflection::Descriptor::Type, vk::DescriptorType> ShaderTypeMap = {
 	{ ShaderReflection::Descriptor::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
-	{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer }
+	{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer },
+	{ ShaderReflection::Descriptor::Type::StorageImage, vk::DescriptorType::eStorageImage },
+	{ ShaderReflection::Descriptor::Type::AccelerationStructure, vk::DescriptorType::eAccelerationStructureKHR }
 };
+
+std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<vk::DescriptorSetLayoutBinding>> CreatePipelineLayout(
+	const std::vector<std::vector<uint32_t>>& spirvs)
+{
+	std::vector<vk::DescriptorSetLayoutBinding> required_descriptor_bindings;
+
+	for (const auto& spirv : spirvs)
+	{
+		auto reflection = MakeSpirvReflection(spirv);
+
+		for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
+		{
+			bool overwritten = false;
+
+			for (auto& _binding : required_descriptor_bindings)
+			{
+				if (_binding.binding != binding)
+					continue;
+
+				_binding.stageFlags |= ShaderStageMap.at(reflection.stage);
+				overwritten = true;
+				break;
+			}
+
+			if (overwritten)
+				continue;
+
+			auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding()
+				.setDescriptorType(ShaderTypeMap.at(descriptor.type))
+				.setDescriptorCount(1)
+				.setBinding(binding)
+				.setStageFlags(ShaderStageMap.at(reflection.stage));
+
+			required_descriptor_bindings.push_back(descriptor_set_layout_binding);
+		}
+	}
+
+	auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
+		.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
+		.setBindings(required_descriptor_bindings);
+
+	auto descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
+
+	auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
+		.setSetLayoutCount(1)
+		.setPSetLayouts(&*descriptor_set_layout);
+
+	auto pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
+
+	return { std::move(pipeline_layout), std::move(descriptor_set_layout), required_descriptor_bindings };
+}
 
 class ShaderVK
 {
@@ -367,48 +423,8 @@ public:
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
-		for (const auto& spirv : { vertex_shader_spirv, fragment_shader_spirv })
-		{
-			auto reflection = MakeSpirvReflection(spirv);
-
-			for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
-			{
-				bool overwritten = false;
-
-				for (auto& _binding : mRequiredDescriptorBindings)
-				{
-					if (_binding.binding != binding)
-						continue;
-
-					_binding.stageFlags |= ShaderStageMap.at(reflection.stage);
-					overwritten = true;
-					break;
-				}
-
-				if (overwritten)
-					continue;
-
-				auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding()
-					.setDescriptorType(ShaderTypeMap.at(descriptor.type))
-					.setDescriptorCount(1)
-					.setBinding(binding)
-					.setStageFlags(ShaderStageMap.at(reflection.stage));
-
-				mRequiredDescriptorBindings.push_back(descriptor_set_layout_binding);
-			}
-		}
-
-		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
-			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
-			.setBindings(mRequiredDescriptorBindings);
-
-		mDescriptorSetLayout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
-
-		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
-			.setSetLayoutCount(1)
-			.setPSetLayouts(&*mDescriptorSetLayout);
-
-		mPipelineLayout = gDevice.createPipelineLayout(pipeline_layout_create_info);
+		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout({ 
+			vertex_shader_spirv, fragment_shader_spirv });
 
 		auto vertex_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(vertex_shader_spirv);
@@ -456,11 +472,16 @@ public:
 	const auto& getRaygenShaderModule() const { return mRaygenShaderModule; }
 	const auto& getMissShaderModule() const { return mMissShaderModule; }
 	const auto& getClosestHitShaderModule() const { return mClosestHitShaderModule; }
+	const auto& getPipelineLayout() const { return mPipelineLayout; }
+	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
 
 private:
 	vk::raii::ShaderModule mRaygenShaderModule = nullptr;
 	vk::raii::ShaderModule mMissShaderModule = nullptr;
 	vk::raii::ShaderModule mClosestHitShaderModule = nullptr;
+	vk::raii::DescriptorSetLayout mDescriptorSetLayout = nullptr;
+	vk::raii::PipelineLayout mPipelineLayout = nullptr;
+	std::vector<vk::DescriptorSetLayoutBinding> mRequiredDescriptorBindings;
 
 public:
 	RaytracingShaderVK(const std::string& raygen_code, const std::string& miss_code,
@@ -482,6 +503,9 @@ public:
 		mRaygenShaderModule = gDevice.createShaderModule(raygen_shader_module_create_info);
 		mMissShaderModule = gDevice.createShaderModule(miss_shader_module_create_info);
 		mClosestHitShaderModule = gDevice.createShaderModule(closesthit_shader_module_create_info);
+
+		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout({
+			raygen_shader_spirv, miss_shader_spirv, closesthit_shader_spirv });
 	}
 };
 
@@ -1835,10 +1859,10 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	EnsureRenderPassDeactivated();
 
-	static std::optional<vk::raii::PipelineLayout> pipeline_layout;
-
 	auto shader = gRaytracingPipelineState.shader;
 	assert(shader);
+
+	const auto& pipeline_layout = shader->getPipelineLayout();
 
 	if (!gRaytracingPipelineStates.contains(gRaytracingPipelineState))
 	{
@@ -1858,32 +1882,6 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 				.setModule(*shader->getClosestHitShaderModule())
 				.setPName("main")
 		};
-
-		auto required_descriptor_bindings = {
-			vk::DescriptorSetLayoutBinding()
-				.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
-				.setDescriptorCount(1)
-				.setBinding(0)
-				.setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR),
-
-			vk::DescriptorSetLayoutBinding()
-				.setDescriptorType(vk::DescriptorType::eStorageImage)
-				.setDescriptorCount(1)
-				.setBinding(1)
-				.setStageFlags(vk::ShaderStageFlagBits::eRaygenKHR)
-		};
-
-		auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
-			.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
-			.setBindings(required_descriptor_bindings);
-
-		static auto descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
-
-		auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
-			.setSetLayoutCount(1)
-			.setPSetLayouts(&*descriptor_set_layout);
-
-		pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
 
 		auto raytracing_shader_groups = { 
 			vk::RayTracingShaderGroupCreateInfoKHR() // raygen
@@ -1909,7 +1907,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 		};
 
 		auto raytracing_pipeline_create_info = vk::RayTracingPipelineCreateInfoKHR()
-			.setLayout(*pipeline_layout.value())
+			.setLayout(*pipeline_layout)
 			.setStages(pipeline_shader_stage_create_info)
 			.setGroups(raytracing_shader_groups)
 			.setMaxPipelineRayRecursionDepth(1);
@@ -1923,31 +1921,43 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
 	
-	auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
-		.setAccelerationStructureCount(1)
-		.setPAccelerationStructures(&*gAccelerationStructures.at(0)->getTopLevelAccelerationStructure());
+	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
+	{
+		auto binding = required_descriptor_binding.binding;
 
-	gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout.value(), 0, {
-		vk::WriteDescriptorSet()
-			.setDstBinding(0)
+		auto write_descriptor_set = vk::WriteDescriptorSet()
 			.setDescriptorCount(1)
-			.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
-			.setPNext(&write_descriptor_set_acceleration_structure),
-	});
+			.setDstBinding(binding)
+			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
+			.setDescriptorType(required_descriptor_binding.descriptorType);
 
-	auto render_target_image_view = *gRenderTarget->getTexture()->getImageView();
+		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eAccelerationStructureKHR)
+		{
+			auto acceleration_structure = gAccelerationStructures.at(binding);
 
-	auto descriptor_image_info = vk::DescriptorImageInfo()
-		.setImageLayout(vk::ImageLayout::eGeneral)
-		.setImageView(render_target_image_view);
+			auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
+				.setAccelerationStructureCount(1)
+				.setPAccelerationStructures(&*acceleration_structure->getTopLevelAccelerationStructure());
 
-	gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout.value(), 0, {
-		vk::WriteDescriptorSet()
-			.setDstBinding(1)
-			.setDescriptorCount(1)
-			.setDescriptorType(vk::DescriptorType::eStorageImage)
-			.setPImageInfo(&descriptor_image_info)
-	});
+			write_descriptor_set.setPNext(&write_descriptor_set_acceleration_structure);
+		}
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageImage)
+		{
+			auto render_target_image_view = *gRenderTarget->getTexture()->getImageView();
+
+			auto descriptor_image_info = vk::DescriptorImageInfo()
+				.setImageLayout(vk::ImageLayout::eGeneral)
+				.setImageView(render_target_image_view);
+
+			write_descriptor_set.setPImageInfo(&descriptor_image_info);
+		}
+		else
+		{
+			assert(false);
+		}
+
+		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout, 0, { write_descriptor_set });
+	}
 
 	static std::optional<vk::StridedDeviceAddressRegionKHR> raygen_shader_binding_table;
 	static std::optional<vk::StridedDeviceAddressRegionKHR> miss_shader_binding_table;

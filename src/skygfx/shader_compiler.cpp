@@ -262,11 +262,16 @@ ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 	static const std::unordered_map<SpvReflectDescriptorType, ShaderReflection::Descriptor::Type> DescriptorTypeMap = {
 		{ SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ShaderReflection::Descriptor::Type::CombinedImageSampler },
 		{ SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ShaderReflection::Descriptor::Type::UniformBuffer },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE, ShaderReflection::Descriptor::Type::StorageImage },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, ShaderReflection::Descriptor::Type::AccelerationStructure }
 	};
 
 	static const std::unordered_map<SpvReflectShaderStageFlagBits, ShaderStage> StageMap = {
 		{ SPV_REFLECT_SHADER_STAGE_VERTEX_BIT, ShaderStage::Vertex },
-		{ SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT, ShaderStage::Fragment }
+		{ SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT, ShaderStage::Fragment },
+		{ SPV_REFLECT_SHADER_STAGE_RAYGEN_BIT_KHR, ShaderStage::Raygen },
+		{ SPV_REFLECT_SHADER_STAGE_MISS_BIT_KHR, ShaderStage::Miss },
+		{ SPV_REFLECT_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, ShaderStage::ClosestHit }
 	};
 
 	auto refl = spv_reflect::ShaderModule(spirv);

@@ -34,7 +34,9 @@ namespace skygfx
 			enum class Type
 			{
 				CombinedImageSampler,
-				UniformBuffer
+				UniformBuffer,
+				StorageImage,
+				AccelerationStructure
 			};
 
 			std::string name;
