@@ -35,8 +35,12 @@ namespace utils
 			std::cout << i + 1 << ". " << backend_names.at(backends.at(i)) << std::endl;
 		}
 		
-		int value = 0;
-		std::cin >> value;
+		int value = 1;
+		
+		if (backends.size() > 1)
+		{
+			std::cin >> value;
+		}
 
 		auto backend = backends.at(value - 1);
 
