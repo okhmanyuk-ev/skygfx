@@ -70,14 +70,15 @@ const std::vector<uint32_t> indices = { 0, 1, 2 };
 
 int main()
 {
-	auto backend_type = utils::ChooseBackendTypeViaConsole();
+	auto features = { skygfx::Feature::Raytracing };
+	auto backend_type = utils::ChooseBackendTypeViaConsole(features);
 
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
 	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Raytraced triangle");
 
-	skygfx::Initialize(native_window, width, height, backend_type, { skygfx::Feature::Raytracing });
+	skygfx::Initialize(native_window, width, height, backend_type, features);
 
 	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));

@@ -245,7 +245,7 @@ AccelerationStructure::~AccelerationStructure()
 // device
 
 void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type,
-	const std::set<Feature>& features)
+	const std::unordered_set<Feature>& features)
 {
 	assert(gBackend == nullptr);
 
@@ -510,30 +510,45 @@ BackendType skygfx::GetBackendType()
 	return gBackendType;
 }
 
-std::unordered_set<BackendType> skygfx::GetAvailableBackends()
+std::unordered_set<BackendType> skygfx::GetAvailableBackends(const std::unordered_set<Feature>& features)
 {
-	std::unordered_set<BackendType> result;
+	static const std::unordered_map<Feature, std::unordered_set<BackendType>> FeatureCoverageMap = {
+		{ Feature::Raytracing, { BackendType::Vulkan } }
+	};
 
+	static const std::unordered_set<BackendType> AvailableBackendsForPlatform = {
 #ifdef SKYGFX_HAS_D3D11
-	result.insert(BackendType::D3D11);
+		BackendType::D3D11,
 #endif
 #ifdef SKYGFX_HAS_D3D12
-	result.insert(BackendType::D3D12);
+		BackendType::D3D12,
 #endif
 #ifdef SKYGFX_HAS_OPENGL
-	result.insert(BackendType::OpenGL);
+		BackendType::OpenGL,
 #endif
 #ifdef SKYGFX_HAS_VULKAN
-	result.insert(BackendType::Vulkan);
+		BackendType::Vulkan,
 #endif
 #ifdef SKYGFX_HAS_METAL
-	result.insert(BackendType::Metal);
+		BackendType::Metal,
 #endif
+	};
+
+	if (features.empty())
+		return AvailableBackendsForPlatform;
+
+	std::unordered_set<BackendType> result;
+
+	std::copy_if(AvailableBackendsForPlatform.begin(), AvailableBackendsForPlatform.end(), std::inserter(result, result.end()), [&](auto backend) {
+		return std::all_of(features.begin(), features.end(), [&](auto feature) {
+			return FeatureCoverageMap.contains(feature) && FeatureCoverageMap.at(feature).contains(backend);
+		});
+	});
 
 	return result;
 }
 
-std::optional<BackendType> skygfx::GetDefaultBackend()
+std::optional<BackendType> skygfx::GetDefaultBackend(const std::unordered_set<Feature>& features)
 {
 	static const auto backends_by_priority = {
 		BackendType::D3D11,
@@ -543,7 +558,7 @@ std::optional<BackendType> skygfx::GetDefaultBackend()
 		BackendType::Vulkan
 	};
 
-	auto backends = GetAvailableBackends();
+	auto backends = GetAvailableBackends(features);
 	
 	for (auto backend : backends_by_priority)
 	{

@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <cassert>
 #include <memory>
+#include <algorithm>
+#include <iterator>
 #include <unordered_set>
 #include <unordered_map>
 #include <glm/glm.hpp>
@@ -482,7 +484,7 @@ namespace skygfx
 	};
 
 	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,
-		const std::set<Feature>& features = {});
+		const std::unordered_set<Feature>& features = {});
 	void Finalize();
 
 	void Resize(uint32_t width, uint32_t height);
@@ -560,8 +562,8 @@ namespace skygfx
 
 	BackendType GetBackendType();
 
-	std::unordered_set<BackendType> GetAvailableBackends();
-	std::optional<BackendType> GetDefaultBackend();
+	std::unordered_set<BackendType> GetAvailableBackends(const std::unordered_set<Feature>& features = {});
+	std::optional<BackendType> GetDefaultBackend(const std::unordered_set<Feature>& features = {});
 }
 
 SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,

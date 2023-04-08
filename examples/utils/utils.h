@@ -15,7 +15,7 @@
 
 namespace utils
 {
-	skygfx::BackendType ChooseBackendTypeViaConsole()
+	skygfx::BackendType ChooseBackendTypeViaConsole(std::unordered_set<skygfx::Feature> features = {})
 	{
 		static const std::map<skygfx::BackendType, std::string> backend_names = {
 			{ skygfx::BackendType::D3D11, "D3D11" },
@@ -27,7 +27,7 @@ namespace utils
 
 		std::cout << "Choose backend type: " << std::endl;
 
-		auto available_backends = skygfx::GetAvailableBackends();
+		auto available_backends = skygfx::GetAvailableBackends(features);
 		auto backends = std::vector(available_backends.begin(), available_backends.end());
 
 		for (int i = 0; i < backends.size(); i++)
