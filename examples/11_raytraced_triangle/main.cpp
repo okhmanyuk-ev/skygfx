@@ -44,7 +44,7 @@ layout(location = 0) rayPayloadInEXT vec3 hitValue;
 
 void main()
 {
-	hitValue = vec3(0.0, 0.0, 0.2);
+	hitValue = vec3(0.0, 0.0, 0.0);
 })";
 
 const std::string closesthit_shader_code = R"(
@@ -93,7 +93,6 @@ int main()
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(target);
 		skygfx::SetAccelerationStructure(0, acceleration_structure);
-		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		skygfx::DispatchRays(target.getWidth(), target.getHeight(), 1);
 
 		skygfx::SetRenderTarget(std::nullopt);
