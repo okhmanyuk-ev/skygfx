@@ -27,6 +27,11 @@ namespace skygfx
 		Metal
 	};
 
+	enum class Feature
+	{
+		Raytracing
+	};
+
 	using TextureHandle = struct TextureHandle;
 	using RenderTargetHandle = struct RenderTargetHandle;
 	using ShaderHandle = struct ShaderHandle;
@@ -476,7 +481,8 @@ namespace skygfx
 		MirrorWrap
 	};
 
-	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt);
+	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,
+		const std::set<Feature>& features = {});
 	void Finalize();
 
 	void Resize(uint32_t width, uint32_t height);

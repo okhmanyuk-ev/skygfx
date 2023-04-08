@@ -77,7 +77,7 @@ int main()
 
 	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Raytraced triangle");
 
-	skygfx::Initialize(native_window, width, height, backend_type);
+	skygfx::Initialize(native_window, width, height, backend_type, { skygfx::Feature::Raytracing });
 
 	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));

@@ -9,6 +9,7 @@
 using namespace skygfx;
 
 static Backend* gBackend = nullptr;
+static RaytracingBackend* gRaytracingBackend = nullptr;
 static glm::u32vec2 gSize = { 0, 0 };
 static std::optional<glm::u32vec2> gRenderTargetSize;
 static BackendType gBackendType = BackendType::OpenGL;
@@ -60,13 +61,13 @@ Shader::~Shader()
 RaytracingShader::RaytracingShader(const std::string& raygen_code, const std::string& miss_code,
 	const std::string& closesthit_code, const std::vector<std::string>& defines)
 {
-	mRaytracingShaderHandle = gBackend->createRaytracingShader(raygen_code, miss_code, closesthit_code, defines);
+	mRaytracingShaderHandle = gRaytracingBackend->createRaytracingShader(raygen_code, miss_code, closesthit_code, defines);
 }
 
 RaytracingShader::~RaytracingShader()
 {
-	if (gBackend)
-		gBackend->destroyRaytracingShader(mRaytracingShaderHandle);
+	if (gRaytracingBackend)
+		gRaytracingBackend->destroyRaytracingShader(mRaytracingShaderHandle);
 }
 
 // buffer
@@ -232,18 +233,19 @@ void UniformBuffer::write(void* memory, size_t size)
 AccelerationStructure::AccelerationStructure(const std::vector<glm::vec3>& vertices,
 	const std::vector<uint32_t>& indices)
 {
-	mAccelerationStructureHandle = gBackend->createAccelerationStructure(vertices, indices);
+	mAccelerationStructureHandle = gRaytracingBackend->createAccelerationStructure(vertices, indices);
 }
 
 AccelerationStructure::~AccelerationStructure()
 {
-	if (gBackend && mAccelerationStructureHandle)
-		gBackend->destroyAccelerationStructure(mAccelerationStructureHandle);
+	if (gRaytracingBackend && mAccelerationStructureHandle)
+		gRaytracingBackend->destroyAccelerationStructure(mAccelerationStructureHandle);
 }
 
 // device
 
-void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type)
+void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type,
+	const std::set<Feature>& features)
 {
 	assert(gBackend == nullptr);
 
@@ -275,16 +277,32 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 
 	gSize = { width, height };
 	gBackendType = type;
+
+	if (features.contains(Feature::Raytracing))
+	{
+		gRaytracingBackend = dynamic_cast<RaytracingBackend*>(gBackend);
+
+		if (gRaytracingBackend == nullptr)
+			throw std::runtime_error("this backend does not support raytracing");
+	}
 }
 
 void skygfx::Finalize()
 {
+	assert(gBackend != nullptr);
+
 	gIndexBuffer.reset();
 	gVertexBuffer.reset();
 	gUniformBuffers.clear();
 
 	delete gBackend;
 	gBackend = nullptr;
+
+	if (gRaytracingBackend)
+	{
+		delete gRaytracingBackend;
+		gRaytracingBackend = nullptr;
+	}
 }
 
 void skygfx::Resize(uint32_t width, uint32_t height)
@@ -332,7 +350,7 @@ void skygfx::SetShader(const Shader& shader)
 
 void skygfx::SetShader(const RaytracingShader& shader)
 {
-	gBackend->setRaytracingShader(const_cast<RaytracingShader&>(shader));
+	gRaytracingBackend->setRaytracingShader(const_cast<RaytracingShader&>(shader));
 }
 
 void skygfx::SetVertexBuffer(const VertexBuffer& value)
@@ -352,7 +370,7 @@ void skygfx::SetUniformBuffer(uint32_t binding, const UniformBuffer& value)
 
 void skygfx::SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value)
 {
-	gBackend->setAccelerationStructure(binding, const_cast<AccelerationStructure&>(value));
+	gRaytracingBackend->setAccelerationStructure(binding, const_cast<AccelerationStructure&>(value));
 }
 
 void skygfx::SetBlendMode(const BlendMode& value)
@@ -408,7 +426,7 @@ void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Textu
 
 void skygfx::DispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
-	gBackend->dispatchRays(width, height, depth);
+	gRaytracingBackend->dispatchRays(width, height, depth);
 }
 
 void skygfx::Present()

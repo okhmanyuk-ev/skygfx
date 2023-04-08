@@ -18,11 +18,9 @@ namespace skygfx
 		virtual void setRenderTarget(RenderTargetHandle* handle) = 0;
 		virtual void setRenderTarget(std::nullopt_t value) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
-		virtual void setRaytracingShader(RaytracingShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
-		virtual void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) = 0;
 		virtual void setBlendMode(const BlendMode& value) = 0;
 		virtual void setDepthMode(std::optional<DepthMode> depth_mode) = 0;
 		virtual void setStencilMode(std::optional<StencilMode> stencil_mode) = 0;
@@ -37,8 +35,6 @@ namespace skygfx
 
 		virtual void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) = 0;
 
-		virtual void dispatchRays(uint32_t width, uint32_t height, uint32_t depth) = 0;
-
 		virtual void present() = 0;
 
 		virtual TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 
@@ -52,10 +48,6 @@ namespace skygfx
 			const std::string& fragment_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyShader(ShaderHandle* handle) = 0;
 
-		virtual RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
-			const std::string& closesthit_code, const std::vector<std::string>& defines) = 0;
-		virtual void destroyRaytracingShader(RaytracingShaderHandle* handle) = 0;
-
 		virtual VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) = 0;
 		virtual void destroyVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride) = 0;
@@ -67,6 +59,19 @@ namespace skygfx
 		virtual UniformBufferHandle* createUniformBuffer(size_t size) = 0;
 		virtual void destroyUniformBuffer(UniformBufferHandle* handle) = 0;
 		virtual void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) = 0;
+	};
+
+	class RaytracingBackend
+	{
+	public:
+		virtual void setRaytracingShader(RaytracingShaderHandle* handle) = 0;
+		virtual void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) = 0;
+
+		virtual void dispatchRays(uint32_t width, uint32_t height, uint32_t depth) = 0;
+
+		virtual RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+			const std::string& closesthit_code, const std::vector<std::string>& defines) = 0;
+		virtual void destroyRaytracingShader(RaytracingShaderHandle* handle) = 0;
 
 		virtual AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
 			const std::vector<uint32_t>& indices) = 0;

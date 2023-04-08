@@ -477,10 +477,6 @@ void BackendD3D11::setShader(ShaderHandle* handle)
 	shader->apply();
 }
 
-void BackendD3D11::setRaytracingShader(RaytracingShaderHandle* handle)
-{
-}
-
 void BackendD3D11::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferD3D11*)handle;
@@ -506,10 +502,6 @@ void BackendD3D11::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 
 	gContext->VSSetConstantBuffers(binding, 1, buffer->getD3D11Buffer().GetAddressOf());
 	gContext->PSSetConstantBuffers(binding, 1, buffer->getD3D11Buffer().GetAddressOf());
-}
-
-void BackendD3D11::setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle)
-{
 }
 
 void BackendD3D11::setBlendMode(const BlendMode& value)
@@ -713,10 +705,6 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	}
 }
 
-void BackendD3D11::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
-{
-}
-
 void BackendD3D11::present()
 {
 	bool vsync = false; // TODO: globalize this var
@@ -759,16 +747,6 @@ void BackendD3D11::destroyShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderD3D11*)handle;
 	delete shader;
-}
-
-RaytracingShaderHandle* BackendD3D11::createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
-	const std::string& closesthit_code, const std::vector<std::string>& defines)
-{
-	return nullptr;
-}
-
-void BackendD3D11::destroyRaytracingShader(RaytracingShaderHandle* handle)
-{
 }
 
 VertexBufferHandle* BackendD3D11::createVertexBuffer(size_t size, size_t stride)
@@ -825,16 +803,6 @@ void BackendD3D11::writeUniformBufferMemory(UniformBufferHandle* handle, void* m
 {
 	auto buffer = (UniformBufferD3D11*)handle;
 	buffer->write(memory, size);
-}
-
-AccelerationStructureHandle* BackendD3D11::createAccelerationStructure(const std::vector<glm::vec3>& vertices,
-	const std::vector<uint32_t>& indices)
-{
-	return nullptr;
-}
-
-void BackendD3D11::destroyAccelerationStructure(AccelerationStructureHandle* handle)
-{
 }
 
 void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)

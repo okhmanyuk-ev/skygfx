@@ -21,11 +21,9 @@ namespace skygfx
 		void setRenderTarget(RenderTargetHandle* handle) override;
 		void setRenderTarget(std::nullopt_t value) override;
 		void setShader(ShaderHandle* handle) override;
-		void setRaytracingShader(RaytracingShaderHandle* handle) override;
 		void setVertexBuffer(VertexBufferHandle* handle) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
-		void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) override;
 		void setBlendMode(const BlendMode& value) override;
 		void setDepthMode(std::optional<DepthMode> depth_mode) override;
 		void setStencilMode(std::optional<StencilMode> stencil_mode) override;
@@ -40,8 +38,6 @@ namespace skygfx
 
 		void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) override;
 
-		void dispatchRays(uint32_t width, uint32_t height, uint32_t depth) override;
-
 		void present() override;
 
 		TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 
@@ -55,10 +51,6 @@ namespace skygfx
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
 
-		RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
-			const std::string& closesthit_code, const std::vector<std::string>& defines) override;
-		void destroyRaytracingShader(RaytracingShaderHandle* handle) override;
-
 		VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) override;
 		void destroyVertexBuffer(VertexBufferHandle* handle) override;
 		void writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride) override;
@@ -70,10 +62,6 @@ namespace skygfx
 		UniformBufferHandle* createUniformBuffer(size_t size) override;
 		void destroyUniformBuffer(UniformBufferHandle* handle) override;
 		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
-
-		AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
-			const std::vector<uint32_t>& indices) override;
-		void destroyAccelerationStructure(AccelerationStructureHandle* handle) override;
 
 	private:
 		void createMainRenderTarget(uint32_t width, uint32_t height);
