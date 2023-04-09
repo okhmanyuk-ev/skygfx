@@ -300,7 +300,6 @@ void skygfx::Finalize()
 
 	if (gRaytracingBackend)
 	{
-		delete gRaytracingBackend;
 		gRaytracingBackend = nullptr;
 	}
 }

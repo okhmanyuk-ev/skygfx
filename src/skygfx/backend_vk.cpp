@@ -1628,6 +1628,19 @@ BackendVK::~BackendVK()
 	end();
 	gExecuteAfterPresent.flush();
 	gStagingObjects.clear();
+	gSurface.release();
+	gSamplers.clear();
+	gPipelineStates.clear();
+	gFrames.clear();
+	gDepthStencil.image.release();
+	gDepthStencil.memory.release();
+	gDepthStencil.view.release();
+	gCommandBuffer.release();
+	gCommandPool.release();
+	gSwapchain.release();
+	gDebugUtilsMessenger.release();
+	gDevice.release();
+	gInstance.release();
 	delete gContext;
 }
 
