@@ -19,7 +19,6 @@ class IndexBufferVK;
 struct PipelineStateVK
 {
 	ShaderVK* shader = nullptr;
-	BlendMode blend_mode = BlendStates::AlphaBlend;
 	vk::Format color_attachment_format;
 	vk::Format depth_stencil_format;
 
@@ -27,7 +26,6 @@ struct PipelineStateVK
 	{
 		return 
 			shader == value.shader &&
-			blend_mode == value.blend_mode &&
 			color_attachment_format == value.color_attachment_format &&
 			depth_stencil_format == value.depth_stencil_format;
 	}
@@ -35,7 +33,6 @@ struct PipelineStateVK
 
 SKYGFX_MAKE_HASHABLE(PipelineStateVK,
 	t.shader,
-	t.blend_mode,
 	t.color_attachment_format,
 	t.depth_stencil_format);
 
@@ -152,6 +149,9 @@ static IndexBufferVK* gIndexBuffer = nullptr;
 static bool gIndexBufferDirty = true;
 
 static RenderTargetVK* gRenderTarget = nullptr;
+
+static BlendMode gBlendMode = BlendStates::AlphaBlend;
+static bool gBlendModeDirty = true;
 
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
@@ -1101,8 +1101,6 @@ static void PrepareForDrawing()
 	}
 
 	auto shader = gPipelineState.shader;
-	const auto& blend_mode = gPipelineState.blend_mode;
-
 	assert(shader);
 
 	if (!gPipelineStates.contains(gPipelineState))
@@ -1134,54 +1132,7 @@ static void PrepareForDrawing()
 
 		auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
 
-		static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
-			{ Blend::One, vk::BlendFactor::eOne },
-			{ Blend::Zero, vk::BlendFactor::eZero },
-			{ Blend::SrcColor, vk::BlendFactor::eSrcColor },
-			{ Blend::InvSrcColor, vk::BlendFactor::eOneMinusSrcColor },
-			{ Blend::SrcAlpha, vk::BlendFactor::eSrcAlpha },
-			{ Blend::InvSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha },
-			{ Blend::DstColor, vk::BlendFactor::eDstColor },
-			{ Blend::InvDstColor, vk::BlendFactor::eOneMinusDstColor },
-			{ Blend::DstAlpha, vk::BlendFactor::eDstAlpha },
-			{ Blend::InvDstAlpha, vk::BlendFactor::eOneMinusDstAlpha }
-		};
-
-		static const std::unordered_map<BlendFunction, vk::BlendOp> BlendFuncMap = {
-			{ BlendFunction::Add, vk::BlendOp::eAdd },
-			{ BlendFunction::Subtract, vk::BlendOp::eSubtract },
-			{ BlendFunction::ReverseSubtract, vk::BlendOp::eReverseSubtract },
-			{ BlendFunction::Min, vk::BlendOp::eMin },
-			{ BlendFunction::Max, vk::BlendOp::eMax },
-		};
-
-		auto color_mask = vk::ColorComponentFlags();
-
-		if (blend_mode.color_mask.red)
-			color_mask |= vk::ColorComponentFlagBits::eR;
-
-		if (blend_mode.color_mask.green)
-			color_mask |= vk::ColorComponentFlagBits::eG;
-
-		if (blend_mode.color_mask.blue)
-			color_mask |= vk::ColorComponentFlagBits::eB;
-
-		if (blend_mode.color_mask.alpha)
-			color_mask |= vk::ColorComponentFlagBits::eA;
-
-		auto pipeline_color_blend_attachment_state = vk::PipelineColorBlendAttachmentState()
-			.setBlendEnable(true)
-			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src_blend))
-			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst_blend))
-			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_blend_func))
-			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src_blend))
-			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst_blend))
-			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_blend_func))
-			.setColorWriteMask(color_mask);
-
-		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
-			.setAttachmentCount(1)
-			.setPAttachments(&pipeline_color_blend_attachment_state);
+		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo();;
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 			.setVertexBindingDescriptionCount(1)
@@ -1196,6 +1147,9 @@ static void PrepareForDrawing()
 			vk::DynamicState::eCullMode,
 			vk::DynamicState::eFrontFace,
 			vk::DynamicState::eVertexInputBindingStride,
+			vk::DynamicState::eColorWriteMaskEXT,
+			vk::DynamicState::eColorBlendEquationEXT,
+			vk::DynamicState::eColorBlendEnableEXT,
 		//	vk::DynamicState::eDepthTestEnable, // TODO: this depth values should be uncommented
 		//	vk::DynamicState::eDepthCompareOp,
 		//	vk::DynamicState::eDepthWriteEnable
@@ -1349,6 +1303,58 @@ static void PrepareForDrawing()
 		gCommandBuffer.setCullMode(CullModeMap.at(gCullMode));
 
 		gCullModeDirty = false;
+	}
+
+	if (gBlendModeDirty)
+	{
+		static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
+			{ Blend::One, vk::BlendFactor::eOne },
+			{ Blend::Zero, vk::BlendFactor::eZero },
+			{ Blend::SrcColor, vk::BlendFactor::eSrcColor },
+			{ Blend::InvSrcColor, vk::BlendFactor::eOneMinusSrcColor },
+			{ Blend::SrcAlpha, vk::BlendFactor::eSrcAlpha },
+			{ Blend::InvSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha },
+			{ Blend::DstColor, vk::BlendFactor::eDstColor },
+			{ Blend::InvDstColor, vk::BlendFactor::eOneMinusDstColor },
+			{ Blend::DstAlpha, vk::BlendFactor::eDstAlpha },
+			{ Blend::InvDstAlpha, vk::BlendFactor::eOneMinusDstAlpha }
+		};
+
+		static const std::unordered_map<BlendFunction, vk::BlendOp> BlendFuncMap = {
+			{ BlendFunction::Add, vk::BlendOp::eAdd },
+			{ BlendFunction::Subtract, vk::BlendOp::eSubtract },
+			{ BlendFunction::ReverseSubtract, vk::BlendOp::eReverseSubtract },
+			{ BlendFunction::Min, vk::BlendOp::eMin },
+			{ BlendFunction::Max, vk::BlendOp::eMax },
+		};
+
+		auto color_mask = vk::ColorComponentFlags();
+
+		if (gBlendMode.color_mask.red)
+			color_mask |= vk::ColorComponentFlagBits::eR;
+
+		if (gBlendMode.color_mask.green)
+			color_mask |= vk::ColorComponentFlagBits::eG;
+
+		if (gBlendMode.color_mask.blue)
+			color_mask |= vk::ColorComponentFlagBits::eB;
+
+		if (gBlendMode.color_mask.alpha)
+			color_mask |= vk::ColorComponentFlagBits::eA;
+
+		auto color_blend_equation = vk::ColorBlendEquationEXT()
+			.setSrcColorBlendFactor(BlendFactorMap.at(gBlendMode.color_src_blend))
+			.setDstColorBlendFactor(BlendFactorMap.at(gBlendMode.color_dst_blend))
+			.setColorBlendOp(BlendFuncMap.at(gBlendMode.color_blend_func))
+			.setSrcAlphaBlendFactor(BlendFactorMap.at(gBlendMode.alpha_src_blend))
+			.setDstAlphaBlendFactor(BlendFactorMap.at(gBlendMode.alpha_dst_blend))
+			.setAlphaBlendOp(BlendFuncMap.at(gBlendMode.alpha_blend_func));
+
+		gCommandBuffer.setColorBlendEnableEXT(0, { true });
+		gCommandBuffer.setColorBlendEquationEXT(0, { color_blend_equation });
+		gCommandBuffer.setColorWriteMaskEXT(0, { color_mask });
+
+		gBlendModeDirty = false;
 	}
 }
 
@@ -1517,7 +1523,10 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto device_extensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+
+		// dynamic pipeline
 		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+		VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,
 
 		// raytracing
 		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
@@ -1533,6 +1542,11 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto device_features = gPhysicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2,
 		vk::PhysicalDeviceVulkan13Features, 
+
+		// dynamic pipeline
+		vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT,
+
+		// raytracing
 		vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
 		vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
 		vk::PhysicalDeviceBufferAddressFeaturesEXT>();
@@ -1733,12 +1747,16 @@ void BackendVK::setAccelerationStructure(uint32_t binding, AccelerationStructure
 
 void BackendVK::setBlendMode(const BlendMode& value)
 {
-	gPipelineState.blend_mode = value;
+	if (gBlendMode == value)
+		return;
+
+	gBlendMode = value;
+	gBlendModeDirty = true;
 }
 
 void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	if (gDepthMode != depth_mode)
+	if (gDepthMode == depth_mode)
 		return;
 
 	gDepthMode = depth_mode;
@@ -2050,6 +2068,7 @@ void BackendVK::begin()
 	gCullModeDirty = true;
 	gVertexBufferDirty = true;
 	gIndexBufferDirty = true;
+	gBlendModeDirty = true;
 
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
