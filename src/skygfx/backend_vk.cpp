@@ -1079,27 +1079,6 @@ static void PrepareForDrawing()
 		gTopologyDirty = false;
 	}
 
-	if (gDepthModeDirty)
-	{
-		// TODO: this depth options should work only when dynamic state enabled, 
-		// but now it working only when dynamic state turned off. wtf is going on?
-		// WTR: try to uncomment dynamic state depth values, try to move this block to end of this function
-
-		if (gDepthMode.has_value())
-		{
-			gCommandBuffer.setDepthTestEnable(true);
-			gCommandBuffer.setDepthWriteEnable(true);
-			gCommandBuffer.setDepthCompareOp(CompareOpMap.at(gDepthMode.value().func));
-		}
-		else
-		{
-			gCommandBuffer.setDepthTestEnable(false);
-			gCommandBuffer.setDepthWriteEnable(false);
-		}
-
-		gDepthModeDirty = false;
-	}
-
 	auto shader = gPipelineState.shader;
 	assert(shader);
 
@@ -1132,7 +1111,7 @@ static void PrepareForDrawing()
 
 		auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
 
-		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo();;
+		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo();
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 			.setVertexBindingDescriptionCount(1)
@@ -1147,12 +1126,12 @@ static void PrepareForDrawing()
 			vk::DynamicState::eCullMode,
 			vk::DynamicState::eFrontFace,
 			vk::DynamicState::eVertexInputBindingStride,
+			vk::DynamicState::eDepthTestEnable,
+			vk::DynamicState::eDepthCompareOp,
+			vk::DynamicState::eDepthWriteEnable,
 			vk::DynamicState::eColorWriteMaskEXT,
 			vk::DynamicState::eColorBlendEquationEXT,
-			vk::DynamicState::eColorBlendEnableEXT,
-		//	vk::DynamicState::eDepthTestEnable, // TODO: this depth values should be uncommented
-		//	vk::DynamicState::eDepthCompareOp,
-		//	vk::DynamicState::eDepthWriteEnable
+			vk::DynamicState::eColorBlendEnableEXT
 		};
 
 		auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
@@ -1355,6 +1334,23 @@ static void PrepareForDrawing()
 		gCommandBuffer.setColorWriteMaskEXT(0, { color_mask });
 
 		gBlendModeDirty = false;
+	}
+
+	if (gDepthModeDirty)
+	{
+		if (gDepthMode.has_value())
+		{
+			gCommandBuffer.setDepthTestEnable(true);
+			gCommandBuffer.setDepthWriteEnable(true);
+			gCommandBuffer.setDepthCompareOp(CompareOpMap.at(gDepthMode.value().func));
+		}
+		else
+		{
+			gCommandBuffer.setDepthTestEnable(false);
+			gCommandBuffer.setDepthWriteEnable(false);
+		}
+
+		gDepthModeDirty = false;
 	}
 }
 
@@ -2069,6 +2065,7 @@ void BackendVK::begin()
 	gVertexBufferDirty = true;
 	gIndexBufferDirty = true;
 	gBlendModeDirty = true;
+	gDepthModeDirty = true;
 
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
