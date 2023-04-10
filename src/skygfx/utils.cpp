@@ -169,15 +169,98 @@ void effect(inout vec4 result)
 	result += texture(sColorTexture, In.tex_coord - off2) * 0.0702702703;
 })";
 
-const std::string utils::effects::BloomUpsample::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _upscale
+const std::string utils::effects::BloomDownsample::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _downsample
 {
 	vec2 resolution;
-} upscale;
+	bool isFirstStep;
+} downsample;
+
+vec3 getSample(sampler2D srcSampler, const vec2 uv)
+{
+	return texture(srcSampler, uv, 0).rgb;
+}
+
+float getLuminance(vec3 c)
+{
+    return 0.2125 * c.r + 0.7154 * c.g + 0.0721 * c.b;
+}
+
+float getKarisWeight(const vec3 box4x4)
+{
+    return 1.0 / (1.0 + getLuminance(box4x4));
+}
+
+vec3 downsample13tap(sampler2D srcSampler, const vec2 centerUV)
+{
+	const vec2 pixelSize = vec2(1.0) / downsample.resolution;
+
+	const vec3 taps[] = 
+	{
+		getSample(srcSampler, centerUV + vec2(-2,-2) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 0,-2) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 2,-2) * pixelSize),
+
+		getSample(srcSampler, centerUV + vec2(-1,-1) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 1,-1) * pixelSize),
+
+		getSample(srcSampler, centerUV + vec2(-2, 0) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 0, 0) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 2, 0) * pixelSize),
+
+		getSample(srcSampler, centerUV + vec2(-1, 1) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 1, 1) * pixelSize),
+
+		getSample(srcSampler, centerUV + vec2(-2, 2) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 0, 2) * pixelSize),
+		getSample(srcSampler, centerUV + vec2( 2, 2) * pixelSize),
+	};
+
+	// on the first downsample use Karis average
+	if (downsample.isFirstStep)
+	{
+		const vec3 box[] =
+		{
+			0.25 * (taps[3] + taps[4] + taps[8]  + taps[9]), 
+			0.25 * (taps[0] + taps[1] + taps[5]  + taps[6]), 
+			0.25 * (taps[1] + taps[2] + taps[6]  + taps[7]), 
+			0.25 * (taps[5] + taps[6] + taps[10] + taps[11]), 
+			0.25 * (taps[6] + taps[7] + taps[11] + taps[12]), 
+		};
+
+		// weight by partial Karis average to reduce fireflies
+		return 
+			0.5   * getKarisWeight(box[0]) * box[0] + 
+			0.125 * getKarisWeight(box[1]) * box[1] + 
+			0.125 * getKarisWeight(box[2]) * box[2] + 
+			0.125 * getKarisWeight(box[3]) * box[3] + 
+			0.125 * getKarisWeight(box[4]) * box[4];
+	}
+	else
+	{
+		return 
+			0.5   * (0.25 * (taps[3] + taps[4] + taps[8]  + taps[9]))  + 
+			0.125 * (0.25 * (taps[0] + taps[1] + taps[5]  + taps[6]))  + 
+			0.125 * (0.25 * (taps[1] + taps[2] + taps[6]  + taps[7]))  + 
+			0.125 * (0.25 * (taps[5] + taps[6] + taps[10] + taps[11])) + 
+			0.125 * (0.25 * (taps[6] + taps[7] + taps[11] + taps[12]));
+	}
+}
 
 void effect(inout vec4 result)
 {
-	const vec2 pixelSize = vec2(1.0) / upscale.resolution;
+	result = vec4(downsample13tap(sColorTexture, In.tex_coord), 1.0);
+})";
+
+const std::string utils::effects::BloomUpsample::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _upsample
+{
+	vec2 resolution;
+} upsample;
+
+void effect(inout vec4 result)
+{
+	const vec2 pixelSize = vec2(1.0) / upsample.resolution;
 
 	const vec2 offsets[] = 
 	{
@@ -738,6 +821,7 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 	// downsampling
 
 	Texture* prev_texture = &mBrightTarget.value();
+	bool isFirstStep = true;
 
 	for (auto& target : mTexChain)
 	{
@@ -746,10 +830,17 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 		ExecuteCommands({
 			commands::SetBlendMode{ BlendStates::AlphaBlend },
 			commands::SetColorTexture{ prev_texture },
+			commands::SetEffect{
+				effects::BloomDownsample{
+					.resolution = glm::vec2{ static_cast<float>(prev_texture->getWidth()), static_cast<float>(prev_texture->getHeight()) },
+					.isFirstStep = isFirstStep
+				}
+			},
 			commands::Draw{}
 		});
 
 		prev_texture = &target;
+		isFirstStep = false;
 	}
 
 	// upsample and blur

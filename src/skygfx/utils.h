@@ -93,6 +93,14 @@ namespace skygfx::utils
 			static const std::string Shader;
 		};
 
+		struct alignas(16) BloomDownsample
+		{
+			glm::vec2 resolution;
+			bool isFirstStep = false;
+
+			static const std::string Shader;
+		};
+
 		struct alignas(16) BloomUpsample
 		{
 			glm::vec2 resolution;
