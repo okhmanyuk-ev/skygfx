@@ -404,7 +404,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 	auto blend_mode = BlendStates::NonPremultiplied;
 	bool blend_mode_dirty = true;
 
-	auto sampler = Sampler::Nearest;
+	auto sampler = Sampler::Linear;
 	bool sampler_dirty = true;
 
 	Mesh* mesh = nullptr;
@@ -638,7 +638,6 @@ void utils::passes::GaussianBlur::execute(const RenderTarget& src, const RenderT
 
 	ExecuteCommands({
 		commands::SetBlendMode{ BlendStates::AlphaBlend },
-		commands::SetSampler{ Sampler::Linear },
 		commands::SetColorTexture{ &src },
 		commands::SetEffect{
 			effects::GaussianBlur{
@@ -667,7 +666,6 @@ void utils::passes::BrightFilter::execute(const RenderTarget& src, const RenderT
 
 	ExecuteCommands({
 		commands::SetBlendMode{ BlendStates::AlphaBlend },
-		commands::SetSampler{ Sampler::Linear },
 		commands::SetColorTexture{ &src },
 		commands::SetEffect{ effects::BrightFilter{
 			.threshold = mThreshold
@@ -713,7 +711,6 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f }); 
 		ExecuteCommands({
 			commands::SetBlendMode{ BlendStates::AlphaBlend },
-			commands::SetSampler{ Sampler::Linear },
 			commands::SetColorTexture{ prev_texture },
 			commands::Draw{}
 		});
@@ -732,7 +729,6 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 			SetRenderTarget(tex_chain_cell.downsampled);
 			ExecuteCommands({
 				commands::SetBlendMode{ BlendStates::Additive },
-				commands::SetSampler{ Sampler::Linear },
 				commands::SetColorTexture{ prev_blurred_target },
 				commands::Draw{}
 			});

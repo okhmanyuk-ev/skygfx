@@ -66,6 +66,7 @@ void ImguiHelper::draw()
 	mMesh.setIndices(std::move(indices));
 
 	skygfx::utils::Commands draw_cmds;
+	skygfx::utils::SetSampler(draw_cmds, skygfx::Sampler::Nearest);
 	skygfx::utils::SetMesh(draw_cmds, &mMesh);
 	skygfx::utils::SetCamera(draw_cmds, skygfx::utils::OrthogonalCamera{});
 	skygfx::utils::SetModelMatrix(draw_cmds, model);
