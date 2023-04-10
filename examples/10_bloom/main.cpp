@@ -1,5 +1,5 @@
 #include <skygfx/skygfx.h>
-#include <skygfx/ext.h>
+#include <skygfx/utils.h>
 #include "../utils/utils.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -7,7 +7,7 @@
 
 const auto WhiteColor = glm::vec4{ 1.0f, 1.0f, 1.0f, 1.0f };
 
-const skygfx::ext::Mesh::Vertices vertices = {
+const skygfx::utils::Mesh::Vertices vertices = {
 	/* front */
 	/* 0  */ { { -1.0f,  1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
 	/* 1  */ { {  1.0f,  1.0f,  1.0f }, WhiteColor, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
@@ -45,7 +45,7 @@ const skygfx::ext::Mesh::Vertices vertices = {
 	/* 23 */ { { 1.0f,  1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
 };
 
-const skygfx::ext::Mesh::Indices indices = {
+const skygfx::utils::Mesh::Indices indices = {
 	0, 1, 2, 1, 3, 2, // front
 	4, 5, 6, 5, 7, 6, // top
 	8, 9, 10, 9, 11, 10, // left
@@ -76,13 +76,13 @@ int main()
 
 	auto texture = skygfx::Texture(tex_width, tex_height, tex_channels, tex_memory, true);
 
-	const auto camera = skygfx::ext::PerspectiveCamera{
+	const auto camera = skygfx::utils::PerspectiveCamera{
 		.yaw = 0.0f,
 		.pitch = glm::radians(-25.0f),
 		.position = { -500.0f, 200.0f, 0.0f }
 	};
 
-	const auto light = skygfx::ext::effects::DirectionalLight{
+	const auto light = skygfx::utils::effects::DirectionalLight{
 		.direction = { 1.0f, 0.5f, 0.5f },
 		.ambient = { 0.25f, 0.25f, 0.25f },
 		.diffuse = { 1.0f, 1.0f, 1.0f },
@@ -90,7 +90,7 @@ int main()
 		.shininess = 32.0f
 	};
 
-	skygfx::ext::Mesh cube_mesh;
+	skygfx::utils::Mesh cube_mesh;
 	cube_mesh.setVertices(vertices);
 	cube_mesh.setIndices(indices);
 
@@ -101,7 +101,7 @@ int main()
 	std::optional<skygfx::RenderTarget> src_target;
 	std::optional<skygfx::RenderTarget> dst_target;
 
-	skygfx::ext::passes::Bloom bloom_pass;
+	skygfx::utils::passes::Bloom bloom_pass;
 
 	auto ensureTargetSize = [&](auto& target) {
 		int win_width;
@@ -126,13 +126,13 @@ int main()
 		skygfx::SetRenderTarget(src_target.value());
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 
-		skygfx::ext::ExecuteCommands({
-			skygfx::ext::commands::SetMesh{ &cube_mesh },
-			skygfx::ext::commands::SetCamera{ camera },
-			skygfx::ext::commands::SetEffect{ light },
-			skygfx::ext::commands::SetColorTexture{ &texture },
-			skygfx::ext::commands::SetModelMatrix{ model },
-			skygfx::ext::commands::Draw{}
+		skygfx::utils::ExecuteCommands({
+			skygfx::utils::commands::SetMesh{ &cube_mesh },
+			skygfx::utils::commands::SetCamera{ camera },
+			skygfx::utils::commands::SetEffect{ light },
+			skygfx::utils::commands::SetColorTexture{ &texture },
+			skygfx::utils::commands::SetModelMatrix{ model },
+			skygfx::utils::commands::Draw{}
 		});
 
 		skygfx::SetRenderTarget(dst_target.value());
@@ -142,9 +142,9 @@ int main()
 
 		skygfx::SetRenderTarget(std::nullopt);
 
-		skygfx::ext::ExecuteCommands({
-			skygfx::ext::commands::SetColorTexture{ &dst_target.value() },
-			skygfx::ext::commands::Draw{}
+		skygfx::utils::ExecuteCommands({
+			skygfx::utils::commands::SetColorTexture{ &dst_target.value() },
+			skygfx::utils::commands::Draw{}
 		});
 
 		skygfx::Present();

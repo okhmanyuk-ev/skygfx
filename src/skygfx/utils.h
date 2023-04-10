@@ -2,7 +2,7 @@
 
 #include "skygfx.h"
 
-namespace skygfx::ext
+namespace skygfx::utils
 {
 	class Mesh
 	{

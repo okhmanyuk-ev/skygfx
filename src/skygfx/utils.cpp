@@ -1,4 +1,4 @@
-#include "ext.h"
+#include "utils.h"
 
 using namespace skygfx;
 
@@ -82,7 +82,7 @@ void main()
 #endif
 })";
 
-const std::string ext::effects::DirectionalLight::Shader = R"(
+const std::string utils::effects::DirectionalLight::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
@@ -108,7 +108,7 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string ext::effects::PointLight::Shader = R"(
+const std::string utils::effects::PointLight::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
@@ -145,7 +145,7 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string ext::effects::GaussianBlur::Shader = R"(
+const std::string utils::effects::GaussianBlur::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _blur
 {
 	vec2 direction;
@@ -168,7 +168,7 @@ void effect(inout vec4 result)
 	result += texture(sColorTexture, In.tex_coord - off2) * 0.0702702703;
 })";
 
-const std::string ext::effects::BrightFilter::Shader = R"(
+const std::string utils::effects::BrightFilter::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _bright
 {
 	float threshold;
@@ -181,7 +181,7 @@ void effect(inout vec4 result)
 	result *= sign(luminance);
 })";
 
-const std::string ext::effects::Grayscale::Shader = R"(
+const std::string utils::effects::Grayscale::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _grayscale
 {
 	float intensity;
@@ -194,22 +194,22 @@ void effect(inout vec4 result)
 })";
 
 
-ext::Mesh::Mesh()
+utils::Mesh::Mesh()
 {
 }
 
-ext::Mesh::Mesh(Vertices vertices)
+utils::Mesh::Mesh(Vertices vertices)
 {
 	setVertices(std::move(vertices));
 }
 
-ext::Mesh::Mesh(Vertices vertices, Indices indices)
+utils::Mesh::Mesh(Vertices vertices, Indices indices)
 {
 	setVertices(std::move(vertices));
 	setIndices(std::move(indices));
 }
 
-void ext::Mesh::setVertices(Vertices value)
+void utils::Mesh::setVertices(Vertices value)
 {
 	if (value.empty())
 		return;
@@ -224,7 +224,7 @@ void ext::Mesh::setVertices(Vertices value)
 	mVertices = std::move(value);
 }
 
-void ext::Mesh::setIndices(Indices value)
+void utils::Mesh::setIndices(Indices value)
 {
 	if (value.empty())
 		return;
@@ -239,7 +239,7 @@ void ext::Mesh::setIndices(Indices value)
 	mIndices = std::move(value);
 }
 
-std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> ext::MakeCameraMatrices(const Camera& camera, 
+std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const Camera& camera,
 	std::optional<uint32_t> _width, std::optional<uint32_t> _height)
 {
 	auto width = (float)_width.value_or(GetBackbufferWidth());
@@ -272,7 +272,7 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> ext::Make
 	}, camera);
 }
 
-Shader ext::MakeEffectShader(const std::string& effect_shader_func)
+Shader utils::MakeEffectShader(const std::string& effect_shader_func)
 {
 	return Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code + effect_shader_func, {
 		"COLOR_TEXTURE_BINDING 0",
@@ -283,56 +283,56 @@ Shader ext::MakeEffectShader(const std::string& effect_shader_func)
 	});
 }
 
-void ext::SetMesh(Commands& cmds, const Mesh* mesh)
+void utils::SetMesh(Commands& cmds, const Mesh* mesh)
 {
 	cmds.push_back(commands::SetMesh{
 		.mesh = mesh
 	});
 }
 
-void ext::SetColorTexture(Commands& cmds, const Texture* color_texture)
+void utils::SetColorTexture(Commands& cmds, const Texture* color_texture)
 {
 	cmds.push_back(commands::SetColorTexture{
 		.color_texture = color_texture
 	});
 }
 
-void ext::SetNormalTexture(Commands& cmds, const Texture* normal_texture)
+void utils::SetNormalTexture(Commands& cmds, const Texture* normal_texture)
 {
 	cmds.push_back(commands::SetNormalTexture{
 		.normal_texture = normal_texture
 	});
 }
 
-void ext::SetColor(Commands& cmds, glm::vec4 color)
+void utils::SetColor(Commands& cmds, glm::vec4 color)
 {
 	cmds.push_back(commands::SetColor{
 		.color = std::move(color)
 	});
 }
 
-void ext::SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix)
+void utils::SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix)
 {
 	cmds.push_back(commands::SetProjectionMatrix{
 		.projection_matrix = std::move(projection_matrix)
 	});
 }
 
-void ext::SetViewMatrix(Commands& cmds, glm::mat4 view_matrix)
+void utils::SetViewMatrix(Commands& cmds, glm::mat4 view_matrix)
 {
 	cmds.push_back(commands::SetViewMatrix{
 		.view_matrix = std::move(view_matrix)
 	});
 }
 
-void ext::SetModelMatrix(Commands& cmds, glm::mat4 model_matrix)
+void utils::SetModelMatrix(Commands& cmds, glm::mat4 model_matrix)
 {
 	cmds.push_back(commands::SetModelMatrix{
 		.model_matrix = std::move(model_matrix)
 	});
 }
 
-void ext::SetCamera(Commands& cmds, Camera camera, std::optional<uint32_t> width,
+void utils::SetCamera(Commands& cmds, Camera camera, std::optional<uint32_t> width,
 		std::optional<uint32_t> height)
 {
 	cmds.push_back(commands::SetCamera{
@@ -342,42 +342,42 @@ void ext::SetCamera(Commands& cmds, Camera camera, std::optional<uint32_t> width
 	});
 }
 
-void ext::SetEyePosition(Commands& cmds, glm::vec3 eye_position)
+void utils::SetEyePosition(Commands& cmds, glm::vec3 eye_position)
 {
 	cmds.push_back(commands::SetEyePosition{
 		.eye_position = std::move(eye_position)
 	});
 }
 
-void ext::SetMipmapBias(Commands& cmds, float mipmap_bias)
+void utils::SetMipmapBias(Commands& cmds, float mipmap_bias)
 {
 	cmds.push_back(commands::SetMipmapBias{
 		.mipmap_bias = mipmap_bias
 	});
 }
 
-void ext::Callback(Commands& cmds, std::function<void()> func)
+void utils::Callback(Commands& cmds, std::function<void()> func)
 {
 	cmds.push_back(commands::Callback{
 		.func = func
 	});
 }
 
-void ext::InsertSubcommands(Commands& cmds, const Commands* subcommands)
+void utils::InsertSubcommands(Commands& cmds, const Commands* subcommands)
 {
 	cmds.push_back(commands::InsertSubcommands{
 		.subcommands = const_cast<Commands*>(subcommands)
 	});
 }
 
-void ext::Draw(Commands& cmds, std::optional<DrawCommand> draw_command)
+void utils::Draw(Commands& cmds, std::optional<DrawCommand> draw_command)
 {
 	cmds.push_back(commands::Draw{
 		.draw_command = std::move(draw_command)
 	});
 }
 
-void ext::ExecuteCommands(const Commands& cmds)
+void utils::ExecuteCommands(const Commands& cmds)
 {
 	static auto default_mesh = Mesh({
 		{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
@@ -579,7 +579,7 @@ void ext::ExecuteCommands(const Commands& cmds)
 	}
 }
 
-void ext::passes::Blur::execute(const RenderTarget& src, const RenderTarget& dst)
+void utils::passes::Blur::execute(const RenderTarget& src, const RenderTarget& dst)
 {
 	if (!mBlurTarget.has_value() || mBlurTarget.value().getWidth() != src.getWidth() || mBlurTarget.value().getHeight() != src.getHeight())
 		mBlurTarget.emplace(src.getWidth(), src.getHeight());
@@ -612,7 +612,7 @@ void ext::passes::Blur::execute(const RenderTarget& src, const RenderTarget& dst
 	});
 }
 
-void ext::passes::BrightFilter::execute(const RenderTarget& src, const RenderTarget& dst)
+void utils::passes::BrightFilter::execute(const RenderTarget& src, const RenderTarget& dst)
 {
 	SetRenderTarget(dst);
 
@@ -623,7 +623,7 @@ void ext::passes::BrightFilter::execute(const RenderTarget& src, const RenderTar
 	});
 }
 
-void ext::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& dst)
+void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& dst)
 {
 	int bloom_width = src.getWidth() / 16;
 	int bloom_height = src.getHeight() / 16;
@@ -661,7 +661,7 @@ void ext::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& ds
 	SetBlendMode(BlendStates::NonPremultiplied);
 }
 
-void ext::passes::Grayscale::execute(const RenderTarget& src, const RenderTarget& dst)
+void utils::passes::Grayscale::execute(const RenderTarget& src, const RenderTarget& dst)
 {
 	SetRenderTarget(dst);
 

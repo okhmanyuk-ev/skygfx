@@ -1,7 +1,7 @@
 #pragma once
 
 #include <skygfx/skygfx.h>
-#include <skygfx/ext.h>
+#include <skygfx/utils.h>
 #include <GLFW/glfw3.h>
 
 class ImguiHelper : skygfx::noncopyable
@@ -14,5 +14,5 @@ public:
 
 private:
 	std::shared_ptr<skygfx::Texture> mFontTexture = nullptr;
-	skygfx::ext::Mesh mMesh;
+	skygfx::utils::Mesh mMesh;
 };

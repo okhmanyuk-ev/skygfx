@@ -1,5 +1,5 @@
 #include "imgui_helper.h"
-#include <skygfx/ext.h>
+#include <skygfx/utils.h>
 #include <imgui.h>
 
 ImguiHelper::ImguiHelper()
@@ -41,8 +41,8 @@ void ImguiHelper::draw()
 	auto draw_data = ImGui::GetDrawData();
 	draw_data->ScaleClipRects(display_scale);
 
-	skygfx::ext::Mesh::Vertices vertices;
-	skygfx::ext::Mesh::Indices indices;
+	skygfx::utils::Mesh::Vertices vertices;
+	skygfx::utils::Mesh::Indices indices;
 
 	for (int i = 0; i < draw_data->CmdListsCount; i++)
 	{
@@ -51,7 +51,7 @@ void ImguiHelper::draw()
 
 		for (const auto& vertex : cmdlist.VtxBuffer)
 		{
-			vertices.push_back(skygfx::ext::Mesh::Vertex{
+			vertices.push_back(skygfx::utils::Mesh::Vertex{
 				.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
 				.color = glm::unpackUnorm4x8(vertex.col),
 				.texcoord = { vertex.uv.x, vertex.uv.y }
@@ -60,17 +60,17 @@ void ImguiHelper::draw()
 
 		for (auto index : cmdlist.IdxBuffer)
 		{
-			indices.push_back(static_cast<skygfx::ext::Mesh::Index>(index + base_vertex));
+			indices.push_back(static_cast<skygfx::utils::Mesh::Index>(index + base_vertex));
 		}
 	}
 
 	mMesh.setVertices(std::move(vertices));
 	mMesh.setIndices(std::move(indices));
 
-	skygfx::ext::Commands draw_cmds;
-	skygfx::ext::SetMesh(draw_cmds, &mMesh);
-	skygfx::ext::SetCamera(draw_cmds, skygfx::ext::OrthogonalCamera{});
-	skygfx::ext::SetModelMatrix(draw_cmds, model);
+	skygfx::utils::Commands draw_cmds;
+	skygfx::utils::SetMesh(draw_cmds, &mMesh);
+	skygfx::utils::SetCamera(draw_cmds, skygfx::utils::OrthogonalCamera{});
+	skygfx::utils::SetModelMatrix(draw_cmds, model);
 
 	uint32_t index_offset = 0;
 
@@ -86,14 +86,14 @@ void ImguiHelper::draw()
 			}
 			else
 			{
-				skygfx::ext::Callback(draw_cmds, [cmd]{
+				skygfx::utils::Callback(draw_cmds, [cmd]{
 					skygfx::SetScissor(skygfx::Scissor{
 						.position = { cmd.ClipRect.x, cmd.ClipRect.y },
 						.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
 					});
 				});
-				skygfx::ext::SetColorTexture(draw_cmds, (skygfx::Texture*)cmd.TextureId);
-				skygfx::ext::Draw(draw_cmds, skygfx::ext::DrawIndexedVerticesCommand{
+				skygfx::utils::SetColorTexture(draw_cmds, (skygfx::Texture*)cmd.TextureId);
+				skygfx::utils::Draw(draw_cmds, skygfx::utils::DrawIndexedVerticesCommand{
 					.index_count = cmd.ElemCount,
 					.index_offset = index_offset
 				});
@@ -103,7 +103,7 @@ void ImguiHelper::draw()
 		}
 	}
 
-	skygfx::ext::ExecuteCommands(draw_cmds);
+	skygfx::utils::ExecuteCommands(draw_cmds);
 
 	skygfx::SetScissor(std::nullopt);
 }

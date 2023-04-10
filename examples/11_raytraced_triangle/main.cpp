@@ -1,5 +1,5 @@
 #include <skygfx/skygfx.h>
-#include <skygfx/ext.h>
+#include <skygfx/utils.h>
 #include "../utils/utils.h"
 
 const std::string raygen_shader_code = R"(
@@ -97,9 +97,9 @@ int main()
 
 		skygfx::SetRenderTarget(std::nullopt);
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		skygfx::ext::ExecuteCommands({
-			skygfx::ext::commands::SetColorTexture{ &target },
-			skygfx::ext::commands::Draw()
+		skygfx::utils::ExecuteCommands({
+			skygfx::utils::commands::SetColorTexture{ &target },
+			skygfx::utils::commands::Draw()
 		});
 
 		skygfx::Present();
