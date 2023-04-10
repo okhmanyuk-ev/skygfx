@@ -57,7 +57,10 @@ namespace skygfx
 	{
 	public:
 		Texture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap = false);
+		Texture(Texture&& other) noexcept;
 		virtual ~Texture();
+
+		Texture& operator=(Texture&& other) noexcept;
 
 		operator TextureHandle* () { return mTextureHandle; }
 
@@ -74,8 +77,11 @@ namespace skygfx
 	{
 	public:
 		RenderTarget(uint32_t width, uint32_t height);
+		RenderTarget(RenderTarget&& other) noexcept;
 		~RenderTarget();
-		
+
+		RenderTarget& operator=(RenderTarget&& other) noexcept;
+
 		operator RenderTargetHandle* () { return mRenderTargetHandle; }
 
 	private:

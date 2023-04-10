@@ -26,10 +26,32 @@ Texture::Texture(uint32_t width, uint32_t height, uint32_t channels, void* memor
 	mTextureHandle = gBackend->createTexture(width, height, channels, memory, mipmap);
 }
 
+Texture::Texture(Texture&& other) noexcept
+{
+	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
+	mWidth = std::exchange(other.mWidth, 0);
+	mHeight = std::exchange(other.mHeight, 0);
+}
+
 Texture::~Texture()
 {
 	if (gBackend)
 		gBackend->destroyTexture(mTextureHandle);
+}
+
+Texture& Texture::operator=(Texture&& other) noexcept
+{
+	if (this == &other)
+		return *this;
+
+	if (mTextureHandle)
+		gBackend->destroyTexture(mTextureHandle);
+
+	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
+	mWidth = std::exchange(other.mWidth, 0);
+	mHeight = std::exchange(other.mHeight, 0);
+
+	return *this;
 }
 
 RenderTarget::RenderTarget(uint32_t width, uint32_t height) : Texture(width, height, 4, nullptr)
@@ -37,10 +59,30 @@ RenderTarget::RenderTarget(uint32_t width, uint32_t height) : Texture(width, hei
 	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
 }
 
+RenderTarget::RenderTarget(RenderTarget&& other) noexcept : Texture(std::move(other))
+{
+	mRenderTargetHandle = std::exchange(other.mRenderTargetHandle, nullptr);
+}
+
 RenderTarget::~RenderTarget()
 {
 	if (gBackend)
 		gBackend->destroyRenderTarget(mRenderTargetHandle);
+}
+
+RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept
+{
+	Texture::operator=(std::move(other));
+
+	if (this == &other)
+		return *this;
+
+	if (mRenderTargetHandle)
+		gBackend->destroyRenderTarget(mRenderTargetHandle);
+
+	mRenderTargetHandle = std::exchange(other.mRenderTargetHandle, nullptr);
+
+	return *this;
 }
 
 // shader
