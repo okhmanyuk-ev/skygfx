@@ -121,11 +121,7 @@ Buffer::Buffer(size_t size) : mSize(size)
 
 Buffer::Buffer(Buffer&& other) noexcept
 {
-	if (this == &other)
-		return;
-
-	mSize = other.mSize;
-	other.mSize = 0;
+	mSize = std::exchange(other.mSize, 0);
 }
 
 Buffer& Buffer::operator=(Buffer&& other) noexcept
@@ -133,8 +129,7 @@ Buffer& Buffer::operator=(Buffer&& other) noexcept
 	if (this == &other)
 		return *this;
 
-	mSize = other.mSize;
-	other.mSize = 0;
+	mSize = std::exchange(other.mSize, 0);
 	return *this;
 }
 
@@ -152,11 +147,10 @@ VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride) : VertexBuf
 
 VertexBuffer::VertexBuffer(VertexBuffer&& other) noexcept : Buffer(std::move(other))
 {
-	if (this == &other)
-		return;
+	if (mVertexBufferHandle)
+		gBackend->destroyVertexBuffer(mVertexBufferHandle);
 
-	mVertexBufferHandle = other.mVertexBufferHandle;
-	other.mVertexBufferHandle = nullptr;
+	mVertexBufferHandle = std::exchange(other.mVertexBufferHandle, nullptr);
 }
 
 VertexBuffer::~VertexBuffer()
@@ -172,8 +166,11 @@ VertexBuffer& VertexBuffer::operator=(VertexBuffer&& other) noexcept
 	if (this == &other)
 		return *this;
 
-	mVertexBufferHandle = other.mVertexBufferHandle;
-	other.mVertexBufferHandle = nullptr;
+	if (mVertexBufferHandle)
+		gBackend->destroyVertexBuffer(mVertexBufferHandle);
+
+	mVertexBufferHandle = std::exchange(other.mVertexBufferHandle, nullptr);
+
 	return *this;
 }
 
@@ -196,11 +193,7 @@ IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride) : IndexBuffer
 
 IndexBuffer::IndexBuffer(IndexBuffer&& other) noexcept : Buffer(std::move(other))
 {
-	if (this == &other)
-		return;
-
-	mIndexBufferHandle = other.mIndexBufferHandle;
-	other.mIndexBufferHandle = nullptr;
+	mIndexBufferHandle = std::exchange(other.mIndexBufferHandle, nullptr);
 }
 
 IndexBuffer::~IndexBuffer()
@@ -216,8 +209,11 @@ IndexBuffer& IndexBuffer::operator=(IndexBuffer&& other) noexcept
 	if (this == &other)
 		return *this;
 
-	mIndexBufferHandle = other.mIndexBufferHandle;
-	other.mIndexBufferHandle = nullptr;
+	if (mIndexBufferHandle)
+		gBackend->destroyIndexBuffer(mIndexBufferHandle);
+
+	mIndexBufferHandle = std::exchange(other.mIndexBufferHandle, nullptr);
+
 	return *this;
 }
 
@@ -240,11 +236,7 @@ UniformBuffer::UniformBuffer(void* memory, size_t size) : UniformBuffer(size)
 
 UniformBuffer::UniformBuffer(UniformBuffer&& other) noexcept : Buffer(std::move(other))
 {
-	if (this == &other)
-		return;
-
-	mUniformBufferHandle = other.mUniformBufferHandle;
-	other.mUniformBufferHandle = nullptr;
+	mUniformBufferHandle = std::exchange(other.mUniformBufferHandle, nullptr);
 }
 
 UniformBuffer::~UniformBuffer()
@@ -260,8 +252,11 @@ UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) noexcept
 	if (this == &other)
 		return *this;
 
-	mUniformBufferHandle = other.mUniformBufferHandle;
-	other.mUniformBufferHandle = nullptr;
+	if (mUniformBufferHandle)
+		gBackend->destroyUniformBuffer(mUniformBufferHandle);
+
+	mUniformBufferHandle = std::exchange(other.mUniformBufferHandle, nullptr);
+
 	return *this;
 }
 
