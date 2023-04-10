@@ -6,6 +6,8 @@ ImguiHelper::ImguiHelper()
 {
 	ImGui::CreateContext();
 	ImGui::StyleColorsClassic();
+	auto& style = ImGui::GetStyle();
+	style.Colors[ImGuiCol_Border] = { 0.0f, 0.0f, 0.0f, 0.0f };
 
 	auto& io = ImGui::GetIO();
 

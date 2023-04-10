@@ -32,8 +32,15 @@ set_property(TARGET update_mappings PROPERTY FOLDER ${LIBS_FOLDER}/glfw)
 file(GLOB IMGUI_SRC 
 	lib/imgui/*.cpp 
 	lib/imgui/*.h
+	utils/imgui_helper.cpp
+	lib/imgui/backends/imgui_impl_glfw.cpp
 )
 add_library(imgui STATIC ${IMGUI_SRC})
+target_include_directories(imgui PUBLIC
+	lib/imgui
+	lib/imgui/backends
+)
+target_link_libraries(imgui skygfx glfw)
 set_property(TARGET imgui PROPERTY FOLDER ${LIBS_FOLDER})
 
 # 01 - triangle
@@ -90,21 +97,13 @@ target_link_libraries(08_render_target glfw skygfx)
 
 # 09 - imgui
 
-add_executable(09_imgui
-	09_imgui/main.cpp
-	utils/imgui_helper.cpp
-	lib/imgui/backends/imgui_impl_glfw.cpp
-)
-target_include_directories(09_imgui PUBLIC
-	lib/imgui
-	lib/imgui/backends
-)
+add_executable(09_imgui 09_imgui/main.cpp)
 target_link_libraries(09_imgui glfw skygfx imgui)
 
 # 10 - bloom
 
 add_executable(10_bloom 10_bloom/main.cpp ${RESOURCES})
-target_link_libraries(10_bloom glfw skygfx)
+target_link_libraries(10_bloom glfw skygfx imgui)
 target_include_directories(10_bloom PUBLIC lib/stb)
 set_target_properties(10_bloom PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(10_bloom PROPERTIES RESOURCE ${RESOURCES})

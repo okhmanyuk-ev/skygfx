@@ -283,7 +283,7 @@ void effect(inout vec4 result)
 		r += weights[i] * texture(sColorTexture, In.tex_coord + offsets[i] * pixelSize).rgb;
 	}
 
-	result = vec4(r, 1.0);
+	result = vec4(r, 1.0) * settings.color;
 })";
 
 const std::string utils::effects::BrightFilter::Shader = R"(
@@ -310,7 +310,6 @@ void effect(inout vec4 result)
 	float gray = dot(result.rgb, vec3(0.299, 0.587, 0.114));
 	result.rgb = mix(result.rgb, vec3(gray), grayscale.intensity);
 })";
-
 
 utils::Mesh::Mesh()
 {

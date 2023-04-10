@@ -1,6 +1,9 @@
 #include <skygfx/skygfx.h>
 #include <skygfx/utils.h>
 #include "../utils/utils.h"
+#include "../utils/imgui_helper.h"
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>	
@@ -96,8 +99,6 @@ int main()
 
 	const auto scale = 100.0f;
 
-	skygfx::SetCullMode(skygfx::CullMode::Back);
-
 	std::optional<skygfx::RenderTarget> src_target;
 	std::optional<skygfx::RenderTarget> dst_target;
 
@@ -112,8 +113,31 @@ int main()
 			target.emplace(win_width, win_height);
 	};
 
+	auto imgui = ImguiHelper();
+
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+
+	float timescale = 1.0f;
+
 	while (!glfwWindowShouldClose(window))
 	{
+		ImGui_ImplGlfw_NewFrame();
+		
+		ImGui::NewFrame();
+
+		auto intensity = bloom_pass.getIntensity();
+		auto threshold = bloom_pass.getBrightThreshold();
+
+		ImGui::Begin("Settings", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+		ImGui::SetWindowPos({ 16.0f, 16.0f });
+		ImGui::SliderFloat("Intensity", &intensity, 0.0f, 4.0f);
+		ImGui::SliderFloat("Threshold", &threshold, 0.0f, 1.0f);
+		ImGui::SliderFloat("Timescale", &timescale, 0.0f, 4.0f);
+		ImGui::End();
+
+		bloom_pass.setIntensity(intensity);
+		bloom_pass.setBrightThreshold(threshold);
+
 		ensureTargetSize(src_target);
 		ensureTargetSize(dst_target);
 
@@ -121,7 +145,9 @@ int main()
 
 		auto model = glm::mat4(1.0f);
 		model = glm::scale(model, { scale, scale, scale });
-		model = glm::rotate(model, time, { 0.0f, 1.0f, 0.0f });
+		model = glm::rotate(model, time * timescale, { 0.0f, 1.0f, 0.0f });
+
+		skygfx::SetCullMode(skygfx::CullMode::Back);
 
 		skygfx::SetRenderTarget(src_target.value());
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
@@ -146,6 +172,8 @@ int main()
 			skygfx::utils::commands::SetColorTexture{ &dst_target.value() },
 			skygfx::utils::commands::Draw{}
 		});
+
+		imgui.draw();
 
 		skygfx::Present();
 
