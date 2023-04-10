@@ -169,6 +169,40 @@ void effect(inout vec4 result)
 	result += texture(sColorTexture, In.tex_coord - off2) * 0.0702702703;
 })";
 
+const std::string utils::effects::BloomUpsample::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _upscale
+{
+	vec2 resolution;
+} upscale;
+
+void effect(inout vec4 result)
+{
+	const vec2 pixelSize = vec2(1.0) / upscale.resolution;
+
+	const vec2 offsets[] = 
+	{
+		vec2(-1,-1), vec2(0,-1), vec2(1,-1),
+		vec2(-1, 0), vec2(0, 0), vec2(1, 0),
+		vec2(-1, 1), vec2(0, 1), vec2(1, 1),
+	};
+
+	const float weights[] = 
+	{
+		1.0 / 16.0, 2.0 / 16.0, 1.0 / 16.0,
+		2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0,
+		1.0 / 16.0, 2.0 / 16.0, 1.0 / 16.0,
+	};
+    
+	vec3 r = vec3(0.0);
+
+	for (int i = 0; i < 9; i++)
+	{
+		r += weights[i] * texture(sColorTexture, In.tex_coord + offsets[i] * pixelSize).rgb;
+	}
+
+	result = vec4(r, 1.0);
+})";
+
 const std::string utils::effects::BrightFilter::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _bright
 {
@@ -705,9 +739,9 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 
 	Texture* prev_texture = &mBrightTarget.value();
 
-	for (auto& tex_chain_cell : mTexChain)
+	for (auto& target : mTexChain)
 	{
-		SetRenderTarget(tex_chain_cell.downsampled);
+		SetRenderTarget(target);
 		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f }); 
 		ExecuteCommands({
 			commands::SetBlendMode{ BlendStates::AlphaBlend },
@@ -715,29 +749,35 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 			commands::Draw{}
 		});
 
-		prev_texture = &tex_chain_cell.downsampled;
+		prev_texture = &target;
 	}
 
 	// upsample and blur
 
-	Texture* prev_blurred_target = nullptr;
+	Texture* prev_downscaled = nullptr;
 
-	for (auto& tex_chain_cell : std::ranges::reverse_view(mTexChain))
+	auto createUpsampleEffect = [&] {
+		return commands::SetEffect{
+			effects::BloomUpsample{
+				.resolution = glm::vec2{ static_cast<float>(prev_downscaled->getWidth()), static_cast<float>(prev_downscaled->getHeight()) }
+			}
+		};
+	};
+
+	for (auto& target : std::ranges::reverse_view(mTexChain))
 	{
-		if (prev_blurred_target != nullptr)
+		if (prev_downscaled != nullptr)
 		{
-			SetRenderTarget(tex_chain_cell.downsampled);
+			SetRenderTarget(target);
 			ExecuteCommands({
 				commands::SetBlendMode{ BlendStates::Additive },
-				commands::SetColorTexture{ prev_blurred_target },
+				commands::SetColorTexture{ prev_downscaled },
+				createUpsampleEffect(),
 				commands::Draw{}
 			});
 		}
 
-		SetRenderTarget(tex_chain_cell.blurred);
-		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-		tex_chain_cell.gaussian_blur.execute(tex_chain_cell.downsampled, tex_chain_cell.blurred);
-		prev_blurred_target = &tex_chain_cell.blurred;
+		prev_downscaled = &target;
 	}
 
 	// combine
@@ -748,7 +788,8 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 		commands::SetColorTexture{ &src },
 		commands::Draw{},
 		commands::SetBlendMode{ BlendStates::Additive },
-		commands::SetColorTexture{ prev_blurred_target },
+		commands::SetColorTexture{ prev_downscaled },
+		createUpsampleEffect(),
 		commands::SetColor{ glm::vec4(mIntensity) },
 		commands::Draw{}
 	});

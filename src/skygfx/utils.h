@@ -93,6 +93,13 @@ namespace skygfx::utils
 			static const std::string Shader;
 		};
 
+		struct alignas(16) BloomUpsample
+		{
+			glm::vec2 resolution;
+
+			static const std::string Shader;
+		};
+
 		struct alignas(16) BrightFilter
 		{
 			float threshold = 0.9f;
@@ -271,21 +278,7 @@ namespace skygfx::utils
 			BrightFilter mBrightFilter;
 			float mIntensity = 1.0f;
 			std::optional<glm::u32vec2> mPrevSize;
-
-			struct TexChainCell
-			{
-				TexChainCell(uint32_t width, uint32_t height) :
-					downsampled(width, height),
-					blurred(width, height)
-				{
-				}
-
-				RenderTarget downsampled;
-				RenderTarget blurred;
-				passes::GaussianBlur gaussian_blur;
-			};
-
-			std::vector<TexChainCell> mTexChain;
+			std::vector<RenderTarget> mTexChain;
 		};
 
 		class Grayscale : public Pass
