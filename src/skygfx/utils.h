@@ -153,6 +153,8 @@ namespace skygfx::utils
 			std::vector<uint8_t> uniform_data;
 		};
 
+		struct SetBlendMode { BlendMode blend_mode = BlendStates::NonPremultiplied; };
+		struct SetSampler { Sampler sampler = Sampler::Linear; };
 		struct SetMesh { const Mesh* mesh; };
 		struct SetColorTexture { const Texture* color_texture; };
 		struct SetNormalTexture { const Texture* normal_texture; };
@@ -169,6 +171,8 @@ namespace skygfx::utils
 	}
 
 	using Command = std::variant<
+		commands::SetBlendMode,
+		commands::SetSampler,
 		commands::SetMesh,
 		commands::SetEffect,
 		commands::SetColorTexture,
@@ -192,6 +196,8 @@ namespace skygfx::utils
 		struct InsertSubcommands { Commands* subcommands; };
 	}
 
+	void SetBlendMode(Commands& cmds, BlendMode blend_mode);
+	void SetSampler(Commands& cmds, Sampler sampler);
 	void SetMesh(Commands& cmds, const Mesh* mesh);
 
 	template<class T>
@@ -226,7 +232,7 @@ namespace skygfx::utils
 			virtual void execute(const RenderTarget& src, const RenderTarget& dst) = 0;
 		};
 
-		class Blur : public Pass
+		class GaussianBlur : public Pass
 		{
 		public:
 			void execute(const RenderTarget& src, const RenderTarget& dst) override;
@@ -239,6 +245,13 @@ namespace skygfx::utils
 		{
 		public:
 			void execute(const RenderTarget& src, const RenderTarget& dst) override;
+
+		public:
+			auto getThreshold() const { return mThreshold; }
+			void setThreshold(float value) { mThreshold = value; }
+
+		private:
+			float mThreshold = 0.99f;
 		};
 
 		class Bloom : public Pass
@@ -246,11 +259,33 @@ namespace skygfx::utils
 		public:
 			void execute(const RenderTarget& src, const RenderTarget& dst) override;
 
+		public:
+			auto getIntensity() const { return mIntensity; }
+			void setIntensity(float value) { mIntensity = value; }
+
+			auto getBrightThreshold() const { return mBrightFilter.getThreshold(); }
+			void setBrightThreshold(float value) { mBrightFilter.setThreshold(value); }
+
 		private:
 			std::optional<RenderTarget> mBrightTarget;
-			std::optional<RenderTarget> mBlurTarget;
 			BrightFilter mBrightFilter;
-			Blur mBlurPostprocess;
+			float mIntensity = 1.0f;
+			std::optional<glm::u32vec2> mPrevSize;
+
+			struct TexChainCell
+			{
+				TexChainCell(uint32_t width, uint32_t height) :
+					downsampled(width, height),
+					blurred(width, height)
+				{
+				}
+
+				RenderTarget downsampled;
+				RenderTarget blurred;
+				passes::GaussianBlur gaussian_blur;
+			};
+
+			std::vector<TexChainCell> mTexChain;
 		};
 
 		class Grayscale : public Pass

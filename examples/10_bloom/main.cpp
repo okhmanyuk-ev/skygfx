@@ -127,6 +127,7 @@ int main()
 		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 
 		skygfx::utils::ExecuteCommands({
+			skygfx::utils::commands::SetSampler{ skygfx::Sampler::Linear },
 			skygfx::utils::commands::SetMesh{ &cube_mesh },
 			skygfx::utils::commands::SetCamera{ camera },
 			skygfx::utils::commands::SetEffect{ light },

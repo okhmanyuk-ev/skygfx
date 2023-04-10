@@ -30,8 +30,6 @@ void ImguiHelper::draw()
 {
 	ImGui::Render();
 
-	skygfx::SetSampler(skygfx::Sampler::Nearest);
-	skygfx::SetBlendMode(skygfx::BlendStates::NonPremultiplied);
 	skygfx::SetDepthMode(std::nullopt);
 	skygfx::SetCullMode(skygfx::CullMode::None);
 

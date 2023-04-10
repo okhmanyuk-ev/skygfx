@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <ranges>
 
 using namespace skygfx;
 
@@ -283,6 +284,20 @@ Shader utils::MakeEffectShader(const std::string& effect_shader_func)
 	});
 }
 
+void utils::SetBlendMode(Commands& cmds, BlendMode blend_mode)
+{
+	cmds.push_back(commands::SetBlendMode{
+		.blend_mode = std::move(blend_mode)
+	});
+}
+
+void utils::SetSampler(Commands& cmds, Sampler sampler)
+{
+	cmds.push_back(commands::SetSampler{
+		.sampler = sampler
+	});
+}
+
 void utils::SetMesh(Commands& cmds, const Mesh* mesh)
 {
 	cmds.push_back(commands::SetMesh{
@@ -386,6 +401,12 @@ void utils::ExecuteCommands(const Commands& cmds)
 		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
 	}, { 0, 1, 2, 0, 2, 3 });
 
+	auto blend_mode = BlendStates::NonPremultiplied;
+	bool blend_mode_dirty = true;
+
+	auto sampler = Sampler::Nearest;
+	bool sampler_dirty = true;
+
 	Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
@@ -413,6 +434,20 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 	std::function<void(const Command&)> execute_command = [&](const Command& _cmd) {
 		std::visit(cases{
+			[&](const commands::SetBlendMode& cmd) {
+				if (blend_mode == cmd.blend_mode)
+					return;
+
+				blend_mode = cmd.blend_mode;
+				blend_mode_dirty = true;
+			},
+			[&](const commands::SetSampler& cmd) {
+				if (sampler == cmd.sampler)
+					return;
+
+				sampler = cmd.sampler;
+				sampler_dirty = true;
+			},
 			[&](const commands::SetMesh& cmd) {
 				if (mesh == cmd.mesh)
 					return;
@@ -482,6 +517,18 @@ void utils::ExecuteCommands(const Commands& cmds)
 				}
 			},
 			[&](const commands::Draw& cmd) {
+				if (blend_mode_dirty)
+				{
+					SetBlendMode(blend_mode);
+					blend_mode_dirty = false;
+				}
+
+				if (sampler_dirty)
+				{
+					SetSampler(sampler);
+					sampler_dirty = false;
+				}
+
 				if (mesh == nullptr)
 					mesh = &default_mesh;
 
@@ -579,7 +626,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 	}
 }
 
-void utils::passes::Blur::execute(const RenderTarget& src, const RenderTarget& dst)
+void utils::passes::GaussianBlur::execute(const RenderTarget& src, const RenderTarget& dst)
 {
 	if (!mBlurTarget.has_value() || mBlurTarget.value().getWidth() != src.getWidth() || mBlurTarget.value().getHeight() != src.getHeight())
 		mBlurTarget.emplace(src.getWidth(), src.getHeight());
@@ -590,6 +637,8 @@ void utils::passes::Blur::execute(const RenderTarget& src, const RenderTarget& d
 	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 
 	ExecuteCommands({
+		commands::SetBlendMode{ BlendStates::AlphaBlend },
+		commands::SetSampler{ Sampler::Linear },
 		commands::SetColorTexture{ &src },
 		commands::SetEffect{
 			effects::GaussianBlur{
@@ -617,48 +666,96 @@ void utils::passes::BrightFilter::execute(const RenderTarget& src, const RenderT
 	SetRenderTarget(dst);
 
 	ExecuteCommands({
+		commands::SetBlendMode{ BlendStates::AlphaBlend },
+		commands::SetSampler{ Sampler::Linear },
 		commands::SetColorTexture{ &src },
-		commands::SetEffect{ effects::BrightFilter{} },
+		commands::SetEffect{ effects::BrightFilter{
+			.threshold = mThreshold
+		} },
 		commands::Draw{},
 	});
 }
 
 void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& dst)
 {
-	int bloom_width = src.getWidth() / 16;
-	int bloom_height = src.getHeight() / 16;
+	glm::u32vec2 src_size = { src.getWidth(), src.getHeight() };
 
-	if (!mBrightTarget.has_value() || mBrightTarget.value().getWidth() != bloom_width || mBrightTarget.value().getHeight() != bloom_height)
-		mBrightTarget.emplace(bloom_width, bloom_height);
+	constexpr int ChainSize = 8;
 
-	if (!mBlurTarget.has_value() || mBlurTarget.value().getWidth() != bloom_width || mBlurTarget.value().getHeight() != bloom_height)
-		mBlurTarget.emplace(bloom_width, bloom_height);
+	if (!mPrevSize.has_value() || mPrevSize != src_size)
+	{
+		mPrevSize = src_size;
+
+		mBrightTarget.emplace(src_size.x, src_size.y);
+		mTexChain.clear();
+
+		for (int i = 0; i < ChainSize; i++)
+		{
+			auto w = src_size.x >> i;
+			auto h = src_size.y >> i;
+
+			mTexChain.emplace_back(w, h);
+		}
+	}
 	
 	SetRenderTarget(mBrightTarget.value());
 	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 
-	SetRenderTarget(mBlurTarget.value());
-	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-
 	mBrightFilter.execute(src, mBrightTarget.value());
-	mBlurPostprocess.execute(mBrightTarget.value(), mBlurTarget.value());
 
-	const auto Glow = glm::vec4(2.0f);
+	// downsampling
+
+	Texture* prev_texture = &mBrightTarget.value();
+
+	for (auto& tex_chain_cell : mTexChain)
+	{
+		SetRenderTarget(tex_chain_cell.downsampled);
+		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f }); 
+		ExecuteCommands({
+			commands::SetBlendMode{ BlendStates::AlphaBlend },
+			commands::SetSampler{ Sampler::Linear },
+			commands::SetColorTexture{ prev_texture },
+			commands::Draw{}
+		});
+
+		prev_texture = &tex_chain_cell.downsampled;
+	}
+
+	// upsample and blur
+
+	Texture* prev_blurred_target = nullptr;
+
+	for (auto& tex_chain_cell : std::ranges::reverse_view(mTexChain))
+	{
+		if (prev_blurred_target != nullptr)
+		{
+			SetRenderTarget(tex_chain_cell.downsampled);
+			ExecuteCommands({
+				commands::SetBlendMode{ BlendStates::Additive },
+				commands::SetSampler{ Sampler::Linear },
+				commands::SetColorTexture{ prev_blurred_target },
+				commands::Draw{}
+			});
+		}
+
+		SetRenderTarget(tex_chain_cell.blurred);
+		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		tex_chain_cell.gaussian_blur.execute(tex_chain_cell.downsampled, tex_chain_cell.blurred);
+		prev_blurred_target = &tex_chain_cell.blurred;
+	}
+
+	// combine
 
 	SetRenderTarget(dst);
 
 	ExecuteCommands({
 		commands::SetColorTexture{ &src },
 		commands::Draw{},
-		commands::Callback{ [] {
-			SetBlendMode(BlendStates::Additive);
-		} },
-		commands::SetColorTexture{ &mBlurTarget.value() },
-		commands::SetColor{ Glow },
+		commands::SetBlendMode{ BlendStates::Additive },
+		commands::SetColorTexture{ prev_blurred_target },
+		commands::SetColor{ glm::vec4(mIntensity) },
 		commands::Draw{}
 	});
-	
-	SetBlendMode(BlendStates::NonPremultiplied);
 }
 
 void utils::passes::Grayscale::execute(const RenderTarget& src, const RenderTarget& dst)
