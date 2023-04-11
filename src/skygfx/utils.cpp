@@ -517,7 +517,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
 	}, { 0, 1, 2, 0, 2, 3 });
 
-	auto blend_mode = BlendStates::NonPremultiplied;
+	auto blend_mode = BlendStates::AlphaBlend;
 	bool blend_mode_dirty = true;
 
 	auto sampler = Sampler::Linear;
@@ -753,7 +753,6 @@ void utils::passes::GaussianBlur::execute(const RenderTarget& src, const RenderT
 	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 
 	ExecuteCommands({
-		commands::SetBlendMode{ BlendStates::AlphaBlend },
 		commands::SetColorTexture{ &src },
 		commands::SetEffect{
 			effects::GaussianBlur{
@@ -781,7 +780,6 @@ void utils::passes::BrightFilter::execute(const RenderTarget& src, const RenderT
 	SetRenderTarget(dst);
 
 	ExecuteCommands({
-		commands::SetBlendMode{ BlendStates::AlphaBlend },
 		commands::SetColorTexture{ &src },
 		commands::SetEffect{ effects::BrightFilter{
 			.threshold = mThreshold
@@ -827,7 +825,6 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 		SetRenderTarget(target);
 		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f }); 
 		ExecuteCommands({
-			commands::SetBlendMode{ BlendStates::AlphaBlend },
 			commands::SetColorTexture{ prev_texture },
 			commands::SetEffect{
 				effects::BloomDownsample{
