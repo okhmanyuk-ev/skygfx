@@ -158,9 +158,7 @@ int main()
 
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
-	const auto position = glm::vec3{ -500.0f, 200.0f, 0.0f };
-
-	const auto scale = 100.0f;
+	const auto position = glm::vec3{ -5.0f, 2.0f, 0.0f };
 
 	light.eye_position = position;
 	light.ambient = { 0.25f, 0.25f, 0.25f };
@@ -184,7 +182,6 @@ int main()
 		auto time = (float)glfwGetTime();
 
 		matrices.model = glm::mat4(1.0f);
-		matrices.model = glm::scale(matrices.model, { scale, scale, scale });
 		matrices.model = glm::rotate(matrices.model, time, { 0.0f, 1.0f, 0.0f });
 
 		skygfx::SetUniformBuffer(1, matrices);

@@ -82,7 +82,7 @@ int main()
 	const auto camera = skygfx::utils::PerspectiveCamera{
 		.yaw = 0.0f,
 		.pitch = glm::radians(-25.0f),
-		.position = { -500.0f, 200.0f, 0.0f }
+		.position = { -5.0f, 2.0f, 0.0f }
 	};
 
 	const auto light = skygfx::utils::effects::DirectionalLight{
@@ -96,8 +96,6 @@ int main()
 	skygfx::utils::Mesh cube_mesh;
 	cube_mesh.setVertices(vertices);
 	cube_mesh.setIndices(indices);
-
-	const auto scale = 100.0f;
 
 	std::optional<skygfx::RenderTarget> src_target;
 	std::optional<skygfx::RenderTarget> dst_target;
@@ -144,7 +142,6 @@ int main()
 		auto time = (float)glfwGetTime();
 
 		auto model = glm::mat4(1.0f);
-		model = glm::scale(model, { scale, scale, scale });
 		model = glm::rotate(model, time * timescale, { 0.0f, 1.0f, 0.0f });
 
 		skygfx::SetCullMode(skygfx::CullMode::Back);
