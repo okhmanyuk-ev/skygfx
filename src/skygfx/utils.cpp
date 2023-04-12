@@ -806,6 +806,9 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 			auto w = src_size.x >> i;
 			auto h = src_size.y >> i;
 
+			if (w <= 0 || h <= 0)
+				break;
+
 			mTexChain.emplace_back(w, h);
 		}
 	}
