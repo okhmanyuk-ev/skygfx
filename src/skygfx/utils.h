@@ -96,7 +96,7 @@ namespace skygfx::utils
 		struct alignas(16) BloomDownsample
 		{
 			glm::vec2 resolution;
-			bool isFirstStep = false;
+			uint32_t step_number = false;
 
 			static const std::string Shader;
 		};
@@ -256,19 +256,6 @@ namespace skygfx::utils
 			std::optional<RenderTarget> mBlurTarget;
 		};
 
-		class BrightFilter : public Pass
-		{
-		public:
-			void execute(const RenderTarget& src, const RenderTarget& dst) override;
-
-		public:
-			auto getThreshold() const { return mThreshold; }
-			void setThreshold(float value) { mThreshold = value; }
-
-		private:
-			float mThreshold = 0.99f;
-		};
-
 		class Bloom : public Pass
 		{
 		public:
@@ -278,15 +265,15 @@ namespace skygfx::utils
 			auto getIntensity() const { return mIntensity; }
 			void setIntensity(float value) { mIntensity = value; }
 
-			auto getBrightThreshold() const { return mBrightFilter.getThreshold(); }
-			void setBrightThreshold(float value) { mBrightFilter.setThreshold(value); }
+			auto getBrightThreshold() const { return mBrightThreshold; }
+			void setBrightThreshold(float value) { mBrightThreshold = value; }
 
 		private:
 			std::optional<RenderTarget> mBrightTarget;
-			BrightFilter mBrightFilter;
-			float mIntensity = 1.0f;
-			std::optional<glm::u32vec2> mPrevSize;
 			std::vector<RenderTarget> mTexChain;
+			std::optional<glm::u32vec2> mPrevSize;
+			float mBrightThreshold = 0.99f;
+			float mIntensity = 1.0f;
 		};
 
 		class Grayscale : public Pass

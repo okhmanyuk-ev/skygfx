@@ -173,7 +173,7 @@ const std::string utils::effects::BloomDownsample::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _downsample
 {
 	vec2 resolution;
-	bool isFirstStep;
+	uint step_number;
 } downsample;
 
 vec3 getSample(sampler2D srcSampler, const vec2 uv)
@@ -217,7 +217,8 @@ vec3 downsample13tap(sampler2D srcSampler, const vec2 centerUV)
 	};
 
 	// on the first downsample use Karis average
-	if (downsample.isFirstStep)
+
+	if (downsample.step_number == 0)
 	{
 		const vec3 box[] =
 		{
@@ -775,19 +776,6 @@ void utils::passes::GaussianBlur::execute(const RenderTarget& src, const RenderT
 	});
 }
 
-void utils::passes::BrightFilter::execute(const RenderTarget& src, const RenderTarget& dst)
-{
-	SetRenderTarget(dst);
-
-	ExecuteCommands({
-		commands::SetColorTexture{ &src },
-		commands::SetEffect{ effects::BrightFilter{
-			.threshold = mThreshold
-		} },
-		commands::Draw{},
-	});
-}
-
 void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& dst)
 {
 	glm::u32vec2 src_size = { src.getWidth(), src.getHeight() };
@@ -812,62 +800,74 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 			mTexChain.emplace_back(w, h);
 		}
 	}
-	
+
+	// extract bright
+
 	SetRenderTarget(mBrightTarget.value());
 	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 
-	mBrightFilter.execute(src, mBrightTarget.value());
+	ExecuteCommands({
+		commands::SetColorTexture{ &src },
+		commands::SetEffect{
+			effects::BrightFilter{
+				.threshold = mBrightThreshold
+			}
+		},
+		commands::Draw{},
+	});
 
-	// downsampling
+	// downsample
 
-	Texture* prev_texture = &mBrightTarget.value();
-	bool isFirstStep = true;
+	Texture* downsample_src = &mBrightTarget.value();
+	uint32_t step_number = 0;
 
 	for (auto& target : mTexChain)
 	{
 		SetRenderTarget(target);
-		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f }); 
+		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		ExecuteCommands({
-			commands::SetColorTexture{ prev_texture },
+			commands::SetColorTexture{ downsample_src },
 			commands::SetEffect{
 				effects::BloomDownsample{
-					.resolution = glm::vec2{ static_cast<float>(prev_texture->getWidth()), static_cast<float>(prev_texture->getHeight()) },
-					.isFirstStep = isFirstStep
+					.resolution = {
+						static_cast<float>(downsample_src->getWidth()),
+						static_cast<float>(downsample_src->getHeight())
+					},
+					.step_number = step_number
 				}
 			},
 			commands::Draw{}
 		});
 
-		prev_texture = &target;
-		isFirstStep = false;
+		downsample_src = &target;
+		step_number += 1;
 	}
 
 	// upsample and blur
 
-	Texture* prev_downscaled = nullptr;
-
-	auto createUpsampleEffect = [&] {
-		return commands::SetEffect{
-			effects::BloomUpsample{
-				.resolution = glm::vec2{ static_cast<float>(prev_downscaled->getWidth()), static_cast<float>(prev_downscaled->getHeight()) }
-			}
-		};
-	};
+	Texture* prev_downsampled = nullptr;
 
 	for (auto& target : std::ranges::reverse_view(mTexChain))
 	{
-		if (prev_downscaled != nullptr)
+		if (prev_downsampled != nullptr)
 		{
 			SetRenderTarget(target);
 			ExecuteCommands({
 				commands::SetBlendMode{ BlendStates::Additive },
-				commands::SetColorTexture{ prev_downscaled },
-				createUpsampleEffect(),
+				commands::SetColorTexture{ prev_downsampled },
+				commands::SetEffect{
+					effects::BloomUpsample{
+						.resolution = {
+							static_cast<float>(prev_downsampled->getWidth()),
+							static_cast<float>(prev_downsampled->getHeight())
+						}
+					}
+				},
 				commands::Draw{}
 			});
 		}
 
-		prev_downscaled = &target;
+		prev_downsampled = &target;
 	}
 
 	// combine
@@ -878,8 +878,15 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 		commands::SetColorTexture{ &src },
 		commands::Draw{},
 		commands::SetBlendMode{ BlendStates::Additive },
-		commands::SetColorTexture{ prev_downscaled },
-		createUpsampleEffect(),
+		commands::SetColorTexture{ prev_downsampled },
+		commands::SetEffect{
+			effects::BloomUpsample{
+				.resolution = {
+					static_cast<float>(prev_downsampled->getWidth()),
+					static_cast<float>(prev_downsampled->getHeight())
+				}
+			}
+		},
 		commands::SetColor{ glm::vec4(mIntensity) },
 		commands::Draw{}
 	});
