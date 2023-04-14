@@ -1242,9 +1242,12 @@ static void PrepareForDrawing()
 		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
+	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gWidth;
+	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gHeight;
+
 	if (gViewportDirty)
 	{
-		auto value = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
+		auto value = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
 
 		auto viewport = vk::Viewport()
 			.setX(value.position.x)
@@ -1260,7 +1263,7 @@ static void PrepareForDrawing()
 
 	if (gScissorDirty)
 	{
-		auto value = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(gWidth), static_cast<float>(gHeight) } });
+		auto value = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
 
 		auto rect = vk::Rect2D()
 			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
@@ -1695,6 +1698,12 @@ void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 	gPipelineState.depth_stencil_format = render_target->getDepthStencilFormat();
 	gRenderTarget = render_target;
 	EnsureRenderPassDeactivated();
+
+	if (!gViewport.has_value())
+		gViewportDirty = true;
+
+	if (!gScissor.has_value())
+		gScissorDirty = true;
 }
 
 void BackendVK::setRenderTarget(std::nullopt_t value)
@@ -1706,6 +1715,12 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 	gPipelineState.depth_stencil_format = gDepthStencil.format;
 	gRenderTarget = nullptr;
 	EnsureRenderPassDeactivated();
+
+	if (!gViewport.has_value())
+		gViewportDirty = true;
+
+	if (!gScissor.has_value())
+		gScissorDirty = true;
 }
 
 void BackendVK::setShader(ShaderHandle* handle)
