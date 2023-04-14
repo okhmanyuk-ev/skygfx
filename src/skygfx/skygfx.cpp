@@ -268,9 +268,9 @@ void UniformBuffer::write(void* memory, size_t size)
 // acceleration structure
 
 AccelerationStructure::AccelerationStructure(const std::vector<glm::vec3>& vertices,
-	const std::vector<uint32_t>& indices)
+	const std::vector<uint32_t>& indices, const glm::mat4& transform)
 {
-	mAccelerationStructureHandle = gRaytracingBackend->createAccelerationStructure(vertices, indices);
+	mAccelerationStructureHandle = gRaytracingBackend->createAccelerationStructure(vertices, indices, transform);
 }
 
 AccelerationStructure::~AccelerationStructure()

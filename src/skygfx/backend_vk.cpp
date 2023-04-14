@@ -802,7 +802,8 @@ static vk::IndexType GetIndexTypeFromStride(size_t stride)
 	return stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32;
 }
 
-static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress> CreateBottomLevelAccelerationStrucutre(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const vk::TransformMatrixKHR& transform)
+static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::raii::Buffer, vk::raii::DeviceMemory> CreateBottomLevelAccelerationStrucutre(
+	const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices, const glm::mat4& transform)
 {
 	using vertex_t = glm::vec3;
 	using index_t = uint32_t;
@@ -850,7 +851,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress> CreateB
 	auto blas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
 		vk::AccelerationStructureBuildTypeKHR::eDevice, blas_build_geometry_info, { 1 });
 		
-	static auto [blas_buffer, blas_memory] = CreateBuffer(blas_build_sizes.accelerationStructureSize,
+	auto [blas_buffer, blas_memory] = CreateBuffer(blas_build_sizes.accelerationStructureSize,
 		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
 
 	auto blas_create_info = vk::AccelerationStructureCreateInfoKHR()
@@ -871,7 +872,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress> CreateB
 		.setScratchData(blas_scratch_buffer_addr);
 
 	auto blas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
-		.setPrimitiveCount(1);
+		.setPrimitiveCount(indices.size() / 3);
 
 	auto blas_build_geometry_infos = { blas_build_geometry_info };
 	std::vector blas_build_range_infos = { &blas_build_range_info };
@@ -885,13 +886,14 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress> CreateB
 
 	auto blas_device_address = gDevice.getAccelerationStructureAddressKHR(blas_device_address_info);
 
-	return { std::move(blas), blas_device_address };
+	return { std::move(blas), blas_device_address, std::move(blas_buffer), std::move(blas_memory) };
 }
 
-static vk::raii::AccelerationStructureKHR CreateTopLevelAccelerationStructure(const vk::TransformMatrixKHR& transform, const vk::DeviceAddress& bottom_level_acceleration_structure_device_address)
+static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii::DeviceMemory> CreateTopLevelAccelerationStructure(
+	const glm::mat4& transform, const vk::DeviceAddress& bottom_level_acceleration_structure_device_address)
 {
 	auto tlas_instance = vk::AccelerationStructureInstanceKHR()
-		.setTransform(transform)
+		.setTransform(*(vk::TransformMatrixKHR*)&transform)
 		.setMask(0xFF)
 		.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
 		.setAccelerationStructureReference(bottom_level_acceleration_structure_device_address);
@@ -924,7 +926,7 @@ static vk::raii::AccelerationStructureKHR CreateTopLevelAccelerationStructure(co
 	auto tlas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
 		vk::AccelerationStructureBuildTypeKHR::eDevice, tlas_build_geometry_info, { 1 });
 
-	static auto [tlas_buffer, tlas_memory] = CreateBuffer(tlas_build_sizes.accelerationStructureSize,
+	auto [tlas_buffer, tlas_memory] = CreateBuffer(tlas_build_sizes.accelerationStructureSize,
 		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
 
 	auto tlas_create_info = vk::AccelerationStructureCreateInfoKHR()
@@ -954,33 +956,31 @@ static vk::raii::AccelerationStructureKHR CreateTopLevelAccelerationStructure(co
 		cmdbuf.buildAccelerationStructuresKHR(tlas_build_geometry_infos, tlas_build_range_infos);
 	});
 
-	return std::move(tlas);
+	return { std::move(tlas), std::move(tlas_buffer), std::move(tlas_memory) };
 }
 
 class AccelerationStructureVK
 {
 public:
-	const auto& getTopLevelAccelerationStructure() const { return mTopLevelAccelerationStructure; }
+	const auto& getTlas() const { return mTlas; }
 
 private:
-	vk::raii::AccelerationStructureKHR mTopLevelAccelerationStructure = nullptr;
-	vk::raii::AccelerationStructureKHR mBottomLevelAccelerationStructure = nullptr;
-	vk::DeviceAddress mBottomLevelAccelerationStructureDeviceAddress;
+	vk::raii::AccelerationStructureKHR mTlas = nullptr;
+	vk::raii::Buffer mTlasBuffer = nullptr;
+	vk::raii::DeviceMemory mTlasMemory = nullptr;
+	vk::raii::AccelerationStructureKHR mBlas = nullptr;
+	vk::DeviceAddress mBlasDeviceAddress;
+	vk::raii::Buffer mBlasBuffer = nullptr;
+	vk::raii::DeviceMemory mBlasMemory = nullptr;
 
 public:
-	AccelerationStructureVK(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices)
+	AccelerationStructureVK(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices,
+		const glm::mat4& transform)
 	{
-		auto transform = vk::TransformMatrixKHR()
-			.setMatrix({
-				1.0f, 0.0f, 0.0f, 0.0f,
-				0.0f, 1.0f, 0.0f, 0.0f,
-				0.0f, 0.0f, 1.0f, 0.0f
-			});
-
-		std::tie(mBottomLevelAccelerationStructure, mBottomLevelAccelerationStructureDeviceAddress) = 
+		std::tie(mBlas, mBlasDeviceAddress, mBlasBuffer, mBlasMemory) = 
 			CreateBottomLevelAccelerationStrucutre(vertices, indices, transform);
-		mTopLevelAccelerationStructure = CreateTopLevelAccelerationStructure(transform,
-			mBottomLevelAccelerationStructureDeviceAddress);
+		std::tie(mTlas, mTlasBuffer, mTlasMemory) = CreateTopLevelAccelerationStructure(
+			glm::mat4(1.0f), mBlasDeviceAddress);
 	}
 };
 
@@ -1964,7 +1964,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 			auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
 				.setAccelerationStructureCount(1)
-				.setPAccelerationStructures(&*acceleration_structure->getTopLevelAccelerationStructure());
+				.setPAccelerationStructures(&*acceleration_structure->getTlas());
 
 			write_descriptor_set.setPNext(&write_descriptor_set_acceleration_structure);
 		}
@@ -1977,6 +1977,16 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 				.setImageView(render_target_image_view);
 
 			write_descriptor_set.setPImageInfo(&descriptor_image_info);
+		}
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
+		{
+			auto buffer = gUniformBuffers.at(binding);
+
+			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
+				.setBuffer(*buffer->getBuffer())
+				.setRange(VK_WHOLE_SIZE);
+
+			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
 		}
 		else
 		{
@@ -1993,7 +2003,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	if (!raygen_shader_binding_table.has_value())
 	{
-		auto ray_tracing_pipeline_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2,
+		static auto ray_tracing_pipeline_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2,
 			vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
 		auto handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
@@ -2290,9 +2300,9 @@ void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memo
 }
 
 AccelerationStructureHandle* BackendVK::createAccelerationStructure(const std::vector<glm::vec3>& vertices,
-	const std::vector<uint32_t>& indices)
+	const std::vector<uint32_t>& indices, const glm::mat4& transform)
 {
-	auto acceleration_structure = new AccelerationStructureVK(vertices, indices);
+	auto acceleration_structure = new AccelerationStructureVK(vertices, indices, transform);
 	return (AccelerationStructureHandle*)acceleration_structure;
 }
 

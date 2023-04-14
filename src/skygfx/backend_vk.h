@@ -72,7 +72,7 @@ namespace skygfx
 		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
 
 		AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
-			const std::vector<uint32_t>& indices) override;
+			const std::vector<uint32_t>& indices, const glm::mat4& transform) override;
 		void destroyAccelerationStructure(AccelerationStructureHandle* handle) override;
 
 	private:

@@ -227,7 +227,8 @@ namespace skygfx
 	class AccelerationStructure : public noncopyable
 	{
 	public:
-		AccelerationStructure(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices);
+		AccelerationStructure(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices,
+			const glm::mat4& transform = glm::mat4(1.0f));
 		~AccelerationStructure();
 
 		operator AccelerationStructureHandle* () { return mAccelerationStructureHandle; }
