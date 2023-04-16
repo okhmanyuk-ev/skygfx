@@ -878,7 +878,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 		.setScratchData(blas_scratch_buffer_addr);
 
 	auto blas_build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
-		.setPrimitiveCount(indices.size() / 3);
+		.setPrimitiveCount(static_cast<uint32_t>(indices.size() / 3));
 
 	auto blas_build_geometry_infos = { blas_build_geometry_info };
 	std::vector blas_build_range_infos = { &blas_build_range_info };
