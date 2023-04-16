@@ -190,7 +190,6 @@ std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool 
 	options.version = version;
 	options.enable_420pack_extension = enable_420pack_extension;
 	options.force_flattened_io_blocks = force_flattened_io_blocks;
-	options.vulkan_semantics = true;
 	compiler.set_common_options(options);
 	
 	bool fix_varyings = (es && version <= 300) || force_flattened_io_blocks;

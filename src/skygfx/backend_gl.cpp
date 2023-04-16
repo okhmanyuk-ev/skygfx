@@ -162,11 +162,11 @@ static const std::unordered_map<Format, GLenum> TextureInternalFormatMap = {
 };
 
 static const std::unordered_map<Format, GLenum> TextureFormatMap = {
-	{ Format::Float1, GL_R },
+	{ Format::Float1, GL_RED },
 	{ Format::Float2, GL_RG },
 	{ Format::Float3, GL_RGB },
 	{ Format::Float4, GL_RGBA },
-	{ Format::Byte1, GL_R },
+	{ Format::Byte1, GL_RED },
 	{ Format::Byte2, GL_RG },
 	{ Format::Byte3, GL_RGB },
 	{ Format::Byte4, GL_RGBA }
@@ -356,13 +356,13 @@ public:
 #if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	void applyLayout()
 	{
-		for (int i = 0; i < mLayout.attributes.size(); i++)
+		for (int i = 0; i < mVertexLayout.attributes.size(); i++)
 		{
-			const auto& attrib = mLayout.attributes.at(i);
+			const auto& attrib = mVertexLayout.attributes.at(i);
 
 			glVertexAttribPointer(i, SizeMap.at(attrib.format),
 				TypeMap.at(attrib.format), NormalizeMap.at(attrib.format),
-				(GLsizei)mLayout.stride, (void*)attrib.offset);
+				(GLsizei)mVertexLayout.stride, (void*)attrib.offset);
 		}
 	}
 #endif

@@ -2,6 +2,7 @@
 
 #ifdef SKYGFX_HAS_METAL
 
+#include "shader_compiler.h"
 #include <unordered_map>
 #include <unordered_set>
 
@@ -126,6 +127,28 @@ static RenderTargetMetal* gRenderTarget = nullptr;
 
 static std::unordered_set<BufferMetal*> gUsedBuffersInThisFrame;
 
+static const std::unordered_map<Format, MTLVertexFormat> VertexFormatMap = {
+	{ Format::Float1, MTLVertexFormatFloat },
+	{ Format::Float2, MTLVertexFormatFloat2 },
+	{ Format::Float3, MTLVertexFormatFloat3 },
+	{ Format::Float4, MTLVertexFormatFloat4 },
+	{ Format::Byte1, MTLVertexFormatUCharNormalized },
+	{ Format::Byte2, MTLVertexFormatUChar2Normalized },
+	{ Format::Byte3, MTLVertexFormatUChar3Normalized },
+	{ Format::Byte4, MTLVertexFormatUChar4Normalized }
+};
+
+static const std::unordered_map<Format, MTLPixelFormat> PixelFormatMap = {
+	{ Format::Float1, MTLPixelFormatR32Float },
+	{ Format::Float2, MTLPixelFormatRG32Float },
+	// { Format::Float3, MTLPixelFormatRGB32Float },
+	{ Format::Float4, MTLPixelFormatRGBA32Float },
+	{ Format::Byte1, MTLPixelFormatR8Unorm },
+	{ Format::Byte2, MTLPixelFormatRG8Unorm },
+	// { Format::Byte3, ?? },
+	{ Format::Byte4, MTLPixelFormatRGBA8Unorm }
+};
+
 class ShaderMetal
 {
 public:
@@ -141,10 +164,10 @@ private:
 	MTLVertexDescriptor* mVertexDescriptor = nullptr;
 	
 public:
-	ShaderMetal(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderMetal(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		AddShaderLocationDefines(layout, defines);
+		AddShaderLocationDefines(vertex_layout, defines);
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
@@ -172,33 +195,21 @@ public:
 
 		mVertFunc = [mVertLib newFunctionWithName:@"main0"];
 		mFragFunc = [mFragLib newFunctionWithName:@"main0"];
-	
-		static const std::unordered_map<Vertex::Attribute::Format, MTLVertexFormat> Format = {
-			{ Vertex::Attribute::Format::Float1, MTLVertexFormatFloat },
-			{ Vertex::Attribute::Format::Float2, MTLVertexFormatFloat2 },
-			{ Vertex::Attribute::Format::Float3, MTLVertexFormatFloat3 },
-			{ Vertex::Attribute::Format::Float4, MTLVertexFormatFloat4 },
-			{ Vertex::Attribute::Format::Byte1, MTLVertexFormatUCharNormalized },
-			{ Vertex::Attribute::Format::Byte2, MTLVertexFormatUChar2Normalized },
-			{ Vertex::Attribute::Format::Byte3, MTLVertexFormatUChar3Normalized },
-			{ Vertex::Attribute::Format::Byte4, MTLVertexFormatUChar4Normalized }
-		};
-	
 		mVertexDescriptor = [[MTLVertexDescriptor alloc] init];
 		
-		for (int i = 0; i < layout.attributes.size(); i++)
+		for (int i = 0; i < vertex_layout.attributes.size(); i++)
 		{
-			const auto& attrib = layout.attributes.at(i);
+			const auto& attrib = vertex_layout.attributes.at(i);
 			auto desc = mVertexDescriptor.attributes[i];
-			desc.format = Format.at(attrib.format);
+			desc.format = VertexFormatMap.at(attrib.format);
 			desc.offset = attrib.offset;
 			desc.bufferIndex = gVertexBufferStageBinding;
 		}
 
-		auto vertex_layout = mVertexDescriptor.layouts[gVertexBufferStageBinding];
-		vertex_layout.stride = layout.stride;
-		vertex_layout.stepRate = 1;
-		vertex_layout.stepFunction = MTLVertexStepFunctionPerVertex;
+		auto layout = mVertexDescriptor.layouts[gVertexBufferStageBinding];
+		layout.stride = vertex_layout.stride;
+		layout.stepRate = 1;
+		layout.stepFunction = MTLVertexStepFunctionPerVertex;
 	}
 
 	~ShaderMetal()
@@ -216,18 +227,19 @@ class TextureMetal
 public:
 	auto getMetalTexture() const { return mTexture; }
 	auto isMipmap() const { return mMipmap; }
-	
+
 private:
 	id<MTLTexture> mTexture = nullptr;
 	bool mMipmap = false;
-	
+
 public:
-	TextureMetal(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) : mMipmap(mipmap)
+	TextureMetal(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
+		mMipmap(mipmap)
 	{
 		auto desc = [[MTLTextureDescriptor alloc] init];
 		desc.width = width;
 		desc.height = height;
-		desc.pixelFormat = MTLPixelFormatRGBA8Unorm;
+		desc.pixelFormat = PixelFormatMap.at(format);
 		desc.textureType = MTLTextureType2D;
 		desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
 #if defined(SKYGFX_PLATFORM_MACOS)
@@ -251,7 +263,10 @@ public:
 		if (memory != nullptr)
 		{
 			auto region = MTLRegionMake2D(0, 0, width, height);
-			[mTexture replaceRegion:region mipmapLevel:0 withBytes:memory bytesPerRow:width * channels];
+			auto channels = GetFormatChannelsCount(format);
+			auto channel_size = GetFormatChannelSize(format);
+
+			[mTexture replaceRegion:region mipmapLevel:0 withBytes:memory bytesPerRow:width * channels * channel_size];
 		
 			if (mipmap)
 			{
@@ -882,9 +897,10 @@ void BackendMetal::present()
 	begin();
 }
 
-TextureHandle* BackendMetal::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+TextureHandle* BackendMetal::createTexture(uint32_t width, uint32_t height, Format format,
+	void* memory, bool mipmap)
 {
-	auto texture = new TextureMetal(width, height, channels, memory, mipmap);
+	auto texture = new TextureMetal(width, height, format, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
@@ -907,10 +923,10 @@ void BackendMetal::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendMetal::createShader(const Vertex::Layout& layout, const std::string& vertex_code,
+ShaderHandle* BackendMetal::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderMetal(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderMetal(vertex_layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 
