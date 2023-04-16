@@ -2,6 +2,7 @@
 
 #ifdef SKYGFX_HAS_D3D11
 
+#include "shader_compiler.h"
 #include <stdexcept>
 #include <vector>
 #include <unordered_map>
@@ -98,6 +99,17 @@ static struct
 	ComPtr<ID3D11DepthStencilView> depth_stencil_view;
 } gMainRenderTarget;
 
+static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
+	{ Format::Float1, DXGI_FORMAT_R32_FLOAT },
+	{ Format::Float2, DXGI_FORMAT_R32G32_FLOAT },
+	{ Format::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
+	{ Format::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
+	{ Format::Byte1, DXGI_FORMAT_R8_UNORM },
+	{ Format::Byte2, DXGI_FORMAT_R8G8_UNORM },
+	//	{ Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
+	{ Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
+};
+
 class ShaderD3D11
 {
 private:
@@ -106,7 +118,7 @@ private:
 	ComPtr<ID3D11InputLayout> input_layout;
 
 public:
-	ShaderD3D11(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderD3D11(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
 		ComPtr<ID3DBlob> vertex_shader_blob;
@@ -115,7 +127,7 @@ public:
 		ComPtr<ID3DBlob> vertex_shader_error;
 		ComPtr<ID3DBlob> pixel_shader_error;
 		
-		AddShaderLocationDefines(layout, defines);
+		AddShaderLocationDefines(vertex_layout, defines);
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
@@ -150,24 +162,13 @@ public:
 		gDevice->CreatePixelShader(pixel_shader_blob->GetBufferPointer(), pixel_shader_blob->GetBufferSize(), 
 			NULL, pixel_shader.GetAddressOf());
 
-		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
-			{ Vertex::Attribute::Format::Float1, DXGI_FORMAT_R32_FLOAT },
-			{ Vertex::Attribute::Format::Float2, DXGI_FORMAT_R32G32_FLOAT },
-			{ Vertex::Attribute::Format::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
-			{ Vertex::Attribute::Format::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
-			{ Vertex::Attribute::Format::Byte1, DXGI_FORMAT_R8_UNORM },
-			{ Vertex::Attribute::Format::Byte2, DXGI_FORMAT_R8G8_UNORM },
-			//	{ Vertex::Attribute::Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
-			{ Vertex::Attribute::Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
-		};
-
 		std::vector<D3D11_INPUT_ELEMENT_DESC> input;
 
 		UINT i = 0;
 
-		for (auto& attrib : layout.attributes)
+		for (auto& attrib : vertex_layout.attributes)
 		{
-			input.push_back({ "TEXCOORD", i, Format.at(attrib.format), 0,
+			input.push_back({ "TEXCOORD", i, FormatMap.at(attrib.format), 0,
 				static_cast<UINT>(attrib.offset), D3D11_INPUT_PER_VERTEX_DATA, 0 });
 			i++;
 		}
@@ -192,6 +193,7 @@ public:
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
 	bool isMipmap() const { return mMipmap; }
+	auto getFormat() const { return mFormat; }
 
 private:
 	ComPtr<ID3D11ShaderResourceView> mShaderResourceView;
@@ -199,14 +201,16 @@ private:
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
 	bool mMipmap = false;
+	Format mFormat;
 
 public:
-	TextureD3D11(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+	TextureD3D11(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
 		mWidth(width),
 		mHeight(height),
-		mMipmap(mipmap)
+		mMipmap(mipmap),
+		mFormat(format)
 	{
-		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_R8G8B8A8_UNORM, width, height);
+		auto tex_desc = CD3D11_TEXTURE2D_DESC(FormatMap.at(format), width, height);
 		tex_desc.MipLevels = mipmap ? 0 : 1;
 		tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 		tex_desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS; // TODO: only in mapmap mode ?
@@ -217,8 +221,10 @@ public:
 
 		if (memory)
 		{
-			auto memPitch = width * channels;
-			auto memSlicePitch = width * height * channels;
+			auto channels = GetFormatChannelsCount(format);
+			auto channel_size = GetFormatChannelSize(format);
+			auto memPitch = width * channels * channel_size;
+			auto memSlicePitch = width * height * channels * channel_size;
 			gContext->UpdateSubresource(mTexture2D.Get(), 0, NULL, memory, memPitch, memSlicePitch);
 
 			if (mipmap)
@@ -249,8 +255,8 @@ public:
 	RenderTargetD3D11(uint32_t width, uint32_t height, TextureD3D11* texture) :
 		mTexture(texture)
 	{
-		auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, 
-			DXGI_FORMAT_R8G8B8A8_UNORM);
+		auto format = FormatMap.at(texture->getFormat());
+		auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, format);
 
 		gDevice->CreateRenderTargetView(texture->getD3D11Texture2D().Get(), &rtv_desc, mRenderTargetView.GetAddressOf());
 
@@ -711,9 +717,10 @@ void BackendD3D11::present()
 	gSwapChain->Present(vsync ? 1 : 0, 0);
 }
 
-TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, Format format,
+	void* memory, bool mipmap)
 {
-	auto texture = new TextureD3D11(width, height, channels, memory, mipmap);
+	auto texture = new TextureD3D11(width, height, format, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
@@ -736,10 +743,10 @@ void BackendD3D11::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendD3D11::createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
+ShaderHandle* BackendD3D11::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderD3D11(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderD3D11(vertex_layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

@@ -41,14 +41,14 @@ namespace skygfx
 
 		void present() override;
 
-		TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 
+		TextureHandle* createTexture(uint32_t width, uint32_t height, Format format, 
 			void* memory, bool mipmap) override;
 		void destroyTexture(TextureHandle* handle) override;
 
 		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) override;
 		void destroyRenderTarget(RenderTargetHandle* handle) override;
 
-		ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
+		ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
 

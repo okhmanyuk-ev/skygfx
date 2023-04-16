@@ -37,14 +37,14 @@ namespace skygfx
 
 		virtual void present() = 0;
 
-		virtual TextureHandle* createTexture(uint32_t width, uint32_t height, uint32_t channels, 
+		virtual TextureHandle* createTexture(uint32_t width, uint32_t height, Format format, 
 			void* memory, bool mipmap) = 0;
 		virtual void destroyTexture(TextureHandle* handle) = 0;
 
 		virtual RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) = 0;
 		virtual void destroyRenderTarget(RenderTargetHandle* handle) = 0;
 
-		virtual ShaderHandle* createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
+		virtual ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyShader(ShaderHandle* handle) = 0;
 

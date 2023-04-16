@@ -1,4 +1,5 @@
 #include <skygfx/skygfx.h>
+#include <skygfx/vertex.h>
 #include "../utils/utils.h"
 
 const std::string triangle_vertex_shader_code = R"(

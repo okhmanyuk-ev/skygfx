@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <stdexcept>
 #include <iostream>
+#include "shader_compiler.h"
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	#define GLEW_STATIC
@@ -105,37 +106,37 @@ void CheckErrors()
 	assert(error == GL_NO_ERROR);
 }
 
-static const std::unordered_map<Vertex::Attribute::Format, GLint> SizeMap = {
-	{ Vertex::Attribute::Format::Float1, 1 },
-	{ Vertex::Attribute::Format::Float2, 2 },
-	{ Vertex::Attribute::Format::Float3, 3 },
-	{ Vertex::Attribute::Format::Float4, 4 },
-	{ Vertex::Attribute::Format::Byte1, 1 },
-	{ Vertex::Attribute::Format::Byte2, 2 },
-	{ Vertex::Attribute::Format::Byte3, 3 },
-	{ Vertex::Attribute::Format::Byte4, 4 }
+static const std::unordered_map<Format, GLint> SizeMap = {
+	{ Format::Float1, 1 },
+	{ Format::Float2, 2 },
+	{ Format::Float3, 3 },
+	{ Format::Float4, 4 },
+	{ Format::Byte1, 1 },
+	{ Format::Byte2, 2 },
+	{ Format::Byte3, 3 },
+	{ Format::Byte4, 4 }
 };
 
-static const std::unordered_map<Vertex::Attribute::Format, GLenum> TypeMap = {
-	{ Vertex::Attribute::Format::Float1, GL_FLOAT },
-	{ Vertex::Attribute::Format::Float2, GL_FLOAT },
-	{ Vertex::Attribute::Format::Float3, GL_FLOAT },
-	{ Vertex::Attribute::Format::Float4, GL_FLOAT },
-	{ Vertex::Attribute::Format::Byte1, GL_UNSIGNED_BYTE },
-	{ Vertex::Attribute::Format::Byte2, GL_UNSIGNED_BYTE },
-	{ Vertex::Attribute::Format::Byte3, GL_UNSIGNED_BYTE },
-	{ Vertex::Attribute::Format::Byte4, GL_UNSIGNED_BYTE }
+static const std::unordered_map<Format, GLenum> TypeMap = {
+	{ Format::Float1, GL_FLOAT },
+	{ Format::Float2, GL_FLOAT },
+	{ Format::Float3, GL_FLOAT },
+	{ Format::Float4, GL_FLOAT },
+	{ Format::Byte1, GL_UNSIGNED_BYTE },
+	{ Format::Byte2, GL_UNSIGNED_BYTE },
+	{ Format::Byte3, GL_UNSIGNED_BYTE },
+	{ Format::Byte4, GL_UNSIGNED_BYTE }
 };
 
-static const std::unordered_map<Vertex::Attribute::Format, GLboolean> NormalizeMap = {
-	{ Vertex::Attribute::Format::Float1, GL_FALSE },
-	{ Vertex::Attribute::Format::Float2, GL_FALSE },
-	{ Vertex::Attribute::Format::Float3, GL_FALSE },
-	{ Vertex::Attribute::Format::Float4, GL_FALSE },
-	{ Vertex::Attribute::Format::Byte1, GL_TRUE },
-	{ Vertex::Attribute::Format::Byte2, GL_TRUE },
-	{ Vertex::Attribute::Format::Byte3, GL_TRUE },
-	{ Vertex::Attribute::Format::Byte4, GL_TRUE }
+static const std::unordered_map<Format, GLboolean> NormalizeMap = {
+	{ Format::Float1, GL_FALSE },
+	{ Format::Float2, GL_FALSE },
+	{ Format::Float3, GL_FALSE },
+	{ Format::Float4, GL_FALSE },
+	{ Format::Byte1, GL_TRUE },
+	{ Format::Byte2, GL_TRUE },
+	{ Format::Byte3, GL_TRUE },
+	{ Format::Byte4, GL_TRUE }
 };
 
 static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
@@ -149,10 +150,32 @@ static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
 	{ ComparisonFunc::GreaterEqual, GL_GEQUAL }
 };
 
+static const std::unordered_map<Format, GLenum> TextureInternalFormatMap = {
+	{ Format::Float1, GL_R32F },
+	{ Format::Float2, GL_RG32F },
+	{ Format::Float3, GL_RGB32F },
+	{ Format::Float4, GL_RGBA32F },
+	{ Format::Byte1, GL_R8 },
+	{ Format::Byte2, GL_RG8 },
+	{ Format::Byte3, GL_RGB8 },
+	{ Format::Byte4, GL_RGBA8 }
+};
+
+static const std::unordered_map<Format, GLenum> TextureFormatMap = {
+	{ Format::Float1, GL_R },
+	{ Format::Float2, GL_RG },
+	{ Format::Float3, GL_RGB },
+	{ Format::Float4, GL_RGBA },
+	{ Format::Byte1, GL_R },
+	{ Format::Byte2, GL_RG },
+	{ Format::Byte3, GL_RGB },
+	{ Format::Byte4, GL_RGBA }
+};
+
 class ShaderGL
 {
 private:
-	Vertex::Layout mLayout;
+	VertexLayout mVertexLayout;
 	GLuint mProgram;
 	GLuint mVao;
 	ShaderReflection mVertRefl;
@@ -166,10 +189,10 @@ private:
 	} options;
 
 public:
-	ShaderGL(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
-		std::vector<std::string> defines) : mLayout(layout)
+	ShaderGL(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
+		std::vector<std::string> defines) : mVertexLayout(vertex_layout)
 	{
-		AddShaderLocationDefines(layout, defines);
+		AddShaderLocationDefines(vertex_layout, defines);
 		defines.push_back("FLIP_TEXCOORD_Y");
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
@@ -262,9 +285,9 @@ public:
 		glGenVertexArrays(1, &mVao);
 		glBindVertexArray(mVao);
 
-		for (int i = 0; i < layout.attributes.size(); i++)
+		for (int i = 0; i < vertex_layout.attributes.size(); i++)
 		{
-			const auto& attrib = layout.attributes.at(i);
+			const auto& attrib = vertex_layout.attributes.at(i);
 
 			glEnableVertexAttribArray(i);
 #if defined(SKYGFX_PLATFORM_WINDOWS)
@@ -360,7 +383,7 @@ private:
 	uint32_t mHeight = 0;
 
 public:
-	TextureGL(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+	TextureGL(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
 		mMipmap(mipmap),
 		mWidth(width),
 		mHeight(height)
@@ -369,12 +392,20 @@ public:
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
 		glGenTextures(1, &mTexture);
 		glBindTexture(GL_TEXTURE_2D, mTexture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+		auto internal_format = TextureInternalFormatMap.at(format);
+		auto texture_format = TextureFormatMap.at(format);
+		auto texture_type = TypeMap.at(format);
+
+		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, texture_type, nullptr);
 		
 		if (memory)
 		{
-			auto temp_data = malloc(width * height * 4); // TODO: we should not use magic numbers
-			const auto row_size = width * 4;
+			auto channels_count = GetFormatChannelsCount(format);
+			auto channel_size = GetFormatChannelSize(format);
+
+			auto temp_data = malloc(width * height * channels_count * channel_size);
+			const auto row_size = width * channels_count * channel_size;
 
 			for (size_t i = 0; i < (size_t)height; i++)
 			{
@@ -385,7 +416,7 @@ public:
 			}
 
 			glBindTexture(GL_TEXTURE_2D, mTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, temp_data);
+			glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, texture_type, temp_data);
 			free(temp_data);
 			
 			if (mipmap)
@@ -1089,9 +1120,9 @@ void BackendGL::present()
 	gExecuteAfterPresent.flush();
 }
 
-TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
 {
-	auto texture = new TextureGL(width, height, channels, memory, mipmap);
+	auto texture = new TextureGL(width, height, format, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
@@ -1114,10 +1145,10 @@ void BackendGL::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendGL::createShader(const Vertex::Layout& layout, const std::string& vertex_code, 
+ShaderHandle* BackendGL::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderGL(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderGL(vertex_layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

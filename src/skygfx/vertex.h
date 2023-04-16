@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <glm/glm.hpp>
+#include "skygfx.h"
 
 namespace skygfx::Vertex
 {
@@ -15,38 +16,13 @@ namespace skygfx::Vertex
 		constexpr auto Normal = "NORMAL_LOCATION";
 	};
 
-	struct Attribute
-	{
-		enum class Format
-		{
-			Float1,
-			Float2,
-			Float3,
-			Float4,
-			Byte1,
-			Byte2,
-			Byte3,
-			Byte4
-		};
-
-		std::optional<std::string> location_define;
-		Format format;
-		size_t offset;
-	};
-
-	struct Layout
-	{
-		size_t stride;
-		std::vector<Attribute> attributes;
-	};
-
 	// predefined vertex types:
 
 	struct Position
 	{
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
 
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 
 	struct PositionColor
@@ -54,7 +30,7 @@ namespace skygfx::Vertex
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
 		glm::vec4 color = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 
 	struct PositionTexture 
@@ -62,7 +38,7 @@ namespace skygfx::Vertex
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
 		glm::vec2 texcoord = { 0.0f, 0.0f };
 	
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 
 	struct PositionNormal
@@ -70,7 +46,7 @@ namespace skygfx::Vertex
 		glm::vec3 pos = { 0.0f, 0.0f, 0.0f };
 		glm::vec3 normal = { 0.0f, 0.0f, 0.0f };
 
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 
 	struct PositionColorNormal
@@ -79,7 +55,7 @@ namespace skygfx::Vertex
 		glm::vec4 color = { 0.0f, 0.0f, 0.0f, 0.0f };
 		glm::vec3 normal = { 0.0f, 0.0f, 0.0f };
 
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 
 	struct PositionColorTexture
@@ -88,7 +64,7 @@ namespace skygfx::Vertex
 		glm::vec4 color = { 0.0f, 0.0f, 0.0f, 0.0f };
 		glm::vec2 texcoord = { 0.0f, 0.0f };
 
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 
 	struct PositionTextureNormal
@@ -97,7 +73,7 @@ namespace skygfx::Vertex
 		glm::vec2 texcoord = { 0.0f, 0.0f };
 		glm::vec3 normal = { 0.0f, 0.0f, 0.0f };
 
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 
 	struct PositionColorTextureNormal
@@ -107,6 +83,6 @@ namespace skygfx::Vertex
 		glm::vec2 texcoord = { 0.0f, 0.0f };
 		glm::vec3 normal = { 0.0f, 0.0f, 0.0f };
 
-		static const Layout Layout;
+		static const VertexLayout Layout;
 	};
 }

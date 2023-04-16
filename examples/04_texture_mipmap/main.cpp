@@ -1,4 +1,5 @@
 #include <skygfx/skygfx.h>
+#include <skygfx/vertex.h>
 #include "../utils/utils.h"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -77,10 +78,9 @@ int main()
 
 	int tex_width = 0;
 	int tex_height = 0;
-	int tex_channels = 4;
-	void* tex_memory = stbi_load("assets/bricks.jpg", &tex_width, &tex_height, nullptr, tex_channels);
+	void* tex_memory = stbi_load("assets/bricks.jpg", &tex_width, &tex_height, nullptr, 4);
 
-	auto texture = skygfx::Texture(tex_width, tex_height, tex_channels, tex_memory, true);
+	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::Format::Byte4, tex_memory, true);
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);

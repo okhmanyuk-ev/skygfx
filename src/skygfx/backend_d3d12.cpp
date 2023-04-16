@@ -2,6 +2,7 @@
 
 #ifdef SKYGFX_HAS_D3D12
 
+#include "shader_compiler.h"
 #include <stdexcept>
 #include <unordered_set>
 
@@ -54,7 +55,9 @@ struct PipelineStateD3D12
 	std::optional<DepthMode> depth_mode;
 	BlendMode blend_mode = BlendStates::Opaque;
 	TopologyKind topology_kind = TopologyKind::Triangles;
-	
+	DXGI_FORMAT color_attachment_format;
+	DXGI_FORMAT depth_stencil_format;
+
 	bool operator==(const PipelineStateD3D12& value) const
 	{
 		return 
@@ -62,7 +65,9 @@ struct PipelineStateD3D12
 			rasterizer_state == value.rasterizer_state &&
 			depth_mode == value.depth_mode &&
 			blend_mode == value.blend_mode &&
-			topology_kind == value.topology_kind;
+			topology_kind == value.topology_kind &&
+			color_attachment_format == value.color_attachment_format &&
+			depth_stencil_format == value.depth_stencil_format;
 	}
 };
 
@@ -71,7 +76,9 @@ SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
 	t.rasterizer_state,
 	t.depth_mode,
 	t.blend_mode,
-	t.topology_kind);
+	t.topology_kind,
+	t.color_attachment_format,
+	t.depth_stencil_format);
 
 static int const NUM_BACK_BUFFERS = 2;
 
@@ -99,6 +106,9 @@ static struct
 	ComPtr<ID3D12DescriptorHeap> dsv_heap;
 	ComPtr<ID3D12Resource> depth_stencil_resource;
 } gMainRenderTarget;
+
+const static DXGI_FORMAT MainRenderTargetColorAttachmentFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+const static DXGI_FORMAT MainRenderTargetDepthStencilAttachmentFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
 static UINT gFrameIndex = 0;
 static HANDLE gFenceEvent = NULL;
@@ -133,6 +143,17 @@ static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
 
 static std::vector<ComPtr<ID3D12DeviceChild>> gStagingObjects;
+
+static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
+	{ Format::Float1, DXGI_FORMAT_R32_FLOAT },
+	{ Format::Float2, DXGI_FORMAT_R32G32_FLOAT },
+	{ Format::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
+	{ Format::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
+	{ Format::Byte1, DXGI_FORMAT_R8_UNORM },
+	{ Format::Byte2, DXGI_FORMAT_R8G8_UNORM },
+	//	{ Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
+	{ Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
+};
 
 void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12GraphicsCommandList*)> func)
 {
@@ -177,18 +198,18 @@ public:
 
 private:
 	ComPtr<ID3D12RootSignature> mRootSignature;
-	std::map<uint32_t, ShaderReflection::Descriptor> mRequiredDescriptorBindings;
-	std::map<ShaderStage, std::map<uint32_t/*set*/, std::set<uint32_t>/*bindings*/>> mRequiredDescriptorSets;
-	std::map<uint32_t, uint32_t> mBindingToRootIndexMap;
+	std::unordered_map<uint32_t, ShaderReflection::Descriptor> mRequiredDescriptorBindings;
+	std::unordered_map<ShaderStage, std::unordered_map<uint32_t/*set*/, std::unordered_set<uint32_t>/*bindings*/>> mRequiredDescriptorSets;
+	std::unordered_map<uint32_t, uint32_t> mBindingToRootIndexMap;
 	ComPtr<ID3DBlob> mVertexShaderBlob;
 	ComPtr<ID3DBlob> mPixelShaderBlob;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInput;
 
 public:
-	ShaderD3D12(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderD3D12(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		AddShaderLocationDefines(layout, defines);
+		AddShaderLocationDefines(vertex_layout, defines);
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
@@ -225,22 +246,11 @@ public:
 		if (mPixelShaderBlob == NULL)
 			throw std::runtime_error(pixel_shader_error_string);
 
-		static const std::unordered_map<Vertex::Attribute::Format, DXGI_FORMAT> Format = {
-			{ Vertex::Attribute::Format::Float1, DXGI_FORMAT_R32_FLOAT },
-			{ Vertex::Attribute::Format::Float2, DXGI_FORMAT_R32G32_FLOAT },
-			{ Vertex::Attribute::Format::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
-			{ Vertex::Attribute::Format::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
-			{ Vertex::Attribute::Format::Byte1, DXGI_FORMAT_R8_UNORM },
-			{ Vertex::Attribute::Format::Byte2, DXGI_FORMAT_R8G8_UNORM },
-			//	{ Vertex::Attribute::Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
-			{ Vertex::Attribute::Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
-		};
-
 		UINT i = 0;
 
-		for (auto& attrib : layout.attributes)
+		for (auto& attrib : vertex_layout.attributes)
 		{
-			mInput.push_back({ "TEXCOORD", i, Format.at(attrib.format), 0,
+			mInput.push_back({ "TEXCOORD", i, FormatMap.at(attrib.format), 0,
 				static_cast<UINT>(attrib.offset), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
 			i++;
 		}
@@ -311,6 +321,7 @@ public:
 	auto isMipmap() const { return mMipmap; }
 	const auto& getD3D12Texture() const { return mTexture; }
 	auto getGpuDescriptorHandle() const { return mGpuDescriptorHandle; }
+	auto getFormat() const { return mFormat; }
 
 private:
 	uint32_t mWidth;
@@ -318,15 +329,15 @@ private:
 	bool mMipmap;
 	ComPtr<ID3D12Resource> mTexture;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mGpuDescriptorHandle;
+	DXGI_FORMAT mFormat;
 	
 public:
-	TextureD3D12(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+	TextureD3D12(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
 		mWidth(width),
 		mHeight(height),
-		mMipmap(mipmap)
+		mMipmap(mipmap),
+		mFormat(FormatMap.at(format))
 	{
-		const auto format = DXGI_FORMAT_R8G8B8A8_UNORM;
-
 		uint32_t mip_levels = 1;
 
 		if (mipmap)
@@ -335,7 +346,7 @@ public:
 		}
 
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(format, width, height, 1, (UINT16)mip_levels);
+		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(mFormat, width, height, 1, (UINT16)mip_levels);
 
 		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
@@ -360,10 +371,13 @@ public:
 			gDevice->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
 				D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
 
+			auto channels = GetFormatChannelsCount(format);
+			auto channel_size = GetFormatChannelSize(format);
+
 			D3D12_SUBRESOURCE_DATA subersource_data = {};
 			subersource_data.pData = memory;
-			subersource_data.RowPitch = width * channels;
-			subersource_data.SlicePitch = width * height * channels;
+			subersource_data.RowPitch = width * channels * channel_size;
+			subersource_data.SlicePitch = width * height * channels * channel_size;
 
 			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
 				auto barrier = ScopedBarrier(cmdlist, { 
@@ -392,7 +406,8 @@ public:
 	const auto& getRtvHeap() const { return mRtvHeap; }
 	const auto& getDsvHeap() const { return mDsvHeap; }
 	const auto& getDepthStencilRecource() const { return mDepthStencilResource; }
-	const auto& getTexture() const { return *mTexture; }
+	auto getTexture() const { return mTexture; }
+	auto getDepthStencilFormat() const { return MainRenderTargetDepthStencilAttachmentFormat; }
 
 private:
 	ComPtr<ID3D12DescriptorHeap> mRtvHeap;
@@ -412,7 +427,7 @@ public:
 			mRtvHeap->GetCPUDescriptorHandleForHeapStart());
 
 		auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-		auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT,
+		auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(getDepthStencilFormat(),
 			(UINT64)width, (UINT)height, 1, 1);
 
 		depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
@@ -640,7 +655,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	swapchain_desc.BufferCount = NUM_BACK_BUFFERS;
 	swapchain_desc.Width = width;
 	swapchain_desc.Height = height;
-	swapchain_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	swapchain_desc.Format = MainRenderTargetColorAttachmentFormat;
 	swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchain_desc.SampleDesc.Count = 1;
 	swapchain_desc.SampleDesc.Quality = 0;
@@ -690,7 +705,7 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 	}
 
 	auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-	auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT, 
+	auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(MainRenderTargetDepthStencilAttachmentFormat,
 		(UINT64)width, (UINT)height, 1, 1);
 
 	depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
@@ -726,7 +741,7 @@ void BackendD3D12::resize(uint32_t width, uint32_t height)
 	end();
 	WaitForGpu();
 	destroyMainRenderTarget();
-	gSwapChain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+	gSwapChain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, MainRenderTargetColorAttachmentFormat, 0);
 	createMainRenderTarget(width, height);
 	begin();
 
@@ -776,6 +791,8 @@ void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 	if (gRenderTarget == render_target)
 		return;
 
+	gPipelineState.color_attachment_format = render_target->getTexture()->getFormat();
+	gPipelineState.depth_stencil_format = render_target->getDepthStencilFormat();
 	gRenderTarget = render_target;
 
 	if (!gViewport.has_value())
@@ -790,6 +807,8 @@ void BackendD3D12::setRenderTarget(std::nullopt_t value)
 	if (gRenderTarget == nullptr)
 		return;
 
+	gPipelineState.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gPipelineState.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
 	gRenderTarget = nullptr;
 
 	if (!gViewport.has_value())
@@ -912,7 +931,7 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		return;
 
 	auto rtv_resource = gRenderTarget ? 
-		gRenderTarget->getTexture().getD3D12Texture() :
+		gRenderTarget->getTexture()->getD3D12Texture() :
 		gMainRenderTarget.frames[gFrameIndex].resource;
 
 	auto desc = rtv_resource->GetDesc();
@@ -1094,8 +1113,8 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		pso_desc.pRootSignature = shader->getRootSignature().Get();
 		pso_desc.SampleMask = UINT_MAX;
 		pso_desc.NumRenderTargets = 1;
-		pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-		pso_desc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		pso_desc.RTVFormats[0] = gPipelineState.color_attachment_format;
+		pso_desc.DSVFormat = gPipelineState.depth_stencil_format;
 		pso_desc.SampleDesc.Count = 1;
 		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 		pso_desc.RasterizerState = rasterizer_state;
@@ -1157,8 +1176,8 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		}
 		else
 		{
-			width = static_cast<float>(gRenderTarget->getTexture().getWidth());
-			height = static_cast<float>(gRenderTarget->getTexture().getHeight());
+			width = static_cast<float>(gRenderTarget->getTexture()->getWidth());
+			height = static_cast<float>(gRenderTarget->getTexture()->getHeight());
 		}
 
 		if (gViewportDirty)
@@ -1272,9 +1291,9 @@ void BackendD3D12::end()
 	gCommandQueue->ExecuteCommandLists(1, CommandListCast(gCommandList.GetAddressOf()));
 }
 
-TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
 {
-	auto texture = new TextureD3D12(width, height, channels, memory, mipmap);
+	auto texture = new TextureD3D12(width, height, format, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
@@ -1301,10 +1320,10 @@ void BackendD3D12::destroyRenderTarget(RenderTargetHandle* handle)
 	});
 }
 
-ShaderHandle* BackendD3D12::createShader(const Vertex::Layout& layout, const std::string& vertex_code,
+ShaderHandle* BackendD3D12::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderD3D12(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderD3D12(vertex_layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

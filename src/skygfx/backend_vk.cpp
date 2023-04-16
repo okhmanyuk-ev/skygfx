@@ -2,6 +2,7 @@
 
 #ifdef SKYGFX_HAS_VULKAN
 
+#include "shader_compiler.h"
 #include <vulkan/vulkan_raii.hpp>
 #include <iostream>
 
@@ -318,6 +319,17 @@ static void EndRenderPass();
 static void EnsureRenderPassActivated();
 static void EnsureRenderPassDeactivated();
 
+static const std::unordered_map<Format, vk::Format> FormatMap = {
+	{ Format::Float1, vk::Format::eR32Sfloat },
+	{ Format::Float2, vk::Format::eR32G32Sfloat },
+	{ Format::Float3, vk::Format::eR32G32B32Sfloat },
+	{ Format::Float4, vk::Format::eR32G32B32A32Sfloat },
+	{ Format::Byte1, vk::Format::eR8Unorm },
+	{ Format::Byte2, vk::Format::eR8G8Unorm },
+	{ Format::Byte3, vk::Format::eR8G8B8Unorm },
+	{ Format::Byte4, vk::Format::eR8G8B8A8Unorm }
+};
+
 const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 	{ ComparisonFunc::Always, vk::CompareOp::eAlways },
 	{ ComparisonFunc::Never, vk::CompareOp::eNever },
@@ -415,10 +427,10 @@ private:
 	std::vector<vk::DescriptorSetLayoutBinding> mRequiredDescriptorBindings;
 
 public:
-	ShaderVK(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderVK(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		AddShaderLocationDefines(layout, defines);
+		AddShaderLocationDefines(vertex_layout, defines);
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
@@ -435,30 +447,19 @@ public:
 		mVertexShaderModule = gDevice.createShaderModule(vertex_shader_module_create_info);
 		mFragmentShaderModule = gDevice.createShaderModule(fragment_shader_module_create_info);
 
-		static const std::unordered_map<Vertex::Attribute::Format, vk::Format> Format = {
-			{ Vertex::Attribute::Format::Float1, vk::Format::eR32Sfloat },
-			{ Vertex::Attribute::Format::Float2, vk::Format::eR32G32Sfloat },
-			{ Vertex::Attribute::Format::Float3, vk::Format::eR32G32B32Sfloat },
-			{ Vertex::Attribute::Format::Float4, vk::Format::eR32G32B32A32Sfloat },
-			{ Vertex::Attribute::Format::Byte1, vk::Format::eR8Unorm },
-			{ Vertex::Attribute::Format::Byte2, vk::Format::eR8G8Unorm },
-			{ Vertex::Attribute::Format::Byte3, vk::Format::eR8G8B8Unorm },
-			{ Vertex::Attribute::Format::Byte4, vk::Format::eR8G8B8A8Unorm }
-		};
-
 		mVertexInputBindingDescription = vk::VertexInputBindingDescription()
-			.setStride(static_cast<uint32_t>(layout.stride))
+			.setStride(static_cast<uint32_t>(vertex_layout.stride))
 			.setInputRate(vk::VertexInputRate::eVertex)
 			.setBinding(0);
 
-		for (int i = 0; i < layout.attributes.size(); i++)
+		for (int i = 0; i < vertex_layout.attributes.size(); i++)
 		{
-			const auto& attrib = layout.attributes.at(i);
+			const auto& attrib = vertex_layout.attributes.at(i);
 
 			auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
 				.setBinding(0)
 				.setLocation(i)
-				.setFormat(Format.at(attrib.format))
+				.setFormat(FormatMap.at(attrib.format))
 				.setOffset(static_cast<uint32_t>(attrib.offset));
 
 			mVertexInputAttributeDescriptions.push_back(vertex_input_attribute_description);
@@ -515,7 +516,7 @@ public:
 	const auto& getImage() const { return mImage; }
 	const auto& getImageView() const { return mImageView; }
 	const auto& getDeviceMemory() const { return mDeviceMemory; }
-	auto getFormat() const { return vk::Format::eR8G8B8A8Unorm; }
+	auto getFormat() const { return mFormat; }
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
 
@@ -525,11 +526,13 @@ private:
 	vk::raii::DeviceMemory mDeviceMemory = nullptr;
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
+	vk::Format mFormat;
 
 public:
-	TextureVK(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+	TextureVK(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
 		mWidth(width),
-		mHeight(height)
+		mHeight(height),
+		mFormat(FormatMap.at(format))
 	{
 		uint32_t mip_levels = 1;
 
@@ -540,7 +543,7 @@ public:
 
 		auto image_create_info = vk::ImageCreateInfo()
 			.setImageType(vk::ImageType::e2D)
-			.setFormat(getFormat())
+			.setFormat(mFormat)
 			.setExtent({ width, height, 1 })
 			.setMipLevels(mip_levels)
 			.setArrayLayers(1)
@@ -577,7 +580,7 @@ public:
 		auto image_view_create_info = vk::ImageViewCreateInfo()
 			.setImage(*mImage)
 			.setViewType(vk::ImageViewType::e2D)
-			.setFormat(vk::Format::eR8G8B8A8Unorm)
+			.setFormat(mFormat)
 			.setSubresourceRange(image_subresource_range);
 
 		mImageView = gDevice.createImageView(image_view_create_info);
@@ -589,7 +592,10 @@ public:
 
 		if (memory)
 		{
-			auto size = width * height * channels;
+			auto channels = GetFormatChannelsCount(format);
+			auto channel_size = GetFormatChannelSize(format);
+
+			auto size = width * height * channels * channel_size;
 
 			auto [upload_buffer, upload_buffer_memory] = CreateBuffer(size);
 
@@ -2145,9 +2151,9 @@ void BackendVK::end()
 	gQueue.waitIdle();
 }
 
-TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap)
+TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
 {
-	auto texture = new TextureVK(width, height, channels, memory, mipmap);
+	auto texture = new TextureVK(width, height, format, memory, mipmap);
 	return (TextureHandle*)texture;
 }
 
@@ -2188,10 +2194,10 @@ void BackendVK::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendVK::createShader(const Vertex::Layout& layout, const std::string& vertex_code,
+ShaderHandle* BackendVK::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderVK(layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderVK(vertex_layout, vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

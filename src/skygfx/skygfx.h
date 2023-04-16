@@ -14,8 +14,6 @@
 #include <unordered_map>
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
-#include "vertex.h"
-#include "shader_compiler.h"
 #include "other.h"
 
 namespace skygfx
@@ -32,6 +30,40 @@ namespace skygfx
 	enum class Feature
 	{
 		Raytracing
+	};
+
+	enum class Format
+	{
+		Float1,
+		Float2,
+		Float3,
+		Float4,
+		Byte1,
+		Byte2,
+		Byte3,
+		Byte4
+	};
+
+	enum class ShaderStage
+	{
+		Vertex,
+		Fragment,
+		Raygen,
+		Miss,
+		ClosestHit
+	};
+
+	struct VertexAttribute
+	{
+		std::optional<std::string> location_define;
+		Format format;
+		size_t offset;
+	};
+
+	struct VertexLayout
+	{
+		size_t stride;
+		std::vector<VertexAttribute> attributes;
 	};
 
 	using TextureHandle = struct TextureHandle;
@@ -56,7 +88,7 @@ namespace skygfx
 	class Texture : private noncopyable
 	{
 	public:
-		Texture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap = false);
+		Texture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap = false);
 		Texture(Texture&& other) noexcept;
 		virtual ~Texture();
 
@@ -71,12 +103,13 @@ namespace skygfx
 		TextureHandle* mTextureHandle = nullptr;
 		uint32_t mWidth = 0;
 		uint32_t mHeight = 0;
+		Format mFormat;
 	};
 
 	class RenderTarget : public Texture
 	{
 	public:
-		RenderTarget(uint32_t width, uint32_t height);
+		RenderTarget(uint32_t width, uint32_t height, Format format = Format::Float4);
 		RenderTarget(RenderTarget&& other) noexcept;
 		~RenderTarget();
 
@@ -91,7 +124,7 @@ namespace skygfx
 	class Shader : private noncopyable
 	{
 	public:
-		Shader(const Vertex::Layout& layout, const std::string& vertex_code, 
+		Shader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines = {});
 		virtual ~Shader();
 
@@ -255,7 +288,7 @@ namespace skygfx
 
 	inline TopologyKind GetTopologyKind(Topology topology)
 	{
-		static const std::map<Topology, TopologyKind> TopologyKindMap = {
+		static const std::unordered_map<Topology, TopologyKind> TopologyKindMap = {
 			{ Topology::PointList, TopologyKind::Points },
 			{ Topology::LineList, TopologyKind::Lines},
 			{ Topology::LineStrip, TopologyKind::Lines },
@@ -263,6 +296,36 @@ namespace skygfx
 			{ Topology::TriangleStrip, TopologyKind::Triangles }
 		};
 		return TopologyKindMap.at(topology);
+	}
+
+	inline uint32_t GetFormatChannelsCount(Format format)
+	{
+		static const std::unordered_map<Format, uint32_t> FormatChannelsMap = {
+			{ Format::Float1, 1 },
+			{ Format::Float2, 2 },
+			{ Format::Float3, 3 },
+			{ Format::Float4, 4 },
+			{ Format::Byte1, 1 },
+			{ Format::Byte2, 2 },
+			{ Format::Byte3, 3 },
+			{ Format::Byte4, 4 }
+		};
+		return FormatChannelsMap.at(format);
+	}
+
+	inline uint32_t GetFormatChannelSize(Format format)
+	{
+		static const std::unordered_map<Format, uint32_t> FormatChannelSizeMap = {
+			{ Format::Float1, 4 },
+			{ Format::Float2, 4 },
+			{ Format::Float3, 4 },
+			{ Format::Float4, 4 },
+			{ Format::Byte1, 1 },
+			{ Format::Byte2, 1 },
+			{ Format::Byte3, 1 },
+			{ Format::Byte4, 1 }
+		};
+		return FormatChannelSizeMap.at(format);
 	}
 
 	struct Viewport

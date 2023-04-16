@@ -17,7 +17,7 @@ namespace utils
 {
 	skygfx::BackendType ChooseBackendTypeViaConsole(std::unordered_set<skygfx::Feature> features = {})
 	{
-		static const std::map<skygfx::BackendType, std::string> backend_names = {
+		static const std::unordered_map<skygfx::BackendType, std::string> backend_names = {
 			{ skygfx::BackendType::D3D11, "D3D11" },
 			{ skygfx::BackendType::D3D12, "D3D12" },
 			{ skygfx::BackendType::OpenGL, "OpenGL" },

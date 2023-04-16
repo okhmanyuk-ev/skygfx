@@ -19,11 +19,12 @@ static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
 
 // texture
 
-Texture::Texture(uint32_t width, uint32_t height, uint32_t channels, void* memory, bool mipmap) :
+Texture::Texture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
 	mWidth(width),
-	mHeight(height)
+	mHeight(height),
+	mFormat(format)
 {
-	mTextureHandle = gBackend->createTexture(width, height, channels, memory, mipmap);
+	mTextureHandle = gBackend->createTexture(width, height, format, memory, mipmap);
 }
 
 Texture::Texture(Texture&& other) noexcept
@@ -31,6 +32,7 @@ Texture::Texture(Texture&& other) noexcept
 	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
 	mWidth = std::exchange(other.mWidth, 0);
 	mHeight = std::exchange(other.mHeight, 0);
+	mFormat = other.mFormat;
 }
 
 Texture::~Texture()
@@ -50,11 +52,12 @@ Texture& Texture::operator=(Texture&& other) noexcept
 	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
 	mWidth = std::exchange(other.mWidth, 0);
 	mHeight = std::exchange(other.mHeight, 0);
+	mFormat = other.mFormat;
 
 	return *this;
 }
 
-RenderTarget::RenderTarget(uint32_t width, uint32_t height) : Texture(width, height, 4, nullptr)
+RenderTarget::RenderTarget(uint32_t width, uint32_t height, Format format) : Texture(width, height, format, nullptr)
 {
 	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
 }
@@ -87,9 +90,9 @@ RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept
 
 // shader
 
-Shader::Shader(const Vertex::Layout& layout, const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines)
+Shader::Shader(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	mShaderHandle = gBackend->createShader(layout, vertex_code, fragment_code, defines);
+	mShaderHandle = gBackend->createShader(vertex_layout, vertex_code, fragment_code, defines);
 }
 
 Shader::~Shader()

@@ -690,7 +690,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 				if (textures_dirty)
 				{
 					uint32_t white_pixel = 0xFFFFFFFF;
-					static auto white_pixel_texture = Texture(1, 1, 4, &white_pixel);
+					static auto white_pixel_texture = Texture(1, 1, skygfx::Format::Byte4, &white_pixel);
 
 					const auto& _color_texture = color_texture != nullptr ? *color_texture : white_pixel_texture;
 					const auto& _normal_texture = normal_texture != nullptr ? *normal_texture : white_pixel_texture;

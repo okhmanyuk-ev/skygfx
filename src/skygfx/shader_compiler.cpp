@@ -244,11 +244,11 @@ std::string skygfx::CompileSpirvToMsl(const std::vector<uint32_t>& spirv)
 	return compiler.compile();
 }
 
-void skygfx::AddShaderLocationDefines(const Vertex::Layout& layout, std::vector<std::string>& defines)
+void skygfx::AddShaderLocationDefines(const VertexLayout& vertex_layout, std::vector<std::string>& defines)
 {
-	for (int i = 0; i < layout.attributes.size(); i++)
+	for (int i = 0; i < vertex_layout.attributes.size(); i++)
 	{
-		const auto& attrib = layout.attributes.at(i);
+		const auto& attrib = vertex_layout.attributes.at(i);
 		
 		if (!attrib.location_define.has_value())
 			continue;

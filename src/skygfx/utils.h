@@ -1,6 +1,7 @@
 #pragma once
 
 #include "skygfx.h"
+#include "vertex.h"
 
 namespace skygfx::utils
 {
@@ -272,8 +273,8 @@ namespace skygfx::utils
 			std::optional<RenderTarget> mBrightTarget;
 			std::vector<RenderTarget> mTexChain;
 			std::optional<glm::u32vec2> mPrevSize;
-			float mBrightThreshold = 0.99f;
-			float mIntensity = 1.0f;
+			float mBrightThreshold = 1.0f;
+			float mIntensity = 2.0f;
 		};
 
 		class Grayscale : public Pass
