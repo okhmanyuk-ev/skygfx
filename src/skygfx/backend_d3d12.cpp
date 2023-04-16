@@ -678,10 +678,12 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	gFenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	assert(gFenceEvent != NULL);
 	
+	gPipelineState.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gPipelineState.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
+
 	createMainRenderTarget(width, height);
 
 	begin();
-	setRenderTarget(std::nullopt);
 }
 
 BackendD3D12::~BackendD3D12()
