@@ -2326,7 +2326,9 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 	auto buffer = (VertexBufferVK*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
-	gContext->vertex_buffer_dirty = true;
+
+	if (gContext->vertex_buffer == buffer)
+		gContext->vertex_buffer_dirty = true;
 }
 
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
@@ -2348,7 +2350,9 @@ void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 	auto buffer = (IndexBufferVK*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
-	gContext->index_buffer_dirty = true;
+
+	if (gContext->index_buffer == buffer)
+		gContext->index_buffer_dirty = true;
 }
 
 UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
