@@ -154,6 +154,8 @@ static RenderTargetVK* gRenderTarget = nullptr;
 static BlendMode gBlendMode = BlendStates::AlphaBlend;
 static bool gBlendModeDirty = true;
 
+static bool gBuffersSynchronized = false;
+
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
 	auto prop = gPhysicalDevice.getMemoryProperties();
@@ -755,6 +757,23 @@ public:
 			.setSize(size);
 
 		EnsureRenderPassDeactivated();
+
+		if (gBuffersSynchronized)
+		{
+			auto memory_barrier = vk::MemoryBarrier2()
+				.setSrcStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
+				.setSrcAccessMask(vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite)
+				.setDstStageMask(vk::PipelineStageFlagBits2::eTransfer)
+				.setDstAccessMask(vk::AccessFlagBits2::eMemoryWrite);
+
+			auto dependency_info = vk::DependencyInfo()
+				.setMemoryBarrierCount(1)
+				.setPMemoryBarriers(&memory_barrier);
+
+			gCommandBuffer.pipelineBarrier2(dependency_info);
+
+			gBuffersSynchronized = false;
+		}
 
 		gCommandBuffer.copyBuffer(*staging_buffer, *mBuffer, { region });
 
@@ -1361,6 +1380,23 @@ static void PrepareForDrawing()
 
 		gDepthModeDirty = false;
 	}
+
+	if (!gBuffersSynchronized)
+	{
+		auto memory_barrier = vk::MemoryBarrier2()
+			.setSrcStageMask(vk::PipelineStageFlagBits2::eTransfer)
+			.setSrcAccessMask(vk::AccessFlagBits2::eMemoryWrite)
+			.setDstStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
+			.setDstAccessMask(vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite);
+
+		auto dependency_info = vk::DependencyInfo()
+			.setMemoryBarrierCount(1)
+			.setPMemoryBarriers(&memory_barrier);
+
+		gCommandBuffer.pipelineBarrier2(dependency_info);
+
+		gBuffersSynchronized = true;
+	}
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -1640,6 +1676,8 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	gPipelineState.color_attachment_format = gSurfaceFormat.format;
 	gPipelineState.depth_stencil_format = gDepthStencil.format;
+
+	gBuffersSynchronized = false;
 
 	createSwapchain(width, height);
 
