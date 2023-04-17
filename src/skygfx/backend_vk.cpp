@@ -97,8 +97,6 @@ struct ContextVK
 	uint32_t width = 0;
 	uint32_t height = 0;
 
-	const uint32_t min_image_count = 2; // TODO: https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
-
 	ExecuteList execute_after_present;
 
 	using StagingObject = std::variant<
@@ -550,7 +548,7 @@ public:
 	{
 		uint32_t mip_levels = 1;
 
-		if (mipmap)
+		if (mipmap && memory)
 		{
 			mip_levels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
 		}
@@ -1307,6 +1305,24 @@ static void PrepareForDrawing()
 		auto rect = vk::Rect2D()
 			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
 			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
+
+		if (rect.offset.x < 0)
+		{
+			rect.extent.width -= rect.offset.x;
+			rect.offset.x = 0;
+		}
+
+		if (rect.offset.y < 0)
+		{
+			rect.extent.height -= rect.offset.y;
+			rect.offset.y = 0;
+		}
+
+		if (rect.extent.width < 0)
+			rect.extent.width = 0;
+
+		if (rect.extent.height < 0)
+			rect.extent.height = 0;
 
 		gContext->command_buffer.setScissor(0, { rect });
 		gContext->scissor_dirty = false;
@@ -2310,6 +2326,7 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 	auto buffer = (VertexBufferVK*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
+	gContext->vertex_buffer_dirty = true;
 }
 
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
@@ -2331,6 +2348,7 @@ void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 	auto buffer = (IndexBufferVK*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
+	gContext->index_buffer_dirty = true;
 }
 
 UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
@@ -2402,15 +2420,37 @@ void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle
 
 void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 {
-	gContext->width = width;
-	gContext->height = height;
+	auto surface_capabilities = gContext->physical_device.getSurfaceCapabilitiesKHR(*gContext->surface);
+
+	// https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
+	// Determine the number of VkImage's to use in the swap chain (we desire to
+	// own only 1 image at a time, besides the images being displayed and
+	// queued for display):
+	
+	uint32_t desired_number_of_swapchain_images = surface_capabilities.minImageCount + 1;
+
+	if ((surface_capabilities.maxImageCount > 0) && (desired_number_of_swapchain_images > surface_capabilities.maxImageCount))
+	{
+		// Application must settle for fewer images than desired:
+		desired_number_of_swapchain_images = surface_capabilities.maxImageCount;
+	}
+
+	auto max_width = surface_capabilities.maxImageExtent.width;
+	auto max_height = surface_capabilities.maxImageExtent.height;
+
+	gContext->width = glm::min(width, max_width);
+	gContext->height = glm::min(height, max_height);
+
+	auto image_extent = vk::Extent2D()
+		.setWidth(gContext->width)
+		.setHeight(gContext->height);
 
 	auto swapchain_info = vk::SwapchainCreateInfoKHR()
 		.setSurface(*gContext->surface)
-		.setMinImageCount(gContext->min_image_count)
+		.setMinImageCount(desired_number_of_swapchain_images)
 		.setImageFormat(gContext->surface_format.format)
 		.setImageColorSpace(gContext->surface_format.colorSpace)
-		.setImageExtent({ width, height })
+		.setImageExtent(image_extent)
 		.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
 		.setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
 		.setImageArrayLayers(1)
