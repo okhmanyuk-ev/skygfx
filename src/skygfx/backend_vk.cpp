@@ -68,97 +68,109 @@ SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 	t.sampler,
 	t.texture_address);
 
-static vk::raii::Context* gContext = nullptr;
-static vk::raii::Instance gInstance = nullptr;
-static vk::raii::DebugUtilsMessengerEXT gDebugUtilsMessenger = nullptr;
-static vk::raii::PhysicalDevice gPhysicalDevice = nullptr;
-static vk::raii::Queue gQueue = nullptr;
-static vk::raii::Device gDevice = nullptr;
-static uint32_t gQueueFamilyIndex = -1;
-static vk::SurfaceFormatKHR gSurfaceFormat;
-static vk::raii::SurfaceKHR gSurface = nullptr;
-static vk::raii::SwapchainKHR gSwapchain = nullptr;
-static vk::raii::CommandPool gCommandPool = nullptr;
-static vk::raii::CommandBuffer gCommandBuffer = nullptr;
-static bool gWorking = false;
-static uint32_t gWidth = 0;
-static uint32_t gHeight = 0;
-static const uint32_t gMinImageCount = 2; // TODO: https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
-static ExecuteList gExecuteAfterPresent;
-
-using StagingObjectVK = std::variant<
-	vk::raii::Buffer,
-	vk::raii::DeviceMemory
->;
-
-static std::vector<StagingObjectVK> gStagingObjects;
-
-struct FrameVK
+struct ContextVK
 {
-	vk::raii::Fence fence = nullptr;
-	vk::raii::ImageView backbuffer_color_image_view = nullptr;
-	vk::raii::Semaphore image_acquired_semaphore = nullptr;
-	vk::raii::Semaphore render_complete_semaphore = nullptr;
+	ContextVK() :
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+		context(vk::raii::Context())
+#elif defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_IOS)
+		context(vk::raii::Context(vkGetInstanceProcAddr));
+#endif
+	{
+	}
+
+	vk::raii::Context context;
+	vk::raii::Instance instance = nullptr;
+	vk::raii::DebugUtilsMessengerEXT debug_utils_messenger = nullptr;
+	vk::raii::PhysicalDevice physical_device = nullptr;
+	vk::raii::Queue queue = nullptr;
+	vk::raii::Device device = nullptr;
+	uint32_t queue_family_index = -1;
+	vk::SurfaceFormatKHR surface_format;
+	vk::raii::SurfaceKHR surface = nullptr;
+	vk::raii::SwapchainKHR swapchain = nullptr;
+	vk::raii::CommandPool command_pool = nullptr;
+	vk::raii::CommandBuffer command_buffer = nullptr;
+
+	bool working = false;
+
+	uint32_t width = 0;
+	uint32_t height = 0;
+
+	const uint32_t min_image_count = 2; // TODO: https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
+
+	ExecuteList execute_after_present;
+
+	using StagingObject = std::variant<
+		vk::raii::Buffer,
+		vk::raii::DeviceMemory
+	>;
+
+	std::vector<StagingObject> staging_objects;
+
+	struct Frame
+	{
+		vk::raii::Fence fence = nullptr;
+		vk::raii::ImageView backbuffer_color_image_view = nullptr;
+		vk::raii::Semaphore image_acquired_semaphore = nullptr;
+		vk::raii::Semaphore render_complete_semaphore = nullptr;
+	};
+
+	struct
+	{
+		const vk::Format format = vk::Format::eD32SfloatS8Uint;
+
+		vk::raii::Image image = nullptr;
+		vk::raii::ImageView view = nullptr;
+		vk::raii::DeviceMemory memory = nullptr;
+	} depth_stencil;
+
+	std::vector<Frame> frames;
+
+	uint32_t semaphore_index = 0;
+	uint32_t frame_index = 0;
+
+	std::unordered_map<uint32_t, TextureVK*> textures;
+	std::unordered_map<uint32_t, UniformBufferVK*> uniform_buffers;
+	std::unordered_map<uint32_t, AccelerationStructureVK*> acceleration_structures;
+
+	PipelineStateVK pipeline_state;
+	std::unordered_map<PipelineStateVK, vk::raii::Pipeline> pipeline_states;
+
+	RaytracingPipelineStateVK raytracing_pipeline_state;
+	std::unordered_map<RaytracingPipelineStateVK, vk::raii::Pipeline> raytracing_pipeline_states;
+
+	SamplerStateVK sampler_state;
+	std::unordered_map<SamplerStateVK, vk::raii::Sampler> sampler_states;
+
+	RenderTargetVK* render_target = nullptr;
+
+	std::optional<Scissor> scissor;
+	std::optional<Viewport> viewport;
+	std::optional<DepthMode> depth_mode = DepthMode();
+	CullMode cull_mode = CullMode::None;
+	Topology topology = Topology::TriangleList;
+	VertexBufferVK* vertex_buffer = nullptr;
+	IndexBufferVK* index_buffer = nullptr;
+	BlendMode blend_mode = BlendStates::AlphaBlend;
+
+	bool scissor_dirty = true;
+	bool viewport_dirty = true;
+	bool depth_mode_dirty = true;
+	bool cull_mode_dirty = true;
+	bool topology_dirty = true;
+	bool vertex_buffer_dirty = true;
+	bool index_buffer_dirty = true;
+	bool blend_mode_dirty = true;
+
+	bool buffers_synchronized = false;
 };
 
-static struct
-{
-	const vk::Format format = vk::Format::eD32SfloatS8Uint;
-
-	vk::raii::Image image = nullptr;
-	vk::raii::ImageView view = nullptr;
-	vk::raii::DeviceMemory memory = nullptr;
-} gDepthStencil;
-
-static std::vector<FrameVK> gFrames;
-
-static uint32_t gSemaphoreIndex = 0;
-static uint32_t gFrameIndex = 0;
-
-static std::unordered_map<uint32_t, TextureVK*> gTextures;
-static std::unordered_map<uint32_t, UniformBufferVK*> gUniformBuffers;
-static std::unordered_map<uint32_t, AccelerationStructureVK*> gAccelerationStructures;
-
-static std::optional<Scissor> gScissor;
-static bool gScissorDirty = true;
-
-static std::optional<Viewport> gViewport;
-static bool gViewportDirty = true;
-
-static PipelineStateVK gPipelineState;
-static std::unordered_map<PipelineStateVK, vk::raii::Pipeline> gPipelineStates;
-
-static RaytracingPipelineStateVK gRaytracingPipelineState;
-static std::unordered_map<RaytracingPipelineStateVK, vk::raii::Pipeline> gRaytracingPipelineStates;
-
-static SamplerStateVK gSamplerState;
-static std::unordered_map<SamplerStateVK, vk::raii::Sampler> gSamplers;
-
-static std::optional<DepthMode> gDepthMode = DepthMode();
-static bool gDepthModeDirty = true;
-
-static CullMode gCullMode = CullMode::None;
-static bool gCullModeDirty = true;
-
-static Topology gTopology = Topology::TriangleList;
-static bool gTopologyDirty = true;
-
-static VertexBufferVK* gVertexBuffer = nullptr;
-static bool gVertexBufferDirty = true;
-
-static IndexBufferVK* gIndexBuffer = nullptr;
-static bool gIndexBufferDirty = true;
-
-static RenderTargetVK* gRenderTarget = nullptr;
-
-static BlendMode gBlendMode = BlendStates::AlphaBlend;
-static bool gBlendModeDirty = true;
-
-static bool gBuffersSynchronized = false;
+static ContextVK* gContext = nullptr;
 
 static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_bits)
 {
-	auto prop = gPhysicalDevice.getMemoryProperties();
+	auto prop = gContext->physical_device.getMemoryProperties();
 
 	for (uint32_t i = 0; i < prop.memoryTypeCount; i++)
 		if ((prop.memoryTypes[i].propertyFlags & properties) == properties && type_bits & (1 << i))
@@ -287,7 +299,7 @@ static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t 
 			usage)
 		.setSharingMode(vk::SharingMode::eExclusive);
 
-	auto buffer = gDevice.createBuffer(buffer_create_info);
+	auto buffer = gContext->device.createBuffer(buffer_create_info);
 
 	auto memory_requirements = buffer.getMemoryRequirements();
 
@@ -295,7 +307,7 @@ static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t 
 		.setAllocationSize(memory_requirements.size)
 		.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
 
-	auto device_memory = gDevice.allocateMemory(memory_allocate_info);
+	auto device_memory = gContext->device.allocateMemory(memory_allocate_info);
 
 	buffer.bindMemory(*device_memory, 0);
 
@@ -307,7 +319,7 @@ static vk::DeviceAddress GetBufferDeviceAddress(vk::Buffer buffer)
 	auto info = vk::BufferDeviceAddressInfo()
 		.setBuffer(buffer);
 
-	return gDevice.getBufferAddress(info);
+	return gContext->device.getBufferAddress(info);
 };
 
 static void WriteToBuffer(vk::raii::DeviceMemory& memory, const void* data, size_t size) {
@@ -398,13 +410,13 @@ std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<
 		.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
 		.setBindings(required_descriptor_bindings);
 
-	auto descriptor_set_layout = gDevice.createDescriptorSetLayout(descriptor_set_layout_create_info);
+	auto descriptor_set_layout = gContext->device.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
 	auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
 		.setSetLayoutCount(1)
 		.setPSetLayouts(&*descriptor_set_layout);
 
-	auto pipeline_layout = gDevice.createPipelineLayout(pipeline_layout_create_info);
+	auto pipeline_layout = gContext->device.createPipelineLayout(pipeline_layout_create_info);
 
 	return { std::move(pipeline_layout), std::move(descriptor_set_layout), required_descriptor_bindings };
 }
@@ -446,8 +458,8 @@ public:
 		auto fragment_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(fragment_shader_spirv);
 
-		mVertexShaderModule = gDevice.createShaderModule(vertex_shader_module_create_info);
-		mFragmentShaderModule = gDevice.createShaderModule(fragment_shader_module_create_info);
+		mVertexShaderModule = gContext->device.createShaderModule(vertex_shader_module_create_info);
+		mFragmentShaderModule = gContext->device.createShaderModule(fragment_shader_module_create_info);
 
 		mVertexInputBindingDescription = vk::VertexInputBindingDescription()
 			.setStride(static_cast<uint32_t>(vertex_layout.stride))
@@ -503,9 +515,9 @@ public:
 		auto closesthit_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(closesthit_shader_spirv);
 
-		mRaygenShaderModule = gDevice.createShaderModule(raygen_shader_module_create_info);
-		mMissShaderModule = gDevice.createShaderModule(miss_shader_module_create_info);
-		mClosestHitShaderModule = gDevice.createShaderModule(closesthit_shader_module_create_info);
+		mRaygenShaderModule = gContext->device.createShaderModule(raygen_shader_module_create_info);
+		mMissShaderModule = gContext->device.createShaderModule(miss_shader_module_create_info);
+		mClosestHitShaderModule = gContext->device.createShaderModule(closesthit_shader_module_create_info);
 
 		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout({
 			raygen_shader_spirv, miss_shader_spirv, closesthit_shader_spirv });
@@ -561,7 +573,7 @@ public:
 			.setSharingMode(vk::SharingMode::eExclusive)
 			.setInitialLayout(vk::ImageLayout::eUndefined);
 
-		mImage = gDevice.createImage(image_create_info);
+		mImage = gContext->device.createImage(image_create_info);
 
 		auto memory_requirements = mImage.getMemoryRequirements();
 
@@ -570,7 +582,7 @@ public:
 			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, 
 				memory_requirements.memoryTypeBits));
 
-		mDeviceMemory = gDevice.allocateMemory(memory_allocate_info);
+		mDeviceMemory = gContext->device.allocateMemory(memory_allocate_info);
 	
 		mImage.bindMemory(*mDeviceMemory, 0);
 
@@ -585,9 +597,9 @@ public:
 			.setFormat(mFormat)
 			.setSubresourceRange(image_subresource_range);
 
-		mImageView = gDevice.createImageView(image_view_create_info);
+		mImageView = gContext->device.createImageView(image_view_create_info);
 
-		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+		OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
 			SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::eGeneral);
 		});
@@ -603,7 +615,7 @@ public:
 
 			WriteToBuffer(upload_buffer_memory, memory, size);
 
-			OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+			OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
 				SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eGeneral,
 					vk::ImageLayout::eTransferDstOptimal);
 
@@ -695,7 +707,7 @@ public:
 			.setTiling(vk::ImageTiling::eOptimal)
 			.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
 
-		mDepthStencilImage = gDevice.createImage(depth_stencil_image_create_info);
+		mDepthStencilImage = gContext->device.createImage(depth_stencil_image_create_info);
 
 		auto depth_stencil_mem_req = mDepthStencilImage.getMemoryRequirements();
 
@@ -703,7 +715,7 @@ public:
 			.setAllocationSize(depth_stencil_mem_req.size)
 			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, depth_stencil_mem_req.memoryTypeBits));
 
-		mDepthStencilMemory = gDevice.allocateMemory(depth_stencil_memory_allocate_info);
+		mDepthStencilMemory = gContext->device.allocateMemory(depth_stencil_memory_allocate_info);
 
 		mDepthStencilImage.bindMemory(*mDepthStencilMemory, 0);
 
@@ -718,9 +730,9 @@ public:
 			.setFormat(mDepthStencilFormat)
 			.setSubresourceRange(depth_stencil_view_subresource_range);
 
-		mDepthStencilView = gDevice.createImageView(depth_stencil_view_create_info);
+		mDepthStencilView = gContext->device.createImageView(depth_stencil_view_create_info);
 
-		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+		OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
 			SetImageLayout(cmdbuf, *mDepthStencilImage, mDepthStencilFormat, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::eDepthStencilAttachmentOptimal);
 		});
@@ -758,7 +770,7 @@ public:
 
 		EnsureRenderPassDeactivated();
 
-		if (gBuffersSynchronized)
+		if (gContext->buffers_synchronized)
 		{
 			auto memory_barrier = vk::MemoryBarrier2()
 				.setSrcStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
@@ -770,15 +782,15 @@ public:
 				.setMemoryBarrierCount(1)
 				.setPMemoryBarriers(&memory_barrier);
 
-			gCommandBuffer.pipelineBarrier2(dependency_info);
+			gContext->command_buffer.pipelineBarrier2(dependency_info);
 
-			gBuffersSynchronized = false;
+			gContext->buffers_synchronized = false;
 		}
 
-		gCommandBuffer.copyBuffer(*staging_buffer, *mBuffer, { region });
+		gContext->command_buffer.copyBuffer(*staging_buffer, *mBuffer, { region });
 
-		gStagingObjects.push_back(std::move(staging_buffer));
-		gStagingObjects.push_back(std::move(staging_buffer_memory));
+		gContext->staging_objects.push_back(std::move(staging_buffer));
+		gContext->staging_objects.push_back(std::move(staging_buffer_memory));
 	}
 };
 
@@ -873,7 +885,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 		.setGeometryCount(1)
 		.setPGeometries(&blas_geometry);
 
-	auto blas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
+	auto blas_build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
 		vk::AccelerationStructureBuildTypeKHR::eDevice, blas_build_geometry_info, { 1 });
 		
 	auto [blas_buffer, blas_memory] = CreateBuffer(blas_build_sizes.accelerationStructureSize,
@@ -884,7 +896,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
 		.setSize(blas_build_sizes.accelerationStructureSize);
 
-	auto blas = gDevice.createAccelerationStructureKHR(blas_create_info);
+	auto blas = gContext->device.createAccelerationStructureKHR(blas_create_info);
 
 	auto [blas_scratch_buffer, blas_scratch_memory] = CreateBuffer(blas_build_sizes.buildScratchSize,
 		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
@@ -902,14 +914,14 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 	auto blas_build_geometry_infos = { blas_build_geometry_info };
 	std::vector blas_build_range_infos = { &blas_build_range_info };
 		
-	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+	OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
 		cmdbuf.buildAccelerationStructuresKHR(blas_build_geometry_infos, blas_build_range_infos);
 	});
 
 	auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
 		.setAccelerationStructure(*blas);
 
-	auto blas_device_address = gDevice.getAccelerationStructureAddressKHR(blas_device_address_info);
+	auto blas_device_address = gContext->device.getAccelerationStructureAddressKHR(blas_device_address_info);
 
 	return { std::move(blas), blas_device_address, std::move(blas_buffer), std::move(blas_memory) };
 }
@@ -948,7 +960,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 		.setGeometryCount(1)
 		.setPGeometries(&tlas_geometry);
 
-	auto tlas_build_sizes = gDevice.getAccelerationStructureBuildSizesKHR(
+	auto tlas_build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
 		vk::AccelerationStructureBuildTypeKHR::eDevice, tlas_build_geometry_info, { 1 });
 
 	auto [tlas_buffer, tlas_memory] = CreateBuffer(tlas_build_sizes.accelerationStructureSize,
@@ -959,7 +971,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
 		.setSize(tlas_build_sizes.accelerationStructureSize);
 
-	auto tlas = gDevice.createAccelerationStructureKHR(tlas_create_info);
+	auto tlas = gContext->device.createAccelerationStructureKHR(tlas_create_info);
 
 	auto [tlas_scratch_buffer, tlas_scratch_memory] = CreateBuffer(tlas_build_sizes.buildScratchSize,
 		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
@@ -977,7 +989,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 	auto tlas_build_geometry_infos = { tlas_build_geometry_info };
 	std::vector tlas_build_range_infos = { &tlas_build_range_info };
 
-	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
+	OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
 		cmdbuf.buildAccelerationStructuresKHR(tlas_build_geometry_infos, tlas_build_range_infos);
 	});
 
@@ -1016,13 +1028,13 @@ static void BeginRenderPass()
 	assert(!gRenderPassActive);
 	gRenderPassActive = true;
 
-	auto color_texture = gRenderTarget ?
-		*gRenderTarget->getTexture()->getImageView() :
-		*gFrames.at(gFrameIndex).backbuffer_color_image_view;
+	auto color_texture = gContext->render_target ?
+		*gContext->render_target->getTexture()->getImageView() :
+		*gContext->frames.at(gContext->frame_index).backbuffer_color_image_view;
 
-	auto depth_stencil_texture = gRenderTarget ?
-		*gRenderTarget->getDepthStencilView() :
-		*gDepthStencil.view;
+	auto depth_stencil_texture = gContext->render_target ?
+		*gContext->render_target->getDepthStencilView() :
+		*gContext->depth_stencil.view;
 
 	auto color_attachment = vk::RenderingAttachmentInfo()
 		.setImageView(color_texture)
@@ -1036,8 +1048,8 @@ static void BeginRenderPass()
 		.setLoadOp(vk::AttachmentLoadOp::eLoad)
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
 
-	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gWidth;
-	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gHeight;
+	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width;
+	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
 
 	auto rendering_info = vk::RenderingInfo()
 		.setRenderArea({ { 0, 0 }, { width, height } })
@@ -1047,7 +1059,7 @@ static void BeginRenderPass()
 		.setPDepthAttachment(&depth_stencil_attachment)
 		.setPStencilAttachment(&depth_stencil_attachment);
 
-	gCommandBuffer.beginRendering(rendering_info);
+	gContext->command_buffer.beginRendering(rendering_info);
 }
 
 static void EndRenderPass()
@@ -1055,7 +1067,7 @@ static void EndRenderPass()
 	assert(gRenderPassActive);
 	gRenderPassActive = false;
 
-	gCommandBuffer.endRendering();
+	gContext->command_buffer.endRendering();
 }
 
 static void EnsureRenderPassActivated()
@@ -1076,21 +1088,23 @@ static void EnsureRenderPassDeactivated()
 
 static void PrepareForDrawing()
 {
-	assert(gVertexBuffer);
+	assert(gContext->vertex_buffer);
 	
-	if (gVertexBufferDirty)
+	if (gContext->vertex_buffer_dirty)
 	{
-		gCommandBuffer.bindVertexBuffers2(0, { *gVertexBuffer->getBuffer() }, { 0 }, nullptr, { gVertexBuffer->getStride() });
-		gVertexBufferDirty = false;
+		gContext->command_buffer.bindVertexBuffers2(0, { *gContext->vertex_buffer->getBuffer() }, { 0 }, nullptr,
+			{ gContext->vertex_buffer->getStride() });
+		gContext->vertex_buffer_dirty = false;
 	}
 
-	if (gIndexBufferDirty)
+	if (gContext->index_buffer_dirty)
 	{
-		gCommandBuffer.bindIndexBuffer(*gIndexBuffer->getBuffer(), 0, GetIndexTypeFromStride(gIndexBuffer->getStride()));
-		gIndexBufferDirty = false;
+		gContext->command_buffer.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0,
+			GetIndexTypeFromStride(gContext->index_buffer->getStride()));
+		gContext->index_buffer_dirty = false;
 	}
 
-	if (gTopologyDirty)
+	if (gContext->topology_dirty)
 	{
 		static const std::unordered_map<Topology, vk::PrimitiveTopology> TopologyMap = {
 			{ Topology::PointList, vk::PrimitiveTopology::ePointList },
@@ -1100,14 +1114,14 @@ static void PrepareForDrawing()
 			{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
 		};
 
-		gCommandBuffer.setPrimitiveTopology(TopologyMap.at(gTopology));
-		gTopologyDirty = false;
+		gContext->command_buffer.setPrimitiveTopology(TopologyMap.at(gContext->topology));
+		gContext->topology_dirty = false;
 	}
 
-	auto shader = gPipelineState.shader;
+	auto shader = gContext->pipeline_state.shader;
 	assert(shader);
 
-	if (!gPipelineStates.contains(gPipelineState))
+	if (!gContext->pipeline_states.contains(gContext->pipeline_state))
 	{
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
@@ -1163,10 +1177,10 @@ static void PrepareForDrawing()
 			.setDynamicStates(dynamic_states);
 
 		auto color_attachment_formats = {
-			gPipelineState.color_attachment_format
+			gContext->pipeline_state.color_attachment_format
 		};
 
-		auto depth_stencil_format = gPipelineState.depth_stencil_format;
+		auto depth_stencil_format = gContext->pipeline_state.depth_stencil_format;
 
 		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
 			.setColorAttachmentFormats(color_attachment_formats)
@@ -1188,16 +1202,16 @@ static void PrepareForDrawing()
 			.setRenderPass(nullptr)
 			.setPNext(&pipeline_rendering_create_info);
 
-		auto pipeline = gDevice.createGraphicsPipeline(nullptr, graphics_pipeline_create_info);
+		auto pipeline = gContext->device.createGraphicsPipeline(nullptr, graphics_pipeline_create_info);
 
-		gPipelineStates.insert({ gPipelineState, std::move(pipeline) });
+		gContext->pipeline_states.insert({ gContext->pipeline_state, std::move(pipeline) });
 	}
 
-	const auto& pipeline = gPipelineStates.at(gPipelineState);
+	const auto& pipeline = gContext->pipeline_states.at(gContext->pipeline_state);
 
-	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+	gContext->command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 
-	if (!gSamplers.contains(gSamplerState))
+	if (!gContext->sampler_states.contains(gContext->sampler_state))
 	{
 		static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
 			{ Sampler::Linear, vk::Filter::eLinear },
@@ -1211,20 +1225,20 @@ static void PrepareForDrawing()
 		};
 
 		auto sampler_create_info = vk::SamplerCreateInfo()
-			.setMagFilter(FilterMap.at(gSamplerState.sampler))
-			.setMinFilter(FilterMap.at(gSamplerState.sampler))
+			.setMagFilter(FilterMap.at(gContext->sampler_state.sampler))
+			.setMinFilter(FilterMap.at(gContext->sampler_state.sampler))
 			.setMipmapMode(vk::SamplerMipmapMode::eLinear)
-			.setAddressModeU(AddressModeMap.at(gSamplerState.texture_address))
-			.setAddressModeV(AddressModeMap.at(gSamplerState.texture_address))
-			.setAddressModeW(AddressModeMap.at(gSamplerState.texture_address))
+			.setAddressModeU(AddressModeMap.at(gContext->sampler_state.texture_address))
+			.setAddressModeV(AddressModeMap.at(gContext->sampler_state.texture_address))
+			.setAddressModeW(AddressModeMap.at(gContext->sampler_state.texture_address))
 			.setMinLod(-1000)
 			.setMaxLod(1000)
 			.setMaxAnisotropy(1.0f);
 
-		gSamplers.insert({ gSamplerState, gDevice.createSampler(sampler_create_info) });
+		gContext->sampler_states.insert({ gContext->sampler_state, gContext->device.createSampler(sampler_create_info) });
 	}
 
-	const auto& sampler = gSamplers.at(gSamplerState);
+	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
 
 	auto pipeline_layout = *shader->getPipelineLayout();
 
@@ -1240,7 +1254,7 @@ static void PrepareForDrawing()
 
 		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
 		{
-			auto texture = gTextures.at(binding);
+			auto texture = gContext->textures.at(binding);
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setSampler(*sampler)
@@ -1251,7 +1265,7 @@ static void PrepareForDrawing()
 		}
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
 		{
-			auto buffer = gUniformBuffers.at(binding);
+			auto buffer = gContext->uniform_buffers.at(binding);
 
 			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
 				.setBuffer(*buffer->getBuffer())
@@ -1264,15 +1278,15 @@ static void PrepareForDrawing()
 			assert(false);
 		}
 
-		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+		gContext->command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
-	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gWidth;
-	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gHeight;
+	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width;
+	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
 
-	if (gViewportDirty)
+	if (gContext->viewport_dirty)
 	{
-		auto value = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
+		auto value = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
 
 		auto viewport = vk::Viewport()
 			.setX(value.position.x)
@@ -1282,23 +1296,23 @@ static void PrepareForDrawing()
 			.setMinDepth(value.min_depth)
 			.setMaxDepth(value.max_depth);
 
-		gCommandBuffer.setViewport(0, { viewport });
-		gViewportDirty = false;
+		gContext->command_buffer.setViewport(0, { viewport });
+		gContext->viewport_dirty = false;
 	}
 
-	if (gScissorDirty)
+	if (gContext->scissor_dirty)
 	{
-		auto value = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
+		auto value = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
 
 		auto rect = vk::Rect2D()
 			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
 			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
 
-		gCommandBuffer.setScissor(0, { rect });
-		gScissorDirty = false;
+		gContext->command_buffer.setScissor(0, { rect });
+		gContext->scissor_dirty = false;
 	}
 
-	if (gCullModeDirty)
+	if (gContext->cull_mode_dirty)
 	{
 		const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
 			{ CullMode::None, vk::CullModeFlagBits::eNone },
@@ -1306,13 +1320,13 @@ static void PrepareForDrawing()
 			{ CullMode::Back, vk::CullModeFlagBits::eBack },
 		};
 
-		gCommandBuffer.setFrontFace(vk::FrontFace::eClockwise);
-		gCommandBuffer.setCullMode(CullModeMap.at(gCullMode));
+		gContext->command_buffer.setFrontFace(vk::FrontFace::eClockwise);
+		gContext->command_buffer.setCullMode(CullModeMap.at(gContext->cull_mode));
 
-		gCullModeDirty = false;
+		gContext->cull_mode_dirty = false;
 	}
 
-	if (gBlendModeDirty)
+	if (gContext->blend_mode_dirty)
 	{
 		static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
 			{ Blend::One, vk::BlendFactor::eOne },
@@ -1337,51 +1351,51 @@ static void PrepareForDrawing()
 
 		auto color_mask = vk::ColorComponentFlags();
 
-		if (gBlendMode.color_mask.red)
+		if (gContext->blend_mode.color_mask.red)
 			color_mask |= vk::ColorComponentFlagBits::eR;
 
-		if (gBlendMode.color_mask.green)
+		if (gContext->blend_mode.color_mask.green)
 			color_mask |= vk::ColorComponentFlagBits::eG;
 
-		if (gBlendMode.color_mask.blue)
+		if (gContext->blend_mode.color_mask.blue)
 			color_mask |= vk::ColorComponentFlagBits::eB;
 
-		if (gBlendMode.color_mask.alpha)
+		if (gContext->blend_mode.color_mask.alpha)
 			color_mask |= vk::ColorComponentFlagBits::eA;
 
 		auto color_blend_equation = vk::ColorBlendEquationEXT()
-			.setSrcColorBlendFactor(BlendFactorMap.at(gBlendMode.color_src_blend))
-			.setDstColorBlendFactor(BlendFactorMap.at(gBlendMode.color_dst_blend))
-			.setColorBlendOp(BlendFuncMap.at(gBlendMode.color_blend_func))
-			.setSrcAlphaBlendFactor(BlendFactorMap.at(gBlendMode.alpha_src_blend))
-			.setDstAlphaBlendFactor(BlendFactorMap.at(gBlendMode.alpha_dst_blend))
-			.setAlphaBlendOp(BlendFuncMap.at(gBlendMode.alpha_blend_func));
+			.setSrcColorBlendFactor(BlendFactorMap.at(gContext->blend_mode.color_src_blend))
+			.setDstColorBlendFactor(BlendFactorMap.at(gContext->blend_mode.color_dst_blend))
+			.setColorBlendOp(BlendFuncMap.at(gContext->blend_mode.color_blend_func))
+			.setSrcAlphaBlendFactor(BlendFactorMap.at(gContext->blend_mode.alpha_src_blend))
+			.setDstAlphaBlendFactor(BlendFactorMap.at(gContext->blend_mode.alpha_dst_blend))
+			.setAlphaBlendOp(BlendFuncMap.at(gContext->blend_mode.alpha_blend_func));
 
-		gCommandBuffer.setColorBlendEnableEXT(0, { true });
-		gCommandBuffer.setColorBlendEquationEXT(0, { color_blend_equation });
-		gCommandBuffer.setColorWriteMaskEXT(0, { color_mask });
+		gContext->command_buffer.setColorBlendEnableEXT(0, { true });
+		gContext->command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
+		gContext->command_buffer.setColorWriteMaskEXT(0, { color_mask });
 
-		gBlendModeDirty = false;
+		gContext->blend_mode_dirty = false;
 	}
 
-	if (gDepthModeDirty)
+	if (gContext->depth_mode_dirty)
 	{
-		if (gDepthMode.has_value())
+		if (gContext->depth_mode.has_value())
 		{
-			gCommandBuffer.setDepthTestEnable(true);
-			gCommandBuffer.setDepthWriteEnable(true);
-			gCommandBuffer.setDepthCompareOp(CompareOpMap.at(gDepthMode.value().func));
+			gContext->command_buffer.setDepthTestEnable(true);
+			gContext->command_buffer.setDepthWriteEnable(true);
+			gContext->command_buffer.setDepthCompareOp(CompareOpMap.at(gContext->depth_mode.value().func));
 		}
 		else
 		{
-			gCommandBuffer.setDepthTestEnable(false);
-			gCommandBuffer.setDepthWriteEnable(false);
+			gContext->command_buffer.setDepthTestEnable(false);
+			gContext->command_buffer.setDepthWriteEnable(false);
 		}
 
-		gDepthModeDirty = false;
+		gContext->depth_mode_dirty = false;
 	}
 
-	if (!gBuffersSynchronized)
+	if (!gContext->buffers_synchronized)
 	{
 		auto memory_barrier = vk::MemoryBarrier2()
 			.setSrcStageMask(vk::PipelineStageFlagBits2::eTransfer)
@@ -1393,9 +1407,9 @@ static void PrepareForDrawing()
 			.setMemoryBarrierCount(1)
 			.setPMemoryBarriers(&memory_barrier);
 
-		gCommandBuffer.pipelineBarrier2(dependency_info);
+		gContext->command_buffer.pipelineBarrier2(dependency_info);
 
-		gBuffersSynchronized = true;
+		gContext->buffers_synchronized = true;
 	}
 }
 
@@ -1457,20 +1471,16 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
-#if defined(SKYGFX_PLATFORM_WINDOWS)
-	gContext = new vk::raii::Context();
-#elif defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_IOS)
-	gContext = new vk::raii::Context(vkGetInstanceProcAddr);
-#endif
+	gContext = new ContextVK;
 
-	auto all_extensions = gContext->enumerateInstanceExtensionProperties();
+	auto all_extensions = gContext->context.enumerateInstanceExtensionProperties();
 
 	for (auto extension : all_extensions)
 	{
 	//	std::cout << extension.extensionName << std::endl;
 	}
 
-	auto all_layers = gContext->enumerateInstanceLayerProperties();
+	auto all_layers = gContext->context.enumerateInstanceLayerProperties();
 
 	for (auto layer : all_layers)
 	{
@@ -1493,7 +1503,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		"VK_LAYER_KHRONOS_validation"
 	};
 
-	auto version = gContext->enumerateInstanceVersion();
+	auto version = gContext->context.enumerateInstanceVersion();
 
 	auto major_version = VK_API_VERSION_MAJOR(version);
 	auto minor_version = VK_API_VERSION_MINOR(version);
@@ -1542,11 +1552,11 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		validation_features
 	);
 
-	gInstance = gContext->createInstance(instance_create_info_chain.get<vk::InstanceCreateInfo>());
+	gContext->instance = gContext->context.createInstance(instance_create_info_chain.get<vk::InstanceCreateInfo>());
 
-	gDebugUtilsMessenger = gInstance.createDebugUtilsMessengerEXT(debug_utils_messenger_create_info);
+	gContext->debug_utils_messenger = gContext->instance.createDebugUtilsMessengerEXT(debug_utils_messenger_create_info);
 
-	auto devices = gInstance.enumeratePhysicalDevices();
+	auto devices = gContext->instance.enumeratePhysicalDevices();
 	size_t device_index = 0;
 	for (size_t i = 0; i < devices.size(); i++)
 	{
@@ -1558,20 +1568,20 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		}
 	}
 
-	gPhysicalDevice = std::move(devices.at(device_index));
+	gContext->physical_device = std::move(devices.at(device_index));
 
-	auto properties = gPhysicalDevice.getQueueFamilyProperties();
+	auto properties = gContext->physical_device.getQueueFamilyProperties();
 
 	for (size_t i = 0; i < properties.size(); i++)
 	{
 		if (properties[i].queueFlags & vk::QueueFlagBits::eGraphics)
 		{
-			gQueueFamilyIndex = static_cast<uint32_t>(i);
+			gContext->queue_family_index = static_cast<uint32_t>(i);
 			break;
 		}
 	}
 
-	auto all_device_extensions = gPhysicalDevice.enumerateDeviceExtensionProperties();
+	auto all_device_extensions = gContext->physical_device.enumerateDeviceExtensionProperties();
 
 	for (auto device_extension : all_device_extensions)
 	{
@@ -1594,10 +1604,10 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	auto queue_priority = { 1.0f };
 
 	auto queue_info = vk::DeviceQueueCreateInfo()
-		.setQueueFamilyIndex(gQueueFamilyIndex)
+		.setQueueFamilyIndex(gContext->queue_family_index)
 		.setQueuePriorities(queue_priority);
 
-	auto device_features = gPhysicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2,
+	auto device_features = gContext->physical_device.getFeatures2<vk::PhysicalDeviceFeatures2,
 		vk::PhysicalDeviceVulkan13Features, 
 
 		// dynamic pipeline
@@ -1616,9 +1626,9 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setPEnabledFeatures(nullptr)
 		.setPNext(&device_features.get<vk::PhysicalDeviceFeatures2>());
 
-	gDevice = gPhysicalDevice.createDevice(device_info);
+	gContext->device = gContext->physical_device.createDevice(device_info);
 
-	gQueue = gDevice.getQueue(gQueueFamilyIndex, 0);
+	gContext->queue = gContext->device.getQueue(gContext->queue_family_index, 0);
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	auto surface_info = vk::Win32SurfaceCreateInfoKHR()
@@ -1631,13 +1641,13 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setPView(window);
 #endif
 
-	gSurface = vk::raii::SurfaceKHR(gInstance, surface_info);
+	gContext->surface = vk::raii::SurfaceKHR(gContext->instance, surface_info);
 
-	auto formats = gPhysicalDevice.getSurfaceFormatsKHR(*gSurface);
+	auto formats = gContext->physical_device.getSurfaceFormatsKHR(*gContext->surface);
 
 	if ((formats.size() == 1) && (formats.at(0).format == vk::Format::eUndefined))
 	{
-		gSurfaceFormat = {
+		gContext->surface_format = {
 			vk::Format::eB8G8R8A8Unorm,
 			formats.at(0).colorSpace
 		};
@@ -1649,35 +1659,35 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		{
 			if (format.format == vk::Format::eB8G8R8A8Unorm)
 			{
-				gSurfaceFormat = format;
+				gContext->surface_format = format;
 				found = true;
 				break;
 			}
 		}
 		if (!found)
 		{
-			gSurfaceFormat = formats.at(0);
+			gContext->surface_format = formats.at(0);
 		}
 	}
 
 	auto command_pool_info = vk::CommandPoolCreateInfo()
 		.setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
-		.setQueueFamilyIndex(gQueueFamilyIndex);
+		.setQueueFamilyIndex(gContext->queue_family_index);
 
-	gCommandPool = gDevice.createCommandPool(command_pool_info);
+	gContext->command_pool = gContext->device.createCommandPool(command_pool_info);
 
 	auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
 		.setCommandBufferCount(1)
 		.setLevel(vk::CommandBufferLevel::ePrimary)
-		.setCommandPool(*gCommandPool);
+		.setCommandPool(*gContext->command_pool);
 
-	auto command_buffers = gDevice.allocateCommandBuffers(command_buffer_allocate_info);
-	gCommandBuffer = std::move(command_buffers.at(0));
+	auto command_buffers = gContext->device.allocateCommandBuffers(command_buffer_allocate_info);
+	gContext->command_buffer = std::move(command_buffers.at(0));
 
-	gPipelineState.color_attachment_format = gSurfaceFormat.format;
-	gPipelineState.depth_stencil_format = gDepthStencil.format;
+	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
+	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil.format;
 
-	gBuffersSynchronized = false;
+	gContext->buffers_synchronized = false;
 
 	createSwapchain(width, height);
 
@@ -1687,22 +1697,9 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 BackendVK::~BackendVK()
 {
 	end();
-	gExecuteAfterPresent.flush();
-	gStagingObjects.clear();
-	gSurface.release();
-	gSamplers.clear();
-	gPipelineStates.clear();
-	gFrames.clear();
-	gDepthStencil.image.release();
-	gDepthStencil.memory.release();
-	gDepthStencil.view.release();
-	gCommandBuffer.release();
-	gCommandPool.release();
-	gSwapchain.release();
-	gDebugUtilsMessenger.release();
-	gDevice.release();
-	gInstance.release();
+
 	delete gContext;
+	gContext = nullptr;
 }
 
 void BackendVK::resize(uint32_t width, uint32_t height)
@@ -1714,156 +1711,156 @@ void BackendVK::resize(uint32_t width, uint32_t height)
 
 void BackendVK::setTopology(Topology topology)
 {
-	if (gTopology == topology)
+	if (gContext->topology == topology)
 		return;
 
-	gTopology = topology;
-	gTopologyDirty = true;
+	gContext->topology = topology;
+	gContext->topology_dirty = true;
 }
 
 void BackendVK::setViewport(std::optional<Viewport> viewport)
 {
-	if (gViewport == viewport)
+	if (gContext->viewport == viewport)
 		return;
 
-	gViewport = viewport;
-	gViewportDirty = true;
+	gContext->viewport = viewport;
+	gContext->viewport_dirty = true;
 }
 
 void BackendVK::setScissor(std::optional<Scissor> scissor)
 {
-	if (gScissor == scissor)
+	if (gContext->scissor == scissor)
 		return;
 
-	gScissor = scissor;
-	gScissorDirty = true;
+	gContext->scissor = scissor;
+	gContext->scissor_dirty = true;
 }
 
 void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureVK*)handle;
-	gTextures[binding] = texture;
+	gContext->textures[binding] = texture;
 }
 
 void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetVK*)handle;
 
-	if (gRenderTarget == render_target)
+	if (gContext->render_target == render_target)
 		return;
 
-	gPipelineState.color_attachment_format = render_target->getTexture()->getFormat();
-	gPipelineState.depth_stencil_format = render_target->getDepthStencilFormat();
-	gRenderTarget = render_target;
+	gContext->pipeline_state.color_attachment_format = render_target->getTexture()->getFormat();
+	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
+	gContext->render_target = render_target;
 	EnsureRenderPassDeactivated();
 
-	if (!gViewport.has_value())
-		gViewportDirty = true;
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 
-	if (!gScissor.has_value())
-		gScissorDirty = true;
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendVK::setRenderTarget(std::nullopt_t value)
 {
-	if (gRenderTarget == nullptr)
+	if (gContext->render_target == nullptr)
 		return;
 
-	gPipelineState.color_attachment_format = gSurfaceFormat.format;
-	gPipelineState.depth_stencil_format = gDepthStencil.format;
-	gRenderTarget = nullptr;
+	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
+	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil.format;
+	gContext->render_target = nullptr;
 	EnsureRenderPassDeactivated();
 
-	if (!gViewport.has_value())
-		gViewportDirty = true;
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 
-	if (!gScissor.has_value())
-		gScissorDirty = true;
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendVK::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderVK*)handle;
-	gPipelineState.shader = shader;
+	gContext->pipeline_state.shader = shader;
 }
 
 void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
 {
 	auto shader = (RaytracingShaderVK*)handle;
-	gRaytracingPipelineState.shader = shader;
+	gContext->raytracing_pipeline_state.shader = shader;
 }
 
 void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferVK*)handle;
 
-	if (buffer == gVertexBuffer)
+	if (buffer == gContext->vertex_buffer)
 		return;
 
-	gVertexBuffer = buffer;
-	gVertexBufferDirty = true;
+	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferVK*)handle;
 
-	if (buffer == gIndexBuffer)
+	if (buffer == gContext->index_buffer)
 		return;
 
-	gIndexBuffer = buffer;
-	gIndexBufferDirty = true;
+	gContext->index_buffer = buffer;
+	gContext->index_buffer_dirty = true;
 }
 
 void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferVK*)handle;
-	gUniformBuffers[binding] = buffer;
+	gContext->uniform_buffers[binding] = buffer;
 }
 
 void BackendVK::setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle)
 {
 	auto acceleration_structure = (AccelerationStructureVK*)handle;
-	gAccelerationStructures[binding] = acceleration_structure;
+	gContext->acceleration_structures[binding] = acceleration_structure;
 }
 
 void BackendVK::setBlendMode(const BlendMode& value)
 {
-	if (gBlendMode == value)
+	if (gContext->blend_mode == value)
 		return;
 
-	gBlendMode = value;
-	gBlendModeDirty = true;
+	gContext->blend_mode = value;
+	gContext->blend_mode_dirty = true;
 }
 
 void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	if (gDepthMode == depth_mode)
+	if (gContext->depth_mode == depth_mode)
 		return;
 
-	gDepthMode = depth_mode;
-	gDepthModeDirty = true;
+	gContext->depth_mode = depth_mode;
+	gContext->depth_mode_dirty = true;
 }
 
 void BackendVK::setStencilMode(std::optional<StencilMode> stencil_mode)
 {
-	gCommandBuffer.setStencilTestEnable(stencil_mode.has_value());
+	gContext->command_buffer.setStencilTestEnable(stencil_mode.has_value());
 }
 
 void BackendVK::setCullMode(CullMode cull_mode)
 {	
-	gCullMode = cull_mode;
-	gCullModeDirty = true;
+	gContext->cull_mode = cull_mode;
+	gContext->cull_mode_dirty = true;
 }
 
 void BackendVK::setSampler(Sampler value)
 {
-	gSamplerState.sampler = value;
+	gContext->sampler_state.sampler = value;
 }
 
 void BackendVK::setTextureAddress(TextureAddress value)
 {
-	gSamplerState.texture_address = value;
+	gContext->sampler_state.texture_address = value;
 }
 
 void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -1871,8 +1868,8 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 {
 	EnsureRenderPassActivated();
 
-	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gWidth;
-	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gHeight;
+	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width;
+	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
 
 	auto clear_rect = vk::ClearRect()
 		.setBaseArrayLayer(0)
@@ -1894,7 +1891,7 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 			.setColorAttachment(0)
 			.setClearValue(clear_value);
 
-		gCommandBuffer.clearAttachments({ attachment }, { clear_rect });
+		gContext->command_buffer.clearAttachments({ attachment }, { clear_rect });
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -1919,7 +1916,7 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 			.setColorAttachment(0)
 			.setClearValue(clear_value);
 
-		gCommandBuffer.clearAttachments({ attachment }, { clear_rect });
+		gContext->command_buffer.clearAttachments({ attachment }, { clear_rect });
 	}
 }
 
@@ -1927,14 +1924,14 @@ void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	PrepareForDrawing();
 	EnsureRenderPassActivated();
-	gCommandBuffer.draw(vertex_count, 1, vertex_offset, 0);
+	gContext->command_buffer.draw(vertex_count, 1, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	PrepareForDrawing();
 	EnsureRenderPassActivated();
-	gCommandBuffer.drawIndexed(index_count, 1, index_offset, 0, 0);
+	gContext->command_buffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
 
 void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
@@ -1955,16 +1952,16 @@ inline T AlignUp(T size, size_t alignment) noexcept
 
 void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
-	assert(gRenderTarget != nullptr);
+	assert(gContext->render_target != nullptr);
 
 	EnsureRenderPassDeactivated();
 
-	auto shader = gRaytracingPipelineState.shader;
+	auto shader = gContext->raytracing_pipeline_state.shader;
 	assert(shader);
 
 	const auto& pipeline_layout = shader->getPipelineLayout();
 
-	if (!gRaytracingPipelineStates.contains(gRaytracingPipelineState))
+	if (!gContext->raytracing_pipeline_states.contains(gContext->raytracing_pipeline_state))
 	{
 		auto pipeline_shader_stage_create_info = {
 			vk::PipelineShaderStageCreateInfo()
@@ -2012,14 +2009,14 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 			.setGroups(raytracing_shader_groups)
 			.setMaxPipelineRayRecursionDepth(1);
 
-		auto pipeline = gDevice.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
+		auto pipeline = gContext->device.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
 
-		gRaytracingPipelineStates.insert({ gRaytracingPipelineState, std::move(pipeline) });
+		gContext->raytracing_pipeline_states.insert({ gContext->raytracing_pipeline_state, std::move(pipeline) });
 	}
 
-	const auto& pipeline = gRaytracingPipelineStates.at(gRaytracingPipelineState);
+	const auto& pipeline = gContext->raytracing_pipeline_states.at(gContext->raytracing_pipeline_state);
 
-	gCommandBuffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
+	gContext->command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
 	
 	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
 	{
@@ -2033,7 +2030,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eAccelerationStructureKHR)
 		{
-			auto acceleration_structure = gAccelerationStructures.at(binding);
+			auto acceleration_structure = gContext->acceleration_structures.at(binding);
 
 			auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
 				.setAccelerationStructureCount(1)
@@ -2043,7 +2040,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 		}
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageImage)
 		{
-			auto render_target_image_view = *gRenderTarget->getTexture()->getImageView();
+			auto render_target_image_view = *gContext->render_target->getTexture()->getImageView();
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setImageLayout(vk::ImageLayout::eGeneral)
@@ -2053,7 +2050,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 		}
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
 		{
-			auto buffer = gUniformBuffers.at(binding);
+			auto buffer = gContext->uniform_buffers.at(binding);
 
 			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
 				.setBuffer(*buffer->getBuffer())
@@ -2066,7 +2063,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 			assert(false);
 		}
 
-		gCommandBuffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout, 0, { write_descriptor_set });
+		gContext->command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout, 0, { write_descriptor_set });
 	}
 
 	static std::optional<vk::StridedDeviceAddressRegionKHR> raygen_shader_binding_table;
@@ -2076,7 +2073,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	if (!raygen_shader_binding_table.has_value())
 	{
-		static auto ray_tracing_pipeline_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2,
+		static auto ray_tracing_pipeline_properties = gContext->physical_device.getProperties2<vk::PhysicalDeviceProperties2,
 			vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
 
 		auto handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
@@ -2116,7 +2113,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 			.setDeviceAddress(GetBufferDeviceAddress(*closesthit_binding_table_buffer));
 	}
 
-	gCommandBuffer.traceRaysKHR(raygen_shader_binding_table.value(), miss_shader_binding_table.value(), hit_shader_binding_table.value(),
+	gContext->command_buffer.traceRaysKHR(raygen_shader_binding_table.value(), miss_shader_binding_table.value(), hit_shader_binding_table.value(),
 		callable_shader_binding_table, width, height, depth);
 }
 
@@ -2124,67 +2121,67 @@ void BackendVK::present()
 {
 	end(); 
 
-	const auto& render_complete_semaphore = gFrames.at(gSemaphoreIndex).render_complete_semaphore;
+	const auto& render_complete_semaphore = gContext->frames.at(gContext->semaphore_index).render_complete_semaphore;
 
 	auto present_info = vk::PresentInfoKHR()
 		.setWaitSemaphoreCount(1)
 		.setPWaitSemaphores(&*render_complete_semaphore)
 		.setSwapchainCount(1)
-		.setPSwapchains(&*gSwapchain)
-		.setPImageIndices(&gFrameIndex);
+		.setPSwapchains(&*gContext->swapchain)
+		.setPImageIndices(&gContext->frame_index);
 
-	auto present_result = gQueue.presentKHR(present_info);
+	auto present_result = gContext->queue.presentKHR(present_info);
 
-	gExecuteAfterPresent.flush();
-	gStagingObjects.clear();
+	gContext->execute_after_present.flush();
+	gContext->staging_objects.clear();
 
-	gSemaphoreIndex = (gSemaphoreIndex + 1) % gFrames.size();
+	gContext->semaphore_index = (gContext->semaphore_index + 1) % gContext->frames.size();
 
 	begin();
 }
 
 void BackendVK::begin()
 {
-	const auto& image_acquired_semaphore = gFrames.at(gSemaphoreIndex).image_acquired_semaphore;
+	const auto& image_acquired_semaphore = gContext->frames.at(gContext->semaphore_index).image_acquired_semaphore;
 
-	auto [result, image_index] = gSwapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
+	auto [result, image_index] = gContext->swapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
 
-	gFrameIndex = image_index;
+	gContext->frame_index = image_index;
 
-	assert(!gWorking);
-	gWorking = true;
+	assert(!gContext->working);
+	gContext->working = true;
 
-	gTopologyDirty = true;
-	gViewportDirty = true;
-	gScissorDirty = true;
-	gCullModeDirty = true;
-	gVertexBufferDirty = true;
-	gIndexBufferDirty = true;
-	gBlendModeDirty = true;
-	gDepthModeDirty = true;
+	gContext->topology_dirty = true;
+	gContext->viewport_dirty = true;
+	gContext->scissor_dirty = true;
+	gContext->cull_mode_dirty = true;
+	gContext->vertex_buffer_dirty = true;
+	gContext->index_buffer_dirty = true;
+	gContext->blend_mode_dirty = true;
+	gContext->depth_mode_dirty = true;
 
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	gCommandBuffer.begin(begin_info);
+	gContext->command_buffer.begin(begin_info);
 }
 
 void BackendVK::end()
 {
-	assert(gWorking);
-	gWorking = false;
+	assert(gContext->working);
+	gContext->working = false;
 
 	EnsureRenderPassDeactivated();
-	gCommandBuffer.end();
+	gContext->command_buffer.end();
 
-	const auto& frame = gFrames.at(gFrameIndex);
+	const auto& frame = gContext->frames.at(gContext->frame_index);
 
-	auto wait_result = gDevice.waitForFences({ *frame.fence }, true, UINT64_MAX);
+	auto wait_result = gContext->device.waitForFences({ *frame.fence }, true, UINT64_MAX);
 
-	gDevice.resetFences({ *frame.fence });
+	gContext->device.resetFences({ *frame.fence });
 
-	const auto& render_complete_semaphore = gFrames.at(gSemaphoreIndex).render_complete_semaphore;
-	const auto& image_acquired_semaphore = gFrames.at(gSemaphoreIndex).image_acquired_semaphore;
+	const auto& render_complete_semaphore = gContext->frames.at(gContext->semaphore_index).render_complete_semaphore;
+	const auto& image_acquired_semaphore = gContext->frames.at(gContext->semaphore_index).image_acquired_semaphore;
 
 	auto wait_dst_stage_mask = vk::PipelineStageFlags{
 		vk::PipelineStageFlagBits::eColorAttachmentOutput
@@ -2195,12 +2192,12 @@ void BackendVK::end()
 		.setWaitSemaphoreCount(1)
 		.setPWaitSemaphores(&*image_acquired_semaphore)
 		.setCommandBufferCount(1)
-		.setPCommandBuffers(&*gCommandBuffer)
+		.setPCommandBuffers(&*gContext->command_buffer)
 		.setSignalSemaphoreCount(1)
 		.setPSignalSemaphores(&*render_complete_semaphore);
 
-	gQueue.submit({ submit_info }, *frame.fence);
-	gQueue.waitIdle();
+	gContext->queue.submit({ submit_info }, *frame.fence);
+	gContext->queue.waitIdle();
 }
 
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
@@ -2211,15 +2208,15 @@ TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format 
 
 void BackendVK::destroyTexture(TextureHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto texture = (TextureVK*)handle;
 
 		auto remove_from_global = [&] {
-			for (const auto& [binding, _texture] : gTextures)
+			for (const auto& [binding, _texture] : gContext->textures)
 			{
 				if (texture == _texture)
 				{
-					gTextures.erase(binding);
+					gContext->textures.erase(binding);
 					return false;
 				}
 			}
@@ -2255,15 +2252,15 @@ ShaderHandle* BackendVK::createShader(const VertexLayout& vertex_layout, const s
 
 void BackendVK::destroyShader(ShaderHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto shader = (ShaderVK*)handle;
 
-		for (const auto& [state, pipeline] : gPipelineStates)
+		for (const auto& [state, pipeline] : gContext->pipeline_states)
 		{
 			if (state.shader != shader)
 				continue;
 
-			gPipelineStates.erase(state);
+			gContext->pipeline_states.erase(state);
 		}
 
 		delete shader;
@@ -2279,15 +2276,15 @@ RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& ray
 
 void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto shader = (RaytracingShaderVK*)handle;
 
-		for (const auto& [state, pipeline] : gRaytracingPipelineStates)
+		for (const auto& [state, pipeline] : gContext->raytracing_pipeline_states)
 		{
 			if (state.shader != shader)
 				continue;
 
-			gRaytracingPipelineStates.erase(state);
+			gContext->raytracing_pipeline_states.erase(state);
 		}
 
 		delete shader;
@@ -2302,7 +2299,7 @@ VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
 
 void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (VertexBufferVK*)handle;
 		delete buffer;
 	});
@@ -2323,7 +2320,7 @@ IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
 
 void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (IndexBufferVK*)handle;
 		delete buffer;
 	});
@@ -2344,15 +2341,15 @@ UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
 
 void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (UniformBufferVK*)handle;
 
 		auto remove_from_global = [&] {
-			for (const auto& [binding, _buffer] : gUniformBuffers)
+			for (const auto& [binding, _buffer] : gContext->uniform_buffers)
 			{
 				if (buffer == _buffer)
 				{
-					gUniformBuffers.erase(binding);
+					gContext->uniform_buffers.erase(binding);
 					return false;
 				}
 			}
@@ -2381,15 +2378,15 @@ AccelerationStructureHandle* BackendVK::createAccelerationStructure(const std::v
 
 void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto acceleration_structure = (AccelerationStructureVK*)handle;
 
 		auto remove_from_global = [&] {
-			for (const auto& [binding, _acceleration_structure] : gAccelerationStructures)
+			for (const auto& [binding, _acceleration_structure] : gContext->acceleration_structures)
 			{
 				if (acceleration_structure == _acceleration_structure)
 				{
-					gAccelerationStructures.erase(binding);
+					gContext->acceleration_structures.erase(binding);
 					return false;
 				}
 			}
@@ -2405,47 +2402,47 @@ void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle
 
 void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 {
-	gWidth = width;
-	gHeight = height;
+	gContext->width = width;
+	gContext->height = height;
 
 	auto swapchain_info = vk::SwapchainCreateInfoKHR()
-		.setSurface(*gSurface)
-		.setMinImageCount(gMinImageCount)
-		.setImageFormat(gSurfaceFormat.format)
-		.setImageColorSpace(gSurfaceFormat.colorSpace)
+		.setSurface(*gContext->surface)
+		.setMinImageCount(gContext->min_image_count)
+		.setImageFormat(gContext->surface_format.format)
+		.setImageColorSpace(gContext->surface_format.colorSpace)
 		.setImageExtent({ width, height })
 		.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment)
 		.setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
 		.setImageArrayLayers(1)
 		.setImageSharingMode(vk::SharingMode::eExclusive)
 		.setQueueFamilyIndexCount(1)
-		.setPQueueFamilyIndices(&gQueueFamilyIndex)
+		.setPQueueFamilyIndices(&gContext->queue_family_index)
 		.setPresentMode(vk::PresentModeKHR::eFifo)
 		.setClipped(true)
 		.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
-		.setOldSwapchain(*gSwapchain);
+		.setOldSwapchain(*gContext->swapchain);
 
-	gSwapchain = gDevice.createSwapchainKHR(swapchain_info);
+	gContext->swapchain = gContext->device.createSwapchainKHR(swapchain_info);
 
-	auto backbuffers = gSwapchain.getImages();
+	auto backbuffers = gContext->swapchain.getImages();
 
-	gFrames.clear();
+	gContext->frames.clear();
 
 	for (auto& backbuffer : backbuffers)
 	{
-		auto frame = FrameVK();
+		auto frame = ContextVK::Frame();
 
 		auto fence_info = vk::FenceCreateInfo()
 			.setFlags(vk::FenceCreateFlagBits::eSignaled);
 
-		frame.fence = gDevice.createFence(fence_info);
+		frame.fence = gContext->device.createFence(fence_info);
 
-		frame.image_acquired_semaphore = gDevice.createSemaphore({});
-		frame.render_complete_semaphore = gDevice.createSemaphore({});
+		frame.image_acquired_semaphore = gContext->device.createSemaphore({});
+		frame.render_complete_semaphore = gContext->device.createSemaphore({});
 
 		auto image_view_info = vk::ImageViewCreateInfo()
 			.setViewType(vk::ImageViewType::e2D)
-			.setFormat(gSurfaceFormat.format)
+			.setFormat(gContext->surface_format.format)
 			.setComponents(vk::ComponentMapping()
 				.setR(vk::ComponentSwizzle::eR)
 				.setG(vk::ComponentSwizzle::eG)
@@ -2461,21 +2458,21 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 			)
 			.setImage(backbuffer);
 
-		frame.backbuffer_color_image_view = gDevice.createImageView(image_view_info);
+		frame.backbuffer_color_image_view = gContext->device.createImageView(image_view_info);
 
-		OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-			SetImageLayout(cmdbuf, backbuffer, gSurfaceFormat.format, vk::ImageLayout::eUndefined,
+		OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+			SetImageLayout(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::ePresentSrcKHR);
 		});
 
-		gFrames.push_back(std::move(frame));
+		gContext->frames.push_back(std::move(frame));
 	}
 
 	// depth stencil
 
 	auto depth_stencil_image_create_info = vk::ImageCreateInfo()
 		.setImageType(vk::ImageType::e2D)
-		.setFormat(gDepthStencil.format)
+		.setFormat(gContext->depth_stencil.format)
 		.setExtent({ width, height, 1 })
 		.setMipLevels(1)
 		.setArrayLayers(1)
@@ -2483,17 +2480,17 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 		.setTiling(vk::ImageTiling::eOptimal)
 		.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
 
-	gDepthStencil.image = gDevice.createImage(depth_stencil_image_create_info);
+	gContext->depth_stencil.image = gContext->device.createImage(depth_stencil_image_create_info);
 
-	auto depth_stencil_mem_req = gDepthStencil.image.getMemoryRequirements();
+	auto depth_stencil_mem_req = gContext->depth_stencil.image.getMemoryRequirements();
 
 	auto depth_stencil_memory_allocate_info = vk::MemoryAllocateInfo()
 		.setAllocationSize(depth_stencil_mem_req.size)
 		.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, depth_stencil_mem_req.memoryTypeBits));
 
-	gDepthStencil.memory = gDevice.allocateMemory(depth_stencil_memory_allocate_info);
+	gContext->depth_stencil.memory = gContext->device.allocateMemory(depth_stencil_memory_allocate_info);
 
-	gDepthStencil.image.bindMemory(*gDepthStencil.memory, 0);
+	gContext->depth_stencil.image.bindMemory(*gContext->depth_stencil.memory, 0);
 
 	auto depth_stencil_view_subresource_range = vk::ImageSubresourceRange()
 		.setLevelCount(1)
@@ -2502,14 +2499,14 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 
 	auto depth_stencil_view_create_info = vk::ImageViewCreateInfo()
 		.setViewType(vk::ImageViewType::e2D)
-		.setImage(*gDepthStencil.image)
-		.setFormat(gDepthStencil.format)
+		.setImage(*gContext->depth_stencil.image)
+		.setFormat(gContext->depth_stencil.format)
 		.setSubresourceRange(depth_stencil_view_subresource_range);
 
-	gDepthStencil.view = gDevice.createImageView(depth_stencil_view_create_info);
+	gContext->depth_stencil.view = gContext->device.createImageView(depth_stencil_view_create_info);
 
-	OneTimeSubmit(gDevice, gCommandPool, gQueue, [&](auto& cmdbuf) {
-		SetImageLayout(cmdbuf, *gDepthStencil.image, gDepthStencil.format, vk::ImageLayout::eUndefined,
+	OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+		SetImageLayout(cmdbuf, *gContext->depth_stencil.image, gContext->depth_stencil.format, vk::ImageLayout::eUndefined,
 			vk::ImageLayout::eDepthStencilAttachmentOptimal);
 	});
 }
