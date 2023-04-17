@@ -1431,14 +1431,14 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	for (auto extension : all_extensions)
 	{
-		//	std::cout << extension.extensionName << std::endl;
+	//	std::cout << extension.extensionName << std::endl;
 	}
 
 	auto all_layers = gContext->enumerateInstanceLayerProperties();
 
 	for (auto layer : all_layers)
 	{
-		//	std::cout << layer.layerName << std::endl;
+	//	std::cout << layer.layerName << std::endl;
 	}
 
 	auto extensions = {
@@ -1485,9 +1485,25 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		)
 		.setPfnUserCallback(&DebugUtilsMessengerCallback);
 
-	auto instance_create_info_chain = vk::StructureChain<vk::InstanceCreateInfo, vk::DebugUtilsMessengerCreateInfoEXT>(
+	auto enabled_validation_features = {
+	//	vk::ValidationFeatureEnableEXT::eBestPractices,
+		vk::ValidationFeatureEnableEXT::eDebugPrintf,
+	//	vk::ValidationFeatureEnableEXT::eGpuAssisted,
+	//	vk::ValidationFeatureEnableEXT::eGpuAssistedReserveBindingSlot,
+		vk::ValidationFeatureEnableEXT::eSynchronizationValidation
+	};
+
+	auto validation_features = vk::ValidationFeaturesEXT()
+		.setEnabledValidationFeatures(enabled_validation_features);
+
+	auto instance_create_info_chain = vk::StructureChain<
+		vk::InstanceCreateInfo,
+		vk::DebugUtilsMessengerCreateInfoEXT,
+		vk::ValidationFeaturesEXT
+	>(
 		instance_create_info,
-		debug_utils_messenger_create_info
+		debug_utils_messenger_create_info,
+		validation_features
 	);
 
 	gInstance = gContext->createInstance(instance_create_info_chain.get<vk::InstanceCreateInfo>());
@@ -1523,7 +1539,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	for (auto device_extension : all_device_extensions)
 	{
-		//	std::cout << device_extension.extensionName << std::endl;
+	//	std::cout << device_extension.extensionName << std::endl;
 	}
 
 	auto device_extensions = {
@@ -1554,10 +1570,8 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		// raytracing
 		vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
 		vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-		vk::PhysicalDeviceBufferAddressFeaturesEXT>();
-
-	//auto device_properties = gPhysicalDevice.getProperties2<vk::PhysicalDeviceProperties2, 
-	//	vk::PhysicalDeviceVulkan13Properties>(); // TODO: unused
+		vk::PhysicalDeviceBufferAddressFeaturesEXT
+	>();
 
 	auto device_info = vk::DeviceCreateInfo()
 		.setQueueCreateInfoCount(1)
