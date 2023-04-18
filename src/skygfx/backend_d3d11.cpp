@@ -231,11 +231,6 @@ public:
 				gContext->GenerateMips(mShaderResourceView.Get());
 		}
 	}
-
-	void bind(uint32_t binding)
-	{
-		gContext->PSSetShaderResources((UINT)binding, 1, mShaderResourceView.GetAddressOf());
-	}
 };
 
 class RenderTargetD3D11
@@ -438,7 +433,7 @@ void BackendD3D11::setScissor(std::optional<Scissor> scissor)
 void BackendD3D11::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureD3D11*)handle;
-	texture->bind(binding);
+	gContext->PSSetShaderResources((UINT)binding, 1, texture->getD3D11ShaderResourceView().GetAddressOf());
 	gTextures[binding] = texture;
 }
 
