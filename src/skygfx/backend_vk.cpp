@@ -1115,6 +1115,25 @@ static void PrepareForDrawing()
 {
 	assert(gContext->vertex_buffer);
 	
+	if (!gContext->buffers_synchronized)
+	{
+		EnsureRenderPassDeactivated();
+
+		auto memory_barrier = vk::MemoryBarrier2()
+			.setSrcStageMask(vk::PipelineStageFlagBits2::eTransfer)
+			.setSrcAccessMask(vk::AccessFlagBits2::eMemoryWrite)
+			.setDstStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
+			.setDstAccessMask(vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite);
+
+		auto dependency_info = vk::DependencyInfo()
+			.setMemoryBarrierCount(1)
+			.setPMemoryBarriers(&memory_barrier);
+
+		gContext->command_buffer.pipelineBarrier2(dependency_info);
+
+		gContext->buffers_synchronized = true;
+	}
+
 	if (gContext->vertex_buffer_dirty)
 	{
 		gContext->command_buffer.bindVertexBuffers2(0, { *gContext->vertex_buffer->getBuffer() }, { 0 }, nullptr,
@@ -1436,23 +1455,6 @@ static void PrepareForDrawing()
 		}
 
 		gContext->depth_mode_dirty = false;
-	}
-
-	if (!gContext->buffers_synchronized)
-	{
-		auto memory_barrier = vk::MemoryBarrier2()
-			.setSrcStageMask(vk::PipelineStageFlagBits2::eTransfer)
-			.setSrcAccessMask(vk::AccessFlagBits2::eMemoryWrite)
-			.setDstStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
-			.setDstAccessMask(vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite);
-
-		auto dependency_info = vk::DependencyInfo()
-			.setMemoryBarrierCount(1)
-			.setPMemoryBarriers(&memory_barrier);
-
-		gContext->command_buffer.pipelineBarrier2(dependency_info);
-
-		gContext->buffers_synchronized = true;
 	}
 }
 
