@@ -2,58 +2,68 @@
 #include <skygfx/vertex.h>
 #include "../utils/utils.h"
 
-bool Initialize()
+glm::vec4 BlitPixelsToOne(const std::vector<uint8_t>& pixels)
 {
-	auto available_backends = skygfx::GetAvailableBackends();
+	glm::vec4 result = { 0.0f, 0.0f, 0.0f, 0.0f };
 
-	for (auto backend_type : available_backends)
+	const size_t channels_count = 4;
+
+	for (size_t i = 0; i < pixels.size(); i += channels_count)
 	{
-		glfwInit();
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-		auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Setup");
-
-		skygfx::Initialize(native_window, width, height, backend_type);
-		skygfx::Finalize();
-
-		glfwTerminate();
-	}
-
-	return true;
-}
-
-bool Clear()
-{
-	auto available_backends = skygfx::GetAvailableBackends();
-
-	for (auto backend_type : available_backends)
-	{
-		glfwInit();
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-		auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Triangle");
-
-		skygfx::Initialize(native_window, width, height, backend_type);
-
-		while (!glfwWindowShouldClose(window))
+		for (size_t j = 0; j < channels_count; j++)
 		{
-			skygfx::Clear(glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f });
-			skygfx::Present();
+			if (pixels.size() <= i + j)
+				continue;
 
-			glfwPollEvents();
-
-			glfwSetWindowShouldClose(window, true);
+			result[j] += glm::unpackUnorm1x8(pixels.at(i + j));
 		}
-
-		skygfx::Finalize();
-
-		glfwTerminate();
 	}
 
-	return true;
+	result /= (pixels.size() / (float)channels_count);
+
+	return result;
 }
 
-bool Triangle()
+bool Clear(skygfx::BackendType backend)
+{
+	glfwInit();
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
+
+	skygfx::Initialize(native_window, width, height, backend);
+
+	glm::vec4 clear_color = { 0.0f, 1.0f, 0.0f, 1.0f };
+
+	skygfx::Clear(clear_color);
+			
+	auto pixels = skygfx::GetPixels();
+	auto pixel = BlitPixelsToOne(pixels);
+
+	auto result = pixel == clear_color;
+
+	skygfx::Present();
+
+	glfwPollEvents();
+
+	skygfx::Finalize();
+
+	glfwTerminate();
+
+	return result;
+}
+
+bool ClearOpenGL()
+{
+	return Clear(skygfx::BackendType::OpenGL);
+}
+
+bool ClearD3D11()
+{
+	return Clear(skygfx::BackendType::D3D11);
+}
+
+bool Triangle(skygfx::BackendType backend)
 {
 	const std::string vertex_shader_code = R"(
 #version 450 core
@@ -91,41 +101,47 @@ void main()
 
 	const std::vector<uint32_t> indices = { 0, 1, 2 };
 
-	auto available_backends = skygfx::GetAvailableBackends();
+	glfwInit();
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-	for (auto backend_type : available_backends)
-	{
-		glfwInit();
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
 
-		auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Triangle");
+	skygfx::Initialize(native_window, width, height, backend);
 
-		skygfx::Initialize(native_window, width, height, backend_type);
+	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
-		auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
+	skygfx::SetTopology(skygfx::Topology::TriangleList);
+	skygfx::SetShader(shader);
+	skygfx::SetIndexBuffer(indices);
+	skygfx::SetVertexBuffer(vertices);
 
-		skygfx::SetTopology(skygfx::Topology::TriangleList);
-		skygfx::SetShader(shader);
-		skygfx::SetIndexBuffer(indices);
-		skygfx::SetVertexBuffer(vertices);
+	skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 
-		while (!glfwWindowShouldClose(window))
-		{
-			skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
-			skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
-			skygfx::Present();
+	auto pixels = skygfx::GetPixels();
+	auto pixel = BlitPixelsToOne(pixels);
 
-			glfwPollEvents();
+	auto result = pixel == glm::vec4{ 0.0416479930f, 0.0416579768f, 0.0416475832f, 1.00000000f };
 
-			glfwSetWindowShouldClose(window, true);
-		}
+	skygfx::Present();
 
-		skygfx::Finalize();
+	glfwPollEvents();
 
-		glfwTerminate();
-	}
+	skygfx::Finalize();
 
-	return true;
+	glfwTerminate();
+
+	return result;
+}
+
+bool TriangleOpenGL()
+{
+	return Triangle(skygfx::BackendType::OpenGL);
+}
+
+bool TriangleD3D11()
+{
+	return Triangle(skygfx::BackendType::D3D11);
 }
 
 int main()
@@ -133,9 +149,10 @@ int main()
 	#define PUSH(F) { #F, F }
 	
 	std::vector<std::pair<std::string, std::function<bool()>>> test_cases = {
-		PUSH(Initialize),
-		PUSH(Clear),
-		PUSH(Triangle)
+		PUSH(ClearOpenGL),
+		PUSH(ClearD3D11),
+		PUSH(TriangleOpenGL),
+		PUSH(TriangleD3D11)
 	};
 
 	for (const auto& [name, func] : test_cases)
