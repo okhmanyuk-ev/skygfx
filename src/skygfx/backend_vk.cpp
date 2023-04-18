@@ -79,6 +79,37 @@ struct ContextVK
 	{
 	}
 
+	~ContextVK()
+	{
+		sampler_states.clear();
+		raytracing_pipeline_states.clear();
+		pipeline_states.clear();
+
+		acceleration_structures.clear();
+		uniform_buffers.clear();
+		textures.clear();
+
+		frames.clear();
+
+		depth_stencil.image.release();
+		depth_stencil.view.release();
+		depth_stencil.memory.release();
+
+		staging_objects.clear();
+
+		execute_after_present.flush();
+
+		command_buffer.release();
+		command_pool.release();
+		swapchain.release();
+		surface.release();
+		device.release();
+		queue.release();
+		physical_device.release();
+		debug_utils_messenger.release();
+		instance.release();
+	}
+
 	vk::raii::Context context;
 	vk::raii::Instance instance = nullptr;
 	vk::raii::DebugUtilsMessengerEXT debug_utils_messenger = nullptr;
@@ -734,10 +765,6 @@ public:
 			SetImageLayout(cmdbuf, *mDepthStencilImage, mDepthStencilFormat, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::eDepthStencilAttachmentOptimal);
 		});
-	}
-
-	~RenderTargetVK()
-	{
 	}
 };
 
