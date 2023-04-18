@@ -193,6 +193,9 @@ struct ContextVK
 	bool blend_mode_dirty = true;
 
 	bool buffers_synchronized = false;
+
+	uint32_t getBackbufferWidth();
+	uint32_t getBackbufferHeight();
 };
 
 static ContextVK* gContext = nullptr;
@@ -1046,6 +1049,16 @@ public:
 	}
 };
 
+uint32_t ContextVK::getBackbufferWidth()
+{
+	return render_target ? render_target->getTexture()->getWidth() : width;
+}
+
+uint32_t ContextVK::getBackbufferHeight()
+{
+	return render_target ? render_target->getTexture()->getHeight() : height;
+}
+
 static bool gRenderPassActive = false;
 
 static void BeginRenderPass()
@@ -1073,8 +1086,8 @@ static void BeginRenderPass()
 		.setLoadOp(vk::AttachmentLoadOp::eLoad)
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
 
-	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width;
-	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
+	auto width = gContext->getBackbufferWidth();
+	auto height = gContext->getBackbufferHeight();
 
 	auto rendering_info = vk::RenderingInfo()
 		.setRenderArea({ { 0, 0 }, { width, height } })
@@ -1325,8 +1338,8 @@ static void PrepareForDrawing()
 		gContext->command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
-	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width;
-	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
+	auto width = gContext->getBackbufferWidth();
+	auto height = gContext->getBackbufferHeight();
 
 	if (gContext->viewport_dirty)
 	{
@@ -1913,8 +1926,8 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 {
 	EnsureRenderPassActivated();
 
-	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width;
-	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
+	auto width = gContext->getBackbufferWidth();
+	auto height = gContext->getBackbufferHeight();
 
 	auto clear_rect = vk::ClearRect()
 		.setBaseArrayLayer(0)
