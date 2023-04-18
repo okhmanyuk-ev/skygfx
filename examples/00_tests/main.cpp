@@ -156,6 +156,78 @@ void main()
 	return result;
 }
 
+bool TriangleRenderTarget(skygfx::BackendType backend)
+{
+	const std::string vertex_shader_code = R"(
+#version 450 core
+
+layout(location = POSITION_LOCATION) in vec3 aPosition;
+layout(location = COLOR_LOCATION) in vec4 aColor;
+
+layout(location = 0) out struct { vec4 Color; } Out;
+out gl_PerVertex { vec4 gl_Position; };
+
+void main()
+{
+	Out.Color = aColor;
+	gl_Position = vec4(aPosition, 1.0);
+})";
+
+	const std::string fragment_shader_code = R"(
+#version 450 core
+
+layout(location = 0) out vec4 result;
+layout(location = 0) in struct { vec4 Color; } In;
+
+void main() 
+{ 
+	result = In.Color;
+})";
+
+	using Vertex = skygfx::Vertex::PositionColor;
+
+	const std::vector<Vertex> vertices = {
+		{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+		{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+		{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+	};
+
+	const std::vector<uint32_t> indices = { 0, 1, 2 };
+
+	glfwInit();
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
+
+	skygfx::Initialize(native_window, width, height, backend);
+
+	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
+	auto target = skygfx::RenderTarget(16, 16, skygfx::Format::Byte4);
+
+	skygfx::SetTopology(skygfx::Topology::TriangleList);
+	skygfx::SetShader(shader);
+	skygfx::SetIndexBuffer(indices);
+	skygfx::SetVertexBuffer(vertices);
+	skygfx::SetRenderTarget(target);
+	skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
+
+	auto pixels = skygfx::GetPixels();
+	auto pixel = BlitPixelsToOne(pixels);
+
+	auto result = pixel == glm::vec4{ 0.0420343392f, 0.0410539247f, 0.0420343354f, 1.00000000f };
+
+	skygfx::Present();
+
+	glfwPollEvents();
+
+	skygfx::Finalize();
+
+	glfwTerminate();
+
+	return result;
+}
+
 int main()
 {
 	#define PUSH(F) { #F, F }
@@ -163,7 +235,8 @@ int main()
 	std::vector<std::pair<std::string, std::function<bool(skygfx::BackendType)>>> test_cases = {
 		PUSH(Clear),
 		PUSH(ClearRenderTarget),
-		PUSH(Triangle)
+		PUSH(Triangle),
+		PUSH(TriangleRenderTarget),
 	};
 
 	auto available_backends = skygfx::GetAvailableBackends();
