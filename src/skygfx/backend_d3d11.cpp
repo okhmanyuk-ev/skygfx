@@ -713,7 +713,43 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 
 std::vector<uint8_t> BackendD3D11::getPixels()
 {
-	return { (uint8_t)BackendType::D3D11 };
+	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gBackbufferWidth;
+	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gBackbufferHeight;
+	auto format = gRenderTarget ? gRenderTarget->getTexture()->getFormat() : Format::Byte4;
+	auto channels_count = GetFormatChannelsCount(format);
+	auto channel_size = GetFormatChannelSize(format);
+
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
+
+	auto texture = TextureD3D11(width, height, format, nullptr, false);
+
+	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);	
+
+	CD3D11_TEXTURE2D_DESC desc(FormatMap.at(format), width, height, 1, 1, 0, D3D11_USAGE_STAGING,
+		D3D11_CPU_ACCESS_READ);
+
+	ComPtr<ID3D11Texture2D> dstTexture = nullptr;
+	gDevice->CreateTexture2D(&desc, nullptr, dstTexture.GetAddressOf());
+
+	gContext->CopyResource(dstTexture.Get(), texture.getD3D11Texture2D().Get());
+
+	D3D11_MAPPED_SUBRESOURCE resource;
+	ZeroMemory(&resource, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+	gContext->Map(dstTexture.Get(), 0, D3D11_MAP_READ, 0, &resource);
+
+	auto src = (uint8_t*)resource.pData;
+	auto dst = result.data();
+	for (int i = 0; i < height; i++)
+	{
+		memcpy(dst, src, width * channels_count * channel_size);
+		src += resource.RowPitch;
+		dst += width * channels_count * channel_size;
+	}
+
+	gContext->Unmap(texture.getD3D11Texture2D().Get(), 0);
+
+	return result;
 }
 
 void BackendD3D11::present()
