@@ -1954,6 +1954,11 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 {
 }
 
+std::vector<uint8_t> BackendVK::getPixels()
+{
+	return { (uint8_t)BackendType::Vulkan };
+}
+
 template<typename T>
 inline T AlignUp(T size, size_t alignment) noexcept
 {

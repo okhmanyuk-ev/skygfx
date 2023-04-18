@@ -39,6 +39,7 @@ namespace skygfx
 		void drawIndexed(uint32_t index_count, uint32_t index_offset) override;
 
 		void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) override;
+		std::vector<uint8_t> getPixels() override;
 
 		void dispatchRays(uint32_t width, uint32_t height, uint32_t depth) override;
 

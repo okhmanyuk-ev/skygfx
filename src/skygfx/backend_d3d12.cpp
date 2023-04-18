@@ -1011,6 +1011,11 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		dst_texture->generateMips();
 }
 
+std::vector<uint8_t> BackendD3D12::getPixels()
+{
+	return { (uint8_t)BackendType::D3D12 };
+}
+
 void BackendD3D12::prepareForDrawing(bool indexed)
 {
 	auto shader = gPipelineState.shader;

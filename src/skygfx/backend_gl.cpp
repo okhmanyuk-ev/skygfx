@@ -117,7 +117,7 @@ static const std::unordered_map<Format, GLint> SizeMap = {
 	{ Format::Byte4, 4 }
 };
 
-static const std::unordered_map<Format, GLenum> TypeMap = {
+static const std::unordered_map<Format, GLenum> FormatTypeMap = {
 	{ Format::Float1, GL_FLOAT },
 	{ Format::Float2, GL_FLOAT },
 	{ Format::Float3, GL_FLOAT },
@@ -291,7 +291,7 @@ public:
 
 			glEnableVertexAttribArray(i);
 #if defined(SKYGFX_PLATFORM_WINDOWS)
-			glVertexAttribFormat(i, SizeMap.at(attrib.format), TypeMap.at(attrib.format), 
+			glVertexAttribFormat(i, SizeMap.at(attrib.format), FormatTypeMap.at(attrib.format),
 				NormalizeMap.at(attrib.format), (GLuint)attrib.offset);
 			glVertexAttribBinding(i, 0);
 #endif
@@ -375,18 +375,21 @@ public:
 	auto isMipmap() const { return mMipmap; }
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
+	auto getFormat() const { return mFormat; }
 
 private:
 	GLuint mTexture = 0;
 	bool mMipmap = false;
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
+	Format mFormat;
 
 public:
 	TextureGL(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
 		mMipmap(mipmap),
 		mWidth(width),
-		mHeight(height)
+		mHeight(height),
+		mFormat(format)
 	{
 		GLint last_texture;
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
@@ -395,9 +398,9 @@ public:
 
 		auto internal_format = TextureInternalFormatMap.at(format);
 		auto texture_format = TextureFormatMap.at(format);
-		auto texture_type = TypeMap.at(format);
+		auto format_type = FormatTypeMap.at(format);
 
-		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, texture_type, nullptr);
+		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, format_type, nullptr);
 		
 		if (memory)
 		{
@@ -416,7 +419,7 @@ public:
 			}
 
 			glBindTexture(GL_TEXTURE_2D, mTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, texture_type, temp_data);
+			glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, format_type, temp_data);
 			free(temp_data);
 			
 			if (mipmap)
@@ -1097,12 +1100,26 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	glBindTexture(GL_TEXTURE_2D, dst_texture->getGLTexture());
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gPixelBuffer);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0); // TODO: this is working only when format::byte4
 
 	if (dst_texture->isMipmap())
 		glGenerateMipmap(GL_TEXTURE_2D);
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+}
+
+std::vector<uint8_t> BackendGL::getPixels()
+{
+	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gBackbufferWidth;
+	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gBackbufferHeight;
+	auto format = gRenderTarget ? gRenderTarget->getTexture()->getFormat() : Format::Byte4;
+	auto channels_count = GetFormatChannelsCount(format);
+	auto channel_size = GetFormatChannelSize(format);
+
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
+	glReadPixels(0, 0, width, height, TextureFormatMap.at(format), FormatTypeMap.at(format), result.data());
+
+	return result;
 }
 
 void BackendGL::present()

@@ -583,6 +583,7 @@ namespace skygfx
 	void Draw(uint32_t vertex_count, uint32_t vertex_offset = 0);
 	void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0);
 	void ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture);
+	std::vector<uint8_t> GetPixels();
 
 	void DispatchRays(uint32_t width, uint32_t height, uint32_t depth);
 

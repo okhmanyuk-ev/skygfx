@@ -34,6 +34,7 @@ namespace skygfx
 		virtual void drawIndexed(uint32_t index_count, uint32_t index_offset) = 0;
 
 		virtual void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) = 0;
+		virtual std::vector<uint8_t> getPixels() = 0;
 
 		virtual void present() = 0;
 

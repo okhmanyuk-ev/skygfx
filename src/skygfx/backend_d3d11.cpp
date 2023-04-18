@@ -711,6 +711,11 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	}
 }
 
+std::vector<uint8_t> BackendD3D11::getPixels()
+{
+	return { (uint8_t)BackendType::D3D11 };
+}
+
 void BackendD3D11::present()
 {
 	bool vsync = false; // TODO: globalize this var
