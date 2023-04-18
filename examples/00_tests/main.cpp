@@ -53,6 +53,38 @@ bool Clear(skygfx::BackendType backend)
 	return result;
 }
 
+bool ClearRenderTarget(skygfx::BackendType backend)
+{
+	glfwInit();
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
+
+	skygfx::Initialize(native_window, width, height, backend);
+
+	auto target = skygfx::RenderTarget(1, 1, skygfx::Format::Byte4);
+
+	glm::vec4 clear_color = { 0.0f, 1.0f, 0.0f, 1.0f };
+
+	skygfx::SetRenderTarget(target);
+	skygfx::Clear(clear_color);
+
+	auto pixels = skygfx::GetPixels();
+	auto pixel = BlitPixelsToOne(pixels);
+
+	auto result = pixel == clear_color;
+
+	skygfx::Present();
+
+	glfwPollEvents();
+
+	skygfx::Finalize();
+
+	glfwTerminate();
+
+	return result;
+}
+
 bool Triangle(skygfx::BackendType backend)
 {
 	const std::string vertex_shader_code = R"(
@@ -130,6 +162,7 @@ int main()
 	
 	std::vector<std::pair<std::string, std::function<bool(skygfx::BackendType)>>> test_cases = {
 		PUSH(Clear),
+		PUSH(ClearRenderTarget),
 		PUSH(Triangle)
 	};
 
