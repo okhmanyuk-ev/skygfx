@@ -15,9 +15,9 @@
 
 namespace utils
 {
-	skygfx::BackendType ChooseBackendTypeViaConsole(std::unordered_set<skygfx::Feature> features = {})
+	const std::string& GetBackendName(skygfx::BackendType backend)
 	{
-		static const std::unordered_map<skygfx::BackendType, std::string> backend_names = {
+		static const std::unordered_map<skygfx::BackendType, std::string> BackendNamesMap = {
 			{ skygfx::BackendType::D3D11, "D3D11" },
 			{ skygfx::BackendType::D3D12, "D3D12" },
 			{ skygfx::BackendType::OpenGL, "OpenGL" },
@@ -25,6 +25,11 @@ namespace utils
 			{ skygfx::BackendType::Metal, "Metal" },
 		};
 
+		return BackendNamesMap.at(backend);
+	}
+
+	skygfx::BackendType ChooseBackendTypeViaConsole(std::unordered_set<skygfx::Feature> features = {})
+	{
 		std::cout << "Choose backend type: " << std::endl;
 
 		auto available_backends = skygfx::GetAvailableBackends(features);
@@ -32,7 +37,7 @@ namespace utils
 
 		for (int i = 0; i < backends.size(); i++)
 		{
-			std::cout << i + 1 << ". " << backend_names.at(backends.at(i)) << std::endl;
+			std::cout << i + 1 << ". " << GetBackendName(backends.at(i)) << std::endl;
 		}
 		
 		int value = 1;
@@ -44,7 +49,7 @@ namespace utils
 
 		auto backend = backends.at(value - 1);
 
-		std::cout << "Backend is " << backend_names.at(backend) << std::endl;
+		std::cout << "Backend is " << GetBackendName(backend) << std::endl;
 
 		return backend;
 	}

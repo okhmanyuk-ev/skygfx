@@ -53,16 +53,6 @@ bool Clear(skygfx::BackendType backend)
 	return result;
 }
 
-bool ClearOpenGL()
-{
-	return Clear(skygfx::BackendType::OpenGL);
-}
-
-bool ClearD3D11()
-{
-	return Clear(skygfx::BackendType::D3D11);
-}
-
 bool Triangle(skygfx::BackendType backend)
 {
 	const std::string vertex_shader_code = R"(
@@ -134,33 +124,30 @@ void main()
 	return result;
 }
 
-bool TriangleOpenGL()
-{
-	return Triangle(skygfx::BackendType::OpenGL);
-}
-
-bool TriangleD3D11()
-{
-	return Triangle(skygfx::BackendType::D3D11);
-}
-
 int main()
 {
 	#define PUSH(F) { #F, F }
 	
-	std::vector<std::pair<std::string, std::function<bool()>>> test_cases = {
-		PUSH(ClearOpenGL),
-		PUSH(ClearD3D11),
-		PUSH(TriangleOpenGL),
-		PUSH(TriangleD3D11)
+	std::vector<std::pair<std::string, std::function<bool(skygfx::BackendType)>>> test_cases = {
+		PUSH(Clear),
+		PUSH(Triangle)
 	};
+
+	auto available_backends = skygfx::GetAvailableBackends();
 
 	for (const auto& [name, func] : test_cases)
 	{
-		bool result = func();
+		for (auto backend : available_backends)
+		{
+			const auto& backend_name = utils::GetBackendName(backend);
+			bool result = func(backend);
 
-		std::cout << name << " - " << (result ? "SUCCESS" : "FAIL") << std::endl;
+			std::cout << name << " - " << backend_name << " - " << (result ? "SUCCESS" : "FAIL") << std::endl;
+		}
 	}
+
+	std::cout << "Press ENTER to continue..." << std::endl;
+	std::getchar();
 
 	return 0;
 }
