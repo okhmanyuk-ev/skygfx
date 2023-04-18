@@ -569,39 +569,58 @@ EGLContext gContext;
 EGLConfig gConfig;
 #endif
 
-static GLenum gTopology;
-static GLuint gPixelBuffer;
-static RenderTargetGL* gRenderTarget = nullptr;
-static ShaderGL* gShader = nullptr;
-static bool gShaderDirty = false;
+struct ContextGL
+{
+	uint32_t width = 0;
+	uint32_t height = 0;
 
-static VertexBufferGL* gVertexBuffer = nullptr;
-static bool gVertexBufferDirty = false;
+	ExecuteList execute_after_present;
 
-static IndexBufferGL* gIndexBuffer = nullptr;
-static bool gIndexBufferDirty = false;
-static GLenum gIndexType;
+	std::unordered_map<uint32_t, TextureGL*> textures;
+	std::unordered_set<uint32_t> dirty_textures;
 
-static ExecuteList gExecuteAfterPresent;
+	Sampler sampler = Sampler::Linear;
+	TextureAddress texture_address = TextureAddress::Wrap;
+	bool tex_params_dirty = true;
+	
+	RenderTargetGL* render_target = nullptr;
 
-static bool gTexParametersDirty = true;
-static Sampler gSampler = Sampler::Linear;
-static TextureAddress gTextureAddress = TextureAddress::Wrap;
+	GLenum index_type;
+	GLuint pixel_buffer;
 
-static std::unordered_set<uint32_t> gDirtyTextures;
-static std::unordered_map<uint32_t, TextureGL*> gTextures;
+	GLenum topology;
+	ShaderGL* shader = nullptr;
+	VertexBufferGL* vertex_buffer = nullptr;
+	IndexBufferGL* index_buffer = nullptr;
+	std::optional<Viewport> viewport;
+	std::optional<Scissor> scissor;
 
-static bool gViewportDirty = true;
-static std::optional<Viewport> gViewport;
+	bool shader_dirty = false;
+	bool vertex_buffer_dirty = false;
+	bool index_buffer_dirty = false;
+	bool viewport_dirty = true;
+	bool scissor_dirty = true;
 
-static bool gScissorDirty = true;
-static std::optional<Scissor> gScissor;
+	uint32_t getBackbufferWidth();
+	uint32_t getBackbufferHeight();
+};
 
-static uint32_t gBackbufferWidth = 0;
-static uint32_t gBackbufferHeight = 0;
+static ContextGL* gContext = nullptr;
+
+uint32_t ContextGL::getBackbufferWidth()
+{
+	return render_target ? render_target->getTexture()->getWidth() : width;
+}
+
+uint32_t ContextGL::getBackbufferHeight()
+{
+	return render_target ? render_target->getTexture()->getHeight() : height;
+}
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 {
+	gContext = new ContextGL();
+
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	gHDC = GetDC((HWND)window);
 
@@ -780,18 +799,19 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	eglMakeCurrent(gDisplay, gSurface, gSurface, gContext);
 #endif
 
-	glGenBuffers(1, &gPixelBuffer);
+	glGenBuffers(1, &gContext->pixel_buffer);
 
-	gBackbufferWidth = width;
-	gBackbufferHeight = height;
+	gContext->width = width;
+	gContext->height = height;
 }
 
 BackendGL::~BackendGL()
 {
-	glDeleteBuffers(1, &gPixelBuffer);
-	
-	gExecuteAfterPresent.flush();
+	glDeleteBuffers(1, &gContext->pixel_buffer);
 
+	delete gContext;
+	gContext = nullptr;
+	
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	wglDeleteContext(WglContext);
 #elif defined(SKYGFX_PLATFORM_MACOS)
@@ -801,9 +821,11 @@ BackendGL::~BackendGL()
 
 void BackendGL::resize(uint32_t width, uint32_t height)
 {
-	gBackbufferWidth = width;
-	gBackbufferHeight = height;
-	gViewportDirty = true;
+	gContext->width = width;
+	gContext->height = height;
+
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 }
 
 void BackendGL::setTopology(Topology topology)
@@ -816,56 +838,56 @@ void BackendGL::setTopology(Topology topology)
 		{ Topology::TriangleStrip, GL_TRIANGLE_STRIP }
 	};
 
-	gTopology = TopologyMap.at(topology);
+	gContext->topology = TopologyMap.at(topology);
 }
 
 void BackendGL::setViewport(std::optional<Viewport> viewport)
 {
-	if (gViewport == viewport)
+	if (gContext->viewport == viewport)
 		return;
 		
-	gViewport = viewport;
-	gViewportDirty = true;
+	gContext->viewport = viewport;
+	gContext->viewport_dirty = true;
 }
 
 void BackendGL::setScissor(std::optional<Scissor> scissor)
 {
-	if (gScissor == scissor)
+	if (gContext->scissor == scissor)
 		return;
 		
-	gScissor = scissor;
-	gScissorDirty = true;
+	gContext->scissor = scissor;
+	gContext->scissor_dirty = true;
 }
 
 void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureGL*)handle;
 	
-	if (gTextures[binding] == texture)
+	if (gContext->textures[binding] == texture)
 		return;
 		
-	gTextures[binding] = texture;
-	gDirtyTextures.insert(binding);
-	gTexParametersDirty = true;
+	gContext->textures[binding] = texture;
+	gContext->dirty_textures.insert(binding);
+	gContext->tex_params_dirty = true;
 }
 
 void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetGL*)handle;
 	
-	if (gRenderTarget == render_target)
+	if (gContext->render_target == render_target)
 		return;
 	
 	glBindFramebuffer(GL_FRAMEBUFFER, render_target->getGLFramebuffer());
-	gRenderTarget = render_target;
+	gContext->render_target = render_target;
 
-	if (!gViewport.has_value())
-		gViewportDirty = true;
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 }
 
 void BackendGL::setRenderTarget(std::nullopt_t value)
 {
-	if (gRenderTarget == nullptr)
+	if (gContext->render_target == nullptr)
 		return;
 		
 #if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
@@ -873,21 +895,21 @@ void BackendGL::setRenderTarget(std::nullopt_t value)
 #elif defined(SKYGFX_PLATFORM_IOS)
 	[gGLKView bindDrawable];
 #endif
-	gRenderTarget = nullptr;
+	gContext->render_target = nullptr;
 
-	if (!gViewport.has_value())
-		gViewportDirty = true;
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 }
 
 void BackendGL::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderGL*)handle;
 
-	if (shader == gShader)
+	if (gContext->shader == shader)
 		return;
 	
-	gShader = shader;
-	gShaderDirty = true;
+	gContext->shader = shader;
+	gContext->shader_dirty = true;
 }
 
 void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
@@ -897,8 +919,8 @@ void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 	//if (gVertexBuffer == buffer) // TODO: gl emit errors when this code uncommented
 	//	return;
 
-	gVertexBuffer = buffer;
-	gVertexBufferDirty = true;
+	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
@@ -908,8 +930,8 @@ void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 	//if (gIndexBuffer == buffer) // TODO: gl emit errors when this code uncommented
 	//	return;
 	
-	gIndexBuffer = buffer;
-	gIndexBufferDirty = true;
+	gContext->index_buffer = buffer;
+	gContext->index_buffer_dirty = true;
 }
 
 void BackendGL::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
@@ -1008,20 +1030,20 @@ void BackendGL::setCullMode(CullMode cull_mode)
 
 void BackendGL::setSampler(Sampler value)
 {
-	if (gSampler == value)
+	if (gContext->sampler == value)
 		return;
 
-	gSampler = value;
-	gTexParametersDirty = true;
+	gContext->sampler = value;
+	gContext->tex_params_dirty = true;
 }
 
 void BackendGL::setTextureAddress(TextureAddress value)
 {
-	if (gTextureAddress == value)
+	if (gContext->texture_address == value)
 		return;
 		
-	gTextureAddress = value;
-	gTexParametersDirty = true;
+	gContext->texture_address = value;
+	gContext->tex_params_dirty = true;
 }
 
 void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -1066,15 +1088,15 @@ void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional
 void BackendGL::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing();
-	glDrawArrays(gTopology, (GLint)vertex_offset, (GLsizei)vertex_count);
+	glDrawArrays(gContext->topology, (GLint)vertex_offset, (GLsizei)vertex_count);
 }
 
 void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
-	assert(gIndexBuffer);
+	assert(gContext->index_buffer);
 	prepareForDrawing();
-	uint32_t index_size = gIndexType == GL_UNSIGNED_INT ? 4 : 2;
-	glDrawElements(gTopology, (GLsizei)index_count, gIndexType, (void*)(size_t)(index_offset * index_size));
+	uint32_t index_size = gContext->index_type == GL_UNSIGNED_INT ? 4 : 2;
+	glDrawElements(gContext->topology, (GLsizei)index_count, gContext->index_type, (void*)(size_t)(index_offset * index_size));
 }
 
 void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
@@ -1088,17 +1110,17 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 		return;
 
 	auto x = (GLint)pos.x;
-	auto y = (GLint)(gBackbufferHeight - pos.y - size.y); // TODO: need different calculations when render target
+	auto y = (GLint)(gContext->width - pos.y - size.y); // TODO: need different calculations when render target
 	auto w = (GLint)size.x;
 	auto h = (GLint)size.y;
 
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, gPixelBuffer);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, gContext->pixel_buffer);
 	glBufferData(GL_PIXEL_PACK_BUFFER, w * h * 4, nullptr, GL_STATIC_READ);
 	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
 	glBindTexture(GL_TEXTURE_2D, dst_texture->getGLTexture());
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gPixelBuffer);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gContext->pixel_buffer);
 
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0); // TODO: this is working only when format::byte4
 
@@ -1110,9 +1132,9 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 std::vector<uint8_t> BackendGL::getPixels()
 {
-	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gBackbufferWidth;
-	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gBackbufferHeight;
-	auto format = gRenderTarget ? gRenderTarget->getTexture()->getFormat() : Format::Byte4;
+	auto width = gContext->getBackbufferWidth();
+	auto height = gContext->getBackbufferHeight();
+	auto format = gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
 
@@ -1134,7 +1156,7 @@ void BackendGL::present()
 #elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	eglSwapBuffers(gDisplay, gSurface);
 #endif
-	gExecuteAfterPresent.flush();
+	gContext->execute_after_present.flush();
 }
 
 TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
@@ -1183,11 +1205,11 @@ VertexBufferHandle* BackendGL::createVertexBuffer(size_t size, size_t stride)
 
 void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (VertexBufferGL*)handle;
 
-		if (gVertexBuffer == buffer)
-			gVertexBuffer = nullptr;
+		if (gContext->vertex_buffer == buffer)
+			gContext->vertex_buffer = nullptr;
 
 		delete buffer;
 	});
@@ -1208,11 +1230,11 @@ IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
 
 void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (IndexBufferGL*)handle;
 
-		if (gIndexBuffer == buffer)
-			gIndexBuffer = nullptr;
+		if (gContext->index_buffer == buffer)
+			gContext->index_buffer = nullptr;
 
 		delete buffer;
 	});
@@ -1233,7 +1255,7 @@ UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
 
 void BackendGL::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (UniformBufferGL*)handle;
 		delete buffer;
 	});
@@ -1247,101 +1269,91 @@ void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, void* memo
 
 void BackendGL::prepareForDrawing()
 {
-	assert(gShader);
-	assert(gVertexBuffer);
+	assert(gContext->shader);
+	assert(gContext->vertex_buffer);
 
-	if (gShaderDirty)
+	if (gContext->shader_dirty)
 	{
-		gShader->apply();
-		gVertexBufferDirty = true;
-		gShaderDirty = false;
+		gContext->shader->apply();
+		gContext->vertex_buffer_dirty = true;
+		gContext->shader_dirty = false;
 	}
 
-	if (gIndexBufferDirty)
+	if (gContext->index_buffer_dirty)
 	{
-		gIndexBufferDirty = false;
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gIndexBuffer->getGLBuffer());
-		gIndexType = gIndexBuffer->getStride() == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+		gContext->index_buffer_dirty = false;
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gContext->index_buffer->getGLBuffer());
+		gContext->index_type = gContext->index_buffer->getStride() == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 	}
 
-	if (gVertexBufferDirty)
+	if (gContext->vertex_buffer_dirty)
 	{
-		gVertexBufferDirty = false;
-		glBindBuffer(GL_ARRAY_BUFFER, gVertexBuffer->getGLBuffer());
+		gContext->vertex_buffer_dirty = false;
+		glBindBuffer(GL_ARRAY_BUFFER, gContext->vertex_buffer->getGLBuffer());
 #if defined(SKYGFX_PLATFORM_WINDOWS)
-		glBindVertexBuffer(0, gVertexBuffer->getGLBuffer(), 0, (GLsizei)gVertexBuffer->getStride());
+		glBindVertexBuffer(0, gContext->vertex_buffer->getGLBuffer(), 0, (GLsizei)gContext->vertex_buffer->getStride());
 #elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 		gShader->applyLayout();
 #endif
 	}
 
-	for (auto binding : gDirtyTextures)
+	for (auto binding : gContext->dirty_textures)
 	{
-		auto texture = gTextures.at(binding);
+		auto texture = gContext->textures.at(binding);
 		
 		glActiveTexture(GL_TEXTURE0 + binding);
 		glBindTexture(GL_TEXTURE_2D, texture->getGLTexture());
 	}
 
-	gDirtyTextures.clear();
+	gContext->dirty_textures.clear();
 
-	if (gTexParametersDirty)
+	if (gContext->tex_params_dirty)
 	{
-		for (auto [binding, texture_handle] : gTextures)
+		for (auto [binding, texture_handle] : gContext->textures)
 		{
 			glActiveTexture(GL_TEXTURE0 + binding);
 
 			bool texture_has_mipmap = ((TextureGL*)texture_handle)->isMipmap();
 
-			if (gSampler == Sampler::Linear)
+			if (gContext->sampler == Sampler::Linear)
 			{
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			}
-			else if (gSampler == Sampler::Nearest)
+			else if (gContext->sampler == Sampler::Nearest)
 			{
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			}
 
-			if (gTextureAddress == TextureAddress::Clamp)
+			if (gContext->texture_address == TextureAddress::Clamp)
 			{
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			}
-			else if (gTextureAddress == TextureAddress::Wrap)
+			else if (gContext->texture_address == TextureAddress::Wrap)
 			{
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			}
-			else if (gTextureAddress == TextureAddress::MirrorWrap)
+			else if (gContext->texture_address == TextureAddress::MirrorWrap)
 			{
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 			}
 		}
-		gTexParametersDirty = false;
+
+		gContext->tex_params_dirty = false;
 	}
 
-	if (gViewportDirty)
+	if (gContext->viewport_dirty)
 	{
-		gViewportDirty = false;
+		gContext->viewport_dirty = false;
 
-		float width;
-		float height;
+		auto width = static_cast<float>(gContext->getBackbufferWidth());
+		auto height = static_cast<float>(gContext->getBackbufferHeight());
 
-		if (gRenderTarget == nullptr)
-		{
-			width = static_cast<float>(gBackbufferWidth);
-			height = static_cast<float>(gBackbufferHeight);
-		}
-		else
-		{
-			width = static_cast<float>(gRenderTarget->getTexture()->getWidth());
-			height = static_cast<float>(gRenderTarget->getTexture()->getHeight());
-		}
-
-		auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+		auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 		
 		glViewport(
 			(GLint)viewport.position.x,
@@ -1356,18 +1368,18 @@ void BackendGL::prepareForDrawing()
 #endif
 	}
 	
-	if (gScissorDirty)
+	if (gContext->scissor_dirty)
 	{
-		gScissorDirty = false;
+		gContext->scissor_dirty = false;
 		
-		if (gScissor.has_value())
+		if (gContext->scissor.has_value())
 		{
-			auto value = gScissor.value();
+			auto value = gContext->scissor.value();
 			
 			glEnable(GL_SCISSOR_TEST);
 			glScissor(
 				(GLint)glm::round(value.position.x),
-				(GLint)glm::round(gBackbufferHeight - value.position.y - value.size.y), // TODO: need different calculations when render target
+				(GLint)glm::round(gContext->height - value.position.y - value.size.y), // TODO: need different calculations when render target
 				(GLint)glm::round(value.size.x),
 				(GLint)glm::round(value.size.y));
 		}
