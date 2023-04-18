@@ -329,14 +329,14 @@ private:
 	bool mMipmap;
 	ComPtr<ID3D12Resource> mTexture;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mGpuDescriptorHandle;
-	DXGI_FORMAT mFormat;
+	Format mFormat;
 	
 public:
 	TextureD3D12(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
 		mWidth(width),
 		mHeight(height),
 		mMipmap(mipmap),
-		mFormat(FormatMap.at(format))
+		mFormat(format)
 	{
 		uint32_t mip_levels = 1;
 
@@ -346,7 +346,7 @@ public:
 		}
 
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(mFormat, width, height, 1, (UINT16)mip_levels);
+		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(FormatMap.at(mFormat), width, height, 1, (UINT16)mip_levels);
 
 		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
@@ -793,7 +793,7 @@ void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 	if (gRenderTarget == render_target)
 		return;
 
-	gPipelineState.color_attachment_format = render_target->getTexture()->getFormat();
+	gPipelineState.color_attachment_format = FormatMap.at(render_target->getTexture()->getFormat());
 	gPipelineState.depth_stencil_format = render_target->getDepthStencilFormat();
 	gRenderTarget = render_target;
 

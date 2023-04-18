@@ -735,11 +735,12 @@ std::vector<uint8_t> BackendD3D11::getPixels()
 
 	auto src = (uint8_t*)resource.pData;
 	auto dst = result.data();
+	auto row_size = width * channels_count * channel_size;
 	for (int i = 0; i < height; i++)
 	{
-		memcpy(dst, src, width * channels_count * channel_size);
+		memcpy(dst, src, row_size);
 		src += resource.RowPitch;
-		dst += width * channels_count * channel_size;
+		dst += row_size;
 	}
 
 	gContext->Unmap(texture.getD3D11Texture2D().Get(), 0);
