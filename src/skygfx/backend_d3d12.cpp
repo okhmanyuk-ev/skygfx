@@ -987,27 +987,19 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	box.front = 0;
 	box.back = 1;
 
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	{
+		auto barrier = ScopedBarrier(gCommandList.Get(), {
+			CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+				D3D12_RESOURCE_STATE_COPY_SOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(dst_texture->getD3D12Texture().Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+				D3D12_RESOURCE_STATE_COPY_DEST)
+		});
 
-	gCommandList->ResourceBarrier(1, &barrier);
+		auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(rtv_resource.Get(), 0);
+		auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
 
-	D3D12_TEXTURE_COPY_LOCATION src_loc = {};
-	src_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-	src_loc.pResource = rtv_resource.Get();
-	src_loc.SubresourceIndex = 0;
-
-	D3D12_TEXTURE_COPY_LOCATION dst_loc = {};
-	dst_loc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-	dst_loc.pResource = dst_texture->getD3D12Texture().Get();
-	dst_loc.SubresourceIndex = 0;
-
-	gCommandList->CopyTextureRegion(&dst_loc, dst_x, dst_y, 0, &src_loc, &box);
-
-	barrier = CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(),
-		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-	gCommandList->ResourceBarrier(1, &barrier);
+		gCommandList->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
+	}
 
 	if (dst_texture->isMipmap())
 		dst_texture->generateMips();
