@@ -637,9 +637,11 @@ void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset)
 void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 	auto dst_texture = (TextureD3D11*)dst_texture_handle;
+	auto format = gRenderTarget ? gRenderTarget->getTexture()->getFormat() : Format::Byte4; // TODO: create getBackbufferFormat() func
 
 	assert(dst_texture->getWidth() == size.x);
 	assert(dst_texture->getHeight() == size.y);
+	assert(dst_texture->getFormat() == format);
 
 	if (size.x <= 0 || size.y <= 0)
 		return;

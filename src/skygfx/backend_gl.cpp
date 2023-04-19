@@ -1108,9 +1108,11 @@ void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset)
 void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 	auto dst_texture = (TextureGL*)dst_texture_handle;
+	auto format = gContext->getBackbufferFormat();
 
 	assert(dst_texture->getWidth() == size.x);
 	assert(dst_texture->getHeight() == size.y);
+	assert(dst_texture->getFormat() == format);
 
 	if (size.x <= 0 || size.y <= 0)
 		return;
@@ -1122,7 +1124,6 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	auto width = (GLint)size.x;
 	auto height = (GLint)size.y;
 
-	auto format = gContext->getBackbufferFormat();
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
 
