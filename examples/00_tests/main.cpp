@@ -1,6 +1,7 @@
 #include <skygfx/skygfx.h>
 #include <skygfx/vertex.h>
 #include "../utils/utils.h"
+#include <format>
 
 glm::vec4 BlitPixelsToOne(const std::vector<uint8_t>& pixels)
 {
@@ -241,14 +242,24 @@ int main()
 
 	auto available_backends = skygfx::GetAvailableBackends();
 
+	size_t total = available_backends.size() * test_cases.size();
+	size_t current = 0;
+
 	for (const auto& [name, func] : test_cases)
 	{
 		for (auto backend : available_backends)
 		{
-			const auto& backend_name = utils::GetBackendName(backend);
-			bool result = func(backend);
+			current += 1;
 
-			std::cout << name << " - " << backend_name << " - " << (result ? "SUCCESS" : "FAIL") << std::endl;
+			const auto& backend_name = utils::GetBackendName(backend);
+			auto before = std::chrono::high_resolution_clock::now();
+			bool result = func(backend);
+			auto duration = std::chrono::high_resolution_clock::now() - before;
+			auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+			auto result_str = result ? "SUCCESS" : "FAIL";
+			
+			auto log_str = std::format("[{}/{}]	{}	{}	{} ms	{}", current, total, result_str, backend_name, duration_ms, name);
+			std::cout << log_str << std::endl;
 		}
 	}
 
