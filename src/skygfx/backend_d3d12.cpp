@@ -1236,7 +1236,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		gTopologyDirty = false;
 	}
 
-	if (indexed)// && gIndexBufferDirty) // TODO: buffer stride can be changed in writeIndexBufferMemory
+	if (indexed && gIndexBufferDirty)
 	{
 		D3D12_INDEX_BUFFER_VIEW buffer_view = {};
 		buffer_view.BufferLocation = gIndexBuffer->getD3D12Buffer()->GetGPUVirtualAddress();
@@ -1248,7 +1248,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		gIndexBufferDirty = false;
 	}
 
-	//if (gVertexBufferDirty) // TODO: buffer stride can be changed in writeVertexBufferMemory
+	if (gVertexBufferDirty)
 	{
 		D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
 		buffer_view.BufferLocation = gVertexBuffer->getD3D12Buffer()->GetGPUVirtualAddress();
@@ -1363,6 +1363,9 @@ void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* mem
 	auto buffer = (VertexBufferD3D12*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
+
+	if (gVertexBuffer == buffer)
+		gVertexBufferDirty = true;
 }
 
 IndexBufferHandle* BackendD3D12::createIndexBuffer(size_t size, size_t stride)
@@ -1376,6 +1379,9 @@ void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, void* memor
 	auto buffer = (IndexBufferD3D12*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
+
+	if (gIndexBuffer == buffer)
+		gIndexBufferDirty = true;
 }
 
 void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
