@@ -603,6 +603,7 @@ struct ContextGL
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
+	Format getBackbufferFormat();
 };
 
 static ContextGL* gContext = nullptr;
@@ -615,6 +616,11 @@ uint32_t ContextGL::getBackbufferWidth()
 uint32_t ContextGL::getBackbufferHeight()
 {
 	return render_target ? render_target->getTexture()->getHeight() : height;
+}
+
+Format ContextGL::getBackbufferFormat()
+{
+	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
 }
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
@@ -1109,20 +1115,27 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
+	auto backbuffer_height = gContext->getBackbufferHeight();
+
 	auto x = (GLint)pos.x;
-	auto y = (GLint)(gContext->width - pos.y - size.y); // TODO: need different calculations when render target
-	auto w = (GLint)size.x;
-	auto h = (GLint)size.y;
+	auto y = (GLint)(backbuffer_height - pos.y - size.y);
+	auto width = (GLint)size.x;
+	auto height = (GLint)size.y;
+
+	auto format = gContext->getBackbufferFormat();
+	auto channels_count = GetFormatChannelsCount(format);
+	auto channel_size = GetFormatChannelSize(format);
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, gContext->pixel_buffer);
-	glBufferData(GL_PIXEL_PACK_BUFFER, w * h * 4, nullptr, GL_STATIC_READ);
-	glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+	glBufferData(GL_PIXEL_PACK_BUFFER, width * height * channels_count * channel_size, nullptr, GL_STATIC_READ);
+	glReadPixels(x, y, width, height, TextureFormatMap.at(format), FormatTypeMap.at(format), 0);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
 	glBindTexture(GL_TEXTURE_2D, dst_texture->getGLTexture());
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gContext->pixel_buffer);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0); // TODO: this is working only when format::byte4
+	glTexImage2D(GL_TEXTURE_2D, 0, TextureInternalFormatMap.at(format), width, height, 0,
+		TextureFormatMap.at(format), FormatTypeMap.at(format), 0);
 
 	if (dst_texture->isMipmap())
 		glGenerateMipmap(GL_TEXTURE_2D);
@@ -1134,12 +1147,21 @@ std::vector<uint8_t> BackendGL::getPixels()
 {
 	auto width = gContext->getBackbufferWidth();
 	auto height = gContext->getBackbufferHeight();
-	auto format = gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
+	auto format = gContext->getBackbufferFormat();
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
 
 	std::vector<uint8_t> result(width * height * channels_count * channel_size);
-	glReadPixels(0, 0, width, height, TextureFormatMap.at(format), FormatTypeMap.at(format), result.data());
+
+	auto texture = TextureGL(width, height, format, nullptr, false);
+
+	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);
+
+	GLint last_texture;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+	glBindTexture(GL_TEXTURE_2D, texture.getGLTexture());
+	glGetTexImage(GL_TEXTURE_2D, 0, TextureFormatMap.at(format), FormatTypeMap.at(format), result.data());
+	glBindTexture(GL_TEXTURE_2D, last_texture);
 
 	return result;
 }

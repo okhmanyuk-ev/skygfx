@@ -63,7 +63,7 @@ bool ClearRenderTarget(skygfx::BackendType backend)
 
 	skygfx::Initialize(native_window, width, height, backend);
 
-	auto target = skygfx::RenderTarget(1, 1, skygfx::Format::Byte4);
+	auto target = skygfx::RenderTarget(8, 8, skygfx::Format::Byte4);
 
 	glm::vec4 clear_color = { 0.0f, 1.0f, 0.0f, 1.0f };
 
