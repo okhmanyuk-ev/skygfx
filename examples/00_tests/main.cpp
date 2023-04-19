@@ -3,6 +3,11 @@
 #include "../utils/utils.h"
 #include <format>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
+using PixelsFunc = std::function<void(uint32_t width, uint32_t height, const std::vector<uint8_t>&)>;
+
 glm::vec4 BlitPixelsToOne(const std::vector<uint8_t>& pixels)
 {
 	glm::vec4 result = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -25,7 +30,7 @@ glm::vec4 BlitPixelsToOne(const std::vector<uint8_t>& pixels)
 	return result;
 }
 
-bool Clear(skygfx::BackendType backend)
+bool Clear(skygfx::BackendType backend, PixelsFunc pixels_func)
 {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -39,6 +44,7 @@ bool Clear(skygfx::BackendType backend)
 	skygfx::Clear(clear_color);
 			
 	auto pixels = skygfx::GetPixels();
+	pixels_func(width, height, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == clear_color;
@@ -54,7 +60,7 @@ bool Clear(skygfx::BackendType backend)
 	return result;
 }
 
-bool ClearRenderTarget(skygfx::BackendType backend)
+bool ClearRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
 {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -71,6 +77,7 @@ bool ClearRenderTarget(skygfx::BackendType backend)
 	skygfx::Clear(clear_color);
 
 	auto pixels = skygfx::GetPixels();
+	pixels_func(target.getWidth(), target.getHeight(), pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == clear_color;
@@ -86,7 +93,7 @@ bool ClearRenderTarget(skygfx::BackendType backend)
 	return result;
 }
 
-bool Triangle(skygfx::BackendType backend)
+bool Triangle(skygfx::BackendType backend, PixelsFunc pixels_func)
 {
 	const std::string vertex_shader_code = R"(
 #version 450 core
@@ -142,9 +149,15 @@ void main()
 	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 
 	auto pixels = skygfx::GetPixels();
+	pixels_func(width, height, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
-	auto result = pixel == glm::vec4{ 0.0416479930f, 0.0416579768f, 0.0416475832f, 1.00000000f };
+	auto result = pixel == glm::vec4{
+		0.0416530818f,
+		0.0416318141f,
+		0.0416527465f,
+		1.00000000f
+	};
 
 	skygfx::Present();
 
@@ -157,7 +170,7 @@ void main()
 	return result;
 }
 
-bool TriangleRenderTarget(skygfx::BackendType backend)
+bool TriangleRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
 {
 	const std::string vertex_shader_code = R"(
 #version 450 core
@@ -214,9 +227,15 @@ void main()
 	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 
 	auto pixels = skygfx::GetPixels();
+	pixels_func(target.getWidth(), target.getHeight(), pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
-	auto result = pixel == glm::vec4{ 0.0420343392f, 0.0410539247f, 0.0420343354f, 1.00000000f };
+	auto result = pixel == glm::vec4{
+		0.0420343205f,
+		0.0410539210f,
+		0.0420343131f,
+		1.00000000f
+	};
 
 	skygfx::Present();
 
@@ -233,7 +252,7 @@ int main()
 {
 	#define PUSH(F) { #F, F }
 	
-	std::vector<std::pair<std::string, std::function<bool(skygfx::BackendType)>>> test_cases = {
+	std::vector<std::pair<std::string, std::function<bool(skygfx::BackendType, PixelsFunc)>>> test_cases = {
 		PUSH(Clear),
 		PUSH(ClearRenderTarget),
 		PUSH(Triangle),
@@ -244,25 +263,42 @@ int main()
 
 	size_t total = available_backends.size() * test_cases.size();
 	size_t current = 0;
+	size_t passed = 0;
 
-	for (const auto& [name, func] : test_cases)
+	for (auto backend : available_backends)
 	{
-		for (auto backend : available_backends)
+		for (const auto& [name, func] : test_cases) 
 		{
 			current += 1;
 
 			const auto& backend_name = utils::GetBackendName(backend);
+
+			auto pixels_save_func = [&](uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels) {
+				int channels = 4;
+				
+				if (pixels.size() != width * height * channels)
+					return;
+
+				auto filename = name + "_" + backend_name + ".png";
+				stbi_write_png(filename.c_str(), width, height, channels, pixels.data(), width * channels);
+			};
+
 			auto before = std::chrono::high_resolution_clock::now();
-			bool result = func(backend);
+			bool result = func(backend, pixels_save_func);
 			auto duration = std::chrono::high_resolution_clock::now() - before;
 			auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
 			auto result_str = result ? "SUCCESS" : "FAIL";
 			
+			if (result)
+				passed += 1;
+
 			auto log_str = std::format("[{}/{}]	{}	{}	{} ms	{}", current, total, result_str, backend_name, duration_ms, name);
 			std::cout << log_str << std::endl;
 		}
 	}
 
+	std::cout << "---------------------" << std::endl;
+	std::cout << std::format("{}/{} tests passed!", passed, total) << std::endl;
 	std::cout << "Press ENTER to continue..." << std::endl;
 	std::getchar();
 

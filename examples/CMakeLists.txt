@@ -47,6 +47,7 @@ set_property(TARGET imgui PROPERTY FOLDER ${LIBS_FOLDER})
 
 add_executable(00_tests 00_tests/main.cpp)
 target_link_libraries(00_tests glfw skygfx)
+target_include_directories(00_tests PUBLIC lib/stb)
 
 # 01 - triangle
 
