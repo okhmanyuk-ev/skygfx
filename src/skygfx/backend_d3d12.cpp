@@ -576,9 +576,12 @@ void WaitForGpu()
 
 BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 {
-	ComPtr<ID3D12Debug> debug;
+	ComPtr<ID3D12Debug5> debug;
 	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
 	debug->EnableDebugLayer();
+	debug->SetEnableAutoName(true);
+	debug->SetEnableGPUBasedValidation(true);
+	debug->SetEnableSynchronizedCommandQueueValidation(true);
 
 	ComPtr<IDXGIFactory6> dxgi_factory;
 	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
