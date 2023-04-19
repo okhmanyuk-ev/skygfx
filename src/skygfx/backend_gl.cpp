@@ -1164,6 +1164,18 @@ std::vector<uint8_t> BackendGL::getPixels()
 	glGetTexImage(GL_TEXTURE_2D, 0, TextureFormatMap.at(format), FormatTypeMap.at(format), result.data());
 	glBindTexture(GL_TEXTURE_2D, last_texture);
 
+	const auto row_size = width * channels_count * channel_size;
+	auto temp_row = std::vector<uint8_t>(row_size);
+
+	for (size_t i = 0; i < size_t(height / 2); i++)
+	{
+		auto src = (void*)(size_t(result.data()) + (i * row_size));
+		auto dst = (void*)(size_t(result.data()) + ((height - i - 1) * row_size));
+		memcpy(temp_row.data(), src, row_size);
+		memcpy(src, dst, row_size);
+		memcpy(dst, temp_row.data(), row_size);
+	}
+
 	return result;
 }
 
