@@ -155,7 +155,28 @@ static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
 	{ Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
 };
 
-void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12GraphicsCommandList*)> func)
+void BeginCommandList(ID3D12CommandAllocator* cmd_alloc, ID3D12GraphicsCommandList* cmd_list)
+{
+	cmd_alloc->Reset();
+	cmd_list->Reset(cmd_alloc, NULL);
+}
+
+void EndCommandList(ID3D12CommandQueue* cmd_queue, ID3D12GraphicsCommandList* cmd_list, bool wait_for)
+{
+	cmd_list->Close();
+	cmd_queue->ExecuteCommandLists(1, CommandListCast(&cmd_list));
+	if (wait_for)
+	{
+		ComPtr<ID3D12Fence> fence;
+		gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf()));
+		auto event = CreateEvent(0, 0, 0, 0);
+		cmd_queue->Signal(fence.Get(), 1);
+		fence->SetEventOnCompletion(1, event);
+		WaitForSingleObject(event, INFINITE);
+	}
+}
+
+void OneTimeSubmit(const std::function<void(ID3D12GraphicsCommandList*)> func)
 {
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
 	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -163,27 +184,20 @@ void OneTimeSubmit(ID3D12Device* device, const std::function<void(ID3D12Graphics
 	queue_desc.NodeMask = 1;
 
 	ComPtr<ID3D12CommandQueue> cmd_queue;
-	device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(cmd_queue.GetAddressOf()));
+	gDevice->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(cmd_queue.GetAddressOf()));
 
 	ComPtr<ID3D12CommandAllocator> cmd_alloc;
-	device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(cmd_alloc.GetAddressOf()));
+	gDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(cmd_alloc.GetAddressOf()));
 
 	ComPtr<ID3D12GraphicsCommandList> cmd_list;
-	device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(), NULL, 
+	gDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(), NULL,
 		IID_PPV_ARGS(cmd_list.GetAddressOf()));
 
-	ComPtr<ID3D12Fence> fence;
-	device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf()));
-
-	auto event = CreateEvent(0, 0, 0, 0);
-
-	func(cmd_list.Get());
 	cmd_list->Close();
-	cmd_queue->ExecuteCommandLists(1, CommandListCast(cmd_list.GetAddressOf()));
-	cmd_queue->Signal(fence.Get(), 1);
 
-	fence->SetEventOnCompletion(1, event);
-	WaitForSingleObject(event, INFINITE);
+	BeginCommandList(cmd_alloc.Get(), cmd_list.Get());
+	func(cmd_list.Get());
+	EndCommandList(cmd_queue.Get(), cmd_list.Get(), true);
 }
 
 class ShaderD3D12
@@ -380,7 +394,7 @@ public:
 			subersource_data.RowPitch = width * channels * channel_size;
 			subersource_data.SlicePitch = width * height * channels * channel_size;
 
-			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
+			OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
 				auto barrier = ScopedBarrier(cmdlist, { 
 					CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST) 
 				});
@@ -492,7 +506,7 @@ public:
 
 		if (state != D3D12_RESOURCE_STATE_COMMON)
 		{
-			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
+			OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
 				TransitionResource(cmdlist, mBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, state);
 			});
 		}
@@ -1000,18 +1014,27 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	box.front = 0;
 	box.back = 1;
 
+	if (gRenderTarget) // TODO: remove this if-else when main-render-target will be same class as gRenderTarget
 	{
-		auto barrier = ScopedBarrier(gCommandList.Get(), {
-			CD3DX12_RESOURCE_BARRIER::Transition(rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-				D3D12_RESOURCE_STATE_COPY_SOURCE),
-			CD3DX12_RESOURCE_BARRIER::Transition(dst_texture->getD3D12Texture().Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-				D3D12_RESOURCE_STATE_COPY_DEST)
-		});
+		gRenderTarget->getTexture()->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
+	}
+	else
+	{
+		TransitionResource(gCommandList.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+	}
 
-		auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(rtv_resource.Get(), 0);
-		auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
+	dst_texture->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
 
-		gCommandList->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
+	auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(rtv_resource.Get(), 0);
+	auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
+
+	gCommandList->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
+
+	if (!gRenderTarget) // TODO: remove this barrier setup when main-render-target will be same class as gRenderTarget
+	{
+		TransitionResource(gCommandList.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
 
 	if (dst_texture->isMipmap())
@@ -1020,7 +1043,69 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 
 std::vector<uint8_t> BackendD3D12::getPixels()
 {
-	return { (uint8_t)BackendType::D3D12 };
+	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gBackbufferWidth;
+	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gBackbufferHeight;
+	auto format = gRenderTarget ? gRenderTarget->getTexture()->getFormat() : Format::Byte4;
+	auto channels_count = GetFormatChannelsCount(format);
+	auto channel_size = GetFormatChannelSize(format);
+
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
+
+	auto texture = TextureD3D12(width, height, format, nullptr, false);
+
+	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);	
+
+	EndCommandList(gCommandQueue.Get(), gCommandList.Get(), true);
+
+	auto texture_desc = texture.getD3D12Texture()->GetDesc();
+
+	UINT64 required_size = 0;
+	UINT num_subresources = texture_desc.DepthOrArraySize * texture_desc.MipLevels;
+	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(num_subresources);
+	std::vector<UINT> num_rows(num_subresources);
+	std::vector<UINT64> row_sizes_in_bytes(num_subresources);
+	
+	gDevice->GetCopyableFootprints(&texture_desc, 0, num_subresources, 0, layouts.data(),
+		num_rows.data(), row_sizes_in_bytes.data(), &required_size);
+
+	auto staging_buffer = CreateBuffer(required_size);
+
+	OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
+		texture.ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		for (UINT i = 0; i < num_subresources; ++i)
+		{
+			auto src_loc = CD3DX12_TEXTURE_COPY_LOCATION(texture.getD3D12Texture().Get(), i);
+			auto dst_loc = CD3DX12_TEXTURE_COPY_LOCATION(staging_buffer.Get(), layouts[i]);
+			cmdlist->CopyTextureRegion(&dst_loc, 0, 0, 0, &src_loc, nullptr);
+		}
+	});
+
+	UINT8* ptr = nullptr;
+	staging_buffer->Map(0, nullptr, reinterpret_cast<void**>(&ptr));
+
+	auto dst_row_size = width * channels_count * channel_size;
+
+	for (UINT i = 0; i < num_subresources; ++i)
+	{
+		UINT8* src_ptr = ptr + layouts[i].Offset;
+		UINT8* dst_ptr = result.data() + layouts[i].Offset;
+
+		for (UINT j = 0; j < num_rows[i]; ++j)
+		{
+			memcpy(dst_ptr, src_ptr, dst_row_size);
+			src_ptr += layouts[i].Footprint.RowPitch;
+			dst_ptr += dst_row_size;
+		}
+
+		break; // we save use only first level
+	}
+
+	staging_buffer->Unmap(0, nullptr);
+
+	BeginCommandList(gCommandAllocator.Get(), gCommandList.Get());
+	
+	return result;
 }
 
 void BackendD3D12::prepareForDrawing(bool indexed)
@@ -1284,9 +1369,7 @@ void BackendD3D12::present()
 
 void BackendD3D12::begin()
 {
-	gCommandAllocator->Reset();
-
-	gCommandList->Reset(gCommandAllocator.Get(), NULL);
+	BeginCommandList(gCommandAllocator.Get(), gCommandList.Get());
 
 	TransitionResource(gCommandList.Get(), gMainRenderTarget.frames[gFrameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -1303,8 +1386,7 @@ void BackendD3D12::end()
 	TransitionResource(gCommandList.Get(), gMainRenderTarget.frames[gFrameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
-	gCommandList->Close();
-	gCommandQueue->ExecuteCommandLists(1, CommandListCast(gCommandList.GetAddressOf()));
+	EndCommandList(gCommandQueue.Get(), gCommandList.Get(), false);
 }
 
 TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
