@@ -82,67 +82,69 @@ SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
 
 static int const NUM_BACK_BUFFERS = 2;
 
-static ComPtr<ID3D12Device> gDevice;
-static ComPtr<ID3D12CommandAllocator> gCommandAllocator;
-static ComPtr<ID3D12CommandQueue> gCommandQueue;
-static ComPtr<IDXGISwapChain3> gSwapChain;
-static ComPtr<ID3D12GraphicsCommandList4> gCommandList;
-static ComPtr<ID3D12DescriptorHeap> gDescriptorHeap;
-static CD3DX12_CPU_DESCRIPTOR_HANDLE gDescriptorHeapCpuHandle;
-static CD3DX12_GPU_DESCRIPTOR_HANDLE gDescriptorHeapGpuHandle;
-static UINT gDescriptorHandleIncrementSize = 0;
-
-static struct 
-{
-	struct Frame
-	{
-		D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor;
-		ComPtr<ID3D12Resource> resource;
-	};
-
-	Frame frames[NUM_BACK_BUFFERS];
-
-	ComPtr<ID3D12DescriptorHeap> rtv_heap;
-	ComPtr<ID3D12DescriptorHeap> dsv_heap;
-	ComPtr<ID3D12Resource> depth_stencil_resource;
-} gMainRenderTarget;
-
 const static DXGI_FORMAT MainRenderTargetColorAttachmentFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 const static DXGI_FORMAT MainRenderTargetDepthStencilAttachmentFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
-static UINT gFrameIndex = 0;
-static HANDLE gFenceEvent = NULL;
-static ComPtr<ID3D12Fence> gFence;
-static UINT64 gFenceValue;
+struct ContextD3D12
+{
+	ComPtr<ID3D12Device> device;
+	ComPtr<ID3D12CommandAllocator> cmd_alloc;
+	ComPtr<ID3D12CommandQueue> cmd_queue;
+	ComPtr<IDXGISwapChain3> swapchain;
+	ComPtr<ID3D12GraphicsCommandList4> cmdlist;
+	ComPtr<ID3D12DescriptorHeap> descriptor_heap;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptor_heap_cpu_handle;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE descriptor_heap_gpu_handle;
+	UINT descriptor_handle_increment_size = 0;
 
-static std::unordered_map<uint32_t, TextureD3D12*> gTextures;
-static std::unordered_map<uint32_t, UniformBufferD3D12*> gUniformBuffers;
-static RenderTargetD3D12* gRenderTarget = nullptr;
+	struct
+	{
+		struct Frame
+		{
+			D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor;
+			ComPtr<ID3D12Resource> resource;
+		};
 
-static PipelineStateD3D12 gPipelineState;
-static std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> gPipelineStates;
+		Frame frames[NUM_BACK_BUFFERS];
 
-static ExecuteList gExecuteAfterPresent;
+		ComPtr<ID3D12DescriptorHeap> rtv_heap;
+		ComPtr<ID3D12DescriptorHeap> dsv_heap;
+		ComPtr<ID3D12Resource> depth_stencil_resource;
+	} main_render_target;
 
-static std::optional<Viewport> gViewport;
-static bool gViewportDirty = true;
+	UINT frame_index = 0;
+	HANDLE fence_event = NULL;
+	ComPtr<ID3D12Fence> fence;
+	UINT64 fence_value;
 
-static std::optional<Scissor> gScissor;
-static bool gScissorDirty = true;
+	std::unordered_map<uint32_t, TextureD3D12*> textures;
+	std::unordered_map<uint32_t, UniformBufferD3D12*> uniform_buffers;
+	RenderTargetD3D12* render_target = nullptr;
 
-static Topology gTopology = Topology::TriangleList;
-static bool gTopologyDirty = true;
+	PipelineStateD3D12 pipeline_state;
+	std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> pipeline_states;
 
-static IndexBufferD3D12* gIndexBuffer = nullptr;
-static bool gIndexBufferDirty = true;
+	ExecuteList execute_after_present;
 
-static VertexBufferD3D12* gVertexBuffer = nullptr;
-static bool gVertexBufferDirty = true;
+	Topology topology = Topology::TriangleList;
+	std::optional<Viewport> viewport;
+	std::optional<Scissor> scissor;
+	VertexBufferD3D12* vertex_buffer = nullptr;
+	IndexBufferD3D12* index_buffer = nullptr;
 
-static uint32_t gBackbufferWidth = 0;
-static uint32_t gBackbufferHeight = 0;
+	bool topology_dirty = true;
+	bool viewport_dirty = true;
+	bool scissor_dirty = true;
+	bool vertex_buffer_dirty = true;
+	bool index_buffer_dirty = true;
 
-static std::vector<ComPtr<ID3D12DeviceChild>> gStagingObjects;
+	uint32_t width = 0;
+	uint32_t height = 0;
+
+	std::vector<ComPtr<ID3D12DeviceChild>> staging_objects;
+};
+
+static ContextD3D12* gContext = nullptr;
 
 static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
 	{ Format::Float1, DXGI_FORMAT_R32_FLOAT },
@@ -168,7 +170,7 @@ void EndCommandList(ID3D12CommandQueue* cmd_queue, ID3D12GraphicsCommandList* cm
 	if (wait_for)
 	{
 		ComPtr<ID3D12Fence> fence;
-		ThrowIfFailed(gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
+		ThrowIfFailed(gContext->device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
 
 		SetDebugObjectName(fence.Get(), L"ResourceUploadBatch");
 
@@ -189,13 +191,13 @@ void OneTimeSubmit(const std::function<void(ID3D12GraphicsCommandList*)> func)
 	queue_desc.NodeMask = 1;
 
 	ComPtr<ID3D12CommandQueue> cmd_queue;
-	gDevice->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(cmd_queue.GetAddressOf()));
+	gContext->device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(cmd_queue.GetAddressOf()));
 
 	ComPtr<ID3D12CommandAllocator> cmd_alloc;
-	gDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(cmd_alloc.GetAddressOf()));
+	gContext->device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(cmd_alloc.GetAddressOf()));
 
 	ComPtr<ID3D12GraphicsCommandList> cmd_list;
-	gDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(), NULL,
+	gContext->device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.Get(), NULL,
 		IID_PPV_ARGS(cmd_list.GetAddressOf()));
 
 	cmd_list->Close();
@@ -327,7 +329,7 @@ public:
 			auto desc = CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC((UINT)params.size(), params.data(), (UINT)static_samplers.size(),
 				static_samplers.data(), D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-			CreateRootSignature(gDevice.Get(), &desc.Desc_1_0, mRootSignature.GetAddressOf());
+			CreateRootSignature(gContext->device.Get(), &desc.Desc_1_0, mRootSignature.GetAddressOf());
 		}
 	}
 };
@@ -370,15 +372,15 @@ public:
 
 		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
-		gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
+		gContext->device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
 			D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(mTexture.GetAddressOf()));
 
-		CreateShaderResourceView(gDevice.Get(), mTexture.Get(), gDescriptorHeapCpuHandle);
+		CreateShaderResourceView(gContext->device.Get(), mTexture.Get(), gContext->descriptor_heap_cpu_handle);
 
-		mGpuDescriptorHandle = gDescriptorHeapGpuHandle;
+		mGpuDescriptorHandle = gContext->descriptor_heap_gpu_handle;
 
-		gDescriptorHeapCpuHandle.Offset(1, gDescriptorHandleIncrementSize);
-		gDescriptorHeapGpuHandle.Offset(1, gDescriptorHandleIncrementSize);
+		gContext->descriptor_heap_cpu_handle.Offset(1, gContext->descriptor_handle_increment_size);
+		gContext->descriptor_heap_gpu_handle.Offset(1, gContext->descriptor_handle_increment_size);
 
 		if (memory)
 		{
@@ -388,7 +390,7 @@ public:
 
 			ComPtr<ID3D12Resource> upload_buffer = NULL;
 
-			gDevice->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
+			gContext->device->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
 				D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
 
 			auto channels = GetFormatChannelsCount(format);
@@ -404,7 +406,7 @@ public:
 				UpdateSubresources(cmdlist, mTexture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
 
 				if (mipmap)
-					generateMips(cmdlist, gStagingObjects);
+					generateMips(cmdlist, gContext->staging_objects);
 			});
 		}
 	}
@@ -412,7 +414,7 @@ public:
 	void generateMips(ID3D12GraphicsCommandList* cmdlist, std::vector<ComPtr<ID3D12DeviceChild>>& staging_objects)
 	{
 		ensureState(cmdlist, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-		D3D12GenerateMips(gDevice.Get(), cmdlist, mTexture.Get(), staging_objects);
+		D3D12GenerateMips(gContext->device.Get(), cmdlist, mTexture.Get(), staging_objects);
 		mCurrentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	}
 
@@ -447,9 +449,9 @@ public:
 		D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
 		rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		rtv_heap_desc.NumDescriptors = 1;
-		gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf()));
+		gContext->device->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf()));
 
-		CreateRenderTargetView(gDevice.Get(), texture->getD3D12Texture().Get(),
+		CreateRenderTargetView(gContext->device.Get(), texture->getD3D12Texture().Get(),
 			mRtvHeap->GetCPUDescriptorHandleForHeapStart());
 
 		auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -458,19 +460,19 @@ public:
 
 		depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-		gDevice->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc,
+		gContext->device->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc,
 			D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(mDepthStencilResource.GetAddressOf()));
 
 		D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
 		dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 		dsv_heap_desc.NumDescriptors = 1;
-		gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(mDsvHeap.GetAddressOf()));
+		gContext->device->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(mDsvHeap.GetAddressOf()));
 
 		D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
 		dsv_desc.Format = depth_desc.Format;
 		dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 
-		gDevice->CreateDepthStencilView(mDepthStencilResource.Get(), &dsv_desc,
+		gContext->device->CreateDepthStencilView(mDepthStencilResource.Get(), &dsv_desc,
 			mDsvHeap->GetCPUDescriptorHandleForHeapStart());
 	}
 };
@@ -479,11 +481,10 @@ ComPtr<ID3D12Resource> CreateBuffer(size_t size)
 {
 	ComPtr<ID3D12Resource> result;
 
-	auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE,
-		D3D12_MEMORY_POOL_L0);
+	auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE, D3D12_MEMORY_POOL_L0);
 	auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
 
-	gDevice->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
+	gContext->device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
 		D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(result.GetAddressOf()));
 
 	return result;
@@ -522,13 +523,12 @@ public:
 		memcpy(cpu_memory, memory, size);
 		staging_buffer->Unmap(0, NULL);
 
-		auto barrier = ScopedBarrier(gCommandList.Get(), {
+		auto barrier = ScopedBarrier(gContext->cmdlist.Get(), {
 			CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(), mState, D3D12_RESOURCE_STATE_COPY_DEST)
 		});
 
-		gCommandList->CopyBufferRegion(mBuffer.Get(), 0, staging_buffer.Get(), 0, (UINT64)size);
-
-		gStagingObjects.push_back(staging_buffer);
+		gContext->cmdlist->CopyBufferRegion(mBuffer.Get(), 0, staging_buffer.Get(), 0, (UINT64)size);
+		gContext->staging_objects.push_back(staging_buffer);
 	}
 };
 
@@ -575,27 +575,29 @@ public:
 // Prepare to render the next frame.
 void MoveToNextFrame()
 {
-	gCommandQueue->Signal(gFence.Get(), gFenceValue);
-	gFrameIndex = gSwapChain->GetCurrentBackBufferIndex();
-	if (gFence->GetCompletedValue() < gFenceValue)
+	gContext->cmd_queue->Signal(gContext->fence.Get(), gContext->fence_value);
+	gContext->frame_index = gContext->swapchain->GetCurrentBackBufferIndex();
+	if (gContext->fence->GetCompletedValue() < gContext->fence_value)
 	{
-		gFence->SetEventOnCompletion(gFenceValue, gFenceEvent);
-		WaitForSingleObject(gFenceEvent, INFINITE);
+		gContext->fence->SetEventOnCompletion(gContext->fence_value, gContext->fence_event);
+		WaitForSingleObject(gContext->fence_event, INFINITE);
 	}
-	gFenceValue++;
+	gContext->fence_value++;
 }
 
 // Wait for pending GPU work to complete.
 void WaitForGpu()
 {
-	gCommandQueue->Signal(gFence.Get(), gFenceValue);
-	gFence->SetEventOnCompletion(gFenceValue, gFenceEvent);
-	WaitForSingleObject(gFenceEvent, INFINITE);
-	gFenceValue++;
+	gContext->cmd_queue->Signal(gContext->fence.Get(), gContext->fence_value);
+	gContext->fence->SetEventOnCompletion(gContext->fence_value, gContext->fence_event);
+	WaitForSingleObject(gContext->fence_event, INFINITE);
+	gContext->fence_value++;
 }
 
 BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 {
+	gContext = new ContextD3D12();
+
 	ComPtr<ID3D12Debug5> debug;
 	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
 	debug->EnableDebugLayer();
@@ -609,10 +611,10 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	IDXGIAdapter1* adapter;
 	dxgi_factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
 
-	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gDevice.GetAddressOf()));
+	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gContext->device.GetAddressOf()));
 
 	ComPtr<ID3D12InfoQueue> info_queue;
-	gDevice.As(&info_queue);
+	gContext->device.As(&info_queue);
 	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
 	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
 	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
@@ -633,46 +635,46 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	rtv_heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
 	rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	rtv_heap_desc.NodeMask = 1;
-	gDevice->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gMainRenderTarget.rtv_heap.GetAddressOf()));
+	gContext->device->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.rtv_heap.GetAddressOf()));
 
 	D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
 	dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsv_heap_desc.NumDescriptors = 1;
-	gDevice->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gMainRenderTarget.dsv_heap.GetAddressOf()));
+	gContext->device->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.dsv_heap.GetAddressOf()));
 		
-	auto rtv_increment_size = gDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	auto rtv_heap_start = gMainRenderTarget.rtv_heap->GetCPUDescriptorHandleForHeapStart();
+	auto rtv_increment_size = gContext->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	auto rtv_heap_start = gContext->main_render_target.rtv_heap->GetCPUDescriptorHandleForHeapStart();
 
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
 		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
-		gMainRenderTarget.frames[i].rtv_descriptor = handle;
+		gContext->main_render_target.frames[i].rtv_descriptor = handle;
 	}
 
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
 	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	queue_desc.NodeMask = 1;
-	gDevice->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(gCommandQueue.GetAddressOf()));
+	gContext->device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(gContext->cmd_queue.GetAddressOf()));
 	
-	gDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, 
-		IID_PPV_ARGS(gCommandAllocator.GetAddressOf()));
+	gContext->device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+		IID_PPV_ARGS(gContext->cmd_alloc.GetAddressOf()));
 
-	gDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, gCommandAllocator.Get(), 
-		NULL, IID_PPV_ARGS(gCommandList.GetAddressOf()));
+	gContext->device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, gContext->cmd_alloc.Get(),
+		NULL, IID_PPV_ARGS(gContext->cmdlist.GetAddressOf()));
 	
-	gCommandList->Close();
+	gContext->cmdlist->Close();
 	
 	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
 	heap_desc.NumDescriptors = 1000; // TODO: make more dynamic
 	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	gDevice->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gDescriptorHeap.GetAddressOf()));
+	gContext->device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gContext->descriptor_heap.GetAddressOf()));
 
-	gDescriptorHandleIncrementSize = gDevice->GetDescriptorHandleIncrementSize(heap_desc.Type);
+	gContext->descriptor_handle_increment_size = gContext->device->GetDescriptorHandleIncrementSize(heap_desc.Type);
 
-	gDescriptorHeapCpuHandle = gDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-	gDescriptorHeapGpuHandle = gDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
+	gContext->descriptor_heap_cpu_handle = gContext->descriptor_heap->GetCPUDescriptorHandleForHeapStart();
+	gContext->descriptor_heap_gpu_handle = gContext->descriptor_heap->GetGPUDescriptorHandleForHeapStart();
 
 	DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {};
 	swapchain_desc.BufferCount = NUM_BACK_BUFFERS;
@@ -691,18 +693,18 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	fs_swapchain_desc.Windowed = TRUE;
 
 	ComPtr<IDXGISwapChain1> swapchain;
-	dxgi_factory->CreateSwapChainForHwnd(gCommandQueue.Get(), (HWND)window,
+	dxgi_factory->CreateSwapChainForHwnd(gContext->cmd_queue.Get(), (HWND)window,
 		&swapchain_desc, &fs_swapchain_desc, NULL, swapchain.GetAddressOf());
 		
-	swapchain.As(&gSwapChain);
+	swapchain.As(&gContext->swapchain);
 
-	gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gFence.GetAddressOf()));
-	gFenceValue = 1;
-	gFenceEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	assert(gFenceEvent != NULL);
+	gContext->device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gContext->fence.GetAddressOf()));
+	gContext->fence_value = 1;
+	gContext->fence_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+	assert(gContext->fence_event != NULL);
 	
-	gPipelineState.color_attachment_format = MainRenderTargetColorAttachmentFormat;
-	gPipelineState.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
+	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
 
 	createMainRenderTarget(width, height);
 
@@ -713,20 +715,20 @@ BackendD3D12::~BackendD3D12()
 {
 	end();
 	WaitForGpu();
-	gExecuteAfterPresent.flush();
-	gStagingObjects.clear();
+	gContext->execute_after_present.flush();
 	destroyMainRenderTarget();
-	gSwapChain.Reset();
-	gDevice.Reset();
+
+	delete gContext;
+	gContext = nullptr;
 }
 
 void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		gSwapChain->GetBuffer(i, IID_PPV_ARGS(gMainRenderTarget.frames[i].resource.GetAddressOf()));
-		CreateRenderTargetView(gDevice.Get(), gMainRenderTarget.frames[i].resource.Get(),
-			gMainRenderTarget.frames[i].rtv_descriptor);
+		gContext->swapchain->GetBuffer(i, IID_PPV_ARGS(gContext->main_render_target.frames[i].resource.GetAddressOf()));
+		CreateRenderTargetView(gContext->device.Get(), gContext->main_render_target.frames[i].resource.Get(),
+			gContext->main_render_target.frames[i].rtv_descriptor);
 	}
 
 	auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
@@ -735,30 +737,30 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 
 	depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-	gDevice->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc, 
-		D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(gMainRenderTarget.depth_stencil_resource.GetAddressOf()));
+	gContext->device->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(gContext->main_render_target.depth_stencil_resource.GetAddressOf()));
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
 	dsv_desc.Format = depth_desc.Format;
 	dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	
-	gDevice->CreateDepthStencilView(gMainRenderTarget.depth_stencil_resource.Get(), &dsv_desc,
-		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart());
+	gContext->device->CreateDepthStencilView(gContext->main_render_target.depth_stencil_resource.Get(), &dsv_desc,
+		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart());
 
-	gBackbufferWidth = width;
-	gBackbufferHeight = height;
+	gContext->width = width;
+	gContext->height = height;
 
-	gFrameIndex = gSwapChain->GetCurrentBackBufferIndex();
+	gContext->frame_index = gContext->swapchain->GetCurrentBackBufferIndex();
 }
 
 void BackendD3D12::destroyMainRenderTarget()
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		gMainRenderTarget.frames[i].resource.Reset();
+		gContext->main_render_target.frames[i].resource.Reset();
 	}
 
-	gMainRenderTarget.depth_stencil_resource.Reset();
+	gContext->main_render_target.depth_stencil_resource.Reset();
 }
 
 void BackendD3D12::resize(uint32_t width, uint32_t height)
@@ -766,124 +768,124 @@ void BackendD3D12::resize(uint32_t width, uint32_t height)
 	end();
 	WaitForGpu();
 	destroyMainRenderTarget();
-	gSwapChain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, MainRenderTargetColorAttachmentFormat, 0);
+	gContext->swapchain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, MainRenderTargetColorAttachmentFormat, 0);
 	createMainRenderTarget(width, height);
 	begin();
 
-	if (!gViewport.has_value())
-		gViewportDirty = true;
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 	
-	if (!gScissor.has_value())
-		gScissorDirty = true;
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendD3D12::setTopology(Topology topology)
 {
-	if (gTopology == topology)
+	if (gContext->topology == topology)
 		return;
 
-	gTopology = topology;
-	gTopologyDirty = true;
-	gPipelineState.topology_kind = GetTopologyKind(topology);
+	gContext->topology = topology;
+	gContext->topology_dirty = true;
+	gContext->pipeline_state.topology_kind = GetTopologyKind(topology);
 }
 
 void BackendD3D12::setViewport(std::optional<Viewport> viewport)
 {
-	if (gViewport != viewport)
-		gViewportDirty = true;
+	if (gContext->viewport != viewport)
+		gContext->viewport_dirty = true;
 
-	gViewport = viewport;
+	gContext->viewport = viewport;
 }
 
 void BackendD3D12::setScissor(std::optional<Scissor> scissor)
 {
-	if (gScissor != scissor)
-		gScissorDirty = true;
+	if (gContext->scissor != scissor)
+		gContext->scissor_dirty = true;
 
-	gScissor = scissor;
+	gContext->scissor = scissor;
 }
 
 void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureD3D12*)handle;
-	gTextures[binding] = texture;
+	gContext->textures[binding] = texture;
 }
 
 void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetD3D12*)handle;
 		
-	if (gRenderTarget == render_target)
+	if (gContext->render_target == render_target)
 		return;
 
-	gPipelineState.color_attachment_format = FormatMap.at(render_target->getTexture()->getFormat());
-	gPipelineState.depth_stencil_format = render_target->getDepthStencilFormat();
-	gRenderTarget = render_target;
+	gContext->pipeline_state.color_attachment_format = FormatMap.at(render_target->getTexture()->getFormat());
+	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
+	gContext->render_target = render_target;
 
-	if (!gViewport.has_value())
-		gViewportDirty = true;
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 
-	if (!gScissor.has_value())
-		gScissorDirty = true;
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendD3D12::setRenderTarget(std::nullopt_t value)
 {
-	if (gRenderTarget == nullptr)
+	if (gContext->render_target == nullptr)
 		return;
 
-	gPipelineState.color_attachment_format = MainRenderTargetColorAttachmentFormat;
-	gPipelineState.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
-	gRenderTarget = nullptr;
+	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
+	gContext->render_target = nullptr;
 
-	if (!gViewport.has_value())
-		gViewportDirty = true;
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
 
-	if (!gScissor.has_value())
-		gScissorDirty = true;
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendD3D12::setShader(ShaderHandle* handle)
 {
-	gPipelineState.shader = (ShaderD3D12*)handle;
+	gContext->pipeline_state.shader = (ShaderD3D12*)handle;
 }
 
 void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferD3D12*)handle;
 	
-	if (gVertexBuffer == buffer)
+	if (gContext->vertex_buffer == buffer)
 		return;
 	
-	gVertexBuffer = buffer;
-	gVertexBufferDirty = true;
+	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferD3D12*)handle;
 
-	if (gIndexBuffer == buffer)
+	if (gContext->index_buffer == buffer)
 		return;
 
-	gIndexBuffer = buffer;
-	gIndexBufferDirty = true;
+	gContext->index_buffer = buffer;
+	gContext->index_buffer_dirty = true;
 }
 
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferD3D12*)handle;
-	gUniformBuffers[binding] = buffer;
+	gContext->uniform_buffers[binding] = buffer;
 }
 
 void BackendD3D12::setBlendMode(const BlendMode& value)
 {
-	gPipelineState.blend_mode = value;
+	gContext->pipeline_state.blend_mode = value;
 }
 
 void BackendD3D12::setDepthMode(std::optional<DepthMode> depth_mode)
 {
-	gPipelineState.depth_mode = depth_mode;
+	gContext->pipeline_state.depth_mode = depth_mode;
 }
 
 void BackendD3D12::setStencilMode(std::optional<StencilMode> stencil_mode)
@@ -892,7 +894,7 @@ void BackendD3D12::setStencilMode(std::optional<StencilMode> stencil_mode)
 
 void BackendD3D12::setCullMode(CullMode cull_mode)
 {
-	gPipelineState.rasterizer_state.cull_mode = cull_mode;;
+	gContext->pipeline_state.rasterizer_state.cull_mode = cull_mode;;
 }
 
 void BackendD3D12::setSampler(Sampler value)
@@ -906,22 +908,22 @@ void BackendD3D12::setTextureAddress(TextureAddress value)
 void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	const auto& rtv = gRenderTarget ? 
-		gRenderTarget->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
+	const auto& rtv = gContext->render_target ?
+		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gContext->main_render_target.frames[gContext->frame_index].rtv_descriptor;
 
-	const auto& dsv = gRenderTarget ?
-		gRenderTarget->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
+	const auto& dsv = gContext->render_target ?
+		gContext->render_target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
-	if (gRenderTarget)
+	if (gContext->render_target)
 	{
-		gRenderTarget->getTexture()->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
 
 	if (color.has_value())
 	{
-		gCommandList->ClearRenderTargetView(rtv, (float*)&color.value(), 0, NULL);
+		gContext->cmdlist->ClearRenderTargetView(rtv, (float*)&color.value(), 0, NULL);
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -934,26 +936,26 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 		if (stencil.has_value())
 			flags |= D3D12_CLEAR_FLAG_STENCIL;
 
-		gCommandList->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
+		gContext->cmdlist->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
 	}
 }
 
 void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	prepareForDrawing(false);
-	gCommandList->DrawInstanced((UINT)vertex_count, 1, (UINT)vertex_offset, 0);
+	gContext->cmdlist->DrawInstanced((UINT)vertex_count, 1, (UINT)vertex_offset, 0);
 }
 
 void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	prepareForDrawing(true);
-	gCommandList->DrawIndexedInstanced((UINT)index_count, 1, (UINT)index_offset, 0, 0);
+	gContext->cmdlist->DrawIndexedInstanced((UINT)index_count, 1, (UINT)index_offset, 0, 0);
 }
 
 void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 	auto dst_texture = (TextureD3D12*)dst_texture_handle;
-	auto format = gRenderTarget ? gRenderTarget->getTexture()->getFormat() : Format::Byte4; // TODO: create getBackbufferFormat() func
+	auto format = gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4; // TODO: create getBackbufferFormat() func
 
 	assert(dst_texture->getWidth() == size.x);
 	assert(dst_texture->getHeight() == size.y);
@@ -962,9 +964,9 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto rtv_resource = gRenderTarget ? 
-		gRenderTarget->getTexture()->getD3D12Texture() :
-		gMainRenderTarget.frames[gFrameIndex].resource;
+	auto rtv_resource = gContext->render_target ?
+		gContext->render_target->getTexture()->getD3D12Texture() :
+		gContext->main_render_target.frames[gContext->frame_index].resource;
 
 	auto desc = rtv_resource->GetDesc();
 
@@ -1015,38 +1017,38 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	box.front = 0;
 	box.back = 1;
 
-	if (gRenderTarget) // TODO: remove this if-else when main-render-target will be same class as gRenderTarget
+	if (gContext->render_target) // TODO: remove this if-else when main-render-target will be same class as render_target
 	{
-		gRenderTarget->getTexture()->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
+		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
 	}
 	else
 	{
-		TransitionResource(gCommandList.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
 			D3D12_RESOURCE_STATE_COPY_SOURCE);
 	}
 
-	dst_texture->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+	dst_texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
 
 	auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(rtv_resource.Get(), 0);
 	auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
 
-	gCommandList->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
+	gContext->cmdlist->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
 
-	if (!gRenderTarget) // TODO: remove this barrier setup when main-render-target will be same class as gRenderTarget
+	if (!gContext->render_target) // TODO: remove this barrier setup when main-render-target will be same class as render_target
 	{
-		TransitionResource(gCommandList.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
 			D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
 
 	if (dst_texture->isMipmap())
-		dst_texture->generateMips(gCommandList.Get(), gStagingObjects);
+		dst_texture->generateMips(gContext->cmdlist.Get(), gContext->staging_objects);
 }
 
 std::vector<uint8_t> BackendD3D12::getPixels()
 {
-	auto width = gRenderTarget ? gRenderTarget->getTexture()->getWidth() : gBackbufferWidth;
-	auto height = gRenderTarget ? gRenderTarget->getTexture()->getHeight() : gBackbufferHeight;
-	auto format = gRenderTarget ? gRenderTarget->getTexture()->getFormat() : Format::Byte4;
+	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width; // TODO: add helper functions for this (getBackbufferWidth()...)
+	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
+	auto format = gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
 
@@ -1056,7 +1058,7 @@ std::vector<uint8_t> BackendD3D12::getPixels()
 
 	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);	
 
-	EndCommandList(gCommandQueue.Get(), gCommandList.Get(), true);
+	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), true);
 
 	auto texture_desc = texture.getD3D12Texture()->GetDesc();
 
@@ -1066,7 +1068,7 @@ std::vector<uint8_t> BackendD3D12::getPixels()
 	std::vector<UINT> num_rows(num_subresources);
 	std::vector<UINT64> row_sizes_in_bytes(num_subresources);
 	
-	gDevice->GetCopyableFootprints(&texture_desc, 0, num_subresources, 0, layouts.data(),
+	gContext->device->GetCopyableFootprints(&texture_desc, 0, num_subresources, 0, layouts.data(),
 		num_rows.data(), row_sizes_in_bytes.data(), &required_size);
 
 	auto staging_buffer = CreateBuffer(required_size);
@@ -1104,17 +1106,17 @@ std::vector<uint8_t> BackendD3D12::getPixels()
 
 	staging_buffer->Unmap(0, nullptr);
 
-	BeginCommandList(gCommandAllocator.Get(), gCommandList.Get());
+	BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
 	
 	return result;
 }
 
 void BackendD3D12::prepareForDrawing(bool indexed)
 {
-	auto shader = gPipelineState.shader;
+	auto shader = gContext->pipeline_state.shader;
 	assert(shader);
 
-	if (!gPipelineStates.contains(gPipelineState))
+	if (!gContext->pipeline_states.contains(gContext->pipeline_state))
 	{
 		const static std::unordered_map<CullMode, D3D12_CULL_MODE> CullMap = {
 			{ CullMode::None, D3D12_CULL_MODE_NONE },
@@ -1154,11 +1156,11 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 			{ BlendFunction::Max, D3D12_BLEND_OP_MAX },
 		};
 
-		auto depth_mode = gPipelineState.depth_mode.value_or(DepthMode());
-		const auto& blend_mode = gPipelineState.blend_mode;
+		auto depth_mode = gContext->pipeline_state.depth_mode.value_or(DepthMode());
+		const auto& blend_mode = gContext->pipeline_state.blend_mode;
 
 		auto depth_stencil_state = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-		depth_stencil_state.DepthEnable = gPipelineState.depth_mode.has_value();
+		depth_stencil_state.DepthEnable = gContext->pipeline_state.depth_mode.has_value();
 		depth_stencil_state.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 		depth_stencil_state.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
 		depth_stencil_state.StencilEnable = false;
@@ -1194,7 +1196,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		}
 
 		auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		rasterizer_state.CullMode = CullMap.at(gPipelineState.rasterizer_state.cull_mode);
+		rasterizer_state.CullMode = CullMap.at(gContext->pipeline_state.rasterizer_state.cull_mode);
 
 		const static std::unordered_map<TopologyKind, D3D12_PRIMITIVE_TOPOLOGY_TYPE> TopologyTypeMap = {
 			{ TopologyKind::Points, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT },
@@ -1202,7 +1204,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 			{ TopologyKind::Triangles, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE }
 		};
 
-		auto topology_type = TopologyTypeMap.at(gPipelineState.topology_kind);
+		auto topology_type = TopologyTypeMap.at(gContext->pipeline_state.topology_kind);
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
 		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->getVertexShaderBlob().Get());
@@ -1213,37 +1215,37 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		pso_desc.pRootSignature = shader->getRootSignature().Get();
 		pso_desc.SampleMask = UINT_MAX;
 		pso_desc.NumRenderTargets = 1;
-		pso_desc.RTVFormats[0] = gPipelineState.color_attachment_format;
-		pso_desc.DSVFormat = gPipelineState.depth_stencil_format;
+		pso_desc.RTVFormats[0] = gContext->pipeline_state.color_attachment_format;
+		pso_desc.DSVFormat = gContext->pipeline_state.depth_stencil_format;
 		pso_desc.SampleDesc.Count = 1;
 		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 		pso_desc.RasterizerState = rasterizer_state;
 		pso_desc.DepthStencilState = depth_stencil_state;
 		pso_desc.BlendState = blend_state;
 
-		gDevice->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gPipelineStates[gPipelineState]));
+		gContext->device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gContext->pipeline_states[gContext->pipeline_state]));
 	}
 
-	auto rtv_cpu_descriptor = gRenderTarget ?
-		gRenderTarget->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gMainRenderTarget.frames[gFrameIndex].rtv_descriptor;
+	auto rtv_cpu_descriptor = gContext->render_target ?
+		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gContext->main_render_target.frames[gContext->frame_index].rtv_descriptor;
 
-	auto dsv_cpu_descriptor = gRenderTarget ? 
-		gRenderTarget->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
+	auto dsv_cpu_descriptor = gContext->render_target ?
+		gContext->render_target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
-	if (gRenderTarget)
+	if (gContext->render_target)
 	{
-		gRenderTarget->getTexture()->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
 
-	gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
+	gContext->cmdlist->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
 	
-	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
+	auto pipeline_state = gContext->pipeline_states.at(gContext->pipeline_state).Get();
 
-	gCommandList->SetPipelineState(pipeline_state);
-	gCommandList->SetGraphicsRootSignature(shader->getRootSignature().Get());
-	gCommandList->SetDescriptorHeaps(1, gDescriptorHeap.GetAddressOf());
+	gContext->cmdlist->SetPipelineState(pipeline_state);
+	gContext->cmdlist->SetGraphicsRootSignature(shader->getRootSignature().Get());
+	gContext->cmdlist->SetDescriptorHeaps(1, gContext->descriptor_heap.GetAddressOf());
 
 	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
 	const auto& binding_to_root_index_map = shader->getBindingToRootIndexMap();
@@ -1254,14 +1256,14 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 
 		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
-			const auto& texture = gTextures.at(binding);
-			texture->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->getGpuDescriptorHandle());
+			const auto& texture = gContext->textures.at(binding);
+			texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+			gContext->cmdlist->SetGraphicsRootDescriptorTable(root_index, texture->getGpuDescriptorHandle());
 		}
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
 		{
-			auto uniform_buffer = gUniformBuffers.at(binding);
-			gCommandList->SetGraphicsRootConstantBufferView(root_index, uniform_buffer->getD3D12Buffer()->GetGPUVirtualAddress());
+			auto uniform_buffer = gContext->uniform_buffers.at(binding);
+			gContext->cmdlist->SetGraphicsRootConstantBufferView(root_index, uniform_buffer->getD3D12Buffer()->GetGPUVirtualAddress());
 		}
 		else
 		{
@@ -1269,25 +1271,25 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		}
 	}
 
-	if (gViewportDirty || gScissorDirty)
+	if (gContext->viewport_dirty || gContext->scissor_dirty)
 	{
 		float width;
 		float height;
  
-		if (gRenderTarget == nullptr)
+		if (gContext->render_target == nullptr)
 		{
-			width = static_cast<float>(gBackbufferWidth);
-			height = static_cast<float>(gBackbufferHeight);
+			width = static_cast<float>(gContext->width);
+			height = static_cast<float>(gContext->height);
 		}
 		else
 		{
-			width = static_cast<float>(gRenderTarget->getTexture()->getWidth());
-			height = static_cast<float>(gRenderTarget->getTexture()->getHeight());
+			width = static_cast<float>(gContext->render_target->getTexture()->getWidth());
+			height = static_cast<float>(gContext->render_target->getTexture()->getHeight());
 		}
 
-		if (gViewportDirty)
+		if (gContext->viewport_dirty)
 		{
-			auto viewport = gViewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+			auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
 			D3D12_VIEWPORT vp = {};
 			vp.Width = viewport.size.x;
@@ -1296,27 +1298,27 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 			vp.MaxDepth = viewport.max_depth;
 			vp.TopLeftX = viewport.position.x;
 			vp.TopLeftY = viewport.position.y;
-			gCommandList->RSSetViewports(1, &vp);
+			gContext->cmdlist->RSSetViewports(1, &vp);
 
-			gViewportDirty = false;
+			gContext->viewport_dirty = false;
 		}
 
-		if (gScissorDirty)
+		if (gContext->scissor_dirty)
 		{
-			auto scissor = gScissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+			auto scissor = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
 
 			D3D12_RECT rect;
 			rect.left = static_cast<LONG>(scissor.position.x);
 			rect.top = static_cast<LONG>(scissor.position.y);
 			rect.right = static_cast<LONG>(scissor.position.x + scissor.size.x);
 			rect.bottom = static_cast<LONG>(scissor.position.y + scissor.size.y);
-			gCommandList->RSSetScissorRects(1, &rect);
+			gContext->cmdlist->RSSetScissorRects(1, &rect);
 
-			gScissorDirty = false;
+			gContext->scissor_dirty = false;
 		}
 	}
 
-	if (gTopologyDirty)
+	if (gContext->topology_dirty)
 	{
 		const static std::unordered_map<Topology, D3D_PRIMITIVE_TOPOLOGY> TopologyMap = {
 			{ Topology::PointList, D3D_PRIMITIVE_TOPOLOGY_POINTLIST },
@@ -1326,34 +1328,34 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 			{ Topology::TriangleStrip, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP }
 		};
 
-		auto topology = TopologyMap.at(gTopology);
-		gCommandList->IASetPrimitiveTopology(topology);
+		auto topology = TopologyMap.at(gContext->topology);
+		gContext->cmdlist->IASetPrimitiveTopology(topology);
 
-		gTopologyDirty = false;
+		gContext->topology_dirty = false;
 	}
 
-	if (indexed && gIndexBufferDirty)
+	if (indexed && gContext->index_buffer_dirty)
 	{
 		D3D12_INDEX_BUFFER_VIEW buffer_view = {};
-		buffer_view.BufferLocation = gIndexBuffer->getD3D12Buffer()->GetGPUVirtualAddress();
-		buffer_view.SizeInBytes = (UINT)gIndexBuffer->getSize();
-		buffer_view.Format = gIndexBuffer->getStride() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+		buffer_view.BufferLocation = gContext->index_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
+		buffer_view.SizeInBytes = (UINT)gContext->index_buffer->getSize();
+		buffer_view.Format = gContext->index_buffer->getStride() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
 
-		gCommandList->IASetIndexBuffer(&buffer_view);
+		gContext->cmdlist->IASetIndexBuffer(&buffer_view);
 
-		gIndexBufferDirty = false;
+		gContext->index_buffer_dirty = false;
 	}
 
-	if (gVertexBufferDirty)
+	if (gContext->vertex_buffer_dirty)
 	{
 		D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
-		buffer_view.BufferLocation = gVertexBuffer->getD3D12Buffer()->GetGPUVirtualAddress();
-		buffer_view.SizeInBytes = (UINT)gVertexBuffer->getSize();
-		buffer_view.StrideInBytes = (UINT)gVertexBuffer->getStride();
+		buffer_view.BufferLocation = gContext->vertex_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
+		buffer_view.SizeInBytes = (UINT)gContext->vertex_buffer->getSize();
+		buffer_view.StrideInBytes = (UINT)gContext->vertex_buffer->getStride();
 
-		gCommandList->IASetVertexBuffers(0, 1, &buffer_view);
+		gContext->cmdlist->IASetVertexBuffers(0, 1, &buffer_view);
 
-		gVertexBufferDirty = false;
+		gContext->vertex_buffer_dirty = false;
 	}
 }
 
@@ -1361,33 +1363,33 @@ void BackendD3D12::present()
 {
 	end();
 	bool vsync = false;
-	gSwapChain->Present(vsync ? 1 : 0, 0);
+	gContext->swapchain->Present(vsync ? 1 : 0, 0);
 	MoveToNextFrame();
-	gExecuteAfterPresent.flush();
-	gStagingObjects.clear();
+	gContext->execute_after_present.flush();
+	gContext->staging_objects.clear();
 	begin();
 }
 
 void BackendD3D12::begin()
 {
-	BeginCommandList(gCommandAllocator.Get(), gCommandList.Get());
+	BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
 
-	TransitionResource(gCommandList.Get(), gMainRenderTarget.frames[gFrameIndex].resource.Get(),
+	TransitionResource(gContext->cmdlist.Get(), gContext->main_render_target.frames[gContext->frame_index].resource.Get(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-	gTopologyDirty = true;
-	gViewportDirty = true;
-	gScissorDirty = true;
-	gIndexBufferDirty = true;
-	gVertexBufferDirty = true;
+	gContext->topology_dirty = true;
+	gContext->viewport_dirty = true;
+	gContext->scissor_dirty = true;
+	gContext->index_buffer_dirty = true;
+	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendD3D12::end()
 {
-	TransitionResource(gCommandList.Get(), gMainRenderTarget.frames[gFrameIndex].resource.Get(),
+	TransitionResource(gContext->cmdlist.Get(), gContext->main_render_target.frames[gContext->frame_index].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
-	EndCommandList(gCommandQueue.Get(), gCommandList.Get(), false);
+	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), false);
 }
 
 TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
@@ -1398,7 +1400,7 @@ TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Form
 
 void BackendD3D12::destroyTexture(TextureHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto texture = (TextureD3D12*)handle;
 		delete texture;
 	});
@@ -1413,7 +1415,7 @@ RenderTargetHandle* BackendD3D12::createRenderTarget(uint32_t width, uint32_t he
 
 void BackendD3D12::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto render_target = (RenderTargetD3D12*)handle;
 		delete render_target;
 	});
@@ -1428,7 +1430,7 @@ ShaderHandle* BackendD3D12::createShader(const VertexLayout& vertex_layout, cons
 
 void BackendD3D12::destroyShader(ShaderHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto shader = (ShaderD3D12*)handle;
 		delete shader;
 	});
@@ -1442,7 +1444,7 @@ VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
 
 void BackendD3D12::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (VertexBufferD3D12*)handle;
 		delete buffer;
 	});
@@ -1454,8 +1456,8 @@ void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* mem
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 
-	if (gVertexBuffer == buffer)
-		gVertexBufferDirty = true;
+	if (gContext->vertex_buffer == buffer)
+		gContext->vertex_buffer_dirty = true;
 }
 
 IndexBufferHandle* BackendD3D12::createIndexBuffer(size_t size, size_t stride)
@@ -1470,13 +1472,13 @@ void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, void* memor
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 
-	if (gIndexBuffer == buffer)
-		gIndexBufferDirty = true;
+	if (gContext->index_buffer == buffer)
+		gContext->index_buffer_dirty = true;
 }
 
 void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (IndexBufferD3D12*)handle;
 		delete buffer;
 	});
@@ -1490,7 +1492,7 @@ UniformBufferHandle* BackendD3D12::createUniformBuffer(size_t size)
 
 void BackendD3D12::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	gExecuteAfterPresent.add([handle] {
+	gContext->execute_after_present.add([handle] {
 		auto buffer = (UniformBufferD3D12*)handle;
 		delete buffer;
 	});
