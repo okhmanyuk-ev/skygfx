@@ -400,10 +400,7 @@ public:
 			subersource_data.SlicePitch = width * height * channels * channel_size;
 
 			OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
-				auto barrier = ScopedBarrier(cmdlist, { 
-					CD3DX12_RESOURCE_BARRIER::Transition(mTexture.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST) 
-				});
-
+				ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_DEST);
 				UpdateSubresources(cmdlist, mTexture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
 
 				if (mipmap)
@@ -414,7 +411,7 @@ public:
 
 	void generateMips(ID3D12GraphicsCommandList* cmdlist, std::vector<ComPtr<ID3D12DeviceChild>>& staging_objects)
 	{
-		ensureState(cmdlist, D3D12_RESOURCE_STATE_COMMON);
+		ensureState(cmdlist, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		D3D12GenerateMips(gDevice.Get(), cmdlist, mTexture.Get(), staging_objects);
 		mCurrentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	}
