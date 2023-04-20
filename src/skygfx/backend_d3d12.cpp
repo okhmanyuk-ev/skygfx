@@ -142,6 +142,10 @@ struct ContextD3D12
 	uint32_t height = 0;
 
 	std::vector<ComPtr<ID3D12DeviceChild>> staging_objects;
+
+	uint32_t getBackbufferWidth();
+	uint32_t getBackbufferHeight();
+	Format getBackbufferFormat();
 };
 
 static ContextD3D12* gContext = nullptr;
@@ -476,6 +480,21 @@ public:
 			mDsvHeap->GetCPUDescriptorHandleForHeapStart());
 	}
 };
+
+uint32_t ContextD3D12::getBackbufferWidth()
+{
+	return render_target ? render_target->getTexture()->getWidth() : width;
+}
+
+uint32_t ContextD3D12::getBackbufferHeight()
+{
+	return render_target ? render_target->getTexture()->getHeight() : height;
+}
+
+Format ContextD3D12::getBackbufferFormat()
+{
+	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
+}
 
 ComPtr<ID3D12Resource> CreateBuffer(size_t size)
 {
@@ -955,7 +974,7 @@ void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset)
 void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 	auto dst_texture = (TextureD3D12*)dst_texture_handle;
-	auto format = gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4; // TODO: create getBackbufferFormat() func
+	auto format = gContext->getBackbufferFormat();
 
 	assert(dst_texture->getWidth() == size.x);
 	assert(dst_texture->getHeight() == size.y);
@@ -1046,9 +1065,9 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 
 std::vector<uint8_t> BackendD3D12::getPixels()
 {
-	auto width = gContext->render_target ? gContext->render_target->getTexture()->getWidth() : gContext->width; // TODO: add helper functions for this (getBackbufferWidth()...)
-	auto height = gContext->render_target ? gContext->render_target->getTexture()->getHeight() : gContext->height;
-	auto format = gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
+	auto width = gContext->getBackbufferWidth();
+	auto height = gContext->getBackbufferHeight();
+	auto format = gContext->getBackbufferFormat();
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
 
@@ -1273,19 +1292,8 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 
 	if (gContext->viewport_dirty || gContext->scissor_dirty)
 	{
-		float width;
-		float height;
- 
-		if (gContext->render_target == nullptr)
-		{
-			width = static_cast<float>(gContext->width);
-			height = static_cast<float>(gContext->height);
-		}
-		else
-		{
-			width = static_cast<float>(gContext->render_target->getTexture()->getWidth());
-			height = static_cast<float>(gContext->render_target->getTexture()->getHeight());
-		}
+		auto width = static_cast<float>(gContext->getBackbufferWidth());
+		auto height = static_cast<float>(gContext->getBackbufferHeight());
 
 		if (gContext->viewport_dirty)
 		{

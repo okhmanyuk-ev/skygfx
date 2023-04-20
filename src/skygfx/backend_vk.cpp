@@ -1338,12 +1338,12 @@ static void PrepareForDrawing()
 		gContext->command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
-	auto width = gContext->getBackbufferWidth();
-	auto height = gContext->getBackbufferHeight();
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
 
 	if (gContext->viewport_dirty)
 	{
-		auto value = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
+		auto value = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
 		auto viewport = vk::Viewport()
 			.setX(value.position.x)
@@ -1359,7 +1359,7 @@ static void PrepareForDrawing()
 
 	if (gContext->scissor_dirty)
 	{
-		auto value = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { static_cast<float>(width), static_cast<float>(height) } });
+		auto value = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
 
 		auto rect = vk::Rect2D()
 			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
