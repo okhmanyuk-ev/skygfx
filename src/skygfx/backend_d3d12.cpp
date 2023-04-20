@@ -330,6 +330,7 @@ private:
 	ComPtr<ID3D12Resource> mTexture;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mGpuDescriptorHandle;
 	Format mFormat;
+	D3D12_RESOURCE_STATES mCurrentState = D3D12_RESOURCE_STATE_COMMON;
 	
 public:
 	TextureD3D12(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
@@ -390,6 +391,7 @@ public:
 			if (mipmap)
 			{
 				generateMips();
+				mCurrentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 			}
 		}
 	}
@@ -397,6 +399,15 @@ public:
 	void generateMips()
 	{
 		D3D12GenerateMips(gDevice.Get(), gCommandQueue.Get(), mTexture.Get());
+	}
+
+	void ensureState(ID3D12GraphicsCommandList* cmdlist, D3D12_RESOURCE_STATES state)
+	{
+		if (mCurrentState == state)
+			return;
+
+		TransitionResource(cmdlist, mTexture.Get(), mCurrentState, state);
+		mCurrentState = state;
 	}
 };
 
@@ -446,11 +457,6 @@ public:
 
 		gDevice->CreateDepthStencilView(mDepthStencilResource.Get(), &dsv_desc,
 			mDsvHeap->GetCPUDescriptorHandleForHeapStart());
-
-		OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-			TransitionResource(cmdlist, texture->getD3D12Texture().Get(),
-				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		});
 	}
 };
 
@@ -487,8 +493,7 @@ public:
 		if (state != D3D12_RESOURCE_STATE_COMMON)
 		{
 			OneTimeSubmit(gDevice.Get(), [&](ID3D12GraphicsCommandList* cmdlist) {
-				TransitionResource(cmdlist, mBuffer.Get(),
-					D3D12_RESOURCE_STATE_COMMON, state);
+				TransitionResource(cmdlist, mBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, state);
 			});
 		}
 	}
@@ -894,6 +899,11 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 		gRenderTarget->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
+	if (gRenderTarget)
+	{
+		gRenderTarget->getTexture()->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
+
 	if (color.has_value())
 	{
 		gCommandList->ClearRenderTargetView(rtv, (float*)&color.value(), 0, NULL);
@@ -1136,13 +1146,17 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		gRenderTarget->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
 		gMainRenderTarget.dsv_heap->GetCPUDescriptorHandleForHeapStart();
 
+	if (gRenderTarget)
+	{
+		gRenderTarget->getTexture()->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
+
 	gCommandList->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
 	
 	auto pipeline_state = gPipelineStates.at(gPipelineState).Get();
+
 	gCommandList->SetPipelineState(pipeline_state);
-
 	gCommandList->SetGraphicsRootSignature(shader->getRootSignature().Get());
-
 	gCommandList->SetDescriptorHeaps(1, gDescriptorHeap.GetAddressOf());
 
 	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
@@ -1155,6 +1169,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
 		{
 			const auto& texture = gTextures.at(binding);
+			texture->ensureState(gCommandList.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 			gCommandList->SetGraphicsRootDescriptorTable(root_index, texture->getGpuDescriptorHandle());
 		}
 		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
@@ -1271,11 +1286,10 @@ void BackendD3D12::begin()
 {
 	gCommandAllocator->Reset();
 
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget.frames[gFrameIndex].resource.Get(),
-		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
 	gCommandList->Reset(gCommandAllocator.Get(), NULL);
-	gCommandList->ResourceBarrier(1, &barrier);
+
+	TransitionResource(gCommandList.Get(), gMainRenderTarget.frames[gFrameIndex].resource.Get(),
+		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	gTopologyDirty = true;
 	gViewportDirty = true;
@@ -1286,12 +1300,10 @@ void BackendD3D12::begin()
 
 void BackendD3D12::end()
 {
-	auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(gMainRenderTarget.frames[gFrameIndex].resource.Get(),
+	TransitionResource(gCommandList.Get(), gMainRenderTarget.frames[gFrameIndex].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
-	gCommandList->ResourceBarrier(1, &barrier);
 	gCommandList->Close();
-	
 	gCommandQueue->ExecuteCommandLists(1, CommandListCast(gCommandList.GetAddressOf()));
 }
 
