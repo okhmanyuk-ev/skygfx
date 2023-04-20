@@ -168,10 +168,15 @@ void EndCommandList(ID3D12CommandQueue* cmd_queue, ID3D12GraphicsCommandList* cm
 	if (wait_for)
 	{
 		ComPtr<ID3D12Fence> fence;
-		gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf()));
-		auto event = CreateEvent(0, 0, 0, 0);
-		cmd_queue->Signal(fence.Get(), 1);
-		fence->SetEventOnCompletion(1, event);
+		ThrowIfFailed(gDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
+
+		SetDebugObjectName(fence.Get(), L"ResourceUploadBatch");
+
+		auto event = CreateEventEx(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE);
+
+		ThrowIfFailed(cmd_queue->Signal(fence.Get(), 1ULL));
+		ThrowIfFailed(fence->SetEventOnCompletion(1ULL, event));
+
 		WaitForSingleObject(event, INFINITE);
 	}
 }
@@ -400,19 +405,18 @@ public:
 				});
 
 				UpdateSubresources(cmdlist, mTexture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
-			});
 
-			if (mipmap)
-			{
-				generateMips();
-				mCurrentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-			}
+				if (mipmap)
+					generateMips(cmdlist, gStagingObjects);
+			});
 		}
 	}
 
-	void generateMips()
+	void generateMips(ID3D12GraphicsCommandList* cmdlist, std::vector<ComPtr<ID3D12DeviceChild>>& staging_objects)
 	{
-		D3D12GenerateMips(gDevice.Get(), gCommandQueue.Get(), mTexture.Get());
+		ensureState(cmdlist, D3D12_RESOURCE_STATE_COMMON);
+		D3D12GenerateMips(gDevice.Get(), cmdlist, mTexture.Get(), staging_objects);
+		mCurrentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
 	}
 
 	void ensureState(ID3D12GraphicsCommandList* cmdlist, D3D12_RESOURCE_STATES state)
@@ -1038,7 +1042,7 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	}
 
 	if (dst_texture->isMipmap())
-		dst_texture->generateMips();
+		dst_texture->generateMips(gCommandList.Get(), gStagingObjects);
 }
 
 std::vector<uint8_t> BackendD3D12::getPixels()

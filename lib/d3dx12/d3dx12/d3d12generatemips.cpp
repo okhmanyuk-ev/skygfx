@@ -1,7 +1,6 @@
 #include "d3d12generatemips.h"
 #include "DirectXHelpers.h"
 #include "PlatformHelpers.h"
-#include "pch.h"
 
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
@@ -730,7 +729,8 @@ void GenerateMips(ID3D12Device* device, ID3D12Resource* resource, ID3D12Graphics
 	}
 };
 
-void D3D12GenerateMips(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12Resource* texture)
+void D3D12GenerateMips(ID3D12Device* device, ID3D12GraphicsCommandList* cmdlist, ID3D12Resource* texture,
+	std::vector<ComPtr<ID3D12DeviceChild>>& staging_objects)
 {
 	auto typedUAVLoadAdditionalFormats = false;
 	auto standardSwizzle64KBSupported = false;
@@ -742,32 +742,5 @@ void D3D12GenerateMips(ID3D12Device* device, ID3D12CommandQueue* queue, ID3D12Re
 		standardSwizzle64KBSupported = options.StandardSwizzle64KBSupported != 0;
 	}
 
-	ComPtr<ID3D12CommandAllocator> cmdAlloc;
-	ThrowIfFailed(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(cmdAlloc.ReleaseAndGetAddressOf())));
-	SetDebugObjectName(cmdAlloc.Get(), L"ResourceUploadBatch");
-
-	ComPtr<ID3D12GraphicsCommandList> cmdlist;
-	ThrowIfFailed(device->CreateCommandList(1, D3D12_COMMAND_LIST_TYPE_DIRECT, cmdAlloc.Get(), nullptr, IID_PPV_ARGS(cmdlist.ReleaseAndGetAddressOf())));
-	SetDebugObjectName(cmdlist.Get(), L"ResourceUploadBatch");
-
-	std::vector<ComPtr<ID3D12DeviceChild>> trackedObjects;
-	GenerateMips(device, texture, cmdlist.Get(), trackedObjects, typedUAVLoadAdditionalFormats, standardSwizzle64KBSupported);
-
-	ThrowIfFailed(cmdlist->Close());
-
-	// Submit the job to the GPU
-	queue->ExecuteCommandLists(1, CommandListCast(cmdlist.GetAddressOf()));
-
-	// Set an event so we get notified when the GPU has completed all its work
-	ComPtr<ID3D12Fence> fence;
-	ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf())));
-
-	SetDebugObjectName(fence.Get(), L"ResourceUploadBatch");
-
-	auto event = CreateEventEx(nullptr, nullptr, 0, EVENT_MODIFY_STATE | SYNCHRONIZE);
-
-	ThrowIfFailed(queue->Signal(fence.Get(), 1ULL));
-	ThrowIfFailed(fence->SetEventOnCompletion(1ULL, event));
-
-	WaitForSingleObject(event, INFINITE);
+	GenerateMips(device, texture, cmdlist, staging_objects, typedUAVLoadAdditionalFormats, standardSwizzle64KBSupported);
 }
