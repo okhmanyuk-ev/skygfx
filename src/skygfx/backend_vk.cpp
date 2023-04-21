@@ -242,7 +242,8 @@ static void OneTimeSubmit(const vk::raii::Device& device, const vk::raii::Comman
 }
 
 static void SetImageLayout(const vk::raii::CommandBuffer& cmd, vk::Image image,
-	vk::Format format, vk::ImageLayout old_image_layout, vk::ImageLayout new_image_layout, std::optional<vk::ImageSubresourceRange> subresource_range = std::nullopt)
+	vk::Format format, vk::ImageLayout old_image_layout, vk::ImageLayout new_image_layout,
+	uint32_t base_mip_level = 0, uint32_t mip_level_count = VK_REMAINING_MIP_LEVELS)
 {
 	vk::AccessFlags src_access_mask;
 	switch (old_image_layout)
@@ -308,10 +309,12 @@ static void SetImageLayout(const vk::raii::CommandBuffer& cmd, vk::Image image,
 		aspect_mask = vk::ImageAspectFlagBits::eColor;
 	}
 
-	auto default_image_subresource_range = vk::ImageSubresourceRange()
+	auto subresource_range = vk::ImageSubresourceRange()
 		.setAspectMask(aspect_mask)
-		.setLayerCount(1)
-		.setLevelCount(1);
+		.setBaseMipLevel(base_mip_level)
+		.setLevelCount(mip_level_count)
+		.setBaseArrayLayer(0)
+		.setLayerCount(1);
 
 	auto image_memory_barrier = vk::ImageMemoryBarrier()
 		.setSrcAccessMask(src_access_mask)
@@ -321,7 +324,7 @@ static void SetImageLayout(const vk::raii::CommandBuffer& cmd, vk::Image image,
 		.setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
 		.setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
 		.setImage(image)
-		.setSubresourceRange(subresource_range.value_or(default_image_subresource_range));
+		.setSubresourceRange(subresource_range);
 
 	return cmd.pipelineBarrier(src_stage, dst_stage, {}, nullptr, nullptr, image_memory_barrier);
 }
@@ -682,14 +685,8 @@ public:
 
 		for (uint32_t i = 1; i < mMipLevels; i++)
 		{
-			auto mip_subresource_range = vk::ImageSubresourceRange()
-				.setAspectMask(vk::ImageAspectFlagBits::eColor)
-				.setBaseMipLevel(i)
-				.setLayerCount(1)
-				.setLevelCount(1);
-
 			SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eUndefined,
-				vk::ImageLayout::eTransferDstOptimal, mip_subresource_range);
+				vk::ImageLayout::eTransferDstOptimal, i, 1);
 
 			auto src_subresource = vk::ImageSubresourceLayers()
 				.setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -711,16 +708,11 @@ public:
 				vk::ImageLayout::eTransferDstOptimal, { mip_region }, vk::Filter::eLinear);
 
 			SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eTransferDstOptimal,
-				vk::ImageLayout::eTransferSrcOptimal, mip_subresource_range);
+				vk::ImageLayout::eTransferSrcOptimal, i, 1);
 		}
 
-		auto subresource_range = vk::ImageSubresourceRange()
-			.setAspectMask(vk::ImageAspectFlagBits::eColor)
-			.setLayerCount(1)
-			.setLevelCount(mMipLevels);
-
 		SetImageLayout(cmdbuf, *mImage, vk::Format::eUndefined, vk::ImageLayout::eTransferSrcOptimal,
-			vk::ImageLayout::eGeneral, subresource_range);
+			vk::ImageLayout::eGeneral);
 	}
 };
 
