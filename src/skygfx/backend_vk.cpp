@@ -2140,27 +2140,49 @@ std::vector<uint8_t> BackendVK::getPixels()
 	auto format = gContext->getBackbufferFormat();
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
+	auto size = width * height * channels_count * channel_size;
 
-	std::vector<uint8_t> result(width * height * channels_count * channel_size);
+	std::vector<uint8_t> result(size);
 
 	auto texture = TextureVK(width, height, format, nullptr, false);
 
 	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);
 
-	// - end cmdlist here (flush)
-
 	EnsureRenderPassDeactivated();
 	gContext->command_buffer.end();
 
-	vk::SubmitInfo submitInfo(nullptr, nullptr, *gContext->command_buffer);
-	gContext->queue.submit(submitInfo, nullptr);
+	auto submit_info = vk::SubmitInfo()
+		.setCommandBuffers(*gContext->command_buffer);
+
+	gContext->queue.submit(submit_info);
 	gContext->queue.waitIdle();
 
-	// - copy texture to staging buffer here (one time submit)
+	auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size);
+
+	auto subresource = vk::ImageSubresourceLayers()
+		.setAspectMask(vk::ImageAspectFlagBits::eColor)
+		.setLayerCount(1);
+
+	auto region = vk::BufferImageCopy2()
+		.setImageSubresource(subresource)
+		.setBufferImageHeight(height)
+		.setBufferRowLength(0)
+		.setImageExtent({ width, height, 1 });
+
+	auto copy_image_to_buffer_info = vk::CopyImageToBufferInfo2()
+		.setSrcImage(*texture.getImage())
+		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
+		.setDstBuffer(*staging_buffer)
+		.setRegions(region);
+
+	OneTimeSubmit([&](auto& cmdbuf) {
+		texture.ensureState(cmdbuf, vk::ImageLayout::eTransferSrcOptimal);
+		cmdbuf.copyImageToBuffer2(copy_image_to_buffer_info);
+	});
 	
-	// - map memory from staging buffer and write pixels to result vector
-	
-	// - start cmdlist here
+	auto ptr = staging_buffer_memory.mapMemory(0, size);
+	memcpy(result.data(), ptr, size);
+	staging_buffer_memory.unmapMemory();
 
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
