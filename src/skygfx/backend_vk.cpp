@@ -215,31 +215,6 @@ static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_
 	return 0xFFFFFFFF; // Unable to find memoryType
 }
 
-template <typename Func>
-static void OneTimeSubmit(const vk::raii::CommandBuffer& cmdbuf, const vk::raii::Queue& queue, const Func& func)
-{
-	cmdbuf.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
-	func(cmdbuf);
-	cmdbuf.end();
-	vk::SubmitInfo submitInfo(nullptr, nullptr, *cmdbuf);
-	queue.submit(submitInfo, nullptr);
-	queue.waitIdle();
-}
-
-template <typename Func>
-static void OneTimeSubmit(const vk::raii::Device& device, const vk::raii::CommandPool& command_pool, const vk::raii::Queue& queue, const Func& func)
-{
-	auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
-		.setCommandBufferCount(1)
-		.setCommandPool(*command_pool)
-		.setLevel(vk::CommandBufferLevel::ePrimary);
-
-	auto command_buffers = device.allocateCommandBuffers(command_buffer_allocate_info);
-	auto cmdbuf = std::move(command_buffers.at(0));
-
-	OneTimeSubmit(cmdbuf, queue, func);
-}
-
 static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t size, vk::BufferUsageFlags usage = {})
 {
 	auto buffer_create_info = vk::BufferCreateInfo()
@@ -294,6 +269,7 @@ static void SetImageMemoryBarrier(const vk::raii::CommandBuffer& cmdbuf, vk::Ima
 	uint32_t layer_count = VK_REMAINING_ARRAY_LAYERS);
 
 static void EnsureMemoryState(const vk::raii::CommandBuffer& cmdbuf, vk::PipelineStageFlags2 stage);
+static void OneTimeSubmit(std::function<void(const vk::raii::CommandBuffer&)> func);
 
 static const std::unordered_map<Format, vk::Format> FormatMap = {
 	{ Format::Float1, vk::Format::eR32Sfloat },
@@ -375,8 +351,7 @@ std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<
 	auto descriptor_set_layout = gContext->device.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
 	auto pipeline_layout_create_info = vk::PipelineLayoutCreateInfo()
-		.setSetLayoutCount(1)
-		.setPSetLayouts(&*descriptor_set_layout);
+		.setSetLayouts(*descriptor_set_layout);
 
 	auto pipeline_layout = gContext->device.createPipelineLayout(pipeline_layout_create_info);
 
@@ -572,7 +547,7 @@ public:
 
 			WriteToBuffer(upload_buffer_memory, memory, size);
 
-			OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+			OneTimeSubmit([&](auto& cmdbuf) {
 				ensureState(cmdbuf, vk::ImageLayout::eTransferDstOptimal);
 
 				auto image_subresource_layers = vk::ImageSubresourceLayers()
@@ -590,7 +565,7 @@ public:
 			});
 		}
 
-		OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+		OneTimeSubmit([&](auto& cmdbuf) {
 			ensureState(cmdbuf, vk::ImageLayout::eGeneral);
 		});
 	}
@@ -692,7 +667,7 @@ public:
 
 		mDepthStencilView = gContext->device.createImageView(depth_stencil_view_create_info);
 
-		OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+		OneTimeSubmit([&](auto& cmdbuf) {
 			SetImageMemoryBarrier(cmdbuf, *mDepthStencilImage, mDepthStencilFormat, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::eDepthStencilAttachmentOptimal);
 		});
@@ -822,8 +797,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 	auto blas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
 		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
 		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-		.setGeometryCount(1)
-		.setPGeometries(&blas_geometry);
+		.setGeometries(blas_geometry);
 
 	auto blas_build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
 		vk::AccelerationStructureBuildTypeKHR::eDevice, blas_build_geometry_info, { 1 });
@@ -854,7 +828,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 	auto blas_build_geometry_infos = { blas_build_geometry_info };
 	std::vector blas_build_range_infos = { &blas_build_range_info };
 		
-	OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+	OneTimeSubmit([&](auto& cmdbuf) {
 		cmdbuf.buildAccelerationStructuresKHR(blas_build_geometry_infos, blas_build_range_infos);
 	});
 
@@ -897,8 +871,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 	auto tlas_build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
 		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
 		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-		.setGeometryCount(1)
-		.setPGeometries(&tlas_geometry);
+		.setGeometries(tlas_geometry);
 
 	auto tlas_build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
 		vk::AccelerationStructureBuildTypeKHR::eDevice, tlas_build_geometry_info, { 1 });
@@ -929,7 +902,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 	auto tlas_build_geometry_infos = { tlas_build_geometry_info };
 	std::vector tlas_build_range_infos = { &tlas_build_range_info };
 
-	OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+	OneTimeSubmit([&](auto& cmdbuf) {
 		cmdbuf.buildAccelerationStructuresKHR(tlas_build_geometry_infos, tlas_build_range_infos);
 	});
 
@@ -1007,8 +980,7 @@ static void BeginRenderPass()
 	auto rendering_info = vk::RenderingInfo()
 		.setRenderArea({ { 0, 0 }, { width, height } })
 		.setLayerCount(1)
-		.setColorAttachmentCount(1)
-		.setPColorAttachments(&color_attachment)
+		.setColorAttachments(color_attachment)
 		.setPDepthAttachment(&depth_stencil_attachment)
 		.setPStencilAttachment(&depth_stencil_attachment);
 
@@ -1205,8 +1177,7 @@ static void SetMemoryBarrier(const vk::raii::CommandBuffer& cmdbuf, vk::Pipeline
 		.setDstAccessMask(vk::AccessFlagBits2::eMemoryWrite | vk::AccessFlagBits2::eMemoryRead);
 
 	auto dependency_info = vk::DependencyInfo()
-		.setMemoryBarrierCount(1)
-		.setPMemoryBarriers(&memory_barrier);
+		.setMemoryBarriers(memory_barrier);
 
 	cmdbuf.pipelineBarrier2(dependency_info);
 }
@@ -1220,6 +1191,30 @@ static void EnsureMemoryState(const vk::raii::CommandBuffer& cmdbuf, vk::Pipelin
 	SetMemoryBarrier(cmdbuf, gContext->current_memory_stage, stage);
 
 	gContext->current_memory_stage = stage;
+}
+
+static void OneTimeSubmit(std::function<void(const vk::raii::CommandBuffer&)> func)
+{
+	auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
+		.setCommandBufferCount(1)
+		.setCommandPool(*gContext->command_pool)
+		.setLevel(vk::CommandBufferLevel::ePrimary);
+
+	auto command_buffers = gContext->device.allocateCommandBuffers(command_buffer_allocate_info);
+	auto cmdbuf = std::move(command_buffers.at(0));
+
+	auto command_buffer_begin_info = vk::CommandBufferBeginInfo()
+		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+	cmdbuf.begin(command_buffer_begin_info);
+	func(cmdbuf);
+	cmdbuf.end();
+	
+	auto submit_info = vk::SubmitInfo()
+		.setCommandBuffers(*cmdbuf);
+
+	gContext->queue.submit(submit_info);
+	gContext->queue.waitIdle();
 }
 
 static void PrepareForDrawing()
@@ -1291,8 +1286,7 @@ static void PrepareForDrawing()
 		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo();
 
 		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
-			.setVertexBindingDescriptionCount(1)
-			.setPVertexBindingDescriptions(&shader->getVertexInputBindingDescription())
+			.setVertexBindingDescriptions(shader->getVertexInputBindingDescription())
 			.setVertexAttributeDescriptions(shader->getVertexInputAttributeDescriptions());
 
 		auto dynamic_states = {
@@ -1385,7 +1379,6 @@ static void PrepareForDrawing()
 		auto binding = required_descriptor_binding.binding;
 
 		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDescriptorCount(1)
 			.setDstBinding(binding)
 			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
 			.setDescriptorType(required_descriptor_binding.descriptorType);
@@ -1400,7 +1393,7 @@ static void PrepareForDrawing()
 				.setImageView(*texture->getImageView())
 				.setImageLayout(vk::ImageLayout::eGeneral);
 
-			write_descriptor_set.setPImageInfo(&descriptor_image_info);
+			write_descriptor_set.setImageInfo(descriptor_image_info);
 		}
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
 		{
@@ -1410,7 +1403,7 @@ static void PrepareForDrawing()
 				.setBuffer(*buffer->getBuffer())
 				.setRange(VK_WHOLE_SIZE);
 
-			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
+			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
 		}
 		else
 		{
@@ -1760,8 +1753,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	>();
 
 	auto device_info = vk::DeviceCreateInfo()
-		.setQueueCreateInfoCount(1)
-		.setPQueueCreateInfos(&queue_info)
+		.setQueueCreateInfos(queue_info)
 		.setPEnabledExtensionNames(device_extensions)
 		.setPEnabledFeatures(nullptr)
 		.setPNext(&device_features.get<vk::PhysicalDeviceFeatures2>());
@@ -2126,8 +2118,7 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 		.setDstImage(*dst_texture->getImage())
 		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
 		.setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
-		.setRegionCount(1)
-		.setPRegions(&region);
+		.setRegions(region);
 
 	gContext->command_buffer.copyImage2(copy_image_info);
 
@@ -2264,8 +2255,8 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 		auto binding = required_descriptor_binding.binding;
 
 		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDescriptorCount(1)
 			.setDstBinding(binding)
+			.setDescriptorCount(1)
 			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
 			.setDescriptorType(required_descriptor_binding.descriptorType);
 
@@ -2274,20 +2265,20 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 			auto acceleration_structure = gContext->acceleration_structures.at(binding);
 
 			auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
-				.setAccelerationStructureCount(1)
-				.setPAccelerationStructures(&*acceleration_structure->getTlas());
+				.setAccelerationStructures(*acceleration_structure->getTlas());
 
 			write_descriptor_set.setPNext(&write_descriptor_set_acceleration_structure);
 		}
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageImage)
 		{
 			auto render_target_image_view = *gContext->render_target->getTexture()->getImageView();
+			gContext->render_target->getTexture()->ensureState(gContext->command_buffer, vk::ImageLayout::eGeneral);
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setImageLayout(vk::ImageLayout::eGeneral)
 				.setImageView(render_target_image_view);
 
-			write_descriptor_set.setPImageInfo(&descriptor_image_info);
+			write_descriptor_set.setImageInfo(descriptor_image_info);
 		}
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
 		{
@@ -2297,7 +2288,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 				.setBuffer(*buffer->getBuffer())
 				.setRange(VK_WHOLE_SIZE);
 
-			write_descriptor_set.setPBufferInfo(&descriptor_buffer_info);
+			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
 		}
 		else
 		{
@@ -2365,11 +2356,9 @@ void BackendVK::present()
 	const auto& render_complete_semaphore = gContext->frames.at(gContext->semaphore_index).render_complete_semaphore;
 
 	auto present_info = vk::PresentInfoKHR()
-		.setWaitSemaphoreCount(1)
-		.setPWaitSemaphores(&*render_complete_semaphore)
-		.setSwapchainCount(1)
-		.setPSwapchains(&*gContext->swapchain)
-		.setPImageIndices(&gContext->frame_index);
+		.setWaitSemaphores(*render_complete_semaphore)
+		.setSwapchains(*gContext->swapchain)
+		.setImageIndices(gContext->frame_index);
 
 	auto present_result = gContext->queue.presentKHR(present_info);
 
@@ -2429,15 +2418,12 @@ void BackendVK::end()
 	};
 
 	auto submit_info = vk::SubmitInfo()
-		.setPWaitDstStageMask(&wait_dst_stage_mask)
-		.setWaitSemaphoreCount(1)
-		.setPWaitSemaphores(&*image_acquired_semaphore)
-		.setCommandBufferCount(1)
-		.setPCommandBuffers(&*gContext->command_buffer)
-		.setSignalSemaphoreCount(1)
-		.setPSignalSemaphores(&*render_complete_semaphore);
+		.setWaitDstStageMask(wait_dst_stage_mask)
+		.setWaitSemaphores(*image_acquired_semaphore)
+		.setCommandBuffers(*gContext->command_buffer)
+		.setSignalSemaphores(*render_complete_semaphore);
 
-	gContext->queue.submit({ submit_info }, *frame.fence);
+	gContext->queue.submit(submit_info, *frame.fence);
 	gContext->queue.waitIdle();
 }
 
@@ -2684,8 +2670,7 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 		.setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
 		.setImageArrayLayers(1)
 		.setImageSharingMode(vk::SharingMode::eExclusive)
-		.setQueueFamilyIndexCount(1)
-		.setPQueueFamilyIndices(&gContext->queue_family_index)
+		.setQueueFamilyIndices(gContext->queue_family_index)
 		.setPresentMode(vk::PresentModeKHR::eFifo)
 		.setClipped(true)
 		.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
@@ -2730,7 +2715,7 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 		frame.backbuffer_color_image = backbuffer;
 		frame.backbuffer_color_image_view = gContext->device.createImageView(image_view_info);
 
-		OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+		OneTimeSubmit([&](auto& cmdbuf) {
 			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::ePresentSrcKHR);
 		});
@@ -2775,7 +2760,7 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 
 	gContext->depth_stencil.view = gContext->device.createImageView(depth_stencil_view_create_info);
 
-	OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
+	OneTimeSubmit([&](auto& cmdbuf) {
 		SetImageMemoryBarrier(cmdbuf, *gContext->depth_stencil.image, gContext->depth_stencil.format, vk::ImageLayout::eUndefined,
 			vk::ImageLayout::eDepthStencilAttachmentOptimal);
 	});
