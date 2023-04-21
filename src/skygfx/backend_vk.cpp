@@ -193,11 +193,14 @@ struct ContextVK
 	bool index_buffer_dirty = true;
 	bool blend_mode_dirty = true;
 
-	bool buffers_synchronized = false;
-
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
 	Format getBackbufferFormat();
+
+	bool render_pass_active = false;
+
+	vk::PipelineStageFlags2 current_memory_stage = vk::PipelineStageFlagBits2::eTransfer;
+	vk::AccessFlags2 current_memory_access = vk::AccessFlagBits2::eMemoryWrite;
 };
 
 static ContextVK* gContext = nullptr;
@@ -366,6 +369,7 @@ static void BeginRenderPass();
 static void EndRenderPass();
 static void EnsureRenderPassActivated();
 static void EnsureRenderPassDeactivated();
+static void EnsureMemoryState(vk::raii::CommandBuffer& cmdbuf, vk::PipelineStageFlags2 stage, vk::AccessFlags2 access);
 
 static const std::unordered_map<Format, vk::Format> FormatMap = {
 	{ Format::Float1, vk::Format::eR32Sfloat },
@@ -808,22 +812,8 @@ public:
 
 		EnsureRenderPassDeactivated();
 
-		if (gContext->buffers_synchronized)
-		{
-			auto memory_barrier = vk::MemoryBarrier2()
-				.setSrcStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
-				.setSrcAccessMask(vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite)
-				.setDstStageMask(vk::PipelineStageFlagBits2::eTransfer)
-				.setDstAccessMask(vk::AccessFlagBits2::eMemoryWrite);
-
-			auto dependency_info = vk::DependencyInfo()
-				.setMemoryBarrierCount(1)
-				.setPMemoryBarriers(&memory_barrier);
-
-			gContext->command_buffer.pipelineBarrier2(dependency_info);
-
-			gContext->buffers_synchronized = false;
-		}
+		EnsureMemoryState(gContext->command_buffer,
+			vk::PipelineStageFlagBits2::eTransfer, vk::AccessFlagBits2::eMemoryWrite);
 
 		gContext->command_buffer.copyBuffer(*staging_buffer, *mBuffer, { region });
 
@@ -1074,12 +1064,10 @@ Format ContextVK::getBackbufferFormat()
 	return render_target ? render_target->getTexture()->getFormat() : Format::Byte4;
 }
 
-static bool gRenderPassActive = false;
-
 static void BeginRenderPass()
 {
-	assert(!gRenderPassActive);
-	gRenderPassActive = true;
+	assert(!gContext->render_pass_active);
+	gContext->render_pass_active = true;
 
 	auto color_texture = gContext->render_target ?
 		*gContext->render_target->getTexture()->getImageView() :
@@ -1117,15 +1105,15 @@ static void BeginRenderPass()
 
 static void EndRenderPass()
 {
-	assert(gRenderPassActive);
-	gRenderPassActive = false;
+	assert(gContext->render_pass_active);
+	gContext->render_pass_active = false;
 
 	gContext->command_buffer.endRendering();
 }
 
 static void EnsureRenderPassActivated()
 {
-	if (gRenderPassActive)
+	if (gContext->render_pass_active)
 		return;
 
 	BeginRenderPass();
@@ -1133,34 +1121,41 @@ static void EnsureRenderPassActivated()
 
 static void EnsureRenderPassDeactivated()
 {
-	if (!gRenderPassActive)
+	if (!gContext->render_pass_active)
 		return;
 
 	EndRenderPass();
 }
 
+static void EnsureMemoryState(vk::raii::CommandBuffer& cmdbuf, vk::PipelineStageFlags2 stage, vk::AccessFlags2 access)
+{
+	if (gContext->current_memory_stage == stage && gContext->current_memory_access == access)
+		return;
+
+	EnsureRenderPassDeactivated();
+
+	auto memory_barrier = vk::MemoryBarrier2()
+		.setSrcStageMask(gContext->current_memory_stage)
+		.setSrcAccessMask(gContext->current_memory_access)
+		.setDstStageMask(stage)
+		.setDstAccessMask(access);
+
+	auto dependency_info = vk::DependencyInfo()
+		.setMemoryBarrierCount(1)
+		.setPMemoryBarriers(&memory_barrier);
+
+	cmdbuf.pipelineBarrier2(dependency_info);
+
+	gContext->current_memory_stage = stage;
+	gContext->current_memory_access = access;
+}
+
 static void PrepareForDrawing()
 {
 	assert(gContext->vertex_buffer);
-	
-	if (!gContext->buffers_synchronized)
-	{
-		EnsureRenderPassDeactivated();
 
-		auto memory_barrier = vk::MemoryBarrier2()
-			.setSrcStageMask(vk::PipelineStageFlagBits2::eTransfer)
-			.setSrcAccessMask(vk::AccessFlagBits2::eMemoryWrite)
-			.setDstStageMask(vk::PipelineStageFlagBits2::eAllGraphics)
-			.setDstAccessMask(vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite);
-
-		auto dependency_info = vk::DependencyInfo()
-			.setMemoryBarrierCount(1)
-			.setPMemoryBarriers(&memory_barrier);
-
-		gContext->command_buffer.pipelineBarrier2(dependency_info);
-
-		gContext->buffers_synchronized = true;
-	}
+	EnsureMemoryState(gContext->command_buffer, vk::PipelineStageFlagBits2::eAllGraphics,
+		vk::AccessFlagBits2::eMemoryRead | vk::AccessFlagBits2::eMemoryWrite);
 
 	if (gContext->vertex_buffer_dirty)
 	{
@@ -1759,8 +1754,6 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
 	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil.format;
-
-	gContext->buffers_synchronized = false;
 
 	createSwapchain(width, height);
 
