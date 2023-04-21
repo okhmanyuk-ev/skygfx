@@ -8,6 +8,10 @@
 
 using PixelsFunc = std::function<void(uint32_t width, uint32_t height, const std::vector<uint8_t>&)>;
 
+static void* gNativeWindow = nullptr;
+static uint32_t gWidth = 0;
+static uint32_t gHeight = 0;
+
 glm::vec4 BlitPixelsToOne(const std::vector<uint8_t>& pixels)
 {
 	glm::vec4 result = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -32,42 +36,27 @@ glm::vec4 BlitPixelsToOne(const std::vector<uint8_t>& pixels)
 
 bool Clear(skygfx::BackendType backend, PixelsFunc pixels_func)
 {
-	glfwInit();
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
-
-	skygfx::Initialize(native_window, width, height, backend);
+	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
 	glm::vec4 clear_color = { 0.0f, 1.0f, 0.0f, 1.0f };
 
 	skygfx::Clear(clear_color);
 			
 	auto pixels = skygfx::GetPixels();
-	pixels_func(width, height, pixels);
+	pixels_func(gWidth, gHeight, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == clear_color;
 
 	skygfx::Present();
-
-	glfwPollEvents();
-
 	skygfx::Finalize();
-
-	glfwTerminate();
 
 	return result;
 }
 
 bool ClearRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
 {
-	glfwInit();
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
-
-	skygfx::Initialize(native_window, width, height, backend);
+	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
 	auto target = skygfx::RenderTarget(8, 8, skygfx::Format::Byte4);
 
@@ -83,12 +72,7 @@ bool ClearRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
 	auto result = pixel == clear_color;
 
 	skygfx::Present();
-
-	glfwPollEvents();
-
 	skygfx::Finalize();
-
-	glfwTerminate();
 
 	return result;
 }
@@ -131,12 +115,7 @@ void main()
 
 	const std::vector<uint32_t> indices = { 0, 1, 2 };
 
-	glfwInit();
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
-
-	skygfx::Initialize(native_window, width, height, backend);
+	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
@@ -149,7 +128,7 @@ void main()
 	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 
 	auto pixels = skygfx::GetPixels();
-	pixels_func(width, height, pixels);
+	pixels_func(gWidth, gHeight, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == glm::vec4{
@@ -160,12 +139,7 @@ void main()
 	};
 
 	skygfx::Present();
-
-	glfwPollEvents();
-
 	skygfx::Finalize();
-
-	glfwTerminate();
 
 	return result;
 }
@@ -208,12 +182,7 @@ void main()
 
 	const std::vector<uint32_t> indices = { 0, 1, 2 };
 
-	glfwInit();
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-
-	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
-
-	skygfx::Initialize(native_window, width, height, backend);
+	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 	auto target = skygfx::RenderTarget(16, 16, skygfx::Format::Byte4);
@@ -238,12 +207,7 @@ void main()
 	};
 
 	skygfx::Present();
-
-	glfwPollEvents();
-
 	skygfx::Finalize();
-
-	glfwTerminate();
 
 	return result;
 }
@@ -258,6 +222,15 @@ int main()
 		PUSH(Triangle),
 		PUSH(TriangleRenderTarget),
 	};
+
+	glfwInit();
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
+
+	gNativeWindow = native_window;
+	gWidth = width;
+	gHeight = height;
 
 	auto available_backends = skygfx::GetAvailableBackends();
 
@@ -296,6 +269,8 @@ int main()
 			std::cout << log_str << std::endl;
 		}
 	}
+
+	glfwTerminate();
 
 	std::cout << "---------------------" << std::endl;
 	std::cout << std::format("{}/{} tests passed!", passed, total) << std::endl;
