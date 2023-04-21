@@ -140,6 +140,7 @@ struct ContextVK
 	struct Frame
 	{
 		vk::raii::Fence fence = nullptr;
+		vk::Image backbuffer_color_image;
 		vk::raii::ImageView backbuffer_color_image_view = nullptr;
 		vk::raii::Semaphore image_acquired_semaphore = nullptr;
 		vk::raii::Semaphore render_complete_semaphore = nullptr;
@@ -1090,7 +1091,7 @@ static void BeginRenderPass()
 
 	auto color_attachment = vk::RenderingAttachmentInfo()
 		.setImageView(color_texture)
-		.setImageLayout(vk::ImageLayout::eAttachmentOptimal)
+		.setImageLayout(vk::ImageLayout::eGeneral)
 		.setLoadOp(vk::AttachmentLoadOp::eLoad)
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
 
@@ -2009,16 +2010,60 @@ void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
 {
 	auto dst_texture = (TextureVK*)dst_texture_handle;
-	auto format = gContext->getBackbufferFormat();
+	auto dst_format = gContext->getBackbufferFormat();
 
 	assert(dst_texture->getWidth() == size.x);
 	assert(dst_texture->getHeight() == size.y);
-	assert(dst_texture->getFormat() == format);
+	assert(dst_texture->getFormat() == dst_format);
 
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	// ...
+	EnsureRenderPassDeactivated();
+
+	auto pos_x = static_cast<int32_t>(pos.x);
+	auto pos_y = static_cast<int32_t>(pos.y);
+	auto width = static_cast<uint32_t>(size.x);
+	auto height = static_cast<uint32_t>(size.y);
+
+	auto src_image = gContext->render_target ?
+		*gContext->render_target->getTexture()->getImage() :
+		gContext->frames.at(gContext->frame_index).backbuffer_color_image;
+
+	auto subresource = vk::ImageSubresourceLayers()
+		.setAspectMask(vk::ImageAspectFlagBits::eColor)
+		.setLayerCount(1);
+
+	auto region = vk::ImageCopy2()
+		.setSrcSubresource(subresource)
+		.setDstSubresource(subresource)
+		.setSrcOffset({ pos_x, pos_y, 0 })
+		.setDstOffset({ 0, 0, 0 })
+		.setExtent({ width, height, 1 });
+
+	auto src_format = gContext->getBackbufferFormat();
+
+	SetImageLayout(gContext->command_buffer, src_image, FormatMap.at(src_format),
+		vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+
+	SetImageLayout(gContext->command_buffer, *dst_texture->getImage(), FormatMap.at(dst_format),
+		vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferDstOptimal);
+
+	auto copy_image_info = vk::CopyImageInfo2()
+		.setSrcImage(src_image)
+		.setDstImage(*dst_texture->getImage())
+		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
+		.setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
+		.setRegionCount(1)
+		.setPRegions(&region);
+
+	gContext->command_buffer.copyImage2(copy_image_info);
+
+	SetImageLayout(gContext->command_buffer, src_image, FormatMap.at(src_format),
+		vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eGeneral);
+
+	SetImageLayout(gContext->command_buffer, *dst_texture->getImage(), FormatMap.at(dst_format),
+		vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eGeneral);
 
 	if (dst_texture->isMipmap())
 		dst_texture->generateMips(gContext->command_buffer);
@@ -2597,6 +2642,7 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 			)
 			.setImage(backbuffer);
 
+		frame.backbuffer_color_image = backbuffer;
 		frame.backbuffer_color_image_view = gContext->device.createImageView(image_view_info);
 
 		OneTimeSubmit(gContext->device, gContext->command_pool, gContext->queue, [&](auto& cmdbuf) {
