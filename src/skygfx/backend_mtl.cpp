@@ -881,6 +881,11 @@ void BackendMetal::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	beginRenderPass();
 }
 
+std::vector<uint8_t> BackendMetal::getPixels()
+{
+	return {};
+}
+
 void BackendMetal::present()
 {
 	end();

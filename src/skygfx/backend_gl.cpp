@@ -361,7 +361,7 @@ public:
 			const auto& attrib = mVertexLayout.attributes.at(i);
 
 			glVertexAttribPointer(i, SizeMap.at(attrib.format),
-				TypeMap.at(attrib.format), NormalizeMap.at(attrib.format),
+				FormatTypeMap.at(attrib.format), NormalizeMap.at(attrib.format),
 				(GLsizei)mVertexLayout.stride, (void*)attrib.offset);
 		}
 	}
@@ -1326,7 +1326,7 @@ void BackendGL::prepareForDrawing()
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 		glBindVertexBuffer(0, gContext->vertex_buffer->getGLBuffer(), 0, (GLsizei)gContext->vertex_buffer->getStride());
 #elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-		gShader->applyLayout();
+		gContext->shader->applyLayout();
 #endif
 	}
 
