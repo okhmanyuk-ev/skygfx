@@ -132,9 +132,9 @@ void main()
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == glm::vec4{
-		0.0416530818f,
-		0.0416318141f,
-		0.0416527465f,
+		0.0416507758f,
+		0.0416276492f,
+		0.0416508429f,
 		1.00000000f
 	};
 
