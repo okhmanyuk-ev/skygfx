@@ -8,6 +8,7 @@
 
 using namespace skygfx;
 
+class ObjectVK;
 class ShaderVK;
 class RaytracingShaderVK;
 class UniformBufferVK;
@@ -70,45 +71,8 @@ SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 
 struct ContextVK
 {
-	ContextVK() :
-#if defined(SKYGFX_PLATFORM_WINDOWS)
-		context(vk::raii::Context())
-#elif defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_IOS)
-		context(vk::raii::Context(vkGetInstanceProcAddr));
-#endif
-	{
-	}
-
-	~ContextVK()
-	{
-		sampler_states.clear();
-		raytracing_pipeline_states.clear();
-		pipeline_states.clear();
-
-		acceleration_structures.clear();
-		uniform_buffers.clear();
-		textures.clear();
-
-		frames.clear();
-
-		depth_stencil.image.release();
-		depth_stencil.view.release();
-		depth_stencil.memory.release();
-
-		staging_objects.clear();
-
-		execute_after_present.flush();
-
-		command_buffer.release();
-		command_pool.release();
-		swapchain.release();
-		surface.release();
-		device.release();
-		queue.release();
-		physical_device.release();
-		debug_utils_messenger.release();
-		instance.release();
-	}
+	ContextVK();
+	~ContextVK();
 
 	vk::raii::Context context;
 	vk::raii::Instance instance = nullptr;
@@ -200,6 +164,8 @@ struct ContextVK
 	bool render_pass_active = false;
 
 	vk::PipelineStageFlags2 current_memory_stage = vk::PipelineStageFlagBits2::eTransfer;
+
+	std::unordered_set<ObjectVK*> objects;
 };
 
 static ContextVK* gContext = nullptr;
@@ -358,7 +324,13 @@ std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<
 	return { std::move(pipeline_layout), std::move(descriptor_set_layout), required_descriptor_bindings };
 }
 
-class ShaderVK
+class ObjectVK
+{
+public:
+	virtual ~ObjectVK() {}
+};
+
+class ShaderVK : public ObjectVK
 {
 public:
 	const auto& getPipelineLayout() const { return mPipelineLayout; }
@@ -418,7 +390,7 @@ public:
 	}
 };
 
-class RaytracingShaderVK
+class RaytracingShaderVK : public ObjectVK
 {
 public:
 	const auto& getRaygenShaderModule() const { return mRaygenShaderModule; }
@@ -461,7 +433,7 @@ public:
 	}
 };
 
-class TextureVK
+class TextureVK : public ObjectVK
 {
 public:
 	const auto& getImage() const { return mImage; }
@@ -613,7 +585,7 @@ public:
 	}
 };
 
-class RenderTargetVK
+class RenderTargetVK : public ObjectVK
 {
 public:
 	auto getTexture() const { return mTexture; }
@@ -674,7 +646,7 @@ public:
 	}
 };
 
-class BufferVK
+class BufferVK : public ObjectVK
 {
 public:
 	const auto& getBuffer() const { return mBuffer; }
@@ -909,7 +881,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 	return { std::move(tlas), std::move(tlas_buffer), std::move(tlas_memory) };
 }
 
-class AccelerationStructureVK
+class AccelerationStructureVK : public ObjectVK
 {
 public:
 	const auto& getTlas() const { return mTlas; }
@@ -933,6 +905,23 @@ public:
 			glm::mat4(1.0f), mBlasDeviceAddress);
 	}
 };
+
+ContextVK::ContextVK() :
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+	context(vk::raii::Context())
+#elif defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_IOS)
+	context(vk::raii::Context(vkGetInstanceProcAddr));
+#endif
+{
+}
+
+ContextVK::~ContextVK()
+{
+	execute_after_present.flush();
+
+	for (auto object : objects)
+		delete object;
+}
 
 uint32_t ContextVK::getBackbufferWidth()
 {
@@ -2452,6 +2441,7 @@ void BackendVK::end()
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
 {
 	auto texture = new TextureVK(width, height, format, memory, mipmap);
+	gContext->objects.insert(texture);
 	return (TextureHandle*)texture;
 }
 
@@ -2475,6 +2465,7 @@ void BackendVK::destroyTexture(TextureHandle* handle)
 
 		while (!remove_from_global()) {}
 
+		gContext->objects.erase(texture);
 		delete texture;
 	});
 }
@@ -2483,12 +2474,14 @@ RenderTargetHandle* BackendVK::createRenderTarget(uint32_t width, uint32_t heigh
 {
 	auto texture = (TextureVK*)texture_handle;
 	auto render_target = new RenderTargetVK(width, height, texture);
+	gContext->objects.insert(render_target);
 	return (RenderTargetHandle*)render_target;
 }
 
 void BackendVK::destroyRenderTarget(RenderTargetHandle* handle)
 {
 	auto render_target = (RenderTargetVK*)handle;
+	gContext->objects.erase(render_target);
 	delete render_target;
 }
 
@@ -2496,6 +2489,7 @@ ShaderHandle* BackendVK::createShader(const VertexLayout& vertex_layout, const s
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
 	auto shader = new ShaderVK(vertex_layout, vertex_code, fragment_code, defines);
+	gContext->objects.insert(shader);
 	return (ShaderHandle*)shader;
 }
 
@@ -2512,6 +2506,7 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 			gContext->pipeline_states.erase(state);
 		}
 
+		gContext->objects.erase(shader);
 		delete shader;
 	});
 }
@@ -2520,6 +2515,7 @@ RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& ray
 	const std::string& closesthit_code, const std::vector<std::string>& defines)
 {
 	auto shader = new RaytracingShaderVK(raygen_code, miss_code, closesthit_code, defines);
+	gContext->objects.insert(shader);
 	return (RaytracingShaderHandle*)shader;
 }
 
@@ -2536,6 +2532,7 @@ void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
 			gContext->raytracing_pipeline_states.erase(state);
 		}
 
+		gContext->objects.erase(shader);
 		delete shader;
 	});
 }
@@ -2543,6 +2540,7 @@ void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
 VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferVK(size, stride);
+	gContext->objects.insert(buffer);
 	return (VertexBufferHandle*)buffer;
 }
 
@@ -2550,6 +2548,7 @@ void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
 {
 	gContext->execute_after_present.add([handle] {
 		auto buffer = (VertexBufferVK*)handle;
+		gContext->objects.erase(buffer);
 		delete buffer;
 	});
 }
@@ -2567,6 +2566,7 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new IndexBufferVK(size, stride);
+	gContext->objects.insert(buffer);
 	return (IndexBufferHandle*)buffer;
 }
 
@@ -2574,6 +2574,7 @@ void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	gContext->execute_after_present.add([handle] {
 		auto buffer = (IndexBufferVK*)handle;
+		gContext->objects.erase(buffer);
 		delete buffer;
 	});
 }
@@ -2591,6 +2592,7 @@ void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
 {
 	auto buffer = new UniformBufferVK(size);
+	gContext->objects.insert(buffer);
 	return (UniformBufferHandle*)buffer;
 }
 
@@ -2614,6 +2616,7 @@ void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 
 		while (!remove_from_global()) {}
 
+		gContext->objects.erase(buffer);
 		delete buffer;
 	});
 }
@@ -2628,6 +2631,7 @@ AccelerationStructureHandle* BackendVK::createAccelerationStructure(const std::v
 	const std::vector<uint32_t>& indices, const glm::mat4& transform)
 {
 	auto acceleration_structure = new AccelerationStructureVK(vertices, indices, transform);
+	gContext->objects.insert(acceleration_structure);
 	return (AccelerationStructureHandle*)acceleration_structure;
 }
 
@@ -2651,6 +2655,7 @@ void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle
 
 		while (!remove_from_global()) {}
 
+		gContext->objects.erase(acceleration_structure);
 		delete acceleration_structure;
 	});
 }
