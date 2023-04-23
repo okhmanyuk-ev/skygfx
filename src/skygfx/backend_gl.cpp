@@ -32,6 +32,11 @@
 	#include <GLES3/gl3.h>
 #endif
 
+extern "C" {
+	_declspec(dllexport) DWORD NvOptimusEnablement = 1;
+	_declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+
 using namespace skygfx;
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
