@@ -33,8 +33,8 @@
 #endif
 
 extern "C" {
-	_declspec(dllexport) DWORD NvOptimusEnablement = 1;
-	_declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+	_declspec(dllexport) uint32_t NvOptimusEnablement = 1;
+	_declspec(dllexport) uint32_t AmdPowerXpressRequestHighPerformance = 1;
 }
 
 using namespace skygfx;

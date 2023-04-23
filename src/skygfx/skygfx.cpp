@@ -32,7 +32,7 @@ Texture::Texture(Texture&& other) noexcept
 	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
 	mWidth = std::exchange(other.mWidth, 0);
 	mHeight = std::exchange(other.mHeight, 0);
-	mFormat = other.mFormat;
+	mFormat = std::exchange(other.mFormat, {});
 }
 
 Texture::~Texture()
@@ -52,7 +52,7 @@ Texture& Texture::operator=(Texture&& other) noexcept
 	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
 	mWidth = std::exchange(other.mWidth, 0);
 	mHeight = std::exchange(other.mHeight, 0);
-	mFormat = other.mFormat;
+	mFormat = std::exchange(other.mFormat, {});
 
 	return *this;
 }

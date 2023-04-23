@@ -187,7 +187,7 @@ void EndCommandList(ID3D12CommandQueue* cmd_queue, ID3D12GraphicsCommandList* cm
 	}
 }
 
-void OneTimeSubmit(const std::function<void(ID3D12GraphicsCommandList*)> func)
+void OneTimeSubmit(std::function<void(ID3D12GraphicsCommandList*)> func)
 {
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
 	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
