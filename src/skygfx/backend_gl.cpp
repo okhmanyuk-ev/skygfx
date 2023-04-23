@@ -40,9 +40,12 @@ extern "C" {
 using namespace skygfx;
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
-void GLAPIENTRY MessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
+void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
 	const GLchar* message, const void* userParam)
 {
+	if (type == GL_DEBUG_TYPE_PERFORMANCE) // spamming in getPixels func
+		return;
+
 	static const std::unordered_map<GLenum, std::string> SourceMap = {
 		{ GL_DEBUG_SOURCE_API, "GL_DEBUG_SOURCE_API" },
 		{ GL_DEBUG_SOURCE_WINDOW_SYSTEM, "GL_DEBUG_SOURCE_WINDOW_SYSTEM" },
@@ -692,7 +695,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	wglMakeCurrent(gHDC, WglContext);
 
 	glEnable(GL_DEBUG_OUTPUT);
-	glDebugMessageCallback(MessageCallback, 0);
+	glDebugMessageCallback(DebugMessageCallback, 0);
 
 	bool vsync = false;
 	wglSwapIntervalEXT(vsync ? 1 : 0);
