@@ -9,6 +9,7 @@
 
 #include <d3dcompiler.h>
 #include <d3d11.h>
+#include <dxgi1_6.h>
 
 #pragma comment(lib, "d3d11")
 #pragma comment(lib, "d3dcompiler")
@@ -339,6 +340,12 @@ public:
 
 BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 {
+	ComPtr<IDXGIFactory6> dxgi_factory;
+	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
+
+	IDXGIAdapter1* adapter;
+	dxgi_factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
+
 	DXGI_SWAP_CHAIN_DESC sd = {};
 	sd.BufferCount = 2;
 	sd.BufferDesc.Width = width;
@@ -354,12 +361,10 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height)
 	sd.Windowed = TRUE; // TODO: make false when fullscreen ?		
 	sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-	std::vector<D3D_FEATURE_LEVEL> features = { D3D_FEATURE_LEVEL_11_0, };
 	UINT flags = 0;// D3D11_CREATE_DEVICE_DEBUG | D3D11_CREATE_DEVICE_SINGLETHREADED;
 
-	D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, flags, features.data(),
-		static_cast<UINT>(features.size()), D3D11_SDK_VERSION, &sd, gSwapChain.GetAddressOf(), 
-		gDevice.GetAddressOf(), NULL, gContext.GetAddressOf());
+	D3D11CreateDeviceAndSwapChain(adapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, flags, NULL, 0,
+		D3D11_SDK_VERSION, &sd, gSwapChain.GetAddressOf(), gDevice.GetAddressOf(), NULL, gContext.GetAddressOf());
 
 	createMainRenderTarget(width, height);
 	setRenderTarget(std::nullopt);
