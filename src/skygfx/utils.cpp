@@ -824,7 +824,6 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 	for (auto& target : mTexChain)
 	{
 		SetRenderTarget(target);
-		Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
 		ExecuteCommands({
 			commands::SetColorTexture{ downsample_src },
 			commands::SetEffect{
