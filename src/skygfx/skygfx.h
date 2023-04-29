@@ -578,7 +578,7 @@ namespace skygfx
 	void SetSampler(Sampler value);
 	void SetTextureAddress(TextureAddress value);
 
-	void Clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 0.0f },
+	void Clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f },
 		const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
 	void Draw(uint32_t vertex_count, uint32_t vertex_offset = 0);
 	void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0);

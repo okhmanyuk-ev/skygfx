@@ -751,7 +751,7 @@ void utils::passes::GaussianBlur::execute(const RenderTarget& src, const RenderT
 	auto resolution = glm::vec2{ static_cast<float>(src.getWidth()), static_cast<float>(src.getHeight()) };
 
 	SetRenderTarget(mBlurTarget.value());
-	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+	Clear();
 
 	ExecuteCommands({
 		commands::SetColorTexture{ &src },
@@ -804,7 +804,7 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 	// extract bright
 
 	SetRenderTarget(mBrightTarget.value());
-	Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+	Clear();
 
 	ExecuteCommands({
 		commands::SetColorTexture{ &src },

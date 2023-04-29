@@ -230,7 +230,7 @@ int main()
 
 		skygfx::SetUniformBuffer(1, matrices);
 
-		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::Clear();
 		skygfx::DrawIndexed(static_cast<uint32_t>(cube_indices.size()));
 		skygfx::Present();
 

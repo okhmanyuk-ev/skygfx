@@ -80,7 +80,7 @@ int main()
 
 	while (!glfwWindowShouldClose(window))
 	{
-		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::Clear();
 		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 		skygfx::Present();
 

@@ -96,7 +96,7 @@ int main()
 		skygfx::DispatchRays(target.getWidth(), target.getHeight(), 1);
 
 		skygfx::SetRenderTarget(std::nullopt);
-		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::Clear();
 		skygfx::utils::ExecuteCommands({
 			skygfx::utils::commands::SetColorTexture{ &target },
 			skygfx::utils::commands::Draw()

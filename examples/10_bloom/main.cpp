@@ -146,7 +146,7 @@ int main()
 		skygfx::SetCullMode(skygfx::CullMode::Back);
 
 		skygfx::SetRenderTarget(src_target.value());
-		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::Clear();
 
 		skygfx::utils::ExecuteCommands({
 			skygfx::utils::commands::SetMesh{ &cube_mesh },
@@ -158,7 +158,7 @@ int main()
 		});
 
 		skygfx::SetRenderTarget(dst_target.value());
-		skygfx::Clear(glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f });
+		skygfx::Clear();
 
 		bloom_pass.execute(src_target.value(), dst_target.value());
 
