@@ -98,6 +98,7 @@ namespace skygfx
 
 		auto getWidth() const { return mWidth; }
 		auto getHeight() const { return mHeight; }
+		auto getFormat() const { return mFormat; }
 
 	private:
 		TextureHandle* mTextureHandle = nullptr;
@@ -630,6 +631,7 @@ namespace skygfx
 
 	uint32_t GetBackbufferWidth();
 	uint32_t GetBackbufferHeight();
+	Format GetBackbufferFormat();
 
 	BackendType GetBackendType();
 

@@ -12,6 +12,7 @@ static Backend* gBackend = nullptr;
 static RaytracingBackend* gRaytracingBackend = nullptr;
 static glm::u32vec2 gSize = { 0, 0 };
 static std::optional<glm::u32vec2> gRenderTargetSize;
+static Format gBackbufferFormat;
 static BackendType gBackendType = BackendType::OpenGL;
 static std::optional<VertexBuffer> gVertexBuffer;
 static std::optional<IndexBuffer> gIndexBuffer;
@@ -316,7 +317,9 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 		throw std::runtime_error("backend not implemented");
 
 	gSize = { width, height };
+	gRenderTargetSize.reset();
 	gBackendType = type;
+	gBackbufferFormat = Format::Byte4;
 
 	if (features.contains(Feature::Raytracing))
 	{
@@ -374,12 +377,14 @@ void skygfx::SetRenderTarget(const RenderTarget& value)
 {
 	gBackend->setRenderTarget(const_cast<RenderTarget&>(value));
 	gRenderTargetSize = { value.getWidth(), value.getHeight() };
+	gBackbufferFormat = value.getFormat();
 }
 
 void skygfx::SetRenderTarget(std::nullopt_t value)
 {
 	gBackend->setRenderTarget(value);
 	gRenderTargetSize.reset();
+	gBackbufferFormat = Format::Byte4;
 }
 
 void skygfx::SetShader(const Shader& shader)
@@ -547,6 +552,11 @@ uint32_t skygfx::GetBackbufferWidth()
 uint32_t skygfx::GetBackbufferHeight()
 {
 	return gRenderTargetSize.value_or(gSize).y;
+}
+
+Format skygfx::GetBackbufferFormat()
+{
+	return gBackbufferFormat;
 }
 
 BackendType skygfx::GetBackendType()
