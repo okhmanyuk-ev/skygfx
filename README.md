@@ -28,6 +28,7 @@ target_link_libraries(YOUR_TARGET skygfx)
 # Examples
 <details>
 <summary>Examples</summary>
+  
 ## [Triangle](examples/01_triangle)
 <img src="https://user-images.githubusercontent.com/3295141/173175376-c33d287d-4cc5-4070-9f08-d1379b6b4374.png" width="256"/>
 
