@@ -26,7 +26,8 @@ target_link_libraries(YOUR_TARGET skygfx)
 3. The `build` folder will be created in a short time and the `.xcodeproj` file will be inside
 
 # Examples
-
+<details>
+<summary>Examples</summary>
 ## [Triangle](examples/01_triangle)
 <img src="https://user-images.githubusercontent.com/3295141/173175376-c33d287d-4cc5-4070-9f08-d1379b6b4374.png" width="256"/>
 
@@ -59,3 +60,4 @@ target_link_libraries(YOUR_TARGET skygfx)
 
 ## [Sponza](https://github.com/okhmanyuk-ev/sky-gfx-sponza-demo)
 <img src="https://github.com/okhmanyuk-ev/sky-gfx-sponza-demo/blob/master/assets/screenshot.png" width="256"/>
+</details>
