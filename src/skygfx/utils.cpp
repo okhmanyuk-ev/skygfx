@@ -846,11 +846,11 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 
 	Texture* prev_downsampled = nullptr;
 
-	for (auto& target : std::ranges::reverse_view(mTexChain))
+	for (auto it = mTexChain.rbegin(); it != mTexChain.rend(); ++it)
 	{
 		if (prev_downsampled != nullptr)
 		{
-			SetRenderTarget(target);
+			SetRenderTarget(*it);
 			ExecuteCommands({
 				commands::SetBlendMode{ BlendStates::Additive },
 				commands::SetColorTexture{ prev_downsampled },
@@ -866,7 +866,7 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 			});
 		}
 
-		prev_downsampled = &target;
+		prev_downsampled = &*it;
 	}
 
 	// combine

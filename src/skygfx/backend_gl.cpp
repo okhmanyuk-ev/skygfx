@@ -32,10 +32,12 @@
 	#include <GLES3/gl3.h>
 #endif
 
+#if defined(SKYGFX_PLATFORM_WINDOWS)
 extern "C" {
 	_declspec(dllexport) uint32_t NvOptimusEnablement = 1;
 	_declspec(dllexport) uint32_t AmdPowerXpressRequestHighPerformance = 1;
 }
+#endif
 
 using namespace skygfx;
 
@@ -569,10 +571,10 @@ static GLKView* gGLKView = nullptr;
 NSOpenGLView* glView;
 NSOpenGLContext *glContext;
 #elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-EGLDisplay gDisplay;
-EGLSurface gSurface;
-EGLContext gContext;
-EGLConfig gConfig;
+EGLDisplay gEglDisplay;
+EGLSurface gEglSurface;
+EGLContext gEglContext;
+EGLConfig gEglConfig;
 #endif
 
 struct ContextGL
@@ -802,13 +804,13 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 		EGL_CONTEXT_CLIENT_VERSION, 3,
 		EGL_NONE
 	};
-	gDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	eglInitialize(gDisplay, NULL, NULL);
+	gEglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+	eglInitialize(gEglDisplay, NULL, NULL);
 	EGLint num_configs;
-	eglChooseConfig(gDisplay, attribs, &gConfig, 1, &num_configs);
-	gSurface = eglCreateWindowSurface(gDisplay, gConfig, (EGLNativeWindowType)window, NULL);
-	gContext = eglCreateContext(gDisplay, gConfig, NULL, context_attribs);
-	eglMakeCurrent(gDisplay, gSurface, gSurface, gContext);
+	eglChooseConfig(gEglDisplay, attribs, &gEglConfig, 1, &num_configs);
+	gEglSurface = eglCreateWindowSurface(gEglDisplay, gEglConfig, (EGLNativeWindowType)window, NULL);
+	gEglContext = eglCreateContext(gEglDisplay, gEglConfig, NULL, context_attribs);
+	eglMakeCurrent(gEglDisplay, gEglSurface, gEglSurface, gEglContext);
 #endif
 
 	glGenBuffers(1, &gContext->pixel_buffer);
@@ -1152,6 +1154,9 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 std::vector<uint8_t> BackendGL::getPixels()
 {
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+	return {};
+#else
 	auto width = gContext->getBackbufferWidth();
 	auto height = gContext->getBackbufferHeight();
 	auto format = gContext->getBackbufferFormat();
@@ -1183,6 +1188,7 @@ std::vector<uint8_t> BackendGL::getPixels()
 	}
 
 	return result;
+#endif
 }
 
 void BackendGL::present()
@@ -1195,7 +1201,7 @@ void BackendGL::present()
 #elif defined(SKYGFX_PLATFORM_MACOS)
 	[glContext flushBuffer];
 #elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-	eglSwapBuffers(gDisplay, gSurface);
+	eglSwapBuffers(gEglDisplay, gEglSurface);
 #endif
 	gContext->execute_after_present.flush();
 }
