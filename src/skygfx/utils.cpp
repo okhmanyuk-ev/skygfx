@@ -803,22 +803,28 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 
 	// extract bright
 
-	SetRenderTarget(mBrightTarget.value());
-	Clear();
+	Texture* downsample_src = const_cast<RenderTarget*>(&src);
 
-	ExecuteCommands({
-		commands::SetColorTexture{ &src },
-		commands::SetEffect{
-			effects::BrightFilter{
-				.threshold = mBrightThreshold
-			}
-		},
-		commands::Draw{},
-	});
+	if (mBrightThreshold > 0.0f)
+	{
+		SetRenderTarget(mBrightTarget.value());
+		Clear();
+
+		ExecuteCommands({
+			commands::SetColorTexture{ &src },
+			commands::SetEffect{
+				effects::BrightFilter{
+					.threshold = mBrightThreshold
+				}
+			},
+			commands::Draw{},
+		});
+
+		downsample_src = &mBrightTarget.value();
+	}
 
 	// downsample
 
-	Texture* downsample_src = &mBrightTarget.value();
 	uint32_t step_number = 0;
 
 	for (auto& target : mTexChain)
