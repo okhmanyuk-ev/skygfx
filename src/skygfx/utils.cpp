@@ -357,6 +357,27 @@ void utils::Mesh::setIndices(Indices value)
 	mIndices = std::move(value);
 }
 
+utils::effects::BloomDownsample::BloomDownsample(const glm::vec2& _resolution, uint32_t _step_number) :
+	resolution(_resolution),
+	step_number(_step_number)
+{
+}
+
+utils::effects::BloomDownsample::BloomDownsample(const Texture& texture, uint32_t _step_number) :
+	BloomDownsample({ static_cast<float>(texture.getWidth()), static_cast<float>(texture.getHeight()) }, _step_number)
+{
+}
+
+utils::effects::BloomUpsample::BloomUpsample(const glm::vec2& _resolution) :
+	resolution(_resolution)
+{
+}
+
+utils::effects::BloomUpsample::BloomUpsample(const Texture& texture) :
+	BloomUpsample({ static_cast<float>(texture.getWidth()), static_cast<float>(texture.getHeight()) })
+{
+}
+
 std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const Camera& camera,
 	std::optional<uint32_t> _width, std::optional<uint32_t> _height)
 {
@@ -832,15 +853,7 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 		SetRenderTarget(target);
 		ExecuteCommands({
 			commands::SetColorTexture{ downsample_src },
-			commands::SetEffect{
-				effects::BloomDownsample{
-					.resolution = {
-						static_cast<float>(downsample_src->getWidth()),
-						static_cast<float>(downsample_src->getHeight())
-					},
-					.step_number = step_number
-				}
-			},
+			commands::SetEffect{ effects::BloomDownsample(*downsample_src, step_number) },
 			commands::Draw{}
 		});
 
@@ -860,14 +873,7 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 			ExecuteCommands({
 				commands::SetBlendMode{ BlendStates::Additive },
 				commands::SetColorTexture{ prev_downsampled },
-				commands::SetEffect{
-					effects::BloomUpsample{
-						.resolution = {
-							static_cast<float>(prev_downsampled->getWidth()),
-							static_cast<float>(prev_downsampled->getHeight())
-						}
-					}
-				},
+				commands::SetEffect{ effects::BloomUpsample(*prev_downsampled) },
 				commands::Draw{}
 			});
 		}
@@ -878,20 +884,12 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 	// combine
 
 	SetRenderTarget(dst);
-
 	ExecuteCommands({
 		commands::SetColorTexture{ &src },
 		commands::Draw{},
 		commands::SetBlendMode{ BlendStates::Additive },
 		commands::SetColorTexture{ prev_downsampled },
-		commands::SetEffect{
-			effects::BloomUpsample{
-				.resolution = {
-					static_cast<float>(prev_downsampled->getWidth()),
-					static_cast<float>(prev_downsampled->getHeight())
-				}
-			}
-		},
+		commands::SetEffect{ effects::BloomUpsample(*prev_downsampled) },
 		commands::SetColor{ glm::vec4(mIntensity) },
 		commands::Draw{}
 	});

@@ -20,7 +20,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC src)
 set(LIBS_FOLDER "libs")
 
 macro(set_option option value)
-  set(${option} ${value} CACHE INTERNAL "" FORCE)
+	set(${option} ${value} CACHE INTERNAL "" FORCE)
 endmacro()
 
 if(WIN32)

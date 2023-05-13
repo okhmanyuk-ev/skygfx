@@ -96,14 +96,20 @@ namespace skygfx::utils
 
 		struct alignas(16) BloomDownsample
 		{
+			BloomDownsample(const glm::vec2& resolution, uint32_t step_number);
+			BloomDownsample(const Texture& texture, uint32_t step_number);
+
 			glm::vec2 resolution;
-			uint32_t step_number = false;
+			uint32_t step_number;
 
 			static const std::string Shader;
 		};
 
 		struct alignas(16) BloomUpsample
 		{
+			BloomUpsample(const glm::vec2& resolution);
+			BloomUpsample(const Texture& texture);
+
 			glm::vec2 resolution;
 
 			static const std::string Shader;
