@@ -75,11 +75,6 @@ namespace skygfx
 		AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
 			const std::vector<uint32_t>& indices, const glm::mat4& transform) override;
 		void destroyAccelerationStructure(AccelerationStructureHandle* handle) override;
-
-	private:
-		void createSwapchain(uint32_t width, uint32_t height);
-		void begin();
-		void end();
 	};
 }
 

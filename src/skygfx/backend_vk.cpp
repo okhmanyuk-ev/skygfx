@@ -1537,6 +1537,210 @@ static void PrepareForDrawing()
 	}
 }
 
+static void WaitForGpu()
+{
+	auto wait_result = gContext->device.waitForFences({ *gContext->getCurrentFrame().fence }, true, UINT64_MAX);
+}
+
+static void CreateSwapchain(uint32_t width, uint32_t height)
+{
+	auto surface_capabilities = gContext->physical_device.getSurfaceCapabilitiesKHR(*gContext->surface);
+
+	// https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
+	// Determine the number of VkImage's to use in the swap chain (we desire to
+	// own only 1 image at a time, besides the images being displayed and
+	// queued for display):
+
+	uint32_t desired_number_of_swapchain_images = surface_capabilities.minImageCount + 1;
+
+	if ((surface_capabilities.maxImageCount > 0) && (desired_number_of_swapchain_images > surface_capabilities.maxImageCount))
+	{
+		// Application must settle for fewer images than desired:
+		desired_number_of_swapchain_images = surface_capabilities.maxImageCount;
+	}
+
+	auto max_width = surface_capabilities.maxImageExtent.width;
+	auto max_height = surface_capabilities.maxImageExtent.height;
+
+	gContext->width = glm::min(width, max_width);
+	gContext->height = glm::min(height, max_height);
+
+	auto image_extent = vk::Extent2D()
+		.setWidth(gContext->width)
+		.setHeight(gContext->height);
+
+	auto swapchain_info = vk::SwapchainCreateInfoKHR()
+		.setSurface(*gContext->surface)
+		.setMinImageCount(desired_number_of_swapchain_images)
+		.setImageFormat(gContext->surface_format.format)
+		.setImageColorSpace(gContext->surface_format.colorSpace)
+		.setImageExtent(image_extent)
+		.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc)
+		.setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
+		.setImageArrayLayers(1)
+		.setImageSharingMode(vk::SharingMode::eExclusive)
+		.setQueueFamilyIndices(gContext->queue_family_index)
+		.setPresentMode(vk::PresentModeKHR::eFifo)
+		.setClipped(true)
+		.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
+		.setOldSwapchain(*gContext->swapchain);
+
+	gContext->swapchain = gContext->device.createSwapchainKHR(swapchain_info);
+
+	auto backbuffers = gContext->swapchain.getImages();
+
+	gContext->frames.clear();
+
+	for (auto& backbuffer : backbuffers)
+	{
+		auto frame = ContextVK::Frame();
+
+		auto fence_info = vk::FenceCreateInfo()
+			.setFlags(vk::FenceCreateFlagBits::eSignaled);
+
+		frame.fence = gContext->device.createFence(fence_info);
+
+		frame.image_acquired_semaphore = gContext->device.createSemaphore({});
+		frame.render_complete_semaphore = gContext->device.createSemaphore({});
+
+		auto image_view_info = vk::ImageViewCreateInfo()
+			.setViewType(vk::ImageViewType::e2D)
+			.setFormat(gContext->surface_format.format)
+			.setComponents(vk::ComponentMapping()
+				.setR(vk::ComponentSwizzle::eR)
+				.setG(vk::ComponentSwizzle::eG)
+				.setB(vk::ComponentSwizzle::eB)
+				.setA(vk::ComponentSwizzle::eA)
+			)
+			.setSubresourceRange(vk::ImageSubresourceRange()
+				.setAspectMask(vk::ImageAspectFlagBits::eColor)
+				.setBaseMipLevel(0)
+				.setLevelCount(1)
+				.setBaseArrayLayer(0)
+				.setLayerCount(1)
+			)
+			.setImage(backbuffer);
+
+		frame.backbuffer_color_image = backbuffer;
+		frame.backbuffer_color_image_view = gContext->device.createImageView(image_view_info);
+
+		OneTimeSubmit([&](auto& cmdbuf) {
+			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
+			vk::ImageLayout::ePresentSrcKHR);
+			});
+
+		auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
+			.setCommandBufferCount(1)
+			.setLevel(vk::CommandBufferLevel::ePrimary)
+			.setCommandPool(*gContext->command_pool);
+
+		auto command_buffers = gContext->device.allocateCommandBuffers(command_buffer_allocate_info);
+
+		frame.command_buffer = std::move(command_buffers.at(0));
+
+		gContext->frames.push_back(std::move(frame));
+	}
+
+	// depth stencil
+
+	auto depth_stencil_image_create_info = vk::ImageCreateInfo()
+		.setImageType(vk::ImageType::e2D)
+		.setFormat(gContext->depth_stencil.format)
+		.setExtent({ width, height, 1 })
+		.setMipLevels(1)
+		.setArrayLayers(1)
+		.setSamples(vk::SampleCountFlagBits::e1)
+		.setTiling(vk::ImageTiling::eOptimal)
+		.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
+
+	gContext->depth_stencil.image = gContext->device.createImage(depth_stencil_image_create_info);
+
+	auto depth_stencil_mem_req = gContext->depth_stencil.image.getMemoryRequirements();
+
+	auto depth_stencil_memory_allocate_info = vk::MemoryAllocateInfo()
+		.setAllocationSize(depth_stencil_mem_req.size)
+		.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, depth_stencil_mem_req.memoryTypeBits));
+
+	gContext->depth_stencil.memory = gContext->device.allocateMemory(depth_stencil_memory_allocate_info);
+
+	gContext->depth_stencil.image.bindMemory(*gContext->depth_stencil.memory, 0);
+
+	auto depth_stencil_view_subresource_range = vk::ImageSubresourceRange()
+		.setLevelCount(1)
+		.setLayerCount(1)
+		.setAspectMask(vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
+
+	auto depth_stencil_view_create_info = vk::ImageViewCreateInfo()
+		.setViewType(vk::ImageViewType::e2D)
+		.setImage(*gContext->depth_stencil.image)
+		.setFormat(gContext->depth_stencil.format)
+		.setSubresourceRange(depth_stencil_view_subresource_range);
+
+	gContext->depth_stencil.view = gContext->device.createImageView(depth_stencil_view_create_info);
+
+	OneTimeSubmit([&](auto& cmdbuf) {
+		SetImageMemoryBarrier(cmdbuf, *gContext->depth_stencil.image, gContext->depth_stencil.format, vk::ImageLayout::eUndefined,
+		vk::ImageLayout::eDepthStencilAttachmentOptimal);
+	});
+
+	gContext->frame_index = 0;
+	gContext->semaphore_index = 0;
+}
+
+static void MoveToNextFrame()
+{
+	const auto& image_acquired_semaphore = gContext->frames.at(gContext->semaphore_index).image_acquired_semaphore;
+
+	auto [result, image_index] = gContext->swapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
+
+	gContext->frame_index = image_index;
+}
+
+static void Begin()
+{
+	assert(!gContext->working);
+	gContext->working = true;
+
+	gContext->topology_dirty = true;
+	gContext->viewport_dirty = true;
+	gContext->scissor_dirty = true;
+	gContext->cull_mode_dirty = true;
+	gContext->vertex_buffer_dirty = true;
+	gContext->index_buffer_dirty = true;
+	gContext->blend_mode_dirty = true;
+	gContext->depth_mode_dirty = true;
+
+	auto begin_info = vk::CommandBufferBeginInfo()
+		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+	gContext->getCurrentFrame().command_buffer.begin(begin_info);
+}
+
+static void End()
+{
+	assert(gContext->working);
+	gContext->working = false;
+
+	EnsureRenderPassDeactivated();
+	gContext->getCurrentFrame().command_buffer.end();
+
+	const auto& frame = gContext->getCurrentFrame();
+
+	gContext->device.resetFences({ *frame.fence });
+
+	auto wait_dst_stage_mask = vk::PipelineStageFlags{
+		vk::PipelineStageFlagBits::eAllCommands
+	};
+
+	auto submit_info = vk::SubmitInfo()
+		.setWaitDstStageMask(wait_dst_stage_mask)
+		.setWaitSemaphores(*frame.image_acquired_semaphore)
+		.setCommandBuffers(*frame.command_buffer)
+		.setSignalSemaphores(*frame.render_complete_semaphore);
+
+	gContext->queue.submit(submit_info, *frame.fence);
+}
+
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageTypes, VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData,
 	void* /*pUserData*/)
@@ -1556,37 +1760,37 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
 
 	std::cerr << vk::to_string(static_cast<vk::DebugUtilsMessageSeverityFlagBitsEXT>(messageSeverity)) << ": "
 		<< vk::to_string(static_cast<vk::DebugUtilsMessageTypeFlagsEXT>(messageTypes)) << ":\n";
-	std::cerr << std::string("\t") << "messageIDName   = <" << pCallbackData->pMessageIdName << ">\n";
-	std::cerr << std::string("\t") << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
-	std::cerr << std::string("\t") << "message         = <" << pCallbackData->pMessage << ">\n";
-	if (0 < pCallbackData->queueLabelCount)
+	std::cerr << "\t" << "messageIdName   = <" << pCallbackData->pMessageIdName << ">\n";
+	std::cerr << "\t" << "messageIdNumber = " << pCallbackData->messageIdNumber << "\n";
+	std::cerr << "\t" << "message         = <" << pCallbackData->pMessage << ">\n";
+	if (pCallbackData->queueLabelCount > 0)
 	{
-		std::cerr << std::string("\t") << "Queue Labels:\n";
+		std::cerr << "\t" << "Queue Labels:\n";
 		for (uint32_t i = 0; i < pCallbackData->queueLabelCount; i++)
 		{
-			std::cerr << std::string("\t\t") << "labelName = <" << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
+			std::cerr << "\t\t" << "labelName = <" << pCallbackData->pQueueLabels[i].pLabelName << ">\n";
 		}
 	}
-	if (0 < pCallbackData->cmdBufLabelCount)
+	if (pCallbackData->cmdBufLabelCount > 0)
 	{
-		std::cerr << std::string("\t") << "CommandBuffer Labels:\n";
+		std::cerr << "\t" << "CommandBuffer Labels:\n";
 		for (uint32_t i = 0; i < pCallbackData->cmdBufLabelCount; i++)
 		{
-			std::cerr << std::string("\t\t") << "labelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
+			std::cerr << "\t\t" << "labelName = <" << pCallbackData->pCmdBufLabels[i].pLabelName << ">\n";
 		}
 	}
-	if (0 < pCallbackData->objectCount)
+	if (pCallbackData->objectCount > 0)
 	{
-		std::cerr << std::string("\t") << "Objects:\n";
+		std::cerr << "\t" << "Objects:\n";
 		for (uint32_t i = 0; i < pCallbackData->objectCount; i++)
 		{
-			std::cerr << std::string("\t\t") << "Object " << i << "\n";
-			std::cerr << std::string("\t\t\t") << "objectType   = " << vk::to_string(static_cast<vk::ObjectType>(pCallbackData->pObjects[i].objectType))
+			std::cerr << "\t\t" << "Object " << i << "\n";
+			std::cerr << "\t\t\t" << "objectType   = " << vk::to_string(static_cast<vk::ObjectType>(pCallbackData->pObjects[i].objectType))
 				<< "\n";
-			std::cerr << std::string("\t\t\t") << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
+			std::cerr << "\t\t\t" << "objectHandle = " << pCallbackData->pObjects[i].objectHandle << "\n";
 			if (pCallbackData->pObjects[i].pObjectName)
 			{
-				std::cerr << std::string("\t\t\t") << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
+				std::cerr << "\t\t\t" << "objectName   = <" << pCallbackData->pObjects[i].pObjectName << ">\n";
 			}
 		}
 	}
@@ -1802,14 +2006,15 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
 	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil.format;
 
-	createSwapchain(width, height);
-
-	begin();
+	CreateSwapchain(width, height);
+	MoveToNextFrame();
+	Begin();
 }
 
 BackendVK::~BackendVK()
 {
-	end();
+	End();
+	WaitForGpu();
 
 	delete gContext;
 	gContext = nullptr;
@@ -1817,9 +2022,11 @@ BackendVK::~BackendVK()
 
 void BackendVK::resize(uint32_t width, uint32_t height)
 {
-	end();
-	createSwapchain(width, height);
-	begin();
+	End();
+	WaitForGpu();
+	CreateSwapchain(width, height);
+	MoveToNextFrame();
+	Begin();
 }
 
 void BackendVK::setTopology(Topology topology)
@@ -2356,7 +2563,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 void BackendVK::present()
 {
-	end();
+	End();
 
 	const auto& render_complete_semaphore = gContext->getCurrentFrame().render_complete_semaphore;
 
@@ -2372,60 +2579,9 @@ void BackendVK::present()
 
 	gContext->semaphore_index = (gContext->semaphore_index + 1) % gContext->frames.size();
 
-	begin();
-}
-
-void BackendVK::begin()
-{
-	const auto& image_acquired_semaphore = gContext->frames.at(gContext->semaphore_index).image_acquired_semaphore;
-
-	auto [result, image_index] = gContext->swapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
-
-	gContext->frame_index = image_index;
-
-	assert(!gContext->working);
-	gContext->working = true;
-
-	gContext->topology_dirty = true;
-	gContext->viewport_dirty = true;
-	gContext->scissor_dirty = true;
-	gContext->cull_mode_dirty = true;
-	gContext->vertex_buffer_dirty = true;
-	gContext->index_buffer_dirty = true;
-	gContext->blend_mode_dirty = true;
-	gContext->depth_mode_dirty = true;
-
-	auto wait_result = gContext->device.waitForFences({ *gContext->getCurrentFrame().fence }, true, UINT64_MAX);
-
-	auto begin_info = vk::CommandBufferBeginInfo()
-		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-	gContext->getCurrentFrame().command_buffer.begin(begin_info);
-}
-
-void BackendVK::end()
-{
-	assert(gContext->working);
-	gContext->working = false;
-
-	EnsureRenderPassDeactivated();
-	gContext->getCurrentFrame().command_buffer.end();
-
-	const auto& frame = gContext->getCurrentFrame();
-
-	gContext->device.resetFences({ *frame.fence });
-
-	auto wait_dst_stage_mask = vk::PipelineStageFlags{
-		vk::PipelineStageFlagBits::eAllCommands
-	};
-
-	auto submit_info = vk::SubmitInfo()
-		.setWaitDstStageMask(wait_dst_stage_mask)
-		.setWaitSemaphores(*frame.image_acquired_semaphore)
-		.setCommandBuffers(*frame.command_buffer)
-		.setSignalSemaphores(*frame.render_complete_semaphore);
-
-	gContext->queue.submit(submit_info, *frame.fence);
+	MoveToNextFrame();
+	WaitForGpu();
+	Begin();
 }
 
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
@@ -2647,148 +2803,6 @@ void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle
 
 		gContext->objects.erase(acceleration_structure);
 		delete acceleration_structure;
-	});
-}
-
-void BackendVK::createSwapchain(uint32_t width, uint32_t height)
-{
-	auto surface_capabilities = gContext->physical_device.getSurfaceCapabilitiesKHR(*gContext->surface);
-
-	// https://github.com/nvpro-samples/nvpro_core/blob/f2c05e161bba9ab9a8c96c0173bf0edf7c168dfa/nvvk/swapchain_vk.cpp#L143
-	// Determine the number of VkImage's to use in the swap chain (we desire to
-	// own only 1 image at a time, besides the images being displayed and
-	// queued for display):
-	
-	uint32_t desired_number_of_swapchain_images = surface_capabilities.minImageCount + 1;
-
-	if ((surface_capabilities.maxImageCount > 0) && (desired_number_of_swapchain_images > surface_capabilities.maxImageCount))
-	{
-		// Application must settle for fewer images than desired:
-		desired_number_of_swapchain_images = surface_capabilities.maxImageCount;
-	}
-
-	auto max_width = surface_capabilities.maxImageExtent.width;
-	auto max_height = surface_capabilities.maxImageExtent.height;
-
-	gContext->width = glm::min(width, max_width);
-	gContext->height = glm::min(height, max_height);
-
-	auto image_extent = vk::Extent2D()
-		.setWidth(gContext->width)
-		.setHeight(gContext->height);
-
-	auto swapchain_info = vk::SwapchainCreateInfoKHR()
-		.setSurface(*gContext->surface)
-		.setMinImageCount(desired_number_of_swapchain_images)
-		.setImageFormat(gContext->surface_format.format)
-		.setImageColorSpace(gContext->surface_format.colorSpace)
-		.setImageExtent(image_extent)
-		.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc)
-		.setPreTransform(vk::SurfaceTransformFlagBitsKHR::eIdentity)
-		.setImageArrayLayers(1)
-		.setImageSharingMode(vk::SharingMode::eExclusive)
-		.setQueueFamilyIndices(gContext->queue_family_index)
-		.setPresentMode(vk::PresentModeKHR::eFifo)
-		.setClipped(true)
-		.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
-		.setOldSwapchain(*gContext->swapchain);
-
-	gContext->swapchain = gContext->device.createSwapchainKHR(swapchain_info);
-
-	auto backbuffers = gContext->swapchain.getImages();
-
-	gContext->frames.clear();
-
-	for (auto& backbuffer : backbuffers)
-	{
-		auto frame = ContextVK::Frame();
-
-		auto fence_info = vk::FenceCreateInfo()
-			.setFlags(vk::FenceCreateFlagBits::eSignaled);
-
-		frame.fence = gContext->device.createFence(fence_info);
-
-		frame.image_acquired_semaphore = gContext->device.createSemaphore({});
-		frame.render_complete_semaphore = gContext->device.createSemaphore({});
-
-		auto image_view_info = vk::ImageViewCreateInfo()
-			.setViewType(vk::ImageViewType::e2D)
-			.setFormat(gContext->surface_format.format)
-			.setComponents(vk::ComponentMapping()
-				.setR(vk::ComponentSwizzle::eR)
-				.setG(vk::ComponentSwizzle::eG)
-				.setB(vk::ComponentSwizzle::eB)
-				.setA(vk::ComponentSwizzle::eA)
-			)
-			.setSubresourceRange(vk::ImageSubresourceRange()
-				.setAspectMask(vk::ImageAspectFlagBits::eColor)
-				.setBaseMipLevel(0)
-				.setLevelCount(1)
-				.setBaseArrayLayer(0)
-				.setLayerCount(1)
-			)
-			.setImage(backbuffer);
-
-		frame.backbuffer_color_image = backbuffer;
-		frame.backbuffer_color_image_view = gContext->device.createImageView(image_view_info);
-
-		OneTimeSubmit([&](auto& cmdbuf) {
-			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
-				vk::ImageLayout::ePresentSrcKHR);
-		});
-
-		auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
-			.setCommandBufferCount(1)
-			.setLevel(vk::CommandBufferLevel::ePrimary)
-			.setCommandPool(*gContext->command_pool);
-
-		auto command_buffers = gContext->device.allocateCommandBuffers(command_buffer_allocate_info);
-		
-		frame.command_buffer = std::move(command_buffers.at(0));
-
-		gContext->frames.push_back(std::move(frame));
-	}
-
-	// depth stencil
-
-	auto depth_stencil_image_create_info = vk::ImageCreateInfo()
-		.setImageType(vk::ImageType::e2D)
-		.setFormat(gContext->depth_stencil.format)
-		.setExtent({ width, height, 1 })
-		.setMipLevels(1)
-		.setArrayLayers(1)
-		.setSamples(vk::SampleCountFlagBits::e1)
-		.setTiling(vk::ImageTiling::eOptimal)
-		.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
-
-	gContext->depth_stencil.image = gContext->device.createImage(depth_stencil_image_create_info);
-
-	auto depth_stencil_mem_req = gContext->depth_stencil.image.getMemoryRequirements();
-
-	auto depth_stencil_memory_allocate_info = vk::MemoryAllocateInfo()
-		.setAllocationSize(depth_stencil_mem_req.size)
-		.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, depth_stencil_mem_req.memoryTypeBits));
-
-	gContext->depth_stencil.memory = gContext->device.allocateMemory(depth_stencil_memory_allocate_info);
-
-	gContext->depth_stencil.image.bindMemory(*gContext->depth_stencil.memory, 0);
-
-	auto depth_stencil_view_subresource_range = vk::ImageSubresourceRange()
-		.setLevelCount(1)
-		.setLayerCount(1)
-		.setAspectMask(vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
-
-	auto depth_stencil_view_create_info = vk::ImageViewCreateInfo()
-		.setViewType(vk::ImageViewType::e2D)
-		.setImage(*gContext->depth_stencil.image)
-		.setFormat(gContext->depth_stencil.format)
-		.setSubresourceRange(depth_stencil_view_subresource_range);
-
-	gContext->depth_stencil.view = gContext->device.createImageView(depth_stencil_view_create_info);
-
-	OneTimeSubmit([&](auto& cmdbuf) {
-		SetImageMemoryBarrier(cmdbuf, *gContext->depth_stencil.image, gContext->depth_stencil.format, vk::ImageLayout::eUndefined,
-			vk::ImageLayout::eDepthStencilAttachmentOptimal);
 	});
 }
 
