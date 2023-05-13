@@ -85,7 +85,6 @@ struct ContextVK
 	vk::raii::SurfaceKHR surface = nullptr;
 	vk::raii::SwapchainKHR swapchain = nullptr;
 	vk::raii::CommandPool command_pool = nullptr;
-	vk::raii::CommandBuffer command_buffer = nullptr;
 
 	bool working = false;
 
@@ -108,6 +107,7 @@ struct ContextVK
 		vk::raii::ImageView backbuffer_color_image_view = nullptr;
 		vk::raii::Semaphore image_acquired_semaphore = nullptr;
 		vk::raii::Semaphore render_complete_semaphore = nullptr;
+		vk::raii::CommandBuffer command_buffer = nullptr;
 	};
 
 	struct
@@ -123,6 +123,8 @@ struct ContextVK
 
 	uint32_t semaphore_index = 0;
 	uint32_t frame_index = 0;
+
+	Frame& getCurrentFrame() { return frames.at(frame_index); }
 
 	std::unordered_map<uint32_t, TextureVK*> textures;
 	std::unordered_map<uint32_t, UniformBufferVK*> uniform_buffers;
@@ -672,9 +674,9 @@ public:
 			.setSize(size);
 
 		EnsureRenderPassDeactivated();
-		EnsureMemoryState(gContext->command_buffer, vk::PipelineStageFlagBits2::eTransfer);
+		EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eTransfer);
 
-		gContext->command_buffer.copyBuffer(*staging_buffer, *mBuffer, { region });
+		gContext->getCurrentFrame().command_buffer.copyBuffer(*staging_buffer, *mBuffer, { region });
 
 		gContext->staging_objects.push_back(std::move(staging_buffer));
 		gContext->staging_objects.push_back(std::move(staging_buffer_memory));
@@ -945,7 +947,7 @@ static void BeginRenderPass()
 
 	auto color_texture = gContext->render_target ?
 		*gContext->render_target->getTexture()->getImageView() :
-		*gContext->frames.at(gContext->frame_index).backbuffer_color_image_view;
+		*gContext->getCurrentFrame().backbuffer_color_image_view;
 
 	auto depth_stencil_texture = gContext->render_target ?
 		*gContext->render_target->getDepthStencilView() :
@@ -973,7 +975,7 @@ static void BeginRenderPass()
 		.setPDepthAttachment(&depth_stencil_attachment)
 		.setPStencilAttachment(&depth_stencil_attachment);
 
-	gContext->command_buffer.beginRendering(rendering_info);
+	gContext->getCurrentFrame().command_buffer.beginRendering(rendering_info);
 }
 
 static void EndRenderPass()
@@ -981,7 +983,7 @@ static void EndRenderPass()
 	assert(gContext->render_pass_active);
 	gContext->render_pass_active = false;
 
-	gContext->command_buffer.endRendering();
+	gContext->getCurrentFrame().command_buffer.endRendering();
 }
 
 static void EnsureRenderPassActivated()
@@ -1210,18 +1212,18 @@ static void PrepareForDrawing()
 {
 	assert(gContext->vertex_buffer);
 
-	EnsureMemoryState(gContext->command_buffer, vk::PipelineStageFlagBits2::eAllGraphics);
+	EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eAllGraphics);
 
 	if (gContext->vertex_buffer_dirty)
 	{
-		gContext->command_buffer.bindVertexBuffers2(0, { *gContext->vertex_buffer->getBuffer() }, { 0 }, nullptr,
+		gContext->getCurrentFrame().command_buffer.bindVertexBuffers2(0, { *gContext->vertex_buffer->getBuffer() }, { 0 }, nullptr,
 			{ gContext->vertex_buffer->getStride() });
 		gContext->vertex_buffer_dirty = false;
 	}
 
 	if (gContext->index_buffer_dirty)
 	{
-		gContext->command_buffer.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0,
+		gContext->getCurrentFrame().command_buffer.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0,
 			GetIndexTypeFromStride(gContext->index_buffer->getStride()));
 		gContext->index_buffer_dirty = false;
 	}
@@ -1236,7 +1238,7 @@ static void PrepareForDrawing()
 			{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
 		};
 
-		gContext->command_buffer.setPrimitiveTopology(TopologyMap.at(gContext->topology));
+		gContext->getCurrentFrame().command_buffer.setPrimitiveTopology(TopologyMap.at(gContext->topology));
 		gContext->topology_dirty = false;
 	}
 
@@ -1330,7 +1332,7 @@ static void PrepareForDrawing()
 
 	const auto& pipeline = gContext->pipeline_states.at(gContext->pipeline_state);
 
-	gContext->command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+	gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 
 	if (!gContext->sampler_states.contains(gContext->sampler_state))
 	{
@@ -1375,7 +1377,7 @@ static void PrepareForDrawing()
 		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
 		{
 			auto texture = gContext->textures.at(binding);
-			texture->ensureState(gContext->command_buffer, vk::ImageLayout::eGeneral);
+			texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setSampler(*sampler)
@@ -1399,7 +1401,7 @@ static void PrepareForDrawing()
 			assert(false);
 		}
 
-		gContext->command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
+		gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
 	}
 
 	auto width = static_cast<float>(gContext->getBackbufferWidth());
@@ -1417,7 +1419,7 @@ static void PrepareForDrawing()
 			.setMinDepth(value.min_depth)
 			.setMaxDepth(value.max_depth);
 
-		gContext->command_buffer.setViewport(0, { viewport });
+		gContext->getCurrentFrame().command_buffer.setViewport(0, { viewport });
 		gContext->viewport_dirty = false;
 	}
 
@@ -1447,7 +1449,7 @@ static void PrepareForDrawing()
 		if (rect.extent.height < 0)
 			rect.extent.height = 0;
 
-		gContext->command_buffer.setScissor(0, { rect });
+		gContext->getCurrentFrame().command_buffer.setScissor(0, { rect });
 		gContext->scissor_dirty = false;
 	}
 
@@ -1459,8 +1461,8 @@ static void PrepareForDrawing()
 			{ CullMode::Back, vk::CullModeFlagBits::eBack },
 		};
 
-		gContext->command_buffer.setFrontFace(vk::FrontFace::eClockwise);
-		gContext->command_buffer.setCullMode(CullModeMap.at(gContext->cull_mode));
+		gContext->getCurrentFrame().command_buffer.setFrontFace(vk::FrontFace::eClockwise);
+		gContext->getCurrentFrame().command_buffer.setCullMode(CullModeMap.at(gContext->cull_mode));
 
 		gContext->cull_mode_dirty = false;
 	}
@@ -1510,9 +1512,9 @@ static void PrepareForDrawing()
 			.setDstAlphaBlendFactor(BlendFactorMap.at(gContext->blend_mode.alpha_dst_blend))
 			.setAlphaBlendOp(BlendFuncMap.at(gContext->blend_mode.alpha_blend_func));
 
-		gContext->command_buffer.setColorBlendEnableEXT(0, { true });
-		gContext->command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
-		gContext->command_buffer.setColorWriteMaskEXT(0, { color_mask });
+		gContext->getCurrentFrame().command_buffer.setColorBlendEnableEXT(0, { true });
+		gContext->getCurrentFrame().command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
+		gContext->getCurrentFrame().command_buffer.setColorWriteMaskEXT(0, { color_mask });
 
 		gContext->blend_mode_dirty = false;
 	}
@@ -1521,14 +1523,14 @@ static void PrepareForDrawing()
 	{
 		if (gContext->depth_mode.has_value())
 		{
-			gContext->command_buffer.setDepthTestEnable(true);
-			gContext->command_buffer.setDepthWriteEnable(true);
-			gContext->command_buffer.setDepthCompareOp(CompareOpMap.at(gContext->depth_mode.value().func));
+			gContext->getCurrentFrame().command_buffer.setDepthTestEnable(true);
+			gContext->getCurrentFrame().command_buffer.setDepthWriteEnable(true);
+			gContext->getCurrentFrame().command_buffer.setDepthCompareOp(CompareOpMap.at(gContext->depth_mode.value().func));
 		}
 		else
 		{
-			gContext->command_buffer.setDepthTestEnable(false);
-			gContext->command_buffer.setDepthWriteEnable(false);
+			gContext->getCurrentFrame().command_buffer.setDepthTestEnable(false);
+			gContext->getCurrentFrame().command_buffer.setDepthWriteEnable(false);
 		}
 
 		gContext->depth_mode_dirty = false;
@@ -1797,14 +1799,6 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	gContext->command_pool = gContext->device.createCommandPool(command_pool_info);
 
-	auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
-		.setCommandBufferCount(1)
-		.setLevel(vk::CommandBufferLevel::ePrimary)
-		.setCommandPool(*gContext->command_pool);
-
-	auto command_buffers = gContext->device.allocateCommandBuffers(command_buffer_allocate_info);
-	gContext->command_buffer = std::move(command_buffers.at(0));
-
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
 	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil.format;
 
@@ -1963,7 +1957,7 @@ void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
 
 void BackendVK::setStencilMode(std::optional<StencilMode> stencil_mode)
 {
-	gContext->command_buffer.setStencilTestEnable(stencil_mode.has_value());
+	gContext->getCurrentFrame().command_buffer.setStencilTestEnable(stencil_mode.has_value());
 }
 
 void BackendVK::setCullMode(CullMode cull_mode)
@@ -2010,7 +2004,7 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 			.setColorAttachment(0)
 			.setClearValue(clear_value);
 
-		gContext->command_buffer.clearAttachments({ attachment }, { clear_rect });
+		gContext->getCurrentFrame().command_buffer.clearAttachments({ attachment }, { clear_rect });
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -2035,7 +2029,7 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 			.setColorAttachment(0)
 			.setClearValue(clear_value);
 
-		gContext->command_buffer.clearAttachments({ attachment }, { clear_rect });
+		gContext->getCurrentFrame().command_buffer.clearAttachments({ attachment }, { clear_rect });
 	}
 }
 
@@ -2043,14 +2037,14 @@ void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
 	PrepareForDrawing();
 	EnsureRenderPassActivated();
-	gContext->command_buffer.draw(vertex_count, 1, vertex_offset, 0);
+	gContext->getCurrentFrame().command_buffer.draw(vertex_count, 1, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
 	PrepareForDrawing();
 	EnsureRenderPassActivated();
-	gContext->command_buffer.drawIndexed(index_count, 1, index_offset, 0, 0);
+	gContext->getCurrentFrame().command_buffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
 
 void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
@@ -2074,7 +2068,7 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 	auto src_image = gContext->render_target ?
 		*gContext->render_target->getTexture()->getImage() :
-		gContext->frames.at(gContext->frame_index).backbuffer_color_image;
+		gContext->getCurrentFrame().backbuffer_color_image;
 
 	auto dst_image = *dst_texture->getImage();
 
@@ -2091,16 +2085,16 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 	if (gContext->render_target)
 	{
-		gContext->render_target->getTexture()->ensureState(gContext->command_buffer, vk::ImageLayout::eTransferSrcOptimal);
+		gContext->render_target->getTexture()->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
 	}
 	else
 	{
 		// TODO: implement ensureState (like in TextureVK) for main-render-target (or make main-render-target derived from TextureVK)
-		SetImageMemoryBarrier(gContext->command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
+		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
 			vk::ImageLayout::ePresentSrcKHR, vk::ImageLayout::eTransferSrcOptimal);
 	}
 
-	dst_texture->ensureState(gContext->command_buffer, vk::ImageLayout::eTransferDstOptimal);
+	dst_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);
 
 	auto copy_image_info = vk::CopyImageInfo2()
 		.setSrcImage(src_image)
@@ -2109,17 +2103,17 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 		.setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
 		.setRegions(region);
 
-	gContext->command_buffer.copyImage2(copy_image_info);
+	gContext->getCurrentFrame().command_buffer.copyImage2(copy_image_info);
 
 	if (!gContext->render_target)
 	{
 		// TODO: this line will be removed when ensureState for main-render-target will be implemented
-		SetImageMemoryBarrier(gContext->command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
+		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
 			vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::ePresentSrcKHR);
 	}
 
 	if (dst_texture->isMipmap())
-		dst_texture->generateMips(gContext->command_buffer);
+		dst_texture->generateMips(gContext->getCurrentFrame().command_buffer);
 }
 
 std::vector<uint8_t> BackendVK::getPixels()
@@ -2138,10 +2132,10 @@ std::vector<uint8_t> BackendVK::getPixels()
 	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);
 
 	EnsureRenderPassDeactivated();
-	gContext->command_buffer.end();
+	gContext->getCurrentFrame().command_buffer.end();
 
 	auto submit_info = vk::SubmitInfo()
-		.setCommandBuffers(*gContext->command_buffer);
+		.setCommandBuffers(*gContext->getCurrentFrame().command_buffer);
 
 	gContext->queue.submit(submit_info);
 	gContext->queue.waitIdle();
@@ -2176,7 +2170,7 @@ std::vector<uint8_t> BackendVK::getPixels()
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	gContext->command_buffer.begin(begin_info);
+	gContext->getCurrentFrame().command_buffer.begin(begin_info);
 
 	return result;
 }
@@ -2259,7 +2253,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	const auto& pipeline = gContext->raytracing_pipeline_states.at(gContext->raytracing_pipeline_state);
 
-	gContext->command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
+	gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
 	
 	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
 	{
@@ -2283,7 +2277,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageImage)
 		{
 			auto render_target_image_view = *gContext->render_target->getTexture()->getImageView();
-			gContext->render_target->getTexture()->ensureState(gContext->command_buffer, vk::ImageLayout::eGeneral);
+			gContext->render_target->getTexture()->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
 
 			auto descriptor_image_info = vk::DescriptorImageInfo()
 				.setImageLayout(vk::ImageLayout::eGeneral)
@@ -2306,7 +2300,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 			assert(false);
 		}
 
-		gContext->command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout, 0, { write_descriptor_set });
+		gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout, 0, { write_descriptor_set });
 	}
 
 	static std::optional<vk::StridedDeviceAddressRegionKHR> raygen_shader_binding_table;
@@ -2356,15 +2350,15 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 			.setDeviceAddress(GetBufferDeviceAddress(*closesthit_binding_table_buffer));
 	}
 
-	gContext->command_buffer.traceRaysKHR(raygen_shader_binding_table.value(), miss_shader_binding_table.value(), hit_shader_binding_table.value(),
+	gContext->getCurrentFrame().command_buffer.traceRaysKHR(raygen_shader_binding_table.value(), miss_shader_binding_table.value(), hit_shader_binding_table.value(),
 		callable_shader_binding_table, width, height, depth);
 }
 
 void BackendVK::present()
 {
-	end(); 
+	end();
 
-	const auto& render_complete_semaphore = gContext->frames.at(gContext->semaphore_index).render_complete_semaphore;
+	const auto& render_complete_semaphore = gContext->getCurrentFrame().render_complete_semaphore;
 
 	auto present_info = vk::PresentInfoKHR()
 		.setWaitSemaphores(*render_complete_semaphore)
@@ -2401,10 +2395,12 @@ void BackendVK::begin()
 	gContext->blend_mode_dirty = true;
 	gContext->depth_mode_dirty = true;
 
+	auto wait_result = gContext->device.waitForFences({ *gContext->getCurrentFrame().fence }, true, UINT64_MAX);
+
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-	gContext->command_buffer.begin(begin_info);
+	gContext->getCurrentFrame().command_buffer.begin(begin_info);
 }
 
 void BackendVK::end()
@@ -2413,29 +2409,23 @@ void BackendVK::end()
 	gContext->working = false;
 
 	EnsureRenderPassDeactivated();
-	gContext->command_buffer.end();
+	gContext->getCurrentFrame().command_buffer.end();
 
-	const auto& frame = gContext->frames.at(gContext->frame_index);
-
-	auto wait_result = gContext->device.waitForFences({ *frame.fence }, true, UINT64_MAX);
+	const auto& frame = gContext->getCurrentFrame();
 
 	gContext->device.resetFences({ *frame.fence });
 
-	const auto& render_complete_semaphore = gContext->frames.at(gContext->semaphore_index).render_complete_semaphore;
-	const auto& image_acquired_semaphore = gContext->frames.at(gContext->semaphore_index).image_acquired_semaphore;
-
 	auto wait_dst_stage_mask = vk::PipelineStageFlags{
-		vk::PipelineStageFlagBits::eColorAttachmentOutput
+		vk::PipelineStageFlagBits::eAllCommands
 	};
 
 	auto submit_info = vk::SubmitInfo()
 		.setWaitDstStageMask(wait_dst_stage_mask)
-		.setWaitSemaphores(*image_acquired_semaphore)
-		.setCommandBuffers(*gContext->command_buffer)
-		.setSignalSemaphores(*render_complete_semaphore);
+		.setWaitSemaphores(*frame.image_acquired_semaphore)
+		.setCommandBuffers(*frame.command_buffer)
+		.setSignalSemaphores(*frame.render_complete_semaphore);
 
 	gContext->queue.submit(submit_info, *frame.fence);
-	gContext->queue.waitIdle();
 }
 
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
@@ -2746,6 +2736,15 @@ void BackendVK::createSwapchain(uint32_t width, uint32_t height)
 			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::ePresentSrcKHR);
 		});
+
+		auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
+			.setCommandBufferCount(1)
+			.setLevel(vk::CommandBufferLevel::ePrimary)
+			.setCommandPool(*gContext->command_pool);
+
+		auto command_buffers = gContext->device.allocateCommandBuffers(command_buffer_allocate_info);
+		
+		frame.command_buffer = std::move(command_buffers.at(0));
 
 		gContext->frames.push_back(std::move(frame));
 	}
