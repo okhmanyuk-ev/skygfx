@@ -2,6 +2,8 @@
 
 #ifdef SKYGFX_HAS_VULKAN
 
+//#define SKYGFX_VULKAN_VALIDATION_ENABLED
+
 #include "shader_compiler.h"
 #include <vulkan/vulkan_raii.hpp>
 #include <iostream>
@@ -82,7 +84,9 @@ struct ContextVK
 
 	vk::raii::Context context;
 	vk::raii::Instance instance = nullptr;
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
 	vk::raii::DebugUtilsMessengerEXT debug_utils_messenger = nullptr;
+#endif
 	vk::raii::PhysicalDevice physical_device = nullptr;
 	vk::raii::Queue queue = nullptr;
 	vk::raii::Device device = nullptr;
@@ -1630,7 +1634,7 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 		OneTimeSubmit([&](auto& cmdbuf) {
 			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
 			vk::ImageLayout::ePresentSrcKHR);
-			});
+		});
 
 		auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
 			.setCommandBufferCount(1)
@@ -1683,7 +1687,7 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 
 	OneTimeSubmit([&](auto& cmdbuf) {
 		SetImageMemoryBarrier(cmdbuf, *gContext->depth_stencil.image, gContext->depth_stencil.format, vk::ImageLayout::eUndefined,
-		vk::ImageLayout::eDepthStencilAttachmentOptimal);
+			vk::ImageLayout::eDepthStencilAttachmentOptimal);
 	});
 
 	gContext->frame_index = 0;
@@ -1744,6 +1748,7 @@ static void End()
 	gContext->queue.submit(submit_info, *frame.fence);
 }
 
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
 VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageTypes, VkDebugUtilsMessengerCallbackDataEXT const* pCallbackData,
 	void* /*pUserData*/)
@@ -1799,6 +1804,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
 	}
 	return VK_TRUE;
 }
+#endif
 
 BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 {
@@ -1827,12 +1833,16 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 #elif defined(SKYGFX_PLATFORM_MACOS)
 		VK_MVK_MACOS_SURFACE_EXTENSION_NAME,
 #endif
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+#endif
 	};
 	
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
 	auto layers = {
 		"VK_LAYER_KHRONOS_validation"
 	};
+#endif
 
 	auto version = gContext->context.enumerateInstanceVersion();
 
@@ -1847,9 +1857,12 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto instance_create_info = vk::InstanceCreateInfo()
 		.setPEnabledExtensionNames(extensions)
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
 		.setPEnabledLayerNames(layers)
+#endif
 		.setPApplicationInfo(&application_info);
 
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
 	auto debug_utils_messenger_create_info = vk::DebugUtilsMessengerCreateInfoEXT()
 		.setMessageSeverity(
 			vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
@@ -1872,20 +1885,29 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 
 	auto validation_features = vk::ValidationFeaturesEXT()
 		.setEnabledValidationFeatures(enabled_validation_features);
+#endif
 
 	auto instance_create_info_chain = vk::StructureChain<
-		vk::InstanceCreateInfo,
+		vk::InstanceCreateInfo
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
+		,
 		vk::DebugUtilsMessengerCreateInfoEXT,
 		vk::ValidationFeaturesEXT
+#endif
 	>(
-		instance_create_info,
+		instance_create_info
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
+		,
 		debug_utils_messenger_create_info,
 		validation_features
+#endif
 	);
 
 	gContext->instance = gContext->context.createInstance(instance_create_info_chain.get<vk::InstanceCreateInfo>());
 
+#if defined(SKYGFX_VULKAN_VALIDATION_ENABLED)
 	gContext->debug_utils_messenger = gContext->instance.createDebugUtilsMessengerEXT(debug_utils_messenger_create_info);
+#endif
 
 	auto devices = gContext->instance.enumeratePhysicalDevices();
 	size_t device_index = 0;
