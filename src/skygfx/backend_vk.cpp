@@ -69,6 +69,12 @@ SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 	t.sampler,
 	t.texture_address);
 
+using VulkanObject = std::variant<
+	vk::raii::Buffer,
+	vk::raii::DeviceMemory,
+	vk::raii::Pipeline
+>;
+
 struct ContextVK
 {
 	ContextVK();
@@ -91,15 +97,6 @@ struct ContextVK
 	uint32_t width = 0;
 	uint32_t height = 0;
 
-	ExecuteList execute_after_present;
-
-	using StagingObject = std::variant<
-		vk::raii::Buffer,
-		vk::raii::DeviceMemory
-	>;
-
-	std::vector<StagingObject> staging_objects;
-
 	struct Frame
 	{
 		vk::raii::Fence fence = nullptr;
@@ -108,6 +105,7 @@ struct ContextVK
 		vk::raii::Semaphore image_acquired_semaphore = nullptr;
 		vk::raii::Semaphore render_complete_semaphore = nullptr;
 		vk::raii::CommandBuffer command_buffer = nullptr;
+		std::vector<VulkanObject> staging_objects;
 	};
 
 	struct
@@ -664,6 +662,12 @@ public:
 		std::tie(mBuffer, mDeviceMemory) = CreateBuffer(size, usage);
 	}
 
+	~BufferVK()
+	{
+		gContext->getCurrentFrame().staging_objects.push_back(std::move(mBuffer));
+		gContext->getCurrentFrame().staging_objects.push_back(std::move(mDeviceMemory));
+	}
+
 	void write(void* memory, size_t size)
 	{
 		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size);
@@ -677,9 +681,8 @@ public:
 		EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eTransfer);
 
 		gContext->getCurrentFrame().command_buffer.copyBuffer(*staging_buffer, *mBuffer, { region });
-
-		gContext->staging_objects.push_back(std::move(staging_buffer));
-		gContext->staging_objects.push_back(std::move(staging_buffer_memory));
+		gContext->getCurrentFrame().staging_objects.push_back(std::move(staging_buffer));
+		gContext->getCurrentFrame().staging_objects.push_back(std::move(staging_buffer_memory));
 	}
 };
 
@@ -919,8 +922,6 @@ ContextVK::ContextVK() :
 
 ContextVK::~ContextVK()
 {
-	execute_after_present.flush();
-
 	for (auto object : objects)
 		delete object;
 }
@@ -1539,7 +1540,9 @@ static void PrepareForDrawing()
 
 static void WaitForGpu()
 {
-	auto wait_result = gContext->device.waitForFences({ *gContext->getCurrentFrame().fence }, true, UINT64_MAX);
+	const auto& fence = gContext->getCurrentFrame().fence;
+	auto wait_result = gContext->device.waitForFences({ *fence }, true, UINT64_MAX);
+	gContext->getCurrentFrame().staging_objects.clear();
 }
 
 static void CreateSwapchain(uint32_t width, uint32_t height)
@@ -2574,9 +2577,6 @@ void BackendVK::present()
 
 	auto present_result = gContext->queue.presentKHR(present_info);
 
-	gContext->execute_after_present.flush();
-	gContext->staging_objects.clear();
-
 	gContext->semaphore_index = (gContext->semaphore_index + 1) % gContext->frames.size();
 
 	MoveToNextFrame();
@@ -2593,27 +2593,15 @@ TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format 
 
 void BackendVK::destroyTexture(TextureHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto texture = (TextureVK*)handle;
-
-		auto remove_from_global = [&] {
-			for (const auto& [binding, _texture] : gContext->textures)
-			{
-				if (texture == _texture)
-				{
-					gContext->textures.erase(binding);
-					return false;
-				}
-			}
-
-			return true;
-		};
-
-		while (!remove_from_global()) {}
-
-		gContext->objects.erase(texture);
-		delete texture;
+	auto texture = (TextureVK*)handle;
+	
+	std::erase_if(gContext->textures, [&](const auto& item) {
+		const auto& [binding, _texture] = item;
+		return texture == _texture;
 	});
+
+	gContext->objects.erase(texture);
+	delete texture;
 }
 
 RenderTargetHandle* BackendVK::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
@@ -2641,20 +2629,23 @@ ShaderHandle* BackendVK::createShader(const VertexLayout& vertex_layout, const s
 
 void BackendVK::destroyShader(ShaderHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto shader = (ShaderVK*)handle;
+	auto shader = (ShaderVK*)handle;
 
-		for (const auto& [state, pipeline] : gContext->pipeline_states)
-		{
-			if (state.shader != shader)
-				continue;
+	for (auto& [state, pipeline] : gContext->pipeline_states)
+	{
+		if (state.shader != shader)
+			continue;
 
-			gContext->pipeline_states.erase(state);
-		}
+		gContext->getCurrentFrame().staging_objects.push_back(std::move(pipeline));
+	}
 
-		gContext->objects.erase(shader);
-		delete shader;
+	std::erase_if(gContext->pipeline_states, [&](const auto& item) {
+		const auto& [state, pipeline] = item;
+		return state.shader == shader;
 	});
+
+	gContext->objects.erase(shader);
+	delete shader;
 }
 
 RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
@@ -2667,20 +2658,15 @@ RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& ray
 
 void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto shader = (RaytracingShaderVK*)handle;
+	auto shader = (RaytracingShaderVK*)handle;
 
-		for (const auto& [state, pipeline] : gContext->raytracing_pipeline_states)
-		{
-			if (state.shader != shader)
-				continue;
-
-			gContext->raytracing_pipeline_states.erase(state);
-		}
-
-		gContext->objects.erase(shader);
-		delete shader;
+	std::erase_if(gContext->raytracing_pipeline_states, [&](const auto& item) {
+		const auto& [state, pipeline] = item;
+		return state.shader == shader;
 	});
+
+	gContext->objects.erase(shader);
+	delete shader;
 }
 
 VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
@@ -2692,11 +2678,9 @@ VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
 
 void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = (VertexBufferVK*)handle;
-		gContext->objects.erase(buffer);
-		delete buffer;
-	});
+	auto buffer = (VertexBufferVK*)handle;
+	gContext->objects.erase(buffer);
+	delete buffer;
 }
 
 void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
@@ -2718,11 +2702,9 @@ IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
 
 void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = (IndexBufferVK*)handle;
-		gContext->objects.erase(buffer);
-		delete buffer;
-	});
+	auto buffer = (IndexBufferVK*)handle;
+	gContext->objects.erase(buffer);
+	delete buffer;
 }
 
 void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
@@ -2744,27 +2726,15 @@ UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
 
 void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = (UniformBufferVK*)handle;
+	auto buffer = (UniformBufferVK*)handle;
 
-		auto remove_from_global = [&] {
-			for (const auto& [binding, _buffer] : gContext->uniform_buffers)
-			{
-				if (buffer == _buffer)
-				{
-					gContext->uniform_buffers.erase(binding);
-					return false;
-				}
-			}
-
-			return true;
-		};
-
-		while (!remove_from_global()) {}
-
-		gContext->objects.erase(buffer);
-		delete buffer;
+	std::erase_if(gContext->uniform_buffers, [&](const auto& item) {
+		const auto& [binding, _buffer] = item;
+		return buffer == _buffer;
 	});
+
+	gContext->objects.erase(buffer);
+	delete buffer;
 }
 
 void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
@@ -2783,27 +2753,15 @@ AccelerationStructureHandle* BackendVK::createAccelerationStructure(const std::v
 
 void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto acceleration_structure = (AccelerationStructureVK*)handle;
+	auto acceleration_structure = (AccelerationStructureVK*)handle;
 
-		auto remove_from_global = [&] {
-			for (const auto& [binding, _acceleration_structure] : gContext->acceleration_structures)
-			{
-				if (acceleration_structure == _acceleration_structure)
-				{
-					gContext->acceleration_structures.erase(binding);
-					return false;
-				}
-			}
-
-			return true;
-		};
-
-		while (!remove_from_global()) {}
-
-		gContext->objects.erase(acceleration_structure);
-		delete acceleration_structure;
+	std::erase_if(gContext->acceleration_structures, [&](const auto& item) {
+		const auto& [binding, _acceleration_structure] = item;
+		return acceleration_structure == _acceleration_structure;
 	});
+
+	gContext->objects.erase(acceleration_structure);
+	delete acceleration_structure;
 }
 
 #endif
