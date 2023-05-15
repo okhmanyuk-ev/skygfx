@@ -1213,6 +1213,110 @@ static void OneTimeSubmit(std::function<void(const vk::raii::CommandBuffer&)> fu
 	gContext->queue.waitIdle();
 }
 
+static void EnsureSamplerState()
+{
+	if (!gContext->sampler_states.contains(gContext->sampler_state))
+	{
+		static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
+			{ Sampler::Linear, vk::Filter::eLinear },
+			{ Sampler::Nearest, vk::Filter::eNearest },
+		};
+
+		static const std::unordered_map<TextureAddress, vk::SamplerAddressMode> AddressModeMap = {
+			{ TextureAddress::Clamp, vk::SamplerAddressMode::eClampToEdge },
+			{ TextureAddress::Wrap, vk::SamplerAddressMode::eRepeat },
+			{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
+		};
+
+		auto sampler_create_info = vk::SamplerCreateInfo()
+			.setMagFilter(FilterMap.at(gContext->sampler_state.sampler))
+			.setMinFilter(FilterMap.at(gContext->sampler_state.sampler))
+			.setMipmapMode(vk::SamplerMipmapMode::eLinear)
+			.setAddressModeU(AddressModeMap.at(gContext->sampler_state.texture_address))
+			.setAddressModeV(AddressModeMap.at(gContext->sampler_state.texture_address))
+			.setAddressModeW(AddressModeMap.at(gContext->sampler_state.texture_address))
+			.setMinLod(-1000)
+			.setMaxLod(1000)
+			.setMaxAnisotropy(1.0f);
+
+		gContext->sampler_states.insert({ gContext->sampler_state, gContext->device.createSampler(sampler_create_info) });
+	}
+}
+
+static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk::raii::PipelineLayout& pipeline_layout,
+	const std::vector<vk::DescriptorSetLayoutBinding>& required_descriptor_bindings)
+{
+	EnsureSamplerState();
+
+	std::unordered_map<TextureVK*, vk::DescriptorImageInfo> descriptor_image_info_cache;
+	std::unordered_map<UniformBufferVK*, vk::DescriptorBufferInfo> descriptor_buffer_info_cache;
+	std::unordered_map<AccelerationStructureVK*, vk::WriteDescriptorSetAccelerationStructureKHR> acceleration_structure_info_cache;	
+
+	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
+
+	for (const auto& required_descriptor_binding : required_descriptor_bindings)
+	{
+		auto binding = required_descriptor_binding.binding;
+
+		auto write_descriptor_set = vk::WriteDescriptorSet()
+			.setDstBinding(binding)
+			.setDescriptorCount(1)
+			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
+			.setDescriptorType(required_descriptor_binding.descriptorType);
+
+		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
+		{
+			auto texture = gContext->textures.at(binding);
+			texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
+
+			auto& descriptor_image_info = descriptor_image_info_cache[texture]
+				.setSampler(*sampler)
+				.setImageView(*texture->getImageView())
+				.setImageLayout(vk::ImageLayout::eGeneral);
+
+			write_descriptor_set.setImageInfo(descriptor_image_info);
+		}
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
+		{
+			auto buffer = gContext->uniform_buffers.at(binding);
+
+			auto& descriptor_buffer_info = descriptor_buffer_info_cache[buffer]
+				.setBuffer(*buffer->getBuffer())
+				.setRange(VK_WHOLE_SIZE);
+
+			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
+		}
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eAccelerationStructureKHR)
+		{
+			auto acceleration_structure = gContext->acceleration_structures.at(binding);
+
+			auto& write_descriptor_set_acceleration_structure = acceleration_structure_info_cache[acceleration_structure]
+				.setAccelerationStructures(*acceleration_structure->getTlas());
+
+			write_descriptor_set.setPNext(&write_descriptor_set_acceleration_structure);
+		}
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageImage)
+		{
+			auto texture = gContext->render_target->getTexture();
+			auto image_view = *texture->getImageView();
+			texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
+
+			auto& descriptor_image_info = descriptor_image_info_cache[texture]
+				.setImageLayout(vk::ImageLayout::eGeneral)
+				.setImageView(image_view);
+
+			write_descriptor_set.setImageInfo(descriptor_image_info);
+		}
+		else
+		{
+			assert(false);
+		}
+
+		gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+			*pipeline_layout, 0, write_descriptor_set);
+	}
+}
+
 static void PrepareForDrawing()
 {
 	assert(gContext->vertex_buffer);
@@ -1339,75 +1443,10 @@ static void PrepareForDrawing()
 
 	gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 
-	if (!gContext->sampler_states.contains(gContext->sampler_state))
-	{
-		static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
-			{ Sampler::Linear, vk::Filter::eLinear },
-			{ Sampler::Nearest, vk::Filter::eNearest },
-		};
+	const auto& pipeline_layout = shader->getPipelineLayout();
+	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
 
-		static const std::unordered_map<TextureAddress, vk::SamplerAddressMode> AddressModeMap = {
-			{ TextureAddress::Clamp, vk::SamplerAddressMode::eClampToEdge },
-			{ TextureAddress::Wrap, vk::SamplerAddressMode::eRepeat },
-			{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
-		};
-
-		auto sampler_create_info = vk::SamplerCreateInfo()
-			.setMagFilter(FilterMap.at(gContext->sampler_state.sampler))
-			.setMinFilter(FilterMap.at(gContext->sampler_state.sampler))
-			.setMipmapMode(vk::SamplerMipmapMode::eLinear)
-			.setAddressModeU(AddressModeMap.at(gContext->sampler_state.texture_address))
-			.setAddressModeV(AddressModeMap.at(gContext->sampler_state.texture_address))
-			.setAddressModeW(AddressModeMap.at(gContext->sampler_state.texture_address))
-			.setMinLod(-1000)
-			.setMaxLod(1000)
-			.setMaxAnisotropy(1.0f);
-
-		gContext->sampler_states.insert({ gContext->sampler_state, gContext->device.createSampler(sampler_create_info) });
-	}
-
-	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
-
-	auto pipeline_layout = *shader->getPipelineLayout();
-
-	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
-	{
-		auto binding = required_descriptor_binding.binding;
-
-		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDstBinding(binding)
-			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
-			.setDescriptorType(required_descriptor_binding.descriptorType);
-
-		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
-		{
-			auto texture = gContext->textures.at(binding);
-			texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
-
-			auto descriptor_image_info = vk::DescriptorImageInfo()
-				.setSampler(*sampler)
-				.setImageView(*texture->getImageView())
-				.setImageLayout(vk::ImageLayout::eGeneral);
-
-			write_descriptor_set.setImageInfo(descriptor_image_info);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
-		{
-			auto buffer = gContext->uniform_buffers.at(binding);
-
-			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
-				.setBuffer(*buffer->getBuffer())
-				.setRange(VK_WHOLE_SIZE);
-
-			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
-		}
-		else
-		{
-			assert(false);
-		}
-
-		gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, { write_descriptor_set });
-	}
+	PushDescriptors(vk::PipelineBindPoint::eGraphics, pipeline_layout, required_descriptor_bindings);
 
 	auto width = static_cast<float>(gContext->getBackbufferWidth());
 	auto height = static_cast<float>(gContext->getBackbufferHeight());
@@ -2486,54 +2525,10 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 	const auto& pipeline = gContext->raytracing_pipeline_states.at(gContext->raytracing_pipeline_state);
 
 	gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
-	
-	for (const auto& required_descriptor_binding : shader->getRequiredDescriptorBindings())
-	{
-		auto binding = required_descriptor_binding.binding;
 
-		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDstBinding(binding)
-			.setDescriptorCount(1)
-			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
-			.setDescriptorType(required_descriptor_binding.descriptorType);
+	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
 
-		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eAccelerationStructureKHR)
-		{
-			auto acceleration_structure = gContext->acceleration_structures.at(binding);
-
-			auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
-				.setAccelerationStructures(*acceleration_structure->getTlas());
-
-			write_descriptor_set.setPNext(&write_descriptor_set_acceleration_structure);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageImage)
-		{
-			auto render_target_image_view = *gContext->render_target->getTexture()->getImageView();
-			gContext->render_target->getTexture()->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
-
-			auto descriptor_image_info = vk::DescriptorImageInfo()
-				.setImageLayout(vk::ImageLayout::eGeneral)
-				.setImageView(render_target_image_view);
-
-			write_descriptor_set.setImageInfo(descriptor_image_info);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
-		{
-			auto buffer = gContext->uniform_buffers.at(binding);
-
-			auto descriptor_buffer_info = vk::DescriptorBufferInfo()
-				.setBuffer(*buffer->getBuffer())
-				.setRange(VK_WHOLE_SIZE);
-
-			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
-		}
-		else
-		{
-			assert(false);
-		}
-
-		gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(vk::PipelineBindPoint::eRayTracingKHR, *pipeline_layout, 0, { write_descriptor_set });
-	}
+	PushDescriptors(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, required_descriptor_bindings);
 
 	static std::optional<vk::StridedDeviceAddressRegionKHR> raygen_shader_binding_table;
 	static std::optional<vk::StridedDeviceAddressRegionKHR> miss_shader_binding_table;
