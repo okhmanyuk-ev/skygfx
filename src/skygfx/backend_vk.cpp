@@ -104,22 +104,22 @@ struct ContextVK
 	struct Frame
 	{
 		vk::raii::Fence fence = nullptr;
-		vk::Image backbuffer_color_image;
+		vk::raii::Image backbuffer_color_image = nullptr;
 		vk::raii::ImageView backbuffer_color_image_view = nullptr;
 		vk::raii::Semaphore image_acquired_semaphore = nullptr;
 		vk::raii::Semaphore render_complete_semaphore = nullptr;
 		vk::raii::CommandBuffer command_buffer = nullptr;
 		std::vector<VulkanObject> staging_objects;
+
+		struct
+		{
+			vk::raii::Image image = nullptr;
+			vk::raii::ImageView view = nullptr;
+			vk::raii::DeviceMemory memory = nullptr;
+		} depth_stencil;
 	};
 
-	struct
-	{
-		const vk::Format format = vk::Format::eD32SfloatS8Uint;
-
-		vk::raii::Image image = nullptr;
-		vk::raii::ImageView view = nullptr;
-		vk::raii::DeviceMemory memory = nullptr;
-	} depth_stencil;
+	const vk::Format depth_stencil_format = vk::Format::eD32SfloatS8Uint;
 
 	std::vector<Frame> frames;
 
@@ -195,16 +195,66 @@ static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t 
 	auto buffer = gContext->device.createBuffer(buffer_create_info);
 
 	auto memory_requirements = buffer.getMemoryRequirements();
+	auto memory_type = GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits);
 
 	auto memory_allocate_info = vk::MemoryAllocateInfo()
 		.setAllocationSize(memory_requirements.size)
-		.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits));
+		.setMemoryTypeIndex(memory_type);
 
 	auto device_memory = gContext->device.allocateMemory(memory_allocate_info);
 
 	buffer.bindMemory(*device_memory, 0);
 
 	return { std::move(buffer), std::move(device_memory) };
+}
+
+static vk::raii::ImageView CreateImageView(vk::Image image, vk::Format format, vk::ImageAspectFlags aspect_flags, uint32_t mip_levels = 1)
+{
+	auto image_subresource_range = vk::ImageSubresourceRange()
+		.setAspectMask(aspect_flags)
+		.setLevelCount(mip_levels)
+		.setLayerCount(1);
+
+	auto image_view_create_info = vk::ImageViewCreateInfo()
+		.setImage(image)
+		.setViewType(vk::ImageViewType::e2D)
+		.setFormat(format)
+		.setSubresourceRange(image_subresource_range);
+
+	return gContext->device.createImageView(image_view_create_info);
+}
+
+static std::tuple<vk::raii::Image, vk::raii::DeviceMemory, vk::raii::ImageView> CreateImage(uint32_t width, uint32_t height,
+	vk::Format format, vk::ImageUsageFlags usage, vk::ImageAspectFlags aspect_flags, uint32_t mip_levels = 1)
+{
+	auto image_create_info = vk::ImageCreateInfo()
+		.setImageType(vk::ImageType::e2D)
+		.setFormat(format)
+		.setExtent({ width, height, 1 })
+		.setMipLevels(mip_levels)
+		.setArrayLayers(1)
+		.setSamples(vk::SampleCountFlagBits::e1)
+		.setTiling(vk::ImageTiling::eOptimal)
+		.setUsage(usage)
+		.setSharingMode(vk::SharingMode::eExclusive)
+		.setInitialLayout(vk::ImageLayout::eUndefined);
+
+	auto image = gContext->device.createImage(image_create_info);
+
+	auto memory_requirements = image.getMemoryRequirements();
+	auto memory_type = GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, memory_requirements.memoryTypeBits);
+
+	auto memory_allocate_info = vk::MemoryAllocateInfo()
+		.setAllocationSize(memory_requirements.size)
+		.setMemoryTypeIndex(memory_type);
+
+	auto device_memory = gContext->device.allocateMemory(memory_allocate_info);
+
+	image.bindMemory(*device_memory, 0);
+
+	auto image_view = CreateImageView(*image, format, aspect_flags, mip_levels);
+
+	return { std::move(image), std::move(device_memory), std::move(image_view) };
 }
 
 static vk::DeviceAddress GetBufferDeviceAddress(vk::Buffer buffer)
@@ -466,49 +516,17 @@ public:
 			mMipLevels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
 		}
 
-		auto image_create_info = vk::ImageCreateInfo()
-			.setImageType(vk::ImageType::e2D)
-			.setFormat(FormatMap.at(mFormat))
-			.setExtent({ width, height, 1 })
-			.setMipLevels(mMipLevels)
-			.setArrayLayers(1)
-			.setSamples(vk::SampleCountFlagBits::e1)
-			.setTiling(vk::ImageTiling::eOptimal)
-			.setUsage(
-				vk::ImageUsageFlagBits::eSampled |
-				vk::ImageUsageFlagBits::eTransferDst |
-				vk::ImageUsageFlagBits::eTransferSrc |
-				vk::ImageUsageFlagBits::eColorAttachment |
-				vk::ImageUsageFlagBits::eStorage
-			)
-			.setSharingMode(vk::SharingMode::eExclusive)
-			.setInitialLayout(vk::ImageLayout::eUndefined);
+		auto _format = FormatMap.at(mFormat);
 
-		mImage = gContext->device.createImage(image_create_info);
+		auto usage = 
+			vk::ImageUsageFlagBits::eSampled |
+			vk::ImageUsageFlagBits::eTransferDst |
+			vk::ImageUsageFlagBits::eTransferSrc |
+			vk::ImageUsageFlagBits::eColorAttachment |
+			vk::ImageUsageFlagBits::eStorage;
 
-		auto memory_requirements = mImage.getMemoryRequirements();
-
-		auto memory_allocate_info = vk::MemoryAllocateInfo()
-			.setAllocationSize(memory_requirements.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, 
-				memory_requirements.memoryTypeBits));
-
-		mDeviceMemory = gContext->device.allocateMemory(memory_allocate_info);
-	
-		mImage.bindMemory(*mDeviceMemory, 0);
-
-		auto image_subresource_range = vk::ImageSubresourceRange()
-			.setAspectMask(vk::ImageAspectFlagBits::eColor)
-			.setLevelCount(mMipLevels)
-			.setLayerCount(1);
-
-		auto image_view_create_info = vk::ImageViewCreateInfo()
-			.setImage(*mImage)
-			.setViewType(vk::ImageViewType::e2D)
-			.setFormat(FormatMap.at(mFormat))
-			.setSubresourceRange(image_subresource_range);
-
-		mImageView = gContext->device.createImageView(image_view_create_info);
+		std::tie(mImage, mDeviceMemory, mImageView) = CreateImage(width, height, _format, usage,
+			vk::ImageAspectFlagBits::eColor, mMipLevels);
 
 		if (memory)
 		{
@@ -605,40 +623,8 @@ private:
 public:
 	RenderTargetVK(uint32_t width, uint32_t height, TextureVK* _texture) : mTexture(_texture)
 	{
-		auto depth_stencil_image_create_info = vk::ImageCreateInfo()
-			.setImageType(vk::ImageType::e2D)
-			.setFormat(mDepthStencilFormat)
-			.setExtent({ width, height, 1 })
-			.setMipLevels(1)
-			.setArrayLayers(1)
-			.setSamples(vk::SampleCountFlagBits::e1)
-			.setTiling(vk::ImageTiling::eOptimal)
-			.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
-
-		mDepthStencilImage = gContext->device.createImage(depth_stencil_image_create_info);
-
-		auto depth_stencil_mem_req = mDepthStencilImage.getMemoryRequirements();
-
-		auto depth_stencil_memory_allocate_info = vk::MemoryAllocateInfo()
-			.setAllocationSize(depth_stencil_mem_req.size)
-			.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, depth_stencil_mem_req.memoryTypeBits));
-
-		mDepthStencilMemory = gContext->device.allocateMemory(depth_stencil_memory_allocate_info);
-
-		mDepthStencilImage.bindMemory(*mDepthStencilMemory, 0);
-
-		auto depth_stencil_view_subresource_range = vk::ImageSubresourceRange()
-			.setLevelCount(1)
-			.setLayerCount(1)
-			.setAspectMask(vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
-
-		auto depth_stencil_view_create_info = vk::ImageViewCreateInfo()
-			.setViewType(vk::ImageViewType::e2D)
-			.setImage(*mDepthStencilImage)
-			.setFormat(mDepthStencilFormat)
-			.setSubresourceRange(depth_stencil_view_subresource_range);
-
-		mDepthStencilView = gContext->device.createImageView(depth_stencil_view_create_info);
+		std::tie(mDepthStencilImage, mDepthStencilMemory, mDepthStencilView) = CreateImage(width, height, mDepthStencilFormat,
+			vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
 
 		OneTimeSubmit([&](auto& cmdbuf) {
 			SetImageMemoryBarrier(cmdbuf, *mDepthStencilImage, mDepthStencilFormat, vk::ImageLayout::eUndefined,
@@ -954,7 +940,7 @@ static void BeginRenderPass()
 
 	auto depth_stencil_texture = gContext->render_target ?
 		*gContext->render_target->getDepthStencilView() :
-		*gContext->depth_stencil.view;
+		*gContext->getCurrentFrame().depth_stencil.view;
 
 	auto color_attachment = vk::RenderingAttachmentInfo()
 		.setImageView(color_texture)
@@ -1633,6 +1619,11 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 
 	auto backbuffers = gContext->swapchain.getImages();
 
+	for (auto& frame : gContext->frames)
+	{
+		frame.backbuffer_color_image.release();
+	}
+
 	gContext->frames.clear();
 
 	for (auto& backbuffer : backbuffers)
@@ -1647,32 +1638,6 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 		frame.image_acquired_semaphore = gContext->device.createSemaphore({});
 		frame.render_complete_semaphore = gContext->device.createSemaphore({});
 
-		auto image_view_info = vk::ImageViewCreateInfo()
-			.setViewType(vk::ImageViewType::e2D)
-			.setFormat(gContext->surface_format.format)
-			.setComponents(vk::ComponentMapping()
-				.setR(vk::ComponentSwizzle::eR)
-				.setG(vk::ComponentSwizzle::eG)
-				.setB(vk::ComponentSwizzle::eB)
-				.setA(vk::ComponentSwizzle::eA)
-			)
-			.setSubresourceRange(vk::ImageSubresourceRange()
-				.setAspectMask(vk::ImageAspectFlagBits::eColor)
-				.setBaseMipLevel(0)
-				.setLevelCount(1)
-				.setBaseArrayLayer(0)
-				.setLayerCount(1)
-			)
-			.setImage(backbuffer);
-
-		frame.backbuffer_color_image = backbuffer;
-		frame.backbuffer_color_image_view = gContext->device.createImageView(image_view_info);
-
-		OneTimeSubmit([&](auto& cmdbuf) {
-			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
-			vk::ImageLayout::ePresentSrcKHR);
-		});
-
 		auto command_buffer_allocate_info = vk::CommandBufferAllocateInfo()
 			.setCommandBufferCount(1)
 			.setLevel(vk::CommandBufferLevel::ePrimary)
@@ -1682,50 +1647,27 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 
 		frame.command_buffer = std::move(command_buffers.at(0));
 
+		frame.backbuffer_color_image_view = CreateImageView(backbuffer, gContext->surface_format.format,
+			vk::ImageAspectFlagBits::eColor);
+
+		frame.backbuffer_color_image = vk::raii::Image(gContext->device, backbuffer);
+
+		OneTimeSubmit([&](auto& cmdbuf) {
+			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
+				vk::ImageLayout::ePresentSrcKHR);
+		});
+
+		std::tie(frame.depth_stencil.image, frame.depth_stencil.memory, frame.depth_stencil.view) = CreateImage(
+			width, height, gContext->depth_stencil_format, vk::ImageUsageFlagBits::eDepthStencilAttachment,
+			vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
+
+		OneTimeSubmit([&](auto& cmdbuf) {
+			SetImageMemoryBarrier(cmdbuf, *frame.depth_stencil.image, gContext->depth_stencil_format, vk::ImageLayout::eUndefined,
+				vk::ImageLayout::eDepthStencilAttachmentOptimal);
+		});
+
 		gContext->frames.push_back(std::move(frame));
 	}
-
-	// depth stencil
-
-	auto depth_stencil_image_create_info = vk::ImageCreateInfo()
-		.setImageType(vk::ImageType::e2D)
-		.setFormat(gContext->depth_stencil.format)
-		.setExtent({ width, height, 1 })
-		.setMipLevels(1)
-		.setArrayLayers(1)
-		.setSamples(vk::SampleCountFlagBits::e1)
-		.setTiling(vk::ImageTiling::eOptimal)
-		.setUsage(vk::ImageUsageFlagBits::eDepthStencilAttachment);
-
-	gContext->depth_stencil.image = gContext->device.createImage(depth_stencil_image_create_info);
-
-	auto depth_stencil_mem_req = gContext->depth_stencil.image.getMemoryRequirements();
-
-	auto depth_stencil_memory_allocate_info = vk::MemoryAllocateInfo()
-		.setAllocationSize(depth_stencil_mem_req.size)
-		.setMemoryTypeIndex(GetMemoryType(vk::MemoryPropertyFlagBits::eDeviceLocal, depth_stencil_mem_req.memoryTypeBits));
-
-	gContext->depth_stencil.memory = gContext->device.allocateMemory(depth_stencil_memory_allocate_info);
-
-	gContext->depth_stencil.image.bindMemory(*gContext->depth_stencil.memory, 0);
-
-	auto depth_stencil_view_subresource_range = vk::ImageSubresourceRange()
-		.setLevelCount(1)
-		.setLayerCount(1)
-		.setAspectMask(vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
-
-	auto depth_stencil_view_create_info = vk::ImageViewCreateInfo()
-		.setViewType(vk::ImageViewType::e2D)
-		.setImage(*gContext->depth_stencil.image)
-		.setFormat(gContext->depth_stencil.format)
-		.setSubresourceRange(depth_stencil_view_subresource_range);
-
-	gContext->depth_stencil.view = gContext->device.createImageView(depth_stencil_view_create_info);
-
-	OneTimeSubmit([&](auto& cmdbuf) {
-		SetImageMemoryBarrier(cmdbuf, *gContext->depth_stencil.image, gContext->depth_stencil.format, vk::ImageLayout::eUndefined,
-			vk::ImageLayout::eDepthStencilAttachmentOptimal);
-	});
 
 	gContext->frame_index = 0;
 	gContext->semaphore_index = 0;
@@ -2066,7 +2008,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	gContext->command_pool = gContext->device.createCommandPool(command_pool_info);
 
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
-	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil.format;
+	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil_format;
 
 	CreateSwapchain(width, height);
 	MoveToNextFrame();
@@ -2149,7 +2091,7 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 		return;
 
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
-	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil.format;
+	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil_format;
 	gContext->render_target = nullptr;
 	EnsureRenderPassDeactivated();
 
@@ -2335,8 +2277,8 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	auto width = static_cast<uint32_t>(size.x);
 	auto height = static_cast<uint32_t>(size.y);
 
-	auto src_image = gContext->render_target ?
-		*gContext->render_target->getTexture()->getImage() :
+	const auto& src_image = gContext->render_target ?
+		gContext->render_target->getTexture()->getImage() :
 		gContext->getCurrentFrame().backbuffer_color_image;
 
 	auto dst_image = *dst_texture->getImage();
@@ -2359,14 +2301,14 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	else
 	{
 		// TODO: implement ensureState (like in TextureVK) for main-render-target (or make main-render-target derived from TextureVK)
-		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
+		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, *src_image, vk::ImageAspectFlagBits::eColor,
 			vk::ImageLayout::ePresentSrcKHR, vk::ImageLayout::eTransferSrcOptimal);
 	}
 
 	dst_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);
 
 	auto copy_image_info = vk::CopyImageInfo2()
-		.setSrcImage(src_image)
+		.setSrcImage(*src_image)
 		.setDstImage(*dst_texture->getImage())
 		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
 		.setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
@@ -2377,7 +2319,7 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	if (!gContext->render_target)
 	{
 		// TODO: this line will be removed when ensureState for main-render-target will be implemented
-		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
+		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, *src_image, vk::ImageAspectFlagBits::eColor,
 			vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::ePresentSrcKHR);
 	}
 
