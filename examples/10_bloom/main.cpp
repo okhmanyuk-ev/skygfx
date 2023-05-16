@@ -114,7 +114,8 @@ int main()
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 
-	float timescale = 1.0f;
+	float angle = 1.0f;
+	bool animated = true;
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -129,7 +130,8 @@ int main()
 		ImGui::SetWindowPos({ 16.0f, 16.0f });
 		ImGui::SliderFloat("Intensity", &intensity, 0.0f, 4.0f);
 		ImGui::SliderFloat("Threshold", &threshold, 0.0f, 1.0f);
-		ImGui::SliderFloat("Timescale", &timescale, 0.0f, 4.0f);
+		ImGui::Checkbox("Animated", &animated);
+		ImGui::SliderAngle("Angle", &angle, 0.0f);
 		ImGui::End();
 
 		bloom_pass.setIntensity(intensity);
@@ -138,10 +140,10 @@ int main()
 		ensureTargetSize(src_target);
 		ensureTargetSize(dst_target);
 
-		auto time = (float)glfwGetTime();
+		if (animated)
+			angle = glm::wrapAngle((float)glfwGetTime());
 
-		auto model = glm::mat4(1.0f);
-		model = glm::rotate(model, time * timescale, { 0.0f, 1.0f, 0.0f });
+		auto model = glm::rotate(glm::mat4(1.0f), angle, { 0.0f, 1.0f, 0.0f });
 
 		skygfx::SetCullMode(skygfx::CullMode::Back);
 
