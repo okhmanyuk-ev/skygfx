@@ -185,14 +185,11 @@ static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_
 	return 0xFFFFFFFF; // Unable to find memoryType
 }
 
-static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t size, vk::BufferUsageFlags usage = {})
+static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t size, vk::BufferUsageFlags usage)
 {
 	auto buffer_create_info = vk::BufferCreateInfo()
 		.setSize(size)
-		.setUsage(
-			vk::BufferUsageFlagBits::eTransferSrc |
-			vk::BufferUsageFlagBits::eTransferDst |
-			usage)
+		.setUsage(usage)
 		.setSharingMode(vk::SharingMode::eExclusive);
 
 	auto buffer = gContext->device.createBuffer(buffer_create_info);
@@ -519,7 +516,7 @@ public:
 			auto channel_size = GetFormatChannelSize(format);
 			auto size = width * height * channels * channel_size;
 
-			auto [upload_buffer, upload_buffer_memory] = CreateBuffer(size);
+			auto [upload_buffer, upload_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
 
 			WriteToBuffer(upload_buffer_memory, memory, size);
 
@@ -663,7 +660,8 @@ private:
 public:
 	BufferVK(size_t size, vk::BufferUsageFlags usage)
 	{
-		std::tie(mBuffer, mDeviceMemory) = CreateBuffer(size, usage);
+		std::tie(mBuffer, mDeviceMemory) = CreateBuffer(size,
+			vk::BufferUsageFlagBits::eTransferDst | usage);
 	}
 
 	~BufferVK()
@@ -674,7 +672,7 @@ public:
 
 	void write(void* memory, size_t size)
 	{
-		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size);
+		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
 
 		WriteToBuffer(staging_buffer_memory, memory, size);
 
@@ -2411,7 +2409,7 @@ std::vector<uint8_t> BackendVK::getPixels()
 	gContext->queue.submit(submit_info);
 	gContext->queue.waitIdle();
 
-	auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size);
+	auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
 
 	auto subresource = vk::ImageSubresourceLayers()
 		.setAspectMask(vk::ImageAspectFlagBits::eColor)
