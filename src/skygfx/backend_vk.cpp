@@ -104,7 +104,7 @@ struct ContextVK
 	struct Frame
 	{
 		vk::raii::Fence fence = nullptr;
-		vk::raii::Image backbuffer_color_image = nullptr;
+		vk::Image backbuffer_color_image;
 		vk::raii::ImageView backbuffer_color_image_view = nullptr;
 		vk::raii::Semaphore image_acquired_semaphore = nullptr;
 		vk::raii::Semaphore render_complete_semaphore = nullptr;
@@ -1619,11 +1619,6 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 
 	auto backbuffers = gContext->swapchain.getImages();
 
-	for (auto& frame : gContext->frames)
-	{
-		frame.backbuffer_color_image.release();
-	}
-
 	gContext->frames.clear();
 
 	for (auto& backbuffer : backbuffers)
@@ -1650,7 +1645,7 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 		frame.backbuffer_color_image_view = CreateImageView(backbuffer, gContext->surface_format.format,
 			vk::ImageAspectFlagBits::eColor);
 
-		frame.backbuffer_color_image = vk::raii::Image(gContext->device, backbuffer);
+		frame.backbuffer_color_image = backbuffer;
 
 		OneTimeSubmit([&](auto& cmdbuf) {
 			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
@@ -2277,8 +2272,8 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	auto width = static_cast<uint32_t>(size.x);
 	auto height = static_cast<uint32_t>(size.y);
 
-	const auto& src_image = gContext->render_target ?
-		gContext->render_target->getTexture()->getImage() :
+	auto src_image = gContext->render_target ?
+		*gContext->render_target->getTexture()->getImage() :
 		gContext->getCurrentFrame().backbuffer_color_image;
 
 	auto dst_image = *dst_texture->getImage();
@@ -2301,14 +2296,14 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	else
 	{
 		// TODO: implement ensureState (like in TextureVK) for main-render-target (or make main-render-target derived from TextureVK)
-		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, *src_image, vk::ImageAspectFlagBits::eColor,
+		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
 			vk::ImageLayout::ePresentSrcKHR, vk::ImageLayout::eTransferSrcOptimal);
 	}
 
 	dst_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);
 
 	auto copy_image_info = vk::CopyImageInfo2()
-		.setSrcImage(*src_image)
+		.setSrcImage(src_image)
 		.setDstImage(*dst_texture->getImage())
 		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
 		.setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
@@ -2319,7 +2314,7 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	if (!gContext->render_target)
 	{
 		// TODO: this line will be removed when ensureState for main-render-target will be implemented
-		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, *src_image, vk::ImageAspectFlagBits::eColor,
+		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
 			vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::ePresentSrcKHR);
 	}
 
