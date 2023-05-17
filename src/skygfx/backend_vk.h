@@ -9,7 +9,7 @@ namespace skygfx
 	class BackendVK : public Backend, public RaytracingBackend
 	{
 	public:
-		BackendVK(void* window, uint32_t width, uint32_t height);
+		BackendVK(void* window, uint32_t width, uint32_t height, const std::unordered_set<Feature>& features);
 		~BackendVK();
 
 		void resize(uint32_t width, uint32_t height) override;

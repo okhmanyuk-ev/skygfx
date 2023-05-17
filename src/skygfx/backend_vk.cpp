@@ -1782,7 +1782,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
 }
 #endif
 
-BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
+BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, const std::unordered_set<Feature>& features)
 {
 	gContext = new ContextVK;
 
@@ -1917,18 +1917,20 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	//	std::cout << device_extension.extensionName << std::endl;
 	}
 
-	auto device_extensions = {
+	std::vector device_extensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 
 		// dynamic pipeline
 		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
 		VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,
-
-		// raytracing
-		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
 	};
+
+	if (features.contains(Feature::Raytracing))
+	{
+		device_extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+		device_extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+		device_extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+	}
 
 	auto queue_priority = { 1.0f };
 
@@ -1936,23 +1938,30 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 		.setQueueFamilyIndex(gContext->queue_family_index)
 		.setQueuePriorities(queue_priority);
 
-	auto device_features = gContext->physical_device.getFeatures2<vk::PhysicalDeviceFeatures2,
-		vk::PhysicalDeviceVulkan13Features, 
+	auto default_device_features = gContext->physical_device.getFeatures2<
+		vk::PhysicalDeviceFeatures2,
+		vk::PhysicalDeviceVulkan13Features,
+		vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT
+	>();
 
-		// dynamic pipeline
+	auto raytracing_device_features = gContext->physical_device.getFeatures2<
+		vk::PhysicalDeviceFeatures2,
+		vk::PhysicalDeviceVulkan13Features,
 		vk::PhysicalDeviceExtendedDynamicState3FeaturesEXT,
-
-		// raytracing
+		vk::PhysicalDeviceBufferAddressFeaturesEXT,
 		vk::PhysicalDeviceRayTracingPipelineFeaturesKHR,
-		vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
-		vk::PhysicalDeviceBufferAddressFeaturesEXT
+		vk::PhysicalDeviceAccelerationStructureFeaturesKHR
 	>();
 
 	auto device_info = vk::DeviceCreateInfo()
 		.setQueueCreateInfos(queue_info)
 		.setPEnabledExtensionNames(device_extensions)
-		.setPEnabledFeatures(nullptr)
-		.setPNext(&device_features.get<vk::PhysicalDeviceFeatures2>());
+		.setPEnabledFeatures(nullptr);
+
+	if (features.contains(Feature::Raytracing))
+		device_info.setPNext(&raytracing_device_features.get<vk::PhysicalDeviceFeatures2>());
+	else
+		device_info.setPNext(&default_device_features.get<vk::PhysicalDeviceFeatures2>());
 
 	gContext->device = gContext->physical_device.createDevice(device_info);
 
@@ -2170,6 +2179,9 @@ void BackendVK::setStencilMode(std::optional<StencilMode> stencil_mode)
 
 void BackendVK::setCullMode(CullMode cull_mode)
 {	
+	if (gContext->cull_mode == cull_mode)
+		return;
+
 	gContext->cull_mode = cull_mode;
 	gContext->cull_mode_dirty = true;
 }

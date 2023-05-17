@@ -306,7 +306,7 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 #endif
 #ifdef SKYGFX_HAS_VULKAN
 	if (type == BackendType::Vulkan)
-		gBackend = new BackendVK(window, width, height);
+		gBackend = new BackendVK(window, width, height, features);
 #endif
 #ifdef SKYGFX_HAS_METAL
 	if (type == BackendType::Metal)
