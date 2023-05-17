@@ -73,6 +73,7 @@ SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 
 using VulkanObject = std::variant<
 	vk::raii::Buffer,
+	vk::raii::Image,
 	vk::raii::DeviceMemory,
 	vk::raii::Pipeline
 >;
@@ -96,6 +97,8 @@ struct ContextVK
 	vk::raii::SwapchainKHR swapchain = nullptr;
 	vk::raii::CommandPool command_pool = nullptr;
 
+	constexpr static vk::Format DefaultDepthStencilFormat = vk::Format::eD32SfloatS8Uint;
+
 	bool working = false;
 
 	uint32_t width = 0;
@@ -104,22 +107,13 @@ struct ContextVK
 	struct Frame
 	{
 		vk::raii::Fence fence = nullptr;
-		vk::Image backbuffer_color_image;
-		vk::raii::ImageView backbuffer_color_image_view = nullptr;
+		std::shared_ptr<TextureVK> swapchain_texture;
+		std::shared_ptr<RenderTargetVK> swapchain_target;
 		vk::raii::Semaphore image_acquired_semaphore = nullptr;
 		vk::raii::Semaphore render_complete_semaphore = nullptr;
 		vk::raii::CommandBuffer command_buffer = nullptr;
 		std::vector<VulkanObject> staging_objects;
-
-		struct
-		{
-			vk::raii::Image image = nullptr;
-			vk::raii::ImageView view = nullptr;
-			vk::raii::DeviceMemory memory = nullptr;
-		} depth_stencil;
 	};
-
-	const vk::Format depth_stencil_format = vk::Format::eD32SfloatS8Uint;
 
 	std::vector<Frame> frames;
 
@@ -163,7 +157,7 @@ struct ContextVK
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
-	Format getBackbufferFormat();
+	vk::Format getBackbufferFormat();
 
 	bool render_pass_active = false;
 
@@ -297,6 +291,17 @@ static const std::unordered_map<Format, vk::Format> FormatMap = {
 	{ Format::Byte2, vk::Format::eR8G8Unorm },
 	{ Format::Byte3, vk::Format::eR8G8B8Unorm },
 	{ Format::Byte4, vk::Format::eR8G8B8A8Unorm }
+};
+
+static const std::unordered_map<vk::Format, Format> ReversedFormatMap = {
+	{ vk::Format::eR32Sfloat, Format::Float1 },
+	{ vk::Format::eR32G32Sfloat, Format::Float2 },
+	{ vk::Format::eR32G32B32Sfloat, Format::Float3 },
+	{ vk::Format::eR32G32B32A32Sfloat, Format::Float4 },
+	{ vk::Format::eR8Unorm, Format::Byte1 },
+	{ vk::Format::eR8G8Unorm, Format::Byte2 },
+	{ vk::Format::eR8G8B8Unorm, Format::Byte3 },
+	{ vk::Format::eR8G8B8A8Unorm, Format::Byte4 }
 };
 
 const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
@@ -487,26 +492,26 @@ public:
 class TextureVK : public ObjectVK
 {
 public:
-	const auto& getImage() const { return mImage; }
+	auto getImage() const { return mImagePtr; }
 	const auto& getImageView() const { return mImageView; }
-	const auto& getDeviceMemory() const { return mDeviceMemory; }
 	auto getFormat() const { return mFormat; }
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
 	auto isMipmap() const { return mMipLevels > 1; }
 
 private:
-	vk::raii::Image mImage = nullptr;
+	std::optional<vk::raii::Image> mImage;
+	std::optional<vk::raii::DeviceMemory> mDeviceMemory;
+	vk::Image mImagePtr;
 	vk::raii::ImageView mImageView = nullptr;
-	vk::raii::DeviceMemory mDeviceMemory = nullptr;
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
-	Format mFormat;
+	vk::Format mFormat;
 	uint32_t mMipLevels = 1;
 	vk::ImageLayout mCurrentState = vk::ImageLayout::eUndefined;
 
 public:
-	TextureVK(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
+	TextureVK(uint32_t width, uint32_t height, vk::Format format, void* memory, bool mipmap) :
 		mWidth(width),
 		mHeight(height),
 		mFormat(format)
@@ -516,8 +521,6 @@ public:
 			mMipLevels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
 		}
 
-		auto _format = FormatMap.at(mFormat);
-
 		auto usage = 
 			vk::ImageUsageFlagBits::eSampled |
 			vk::ImageUsageFlagBits::eTransferDst |
@@ -525,13 +528,16 @@ public:
 			vk::ImageUsageFlagBits::eColorAttachment |
 			vk::ImageUsageFlagBits::eStorage;
 
-		std::tie(mImage, mDeviceMemory, mImageView) = CreateImage(width, height, _format, usage,
+		std::tie(mImage, mDeviceMemory, mImageView) = CreateImage(width, height, format, usage,
 			vk::ImageAspectFlagBits::eColor, mMipLevels);
+
+		mImagePtr = *mImage.value();
 
 		if (memory)
 		{
-			auto channels = GetFormatChannelsCount(format);
-			auto channel_size = GetFormatChannelSize(format);
+			auto _format = ReversedFormatMap.at(format);
+			auto channels = GetFormatChannelsCount(_format);
+			auto channel_size = GetFormatChannelSize(_format);
 			auto size = width * height * channels * channel_size;
 
 			auto [upload_buffer, upload_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
@@ -549,16 +555,30 @@ public:
 					.setImageSubresource(image_subresource_layers)
 					.setImageExtent({ mWidth, mHeight, 1 });
 
-				cmdbuf.copyBufferToImage(*upload_buffer, *mImage, vk::ImageLayout::eTransferDstOptimal, { region });
+				cmdbuf.copyBufferToImage(*upload_buffer, mImagePtr, vk::ImageLayout::eTransferDstOptimal, { region });
 
 				if (isMipmap())
 					generateMips(cmdbuf);
 			});
 		}
+	}
 
-		OneTimeSubmit([&](auto& cmdbuf) {
-			ensureState(cmdbuf, vk::ImageLayout::eGeneral);
-		});
+	TextureVK(uint32_t width, uint32_t height, vk::Format format, vk::Image image) :
+		mWidth(width),
+		mHeight(height),
+		mFormat(format),
+		mImagePtr(image)
+	{
+		mImageView = CreateImageView(image, format, vk::ImageAspectFlagBits::eColor);
+	}
+
+	~TextureVK()
+	{
+		if (mImage.has_value())
+			gContext->getCurrentFrame().staging_objects.push_back(std::move(mImage.value()));
+
+		if (mDeviceMemory.has_value())
+			gContext->getCurrentFrame().staging_objects.push_back(std::move(mDeviceMemory.value()));
 	}
 
 	void generateMips(const vk::raii::CommandBuffer& cmdbuf)
@@ -567,7 +587,7 @@ public:
 
 		for (uint32_t i = 1; i < mMipLevels; i++)
 		{
-			SetImageMemoryBarrier(cmdbuf, *mImage, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eUndefined,
+			SetImageMemoryBarrier(cmdbuf, mImagePtr, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::eTransferDstOptimal, i, 1);
 
 			auto src_subresource = vk::ImageSubresourceLayers()
@@ -586,10 +606,10 @@ public:
 				.setSrcOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(mWidth >> (i - 1)), int32_t(mHeight >> (i - 1)), 1 } })
 				.setDstOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(mWidth >> i), int32_t(mHeight >> i), 1 } });
 
-			cmdbuf.blitImage(*mImage, vk::ImageLayout::eTransferSrcOptimal, *mImage,
+			cmdbuf.blitImage(mImagePtr, vk::ImageLayout::eTransferSrcOptimal, mImagePtr,
 				vk::ImageLayout::eTransferDstOptimal, { mip_region }, vk::Filter::eLinear);
 
-			SetImageMemoryBarrier(cmdbuf, *mImage, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eTransferDstOptimal,
+			SetImageMemoryBarrier(cmdbuf, mImagePtr, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eTransferDstOptimal,
 				vk::ImageLayout::eTransferSrcOptimal, i, 1);
 		}
 	}
@@ -599,7 +619,7 @@ public:
 		if (mCurrentState == state)
 			return;
 
-		SetImageMemoryBarrier(cmdbuf, *mImage, vk::ImageAspectFlagBits::eColor, mCurrentState, state);
+		SetImageMemoryBarrier(cmdbuf, mImagePtr, vk::ImageAspectFlagBits::eColor, mCurrentState, state);
 		mCurrentState = state;
 	}
 };
@@ -611,11 +631,10 @@ public:
 	auto getDepthStencilFormat() const { return mDepthStencilFormat; }
 	const auto& getDepthStencilImage() const { return mDepthStencilImage; }
 	const auto& getDepthStencilView() const { return mDepthStencilView; }
-	const auto& getDepthStencilMemory() const { return mDepthStencilMemory; }
 
 private:
 	TextureVK* mTexture;
-	vk::Format mDepthStencilFormat = vk::Format::eD32SfloatS8Uint;
+	vk::Format mDepthStencilFormat = ContextVK::DefaultDepthStencilFormat;
 	vk::raii::Image mDepthStencilImage = nullptr;
 	vk::raii::ImageView mDepthStencilView = nullptr;
 	vk::raii::DeviceMemory mDepthStencilMemory = nullptr;
@@ -637,7 +656,6 @@ class BufferVK : public ObjectVK
 {
 public:
 	const auto& getBuffer() const { return mBuffer; }
-	const auto& getDeviceMemory() const { return mDeviceMemory; }
 
 private:
 	vk::raii::Buffer mBuffer = nullptr;
@@ -924,9 +942,9 @@ uint32_t ContextVK::getBackbufferHeight()
 	return render_target ? render_target->getTexture()->getHeight() : height;
 }
 
-Format ContextVK::getBackbufferFormat()
+vk::Format ContextVK::getBackbufferFormat()
 {
-	return render_target ? render_target->getTexture()->getFormat() : Format::Byte4;
+	return render_target ? render_target->getTexture()->getFormat() : FormatMap.at(Format::Byte4); //gContext->surface_format.format;
 }
 
 static void BeginRenderPass()
@@ -934,22 +952,16 @@ static void BeginRenderPass()
 	assert(!gContext->render_pass_active);
 	gContext->render_pass_active = true;
 
-	auto color_texture = gContext->render_target ?
-		*gContext->render_target->getTexture()->getImageView() :
-		*gContext->getCurrentFrame().backbuffer_color_image_view;
-
-	auto depth_stencil_texture = gContext->render_target ?
-		*gContext->render_target->getDepthStencilView() :
-		*gContext->getCurrentFrame().depth_stencil.view;
+	auto target = gContext->render_target ? gContext->render_target : gContext->getCurrentFrame().swapchain_target.get();
 
 	auto color_attachment = vk::RenderingAttachmentInfo()
-		.setImageView(color_texture)
+		.setImageView(*target->getTexture()->getImageView())
 		.setImageLayout(vk::ImageLayout::eGeneral)
 		.setLoadOp(vk::AttachmentLoadOp::eLoad)
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
 
 	auto depth_stencil_attachment = vk::RenderingAttachmentInfo()
-		.setImageView(depth_stencil_texture)
+		.setImageView(*target->getDepthStencilView())
 		.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
 		.setLoadOp(vk::AttachmentLoadOp::eLoad)
 		.setStoreOp(vk::AttachmentStoreOp::eStore);
@@ -1599,10 +1611,12 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 		.setWidth(gContext->width)
 		.setHeight(gContext->height);
 
+	auto format = gContext->surface_format.format;
+
 	auto swapchain_info = vk::SwapchainCreateInfoKHR()
 		.setSurface(*gContext->surface)
 		.setMinImageCount(desired_number_of_swapchain_images)
-		.setImageFormat(gContext->surface_format.format)
+		.setImageFormat(format)
 		.setImageColorSpace(gContext->surface_format.colorSpace)
 		.setImageExtent(image_extent)
 		.setImageUsage(vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc)
@@ -1642,24 +1656,8 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 
 		frame.command_buffer = std::move(command_buffers.at(0));
 
-		frame.backbuffer_color_image_view = CreateImageView(backbuffer, gContext->surface_format.format,
-			vk::ImageAspectFlagBits::eColor);
-
-		frame.backbuffer_color_image = backbuffer;
-
-		OneTimeSubmit([&](auto& cmdbuf) {
-			SetImageMemoryBarrier(cmdbuf, backbuffer, gContext->surface_format.format, vk::ImageLayout::eUndefined,
-				vk::ImageLayout::ePresentSrcKHR);
-		});
-
-		std::tie(frame.depth_stencil.image, frame.depth_stencil.memory, frame.depth_stencil.view) = CreateImage(
-			width, height, gContext->depth_stencil_format, vk::ImageUsageFlagBits::eDepthStencilAttachment,
-			vk::ImageAspectFlagBits::eDepth | vk::ImageAspectFlagBits::eStencil);
-
-		OneTimeSubmit([&](auto& cmdbuf) {
-			SetImageMemoryBarrier(cmdbuf, *frame.depth_stencil.image, gContext->depth_stencil_format, vk::ImageLayout::eUndefined,
-				vk::ImageLayout::eDepthStencilAttachmentOptimal);
-		});
+		frame.swapchain_texture = std::make_shared<TextureVK>(gContext->width, gContext->height, format, backbuffer);
+		frame.swapchain_target = std::make_shared<RenderTargetVK>(gContext->width, gContext->height, frame.swapchain_texture.get());
 
 		gContext->frames.push_back(std::move(frame));
 	}
@@ -1703,6 +1701,10 @@ static void End()
 	gContext->working = false;
 
 	EnsureRenderPassDeactivated();
+
+	gContext->getCurrentFrame().swapchain_texture->ensureState(gContext->getCurrentFrame().command_buffer,
+		vk::ImageLayout::ePresentSrcKHR);
+
 	gContext->getCurrentFrame().command_buffer.end();
 
 	const auto& frame = gContext->getCurrentFrame();
@@ -2003,7 +2005,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height)
 	gContext->command_pool = gContext->device.createCommandPool(command_pool_info);
 
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
-	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil_format;
+	gContext->pipeline_state.depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
 
 	CreateSwapchain(width, height);
 	MoveToNextFrame();
@@ -2068,7 +2070,7 @@ void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 	if (gContext->render_target == render_target)
 		return;
 
-	gContext->pipeline_state.color_attachment_format = FormatMap.at(render_target->getTexture()->getFormat());
+	gContext->pipeline_state.color_attachment_format = render_target->getTexture()->getFormat();
 	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
 	gContext->render_target = render_target;
 	EnsureRenderPassDeactivated();
@@ -2086,7 +2088,7 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 		return;
 
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
-	gContext->pipeline_state.depth_stencil_format = gContext->depth_stencil_format;
+	gContext->pipeline_state.depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
 	gContext->render_target = nullptr;
 	EnsureRenderPassDeactivated();
 
@@ -2272,11 +2274,10 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	auto width = static_cast<uint32_t>(size.x);
 	auto height = static_cast<uint32_t>(size.y);
 
-	auto src_image = gContext->render_target ?
-		*gContext->render_target->getTexture()->getImage() :
-		gContext->getCurrentFrame().backbuffer_color_image;
-
-	auto dst_image = *dst_texture->getImage();
+	auto src_target = gContext->render_target ? gContext->render_target : gContext->getCurrentFrame().swapchain_target.get();
+	auto src_texture = src_target->getTexture();
+	auto src_image = src_texture->getImage();
+	auto dst_image = dst_texture->getImage();
 
 	auto subresource = vk::ImageSubresourceLayers()
 		.setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -2289,34 +2290,17 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 		.setDstOffset({ 0, 0, 0 })
 		.setExtent({ width, height, 1 });
 
-	if (gContext->render_target)
-	{
-		gContext->render_target->getTexture()->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
-	}
-	else
-	{
-		// TODO: implement ensureState (like in TextureVK) for main-render-target (or make main-render-target derived from TextureVK)
-		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
-			vk::ImageLayout::ePresentSrcKHR, vk::ImageLayout::eTransferSrcOptimal);
-	}
-
+	src_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
 	dst_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);
 
 	auto copy_image_info = vk::CopyImageInfo2()
 		.setSrcImage(src_image)
-		.setDstImage(*dst_texture->getImage())
+		.setDstImage(dst_image)
 		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
 		.setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
 		.setRegions(region);
 
 	gContext->getCurrentFrame().command_buffer.copyImage2(copy_image_info);
-
-	if (!gContext->render_target)
-	{
-		// TODO: this line will be removed when ensureState for main-render-target will be implemented
-		SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, src_image, vk::ImageAspectFlagBits::eColor,
-			vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::ePresentSrcKHR);
-	}
 
 	if (dst_texture->isMipmap())
 		dst_texture->generateMips(gContext->getCurrentFrame().command_buffer);
@@ -2327,8 +2311,9 @@ std::vector<uint8_t> BackendVK::getPixels()
 	auto width = gContext->getBackbufferWidth();
 	auto height = gContext->getBackbufferHeight();
 	auto format = gContext->getBackbufferFormat();
-	auto channels_count = GetFormatChannelsCount(format);
-	auto channel_size = GetFormatChannelSize(format);
+	auto _format = ReversedFormatMap.at(format);
+	auto channels_count = GetFormatChannelsCount(_format);
+	auto channel_size = GetFormatChannelSize(_format);
 	auto size = width * height * channels_count * channel_size;
 
 	std::vector<uint8_t> result(size);
@@ -2359,7 +2344,7 @@ std::vector<uint8_t> BackendVK::getPixels()
 		.setImageExtent({ width, height, 1 });
 
 	auto copy_image_to_buffer_info = vk::CopyImageToBufferInfo2()
-		.setSrcImage(*texture.getImage())
+		.setSrcImage(texture.getImage())
 		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
 		.setDstBuffer(*staging_buffer)
 		.setRegions(region);
@@ -2538,7 +2523,7 @@ void BackendVK::present()
 
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
 {
-	auto texture = new TextureVK(width, height, format, memory, mipmap);
+	auto texture = new TextureVK(width, height, FormatMap.at(format), memory, mipmap);
 	gContext->objects.insert(texture);
 	return (TextureHandle*)texture;
 }
