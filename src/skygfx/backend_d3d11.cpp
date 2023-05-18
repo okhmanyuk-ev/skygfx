@@ -86,19 +86,14 @@ static bool gRasterizerStateDirty = true;
 static std::unordered_map<SamplerStateD3D11, ComPtr<ID3D11SamplerState>> gSamplerStates;
 static SamplerStateD3D11 gSamplerState;
 static bool gSamplerStateDirty = true;
+static TextureD3D11* gBackbufferTexture = nullptr;
+static RenderTargetD3D11* gMainRenderTarget = nullptr;
 static RenderTargetD3D11* gRenderTarget = nullptr;
 static std::optional<Viewport> gViewport;
 static bool gViewportDirty = true;
 static uint32_t gBackbufferWidth = 0;
 static uint32_t gBackbufferHeight = 0;
 static std::unordered_map<uint32_t, TextureD3D11*> gTextures;
-
-static struct
-{
-	ComPtr<ID3D11Texture2D> depth_stencil_texture;
-	ComPtr<ID3D11RenderTargetView> render_target_view;
-	ComPtr<ID3D11DepthStencilView> depth_stencil_view;
-} gMainRenderTarget;
 
 static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
 	{ Format::Float1, DXGI_FORMAT_R32_FLOAT },
@@ -232,6 +227,14 @@ public:
 				gContext->GenerateMips(mShaderResourceView.Get());
 		}
 	}
+
+	TextureD3D11(uint32_t width, uint32_t height, Format format, ComPtr<ID3D11Texture2D> texture) :
+		mWidth(width),
+		mHeight(height),
+		mFormat(format),
+		mTexture2D(texture)
+	{
+	}
 };
 
 class RenderTargetD3D11
@@ -253,12 +256,10 @@ public:
 	{
 		auto format = FormatMap.at(texture->getFormat());
 		auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, format);
-
 		gDevice->CreateRenderTargetView(texture->getD3D11Texture2D().Get(), &rtv_desc, mRenderTargetView.GetAddressOf());
 
-		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_D24_UNORM_S8_UINT, width, height);
-		tex_desc.MipLevels = 1;
-		tex_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_D24_UNORM_S8_UINT, width, height, 1, 1,
+			D3D11_BIND_DEPTH_STENCIL);
 		gDevice->CreateTexture2D(&tex_desc, NULL, mDepthStencilTexture.GetAddressOf());
 
 		auto dsv_desc = CD3D11_DEPTH_STENCIL_VIEW_DESC(D3D11_DSV_DIMENSION_TEXTURE2D, tex_desc.Format);
@@ -468,8 +469,8 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendD3D11::setRenderTarget(std::nullopt_t value)
 {
-	gContext->OMSetRenderTargets(1, gMainRenderTarget.render_target_view.GetAddressOf(),
-		gMainRenderTarget.depth_stencil_view.Get());
+	gContext->OMSetRenderTargets(1, gMainRenderTarget->getD3D11RenderTargetView().GetAddressOf(),
+		gMainRenderTarget->getD3D11DepthStencilView().Get());
 	
 	gRenderTarget = nullptr;
 
@@ -486,19 +487,15 @@ void BackendD3D11::setShader(ShaderHandle* handle)
 void BackendD3D11::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferD3D11*)handle;
-
 	auto stride = (UINT)buffer->getStride();
 	auto offset = (UINT)0;
-
 	gContext->IASetVertexBuffers(0, 1, buffer->getD3D11Buffer().GetAddressOf(), &stride, &offset);
 }
 
 void BackendD3D11::setIndexBuffer(IndexBufferHandle* handle)
 {
 	auto buffer = (IndexBufferD3D11*)handle;
-
 	auto stride = (UINT)buffer->getStride();
-
 	gContext->IASetIndexBuffer(buffer->getD3D11Buffer().Get(), buffer->getStride() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT, 0);
 }
 
@@ -605,12 +602,11 @@ void BackendD3D11::setTextureAddress(TextureAddress value)
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	auto rtv = gRenderTarget != nullptr ? gRenderTarget->getD3D11RenderTargetView() : gMainRenderTarget.render_target_view;
-	auto dsv = gRenderTarget != nullptr ? gRenderTarget->getD3D11DepthStencilView() : gMainRenderTarget.depth_stencil_view;
+	auto target = gRenderTarget ? gRenderTarget : gMainRenderTarget;
 
 	if (color.has_value())
 	{
-		gContext->ClearRenderTargetView(rtv.Get(), (float*)&color.value());
+		gContext->ClearRenderTargetView(target->getD3D11RenderTargetView().Get(), (float*)&color.value());
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -623,7 +619,7 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 		if (stencil.has_value())
 			flags |= D3D11_CLEAR_STENCIL;
 
-		gContext->ClearDepthStencilView(dsv.Get(), flags, depth.value_or(1.0f), stencil.value_or(0));
+		gContext->ClearDepthStencilView(target->getD3D11DepthStencilView().Get(), flags, depth.value_or(1.0f), stencil.value_or(0));
 	}
 }
 
@@ -651,12 +647,10 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto rtv = gRenderTarget ? 
-		gRenderTarget->getD3D11RenderTargetView() : 
-		gMainRenderTarget.render_target_view;
+	auto target = gRenderTarget ? gRenderTarget : gMainRenderTarget;
 
 	ComPtr<ID3D11Resource> rtv_resource;
-	rtv->GetResource(rtv_resource.GetAddressOf());
+	target->getD3D11RenderTargetView()->GetResource(rtv_resource.GetAddressOf());
 
 	ComPtr<ID3D11Texture2D> rtv_texture;
 	rtv_resource.As(&rtv_texture);
@@ -860,16 +854,9 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 {
 	ComPtr<ID3D11Texture2D> backbuffer;
 	gSwapChain->GetBuffer(0, IID_PPV_ARGS(backbuffer.GetAddressOf()));
-	gDevice->CreateRenderTargetView(backbuffer.Get(), NULL, gMainRenderTarget.render_target_view.GetAddressOf());
 
-	auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_D24_UNORM_S8_UINT, width, height);
-	tex_desc.MipLevels = 1;
-	tex_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-	gDevice->CreateTexture2D(&tex_desc, NULL, gMainRenderTarget.depth_stencil_texture.GetAddressOf());
-
-	auto dsv_desc = CD3D11_DEPTH_STENCIL_VIEW_DESC(D3D11_DSV_DIMENSION_TEXTURE2D, 
-		tex_desc.Format);
-	gDevice->CreateDepthStencilView(gMainRenderTarget.depth_stencil_texture.Get(), &dsv_desc, gMainRenderTarget.depth_stencil_view.GetAddressOf());
+	gBackbufferTexture = new TextureD3D11(width, height, skygfx::Format::Byte4, backbuffer);
+	gMainRenderTarget = new RenderTargetD3D11(width, height, gBackbufferTexture);
 	
 	gBackbufferWidth = width;
 	gBackbufferHeight = height;
@@ -877,9 +864,10 @@ void BackendD3D11::createMainRenderTarget(uint32_t width, uint32_t height)
 
 void BackendD3D11::destroyMainRenderTarget()
 {
-	gMainRenderTarget.depth_stencil_texture.Reset();
-	gMainRenderTarget.depth_stencil_view.Reset();
-	gMainRenderTarget.render_target_view.Reset();
+	delete gBackbufferTexture;
+	delete gMainRenderTarget;
+	gBackbufferTexture = nullptr;
+	gMainRenderTarget = nullptr;
 }
 
 void BackendD3D11::prepareForDrawing()
