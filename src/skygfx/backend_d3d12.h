@@ -63,13 +63,6 @@ namespace skygfx
 		UniformBufferHandle* createUniformBuffer(size_t size) override;
 		void destroyUniformBuffer(UniformBufferHandle* handle) override;
 		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
-
-	private:
-		void createMainRenderTarget(uint32_t width, uint32_t height);
-		void destroyMainRenderTarget();
-		void prepareForDrawing(bool indexed);
-		void begin();
-		void end();
 	};
 }
 

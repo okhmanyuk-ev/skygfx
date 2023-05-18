@@ -591,21 +591,7 @@ public:
 	}
 };
 
-// Prepare to render the next frame.
-void MoveToNextFrame()
-{
-	gContext->cmd_queue->Signal(gContext->fence.Get(), gContext->fence_value);
-	gContext->frame_index = gContext->swapchain->GetCurrentBackBufferIndex();
-	if (gContext->fence->GetCompletedValue() < gContext->fence_value)
-	{
-		gContext->fence->SetEventOnCompletion(gContext->fence_value, gContext->fence_event);
-		WaitForSingleObject(gContext->fence_event, INFINITE);
-	}
-	gContext->fence_value++;
-}
-
-// Wait for pending GPU work to complete.
-void WaitForGpu()
+static void WaitForGpu()
 {
 	gContext->cmd_queue->Signal(gContext->fence.Get(), gContext->fence_value);
 	gContext->fence->SetEventOnCompletion(gContext->fence_value, gContext->fence_event);
@@ -613,135 +599,7 @@ void WaitForGpu()
 	gContext->fence_value++;
 }
 
-BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
-{
-	gContext = new ContextD3D12();
-
-	ComPtr<ID3D12Debug5> debug;
-	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
-	debug->EnableDebugLayer();
-	debug->SetEnableAutoName(true);
-	debug->SetEnableGPUBasedValidation(true);
-	debug->SetEnableSynchronizedCommandQueueValidation(true);
-
-	ComPtr<IDXGIFactory6> dxgi_factory;
-	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
-
-	IDXGIAdapter1* adapter;
-	dxgi_factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
-
-	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gContext->device.GetAddressOf()));
-
-	ComPtr<ID3D12InfoQueue> info_queue;
-	gContext->device.As(&info_queue);
-	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
-	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
-	
-	std::vector<D3D12_MESSAGE_ID> filtered_messages = {
-		D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
-		D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
-		D3D12_MESSAGE_ID_DRAW_EMPTY_SCISSOR_RECTANGLE
-	};
-
-	D3D12_INFO_QUEUE_FILTER filter = {};
-	filter.DenyList.NumIDs = (UINT)filtered_messages.size();
-	filter.DenyList.pIDList = filtered_messages.data();
-	info_queue->AddStorageFilterEntries(&filter);
-
-	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
-	rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	rtv_heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
-	rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	rtv_heap_desc.NodeMask = 1;
-	gContext->device->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.rtv_heap.GetAddressOf()));
-
-	D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
-	dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	dsv_heap_desc.NumDescriptors = 1;
-	gContext->device->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.dsv_heap.GetAddressOf()));
-		
-	auto rtv_increment_size = gContext->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	auto rtv_heap_start = gContext->main_render_target.rtv_heap->GetCPUDescriptorHandleForHeapStart();
-
-	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
-	{
-		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
-		gContext->main_render_target.frames[i].rtv_descriptor = handle;
-	}
-
-	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
-	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-	queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	queue_desc.NodeMask = 1;
-	gContext->device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(gContext->cmd_queue.GetAddressOf()));
-	
-	gContext->device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-		IID_PPV_ARGS(gContext->cmd_alloc.GetAddressOf()));
-
-	gContext->device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, gContext->cmd_alloc.Get(),
-		NULL, IID_PPV_ARGS(gContext->cmdlist.GetAddressOf()));
-	
-	gContext->cmdlist->Close();
-	
-	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-	heap_desc.NumDescriptors = 1000; // TODO: make more dynamic
-	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	gContext->device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gContext->descriptor_heap.GetAddressOf()));
-
-	gContext->descriptor_handle_increment_size = gContext->device->GetDescriptorHandleIncrementSize(heap_desc.Type);
-
-	gContext->descriptor_heap_cpu_handle = gContext->descriptor_heap->GetCPUDescriptorHandleForHeapStart();
-	gContext->descriptor_heap_gpu_handle = gContext->descriptor_heap->GetGPUDescriptorHandleForHeapStart();
-
-	DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {};
-	swapchain_desc.BufferCount = NUM_BACK_BUFFERS;
-	swapchain_desc.Width = width;
-	swapchain_desc.Height = height;
-	swapchain_desc.Format = MainRenderTargetColorAttachmentFormat;
-	swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapchain_desc.SampleDesc.Count = 1;
-	swapchain_desc.SampleDesc.Quality = 0;
-	swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	swapchain_desc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-	swapchain_desc.Scaling = DXGI_SCALING_NONE;
-	swapchain_desc.Stereo = FALSE;
-
-	DXGI_SWAP_CHAIN_FULLSCREEN_DESC fs_swapchain_desc = { 0 };
-	fs_swapchain_desc.Windowed = TRUE;
-
-	ComPtr<IDXGISwapChain1> swapchain;
-	dxgi_factory->CreateSwapChainForHwnd(gContext->cmd_queue.Get(), (HWND)window,
-		&swapchain_desc, &fs_swapchain_desc, NULL, swapchain.GetAddressOf());
-		
-	swapchain.As(&gContext->swapchain);
-
-	gContext->device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gContext->fence.GetAddressOf()));
-	gContext->fence_value = 1;
-	gContext->fence_event = CreateEvent(NULL, FALSE, FALSE, NULL);
-	assert(gContext->fence_event != NULL);
-	
-	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
-	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
-
-	createMainRenderTarget(width, height);
-
-	begin();
-}
-
-BackendD3D12::~BackendD3D12()
-{
-	end();
-	WaitForGpu();
-	gContext->execute_after_present.flush();
-	destroyMainRenderTarget();
-
-	delete gContext;
-	gContext = nullptr;
-}
-
-void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
+static void CreateMainRenderTarget(uint32_t width, uint32_t height)
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
@@ -772,7 +630,7 @@ void BackendD3D12::createMainRenderTarget(uint32_t width, uint32_t height)
 	gContext->frame_index = gContext->swapchain->GetCurrentBackBufferIndex();
 }
 
-void BackendD3D12::destroyMainRenderTarget()
+static void DestroyMainRenderTarget()
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
@@ -782,355 +640,7 @@ void BackendD3D12::destroyMainRenderTarget()
 	gContext->main_render_target.depth_stencil_resource.Reset();
 }
 
-void BackendD3D12::resize(uint32_t width, uint32_t height)
-{
-	end();
-	WaitForGpu();
-	destroyMainRenderTarget();
-	gContext->swapchain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, MainRenderTargetColorAttachmentFormat, 0);
-	createMainRenderTarget(width, height);
-	begin();
-
-	if (!gContext->viewport.has_value())
-		gContext->viewport_dirty = true;
-	
-	if (!gContext->scissor.has_value())
-		gContext->scissor_dirty = true;
-}
-
-void BackendD3D12::setTopology(Topology topology)
-{
-	if (gContext->topology == topology)
-		return;
-
-	gContext->topology = topology;
-	gContext->topology_dirty = true;
-	gContext->pipeline_state.topology_kind = GetTopologyKind(topology);
-}
-
-void BackendD3D12::setViewport(std::optional<Viewport> viewport)
-{
-	if (gContext->viewport != viewport)
-		gContext->viewport_dirty = true;
-
-	gContext->viewport = viewport;
-}
-
-void BackendD3D12::setScissor(std::optional<Scissor> scissor)
-{
-	if (gContext->scissor != scissor)
-		gContext->scissor_dirty = true;
-
-	gContext->scissor = scissor;
-}
-
-void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
-{
-	auto texture = (TextureD3D12*)handle;
-	gContext->textures[binding] = texture;
-}
-
-void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
-{
-	auto render_target = (RenderTargetD3D12*)handle;
-		
-	if (gContext->render_target == render_target)
-		return;
-
-	gContext->pipeline_state.color_attachment_format = FormatMap.at(render_target->getTexture()->getFormat());
-	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
-	gContext->render_target = render_target;
-
-	if (!gContext->viewport.has_value())
-		gContext->viewport_dirty = true;
-
-	if (!gContext->scissor.has_value())
-		gContext->scissor_dirty = true;
-}
-
-void BackendD3D12::setRenderTarget(std::nullopt_t value)
-{
-	if (gContext->render_target == nullptr)
-		return;
-
-	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
-	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
-	gContext->render_target = nullptr;
-
-	if (!gContext->viewport.has_value())
-		gContext->viewport_dirty = true;
-
-	if (!gContext->scissor.has_value())
-		gContext->scissor_dirty = true;
-}
-
-void BackendD3D12::setShader(ShaderHandle* handle)
-{
-	gContext->pipeline_state.shader = (ShaderD3D12*)handle;
-}
-
-void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
-{
-	auto buffer = (VertexBufferD3D12*)handle;
-	
-	if (gContext->vertex_buffer == buffer)
-		return;
-	
-	gContext->vertex_buffer = buffer;
-	gContext->vertex_buffer_dirty = true;
-}
-
-void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
-{
-	auto buffer = (IndexBufferD3D12*)handle;
-
-	if (gContext->index_buffer == buffer)
-		return;
-
-	gContext->index_buffer = buffer;
-	gContext->index_buffer_dirty = true;
-}
-
-void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
-{
-	auto buffer = (UniformBufferD3D12*)handle;
-	gContext->uniform_buffers[binding] = buffer;
-}
-
-void BackendD3D12::setBlendMode(const BlendMode& value)
-{
-	gContext->pipeline_state.blend_mode = value;
-}
-
-void BackendD3D12::setDepthMode(std::optional<DepthMode> depth_mode)
-{
-	gContext->pipeline_state.depth_mode = depth_mode;
-}
-
-void BackendD3D12::setStencilMode(std::optional<StencilMode> stencil_mode)
-{
-}
-
-void BackendD3D12::setCullMode(CullMode cull_mode)
-{
-	gContext->pipeline_state.rasterizer_state.cull_mode = cull_mode;;
-}
-
-void BackendD3D12::setSampler(Sampler value)
-{
-}
-
-void BackendD3D12::setTextureAddress(TextureAddress value)
-{
-}
-
-void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
-	const std::optional<uint8_t>& stencil)
-{
-	const auto& rtv = gContext->render_target ?
-		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->main_render_target.frames[gContext->frame_index].rtv_descriptor;
-
-	const auto& dsv = gContext->render_target ?
-		gContext->render_target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart();
-
-	if (gContext->render_target)
-	{
-		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
-	}
-
-	if (color.has_value())
-	{
-		gContext->cmdlist->ClearRenderTargetView(rtv, (float*)&color.value(), 0, NULL);
-	}
-
-	if (depth.has_value() || stencil.has_value())
-	{
-		D3D12_CLEAR_FLAGS flags = {};
-
-		if (depth.has_value())
-			flags |= D3D12_CLEAR_FLAG_DEPTH;
-
-		if (stencil.has_value())
-			flags |= D3D12_CLEAR_FLAG_STENCIL;
-
-		gContext->cmdlist->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
-	}
-}
-
-void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset)
-{
-	prepareForDrawing(false);
-	gContext->cmdlist->DrawInstanced((UINT)vertex_count, 1, (UINT)vertex_offset, 0);
-}
-
-void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset)
-{
-	prepareForDrawing(true);
-	gContext->cmdlist->DrawIndexedInstanced((UINT)index_count, 1, (UINT)index_offset, 0, 0);
-}
-
-void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
-{
-	auto dst_texture = (TextureD3D12*)dst_texture_handle;
-	auto format = gContext->getBackbufferFormat();
-
-	assert(dst_texture->getWidth() == size.x);
-	assert(dst_texture->getHeight() == size.y);
-	assert(dst_texture->getFormat() == format);
-
-	if (size.x <= 0 || size.y <= 0)
-		return;
-
-	auto rtv_resource = gContext->render_target ?
-		gContext->render_target->getTexture()->getD3D12Texture() :
-		gContext->main_render_target.frames[gContext->frame_index].resource;
-
-	auto desc = rtv_resource->GetDesc();
-
-	auto back_w = desc.Width;
-	auto back_h = desc.Height;
-
-	auto src_x = (UINT)pos.x;
-	auto src_y = (UINT)pos.y;
-	auto src_w = (UINT)size.x;
-	auto src_h = (UINT)size.y;
-
-	UINT dst_x = 0;
-	UINT dst_y = 0;
-
-	if (pos.x < 0)
-	{
-		src_x = 0;
-		if (-pos.x > size.x)
-			src_w = 0;
-		else
-			src_w += pos.x;
-
-		dst_x = -pos.x;
-	}
-
-	if (pos.y < 0)
-	{
-		src_y = 0;
-		if (-pos.y > size.y)
-			src_h = 0;
-		else
-			src_h += pos.y;
-
-		dst_y = -pos.y;
-	}
-
-	if (pos.y >= (int)back_h || pos.x >= (int)back_w)
-		return;
-
-	src_w = glm::min(src_w, (UINT)back_w);
-	src_h = glm::min(src_h, (UINT)back_h);
-
-	D3D12_BOX box;
-	box.left = src_x;
-	box.right = src_x + src_w;
-	box.top = src_y;
-	box.bottom = src_y + src_h;
-	box.front = 0;
-	box.back = 1;
-
-	if (gContext->render_target) // TODO: remove this if-else when main-render-target will be same class as render_target
-	{
-		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
-	}
-	else
-	{
-		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
-	}
-
-	dst_texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
-
-	auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(rtv_resource.Get(), 0);
-	auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
-
-	gContext->cmdlist->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
-
-	if (!gContext->render_target) // TODO: remove this barrier setup when main-render-target will be same class as render_target
-	{
-		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-	}
-
-	if (dst_texture->isMipmap())
-		dst_texture->generateMips(gContext->cmdlist.Get(), gContext->staging_objects);
-}
-
-std::vector<uint8_t> BackendD3D12::getPixels()
-{
-	auto width = gContext->getBackbufferWidth();
-	auto height = gContext->getBackbufferHeight();
-	auto format = gContext->getBackbufferFormat();
-	auto channels_count = GetFormatChannelsCount(format);
-	auto channel_size = GetFormatChannelSize(format);
-
-	std::vector<uint8_t> result(width * height * channels_count * channel_size);
-
-	auto texture = TextureD3D12(width, height, format, nullptr, false);
-
-	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);	
-
-	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), true);
-
-	auto texture_desc = texture.getD3D12Texture()->GetDesc();
-
-	UINT64 required_size = 0;
-	UINT num_subresources = texture_desc.DepthOrArraySize * texture_desc.MipLevels;
-	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(num_subresources);
-	std::vector<UINT> num_rows(num_subresources);
-	std::vector<UINT64> row_sizes_in_bytes(num_subresources);
-	
-	gContext->device->GetCopyableFootprints(&texture_desc, 0, num_subresources, 0, layouts.data(),
-		num_rows.data(), row_sizes_in_bytes.data(), &required_size);
-
-	auto staging_buffer = CreateBuffer(required_size);
-
-	OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
-		texture.ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-		for (UINT i = 0; i < num_subresources; ++i)
-		{
-			auto src_loc = CD3DX12_TEXTURE_COPY_LOCATION(texture.getD3D12Texture().Get(), i);
-			auto dst_loc = CD3DX12_TEXTURE_COPY_LOCATION(staging_buffer.Get(), layouts[i]);
-			cmdlist->CopyTextureRegion(&dst_loc, 0, 0, 0, &src_loc, nullptr);
-		}
-	});
-
-	UINT8* ptr = nullptr;
-	staging_buffer->Map(0, nullptr, reinterpret_cast<void**>(&ptr));
-
-	auto dst_row_size = width * channels_count * channel_size;
-
-	for (UINT i = 0; i < num_subresources; ++i)
-	{
-		UINT8* src_ptr = ptr + layouts[i].Offset;
-		UINT8* dst_ptr = result.data() + layouts[i].Offset;
-
-		for (UINT j = 0; j < num_rows[i]; ++j)
-		{
-			memcpy(dst_ptr, src_ptr, dst_row_size);
-			src_ptr += layouts[i].Footprint.RowPitch;
-			dst_ptr += dst_row_size;
-		}
-
-		break; // we save use only first level
-	}
-
-	staging_buffer->Unmap(0, nullptr);
-
-	BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
-	
-	return result;
-}
-
-void BackendD3D12::prepareForDrawing(bool indexed)
+static void PrepareForDrawing(bool indexed)
 {
 	auto shader = gContext->pipeline_state.shader;
 	assert(shader);
@@ -1367,18 +877,7 @@ void BackendD3D12::prepareForDrawing(bool indexed)
 	}
 }
 
-void BackendD3D12::present()
-{
-	end();
-	bool vsync = false;
-	gContext->swapchain->Present(vsync ? 1 : 0, 0);
-	MoveToNextFrame();
-	gContext->execute_after_present.flush();
-	gContext->staging_objects.clear();
-	begin();
-}
-
-void BackendD3D12::begin()
+static void Begin()
 {
 	BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
 
@@ -1392,12 +891,499 @@ void BackendD3D12::begin()
 	gContext->vertex_buffer_dirty = true;
 }
 
-void BackendD3D12::end()
+static void End()
 {
 	TransitionResource(gContext->cmdlist.Get(), gContext->main_render_target.frames[gContext->frame_index].resource.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 
 	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), false);
+}
+
+BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
+{
+	gContext = new ContextD3D12();
+
+	ComPtr<ID3D12Debug5> debug;
+	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
+	debug->EnableDebugLayer();
+	debug->SetEnableAutoName(true);
+	debug->SetEnableGPUBasedValidation(true);
+	debug->SetEnableSynchronizedCommandQueueValidation(true);
+
+	ComPtr<IDXGIFactory6> dxgi_factory;
+	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
+
+	IDXGIAdapter1* adapter;
+	dxgi_factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
+
+	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(gContext->device.GetAddressOf()));
+
+	ComPtr<ID3D12InfoQueue> info_queue;
+	gContext->device.As(&info_queue);
+	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+
+	std::vector<D3D12_MESSAGE_ID> filtered_messages = {
+		D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE,
+		D3D12_MESSAGE_ID_CLEARDEPTHSTENCILVIEW_MISMATCHINGCLEARVALUE,
+		D3D12_MESSAGE_ID_DRAW_EMPTY_SCISSOR_RECTANGLE
+	};
+
+	D3D12_INFO_QUEUE_FILTER filter = {};
+	filter.DenyList.NumIDs = (UINT)filtered_messages.size();
+	filter.DenyList.pIDList = filtered_messages.data();
+	info_queue->AddStorageFilterEntries(&filter);
+
+	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
+	rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtv_heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
+	rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtv_heap_desc.NodeMask = 1;
+	gContext->device->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.rtv_heap.GetAddressOf()));
+
+	D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
+	dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsv_heap_desc.NumDescriptors = 1;
+	gContext->device->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.dsv_heap.GetAddressOf()));
+		
+	auto rtv_increment_size = gContext->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	auto rtv_heap_start = gContext->main_render_target.rtv_heap->GetCPUDescriptorHandleForHeapStart();
+
+	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
+	{
+		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
+		gContext->main_render_target.frames[i].rtv_descriptor = handle;
+	}
+
+	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
+	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	queue_desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	queue_desc.NodeMask = 1;
+	gContext->device->CreateCommandQueue(&queue_desc, IID_PPV_ARGS(gContext->cmd_queue.GetAddressOf()));
+	
+	gContext->device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+		IID_PPV_ARGS(gContext->cmd_alloc.GetAddressOf()));
+
+	gContext->device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, gContext->cmd_alloc.Get(),
+		NULL, IID_PPV_ARGS(gContext->cmdlist.GetAddressOf()));
+	
+	gContext->cmdlist->Close();
+	
+	D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
+	heap_desc.NumDescriptors = 1000; // TODO: make more dynamic
+	heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	gContext->device->CreateDescriptorHeap(&heap_desc, IID_PPV_ARGS(gContext->descriptor_heap.GetAddressOf()));
+
+	gContext->descriptor_handle_increment_size = gContext->device->GetDescriptorHandleIncrementSize(heap_desc.Type);
+
+	gContext->descriptor_heap_cpu_handle = gContext->descriptor_heap->GetCPUDescriptorHandleForHeapStart();
+	gContext->descriptor_heap_gpu_handle = gContext->descriptor_heap->GetGPUDescriptorHandleForHeapStart();
+
+	DXGI_SWAP_CHAIN_DESC1 swapchain_desc = {};
+	swapchain_desc.BufferCount = NUM_BACK_BUFFERS;
+	swapchain_desc.Width = width;
+	swapchain_desc.Height = height;
+	swapchain_desc.Format = MainRenderTargetColorAttachmentFormat;
+	swapchain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchain_desc.SampleDesc.Count = 1;
+	swapchain_desc.SampleDesc.Quality = 0;
+	swapchain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapchain_desc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+	swapchain_desc.Scaling = DXGI_SCALING_NONE;
+	swapchain_desc.Stereo = FALSE;
+
+	DXGI_SWAP_CHAIN_FULLSCREEN_DESC fs_swapchain_desc = { 0 };
+	fs_swapchain_desc.Windowed = TRUE;
+
+	ComPtr<IDXGISwapChain1> swapchain;
+	dxgi_factory->CreateSwapChainForHwnd(gContext->cmd_queue.Get(), (HWND)window,
+		&swapchain_desc, &fs_swapchain_desc, NULL, swapchain.GetAddressOf());
+		
+	swapchain.As(&gContext->swapchain);
+
+	gContext->device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gContext->fence.GetAddressOf()));
+	gContext->fence_value = 1;
+	gContext->fence_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+	assert(gContext->fence_event != NULL);
+	
+	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
+
+	CreateMainRenderTarget(width, height);
+	Begin();
+}
+
+BackendD3D12::~BackendD3D12()
+{
+	End();
+	WaitForGpu();
+	gContext->execute_after_present.flush();
+	DestroyMainRenderTarget();
+
+	delete gContext;
+	gContext = nullptr;
+}
+
+void BackendD3D12::resize(uint32_t width, uint32_t height)
+{
+	End();
+	WaitForGpu();
+	DestroyMainRenderTarget();
+	gContext->swapchain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, MainRenderTargetColorAttachmentFormat, 0);
+	CreateMainRenderTarget(width, height);
+	Begin();
+
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
+	
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
+}
+
+void BackendD3D12::setTopology(Topology topology)
+{
+	if (gContext->topology == topology)
+		return;
+
+	gContext->topology = topology;
+	gContext->topology_dirty = true;
+	gContext->pipeline_state.topology_kind = GetTopologyKind(topology);
+}
+
+void BackendD3D12::setViewport(std::optional<Viewport> viewport)
+{
+	if (gContext->viewport != viewport)
+		gContext->viewport_dirty = true;
+
+	gContext->viewport = viewport;
+}
+
+void BackendD3D12::setScissor(std::optional<Scissor> scissor)
+{
+	if (gContext->scissor != scissor)
+		gContext->scissor_dirty = true;
+
+	gContext->scissor = scissor;
+}
+
+void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
+{
+	auto texture = (TextureD3D12*)handle;
+	gContext->textures[binding] = texture;
+}
+
+void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
+{
+	auto render_target = (RenderTargetD3D12*)handle;
+		
+	if (gContext->render_target == render_target)
+		return;
+
+	gContext->pipeline_state.color_attachment_format = FormatMap.at(render_target->getTexture()->getFormat());
+	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
+	gContext->render_target = render_target;
+
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
+
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
+}
+
+void BackendD3D12::setRenderTarget(std::nullopt_t value)
+{
+	if (gContext->render_target == nullptr)
+		return;
+
+	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
+	gContext->render_target = nullptr;
+
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
+
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
+}
+
+void BackendD3D12::setShader(ShaderHandle* handle)
+{
+	gContext->pipeline_state.shader = (ShaderD3D12*)handle;
+}
+
+void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
+{
+	auto buffer = (VertexBufferD3D12*)handle;
+	
+	if (gContext->vertex_buffer == buffer)
+		return;
+	
+	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer_dirty = true;
+}
+
+void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
+{
+	auto buffer = (IndexBufferD3D12*)handle;
+
+	if (gContext->index_buffer == buffer)
+		return;
+
+	gContext->index_buffer = buffer;
+	gContext->index_buffer_dirty = true;
+}
+
+void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
+{
+	auto buffer = (UniformBufferD3D12*)handle;
+	gContext->uniform_buffers[binding] = buffer;
+}
+
+void BackendD3D12::setBlendMode(const BlendMode& value)
+{
+	gContext->pipeline_state.blend_mode = value;
+}
+
+void BackendD3D12::setDepthMode(std::optional<DepthMode> depth_mode)
+{
+	gContext->pipeline_state.depth_mode = depth_mode;
+}
+
+void BackendD3D12::setStencilMode(std::optional<StencilMode> stencil_mode)
+{
+}
+
+void BackendD3D12::setCullMode(CullMode cull_mode)
+{
+	gContext->pipeline_state.rasterizer_state.cull_mode = cull_mode;;
+}
+
+void BackendD3D12::setSampler(Sampler value)
+{
+}
+
+void BackendD3D12::setTextureAddress(TextureAddress value)
+{
+}
+
+void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
+	const std::optional<uint8_t>& stencil)
+{
+	const auto& rtv = gContext->render_target ?
+		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gContext->main_render_target.frames[gContext->frame_index].rtv_descriptor;
+
+	const auto& dsv = gContext->render_target ?
+		gContext->render_target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
+		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart();
+
+	if (gContext->render_target)
+	{
+		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
+
+	if (color.has_value())
+	{
+		gContext->cmdlist->ClearRenderTargetView(rtv, (float*)&color.value(), 0, NULL);
+	}
+
+	if (depth.has_value() || stencil.has_value())
+	{
+		D3D12_CLEAR_FLAGS flags = {};
+
+		if (depth.has_value())
+			flags |= D3D12_CLEAR_FLAG_DEPTH;
+
+		if (stencil.has_value())
+			flags |= D3D12_CLEAR_FLAG_STENCIL;
+
+		gContext->cmdlist->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
+	}
+}
+
+void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset)
+{
+	PrepareForDrawing(false);
+	gContext->cmdlist->DrawInstanced((UINT)vertex_count, 1, (UINT)vertex_offset, 0);
+}
+
+void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset)
+{
+	PrepareForDrawing(true);
+	gContext->cmdlist->DrawIndexedInstanced((UINT)index_count, 1, (UINT)index_offset, 0, 0);
+}
+
+void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
+{
+	auto dst_texture = (TextureD3D12*)dst_texture_handle;
+	auto format = gContext->getBackbufferFormat();
+
+	assert(dst_texture->getWidth() == size.x);
+	assert(dst_texture->getHeight() == size.y);
+	assert(dst_texture->getFormat() == format);
+
+	if (size.x <= 0 || size.y <= 0)
+		return;
+
+	auto rtv_resource = gContext->render_target ?
+		gContext->render_target->getTexture()->getD3D12Texture() :
+		gContext->main_render_target.frames[gContext->frame_index].resource;
+
+	auto desc = rtv_resource->GetDesc();
+
+	auto back_w = desc.Width;
+	auto back_h = desc.Height;
+
+	auto src_x = (UINT)pos.x;
+	auto src_y = (UINT)pos.y;
+	auto src_w = (UINT)size.x;
+	auto src_h = (UINT)size.y;
+
+	UINT dst_x = 0;
+	UINT dst_y = 0;
+
+	if (pos.x < 0)
+	{
+		src_x = 0;
+		if (-pos.x > size.x)
+			src_w = 0;
+		else
+			src_w += pos.x;
+
+		dst_x = -pos.x;
+	}
+
+	if (pos.y < 0)
+	{
+		src_y = 0;
+		if (-pos.y > size.y)
+			src_h = 0;
+		else
+			src_h += pos.y;
+
+		dst_y = -pos.y;
+	}
+
+	if (pos.y >= (int)back_h || pos.x >= (int)back_w)
+		return;
+
+	src_w = glm::min(src_w, (UINT)back_w);
+	src_h = glm::min(src_h, (UINT)back_h);
+
+	D3D12_BOX box;
+	box.left = src_x;
+	box.right = src_x + src_w;
+	box.top = src_y;
+	box.bottom = src_y + src_h;
+	box.front = 0;
+	box.back = 1;
+
+	if (gContext->render_target) // TODO: remove this if-else when main-render-target will be same class as render_target
+	{
+		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
+	}
+	else
+	{
+		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+	}
+
+	dst_texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
+
+	auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(rtv_resource.Get(), 0);
+	auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
+
+	gContext->cmdlist->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
+
+	if (!gContext->render_target) // TODO: remove this barrier setup when main-render-target will be same class as render_target
+	{
+		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+			D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
+
+	if (dst_texture->isMipmap())
+		dst_texture->generateMips(gContext->cmdlist.Get(), gContext->staging_objects);
+}
+
+std::vector<uint8_t> BackendD3D12::getPixels()
+{
+	auto width = gContext->getBackbufferWidth();
+	auto height = gContext->getBackbufferHeight();
+	auto format = gContext->getBackbufferFormat();
+	auto channels_count = GetFormatChannelsCount(format);
+	auto channel_size = GetFormatChannelSize(format);
+
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
+
+	auto texture = TextureD3D12(width, height, format, nullptr, false);
+
+	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);	
+
+	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), true);
+
+	auto texture_desc = texture.getD3D12Texture()->GetDesc();
+
+	UINT64 required_size = 0;
+	UINT num_subresources = texture_desc.DepthOrArraySize * texture_desc.MipLevels;
+	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(num_subresources);
+	std::vector<UINT> num_rows(num_subresources);
+	std::vector<UINT64> row_sizes_in_bytes(num_subresources);
+	
+	gContext->device->GetCopyableFootprints(&texture_desc, 0, num_subresources, 0, layouts.data(),
+		num_rows.data(), row_sizes_in_bytes.data(), &required_size);
+
+	auto staging_buffer = CreateBuffer(required_size);
+
+	OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
+		texture.ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		for (UINT i = 0; i < num_subresources; ++i)
+		{
+			auto src_loc = CD3DX12_TEXTURE_COPY_LOCATION(texture.getD3D12Texture().Get(), i);
+			auto dst_loc = CD3DX12_TEXTURE_COPY_LOCATION(staging_buffer.Get(), layouts[i]);
+			cmdlist->CopyTextureRegion(&dst_loc, 0, 0, 0, &src_loc, nullptr);
+		}
+	});
+
+	UINT8* ptr = nullptr;
+	staging_buffer->Map(0, nullptr, reinterpret_cast<void**>(&ptr));
+
+	auto dst_row_size = width * channels_count * channel_size;
+
+	for (UINT i = 0; i < num_subresources; ++i)
+	{
+		UINT8* src_ptr = ptr + layouts[i].Offset;
+		UINT8* dst_ptr = result.data() + layouts[i].Offset;
+
+		for (UINT j = 0; j < num_rows[i]; ++j)
+		{
+			memcpy(dst_ptr, src_ptr, dst_row_size);
+			src_ptr += layouts[i].Footprint.RowPitch;
+			dst_ptr += dst_row_size;
+		}
+
+		break; // we save use only first level
+	}
+
+	staging_buffer->Unmap(0, nullptr);
+
+	BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
+	
+	return result;
+}
+
+void BackendD3D12::present()
+{
+	End();
+	bool vsync = false;
+	gContext->swapchain->Present(vsync ? 1 : 0, 0);
+	gContext->frame_index = gContext->swapchain->GetCurrentBackBufferIndex();
+	WaitForGpu();
+	gContext->execute_after_present.flush();
+	gContext->staging_objects.clear();
+	Begin();
 }
 
 TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
