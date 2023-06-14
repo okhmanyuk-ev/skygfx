@@ -2039,6 +2039,11 @@ void BackendVK::resize(uint32_t width, uint32_t height)
 	Begin();
 }
 
+void BackendVK::setVsync(bool value)
+{
+	// TODO: implement
+}
+
 void BackendVK::setTopology(Topology topology)
 {
 	if (gContext->topology == topology)

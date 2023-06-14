@@ -575,6 +575,11 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 		gContext->viewport_dirty = true;
 }
 
+void BackendD3D11::setVsync(bool value)
+{
+	// TODO: implement
+}
+
 void BackendD3D11::setTopology(Topology topology)
 {
 	const static std::unordered_map<Topology, D3D11_PRIMITIVE_TOPOLOGY> TopologyMap = {

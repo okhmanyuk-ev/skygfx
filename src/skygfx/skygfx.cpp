@@ -11,6 +11,7 @@ using namespace skygfx;
 static Backend* gBackend = nullptr;
 static RaytracingBackend* gRaytracingBackend = nullptr;
 static glm::u32vec2 gSize = { 0, 0 };
+static bool gVsync = false;
 static std::optional<glm::u32vec2> gRenderTargetSize;
 static Format gBackbufferFormat;
 static BackendType gBackendType = BackendType::OpenGL;
@@ -316,6 +317,8 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 	if (gBackend == nullptr)
 		throw std::runtime_error("backend not implemented");
 
+	SetVsync(false);
+
 	gSize = { width, height };
 	gRenderTargetSize.reset();
 	gBackendType = type;
@@ -351,6 +354,17 @@ void skygfx::Resize(uint32_t width, uint32_t height)
 {
 	gBackend->resize(width, height);
 	gSize = { width, height };
+}
+
+void skygfx::SetVsync(bool value)
+{
+	gBackend->setVsync(value);
+	gVsync = value;
+}
+
+bool skygfx::IsVsyncEnabled()
+{
+	return gVsync;
 }
 
 void skygfx::SetTopology(Topology topology)

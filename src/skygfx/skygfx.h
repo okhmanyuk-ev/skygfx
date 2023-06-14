@@ -560,6 +560,9 @@ namespace skygfx
 
 	void Resize(uint32_t width, uint32_t height);
 
+	void SetVsync(bool value);
+	bool IsVsyncEnabled();
+
 	void SetTopology(Topology topology);
 	void SetViewport(const std::optional<Viewport>& viewport);
 	void SetScissor(const std::optional<Scissor>& scissor);

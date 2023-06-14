@@ -699,8 +699,6 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	glEnable(GL_DEBUG_OUTPUT);
 	glDebugMessageCallback(DebugMessageCallback, 0);
 
-	bool vsync = false;
-	wglSwapIntervalEXT(vsync ? 1 : 0);
 #elif defined(SKYGFX_PLATFORM_IOS)
 	auto _window = (UIWindow*)window;
 	auto rootView = [[_window rootViewController] view];
@@ -840,6 +838,13 @@ void BackendGL::resize(uint32_t width, uint32_t height)
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
+}
+
+void BackendGL::setVsync(bool value)
+{
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+	wglSwapIntervalEXT(value ? 1 : 0);
+#endif
 }
 
 void BackendGL::setTopology(Topology topology)

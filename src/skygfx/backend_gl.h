@@ -14,6 +14,7 @@ namespace skygfx
 		~BackendGL();
 
 		void resize(uint32_t width, uint32_t height) override;
+		void setVsync(bool value) override;
 
 		void setTopology(Topology topology) override;
 		void setViewport(std::optional<Viewport> viewport) override;

@@ -1042,6 +1042,11 @@ void BackendD3D12::resize(uint32_t width, uint32_t height)
 		gContext->scissor_dirty = true;
 }
 
+void BackendD3D12::setVsync(bool value)
+{
+	// TODO: implement
+}
+
 void BackendD3D12::setTopology(Topology topology)
 {
 	if (gContext->topology == topology)
