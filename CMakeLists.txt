@@ -80,7 +80,7 @@ endif()
 
 # glew
 
-if (NOT ANDROID)
+if (NOT ANDROID AND NOT EMSCRIPTEN)
 	if (NOT TARGET glew)
 		file(GLOB GLEW_SRC 
 			lib/glew/src/glew.c
