@@ -316,45 +316,49 @@ utils::Mesh::Mesh()
 {
 }
 
-utils::Mesh::Mesh(Vertices vertices)
+utils::Mesh::Mesh(const Vertices& vertices)
 {
-	setVertices(std::move(vertices));
+	setVertices(vertices);
 }
 
-utils::Mesh::Mesh(Vertices vertices, Indices indices)
+utils::Mesh::Mesh(const Vertices& vertices, const Indices& indices)
 {
-	setVertices(std::move(vertices));
-	setIndices(std::move(indices));
+	setVertices(vertices);
+	setIndices(indices);
 }
 
-void utils::Mesh::setVertices(Vertices value)
+void utils::Mesh::setVertices(const Vertex* memory, uint32_t count)
 {
-	if (value.empty())
-		return;
-
-	size_t size = value.size() * sizeof(Vertices::value_type);
-	size_t stride = sizeof(Vertices::value_type);
+	size_t size = count * sizeof(Vertex);
+	size_t stride = sizeof(Vertex);
 
 	if (!mVertexBuffer.has_value() || mVertexBuffer.value().getSize() < size)
 		mVertexBuffer.emplace(size, stride);
 
-	mVertexBuffer.value().write(value);
-	mVertices = std::move(value);
+	mVertexBuffer.value().write(memory, count);
+	mVertexCount = count;
 }
 
-void utils::Mesh::setIndices(Indices value)
+void utils::Mesh::setVertices(const Vertices& value)
 {
-	if (value.empty())
-		return;
+	setVertices(value.data(), value.size());
+}
 
-	size_t size = value.size() * sizeof(Indices::value_type);
-	size_t stride = sizeof(Indices::value_type);
+void utils::Mesh::setIndices(const Index* memory, uint32_t count)
+{
+	size_t size = count * sizeof(Index);
+	size_t stride = sizeof(Index);
 
 	if (!mIndexBuffer.has_value() || mIndexBuffer.value().getSize() < size)
 		mIndexBuffer.emplace(size, stride);
 
-	mIndexBuffer.value().write(value);
-	mIndices = std::move(value);
+	mIndexBuffer.value().write(memory, count);
+	mIndexCount = count;
+}
+
+void utils::Mesh::setIndices(const Indices& value)
+{
+	setIndices(value.data(), value.size());
 }
 
 utils::effects::BloomDownsample::BloomDownsample(const glm::vec2& _resolution, uint32_t _step_number) :
@@ -732,7 +736,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 			
 				if (!draw_command.has_value())
 				{
-					if (mesh->getIndices().empty())
+					if (mesh->getIndexCount() == 0)
 						draw_command = DrawVerticesCommand{};
 					else
 						draw_command = DrawIndexedVerticesCommand{};
@@ -740,15 +744,13 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 				std::visit(cases{
 					[&](const DrawVerticesCommand& draw) {
-						const auto& vertices = mesh->getVertices();
-						auto vertex_count = draw.vertex_count.value_or(static_cast<uint32_t>(vertices.size()));
+						auto vertex_count = draw.vertex_count.value_or(mesh->getVertexCount());
 						auto vertex_offset = draw.vertex_offset;
 
 						::Draw(vertex_count, vertex_offset);
 					},
 					[&](const DrawIndexedVerticesCommand& draw) {
-						const auto& indices = mesh->getIndices();			
-						auto index_count = draw.index_count.value_or(static_cast<uint32_t>(indices.size()));
+						auto index_count = draw.index_count.value_or(mesh->getIndexCount());
 						auto index_offset = draw.index_offset;
 
 						DrawIndexed(index_count, index_offset);

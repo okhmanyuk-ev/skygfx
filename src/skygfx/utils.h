@@ -15,23 +15,26 @@ namespace skygfx::utils
 
 	public:
 		Mesh();
-		Mesh(Vertices vertices);
-		Mesh(Vertices vertices, Indices indices);
+		Mesh(const Vertices& vertices);
+		Mesh(const Vertices& vertices, const Indices& indices);
 
 	public:
 		auto getTopology() const { return mTopology; }
 		void setTopology(Topology value) { mTopology = value; }
 
-		const auto& getVertices() const { return mVertices; }
-		void setVertices(Vertices value);
+		void setVertices(const Vertex* memory, uint32_t count);
+		void setVertices(const Vertices& value);
 
-		const auto& getIndices() const { return mIndices; }
-		void setIndices(Indices value);
+		void setIndices(const Index* memory, uint32_t count);
+		void setIndices(const Indices& value);
+
+		auto getVertexCount() const { return mVertexCount; }
+		auto getIndexCount() const { return mIndexCount; }
 
 	private:
 		Topology mTopology = Topology::TriangleList;
-		Vertices mVertices;
-		Indices mIndices;
+		uint32_t mVertexCount = 0;
+		uint32_t mIndexCount = 0;
 
 	public:		
 		const auto& getVertexBuffer() const { return mVertexBuffer; }
