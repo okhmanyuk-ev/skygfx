@@ -175,7 +175,7 @@ namespace skygfx::utils
 			std::vector<uint8_t> uniform_data;
 		};
 
-		struct SetBlendMode { BlendMode blend_mode = BlendStates::NonPremultiplied; };
+		struct SetBlendMode { std::optional<BlendMode> blend_mode; };
 		struct SetSampler { Sampler sampler = Sampler::Linear; };
 		struct SetMesh { const Mesh* mesh; };
 		struct SetColorTexture { const Texture* color_texture; };
@@ -218,7 +218,7 @@ namespace skygfx::utils
 		struct InsertSubcommands { Commands* subcommands; };
 	}
 
-	void SetBlendMode(Commands& cmds, BlendMode blend_mode);
+	void SetBlendMode(Commands& cmds, std::optional<BlendMode> blend_mode);
 	void SetSampler(Commands& cmds, Sampler sampler);
 	void SetMesh(Commands& cmds, const Mesh* mesh);
 

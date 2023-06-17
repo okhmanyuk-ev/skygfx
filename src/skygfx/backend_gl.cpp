@@ -959,8 +959,14 @@ void BackendGL::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->getGLBuffer());
 }
 
-void BackendGL::setBlendMode(const BlendMode& value)
+void BackendGL::setBlendMode(const std::optional<BlendMode>& blend_mode)
 {
+	if (!blend_mode.has_value())
+	{
+		glDisable(GL_BLEND);
+		return;
+	}
+
 	const static std::unordered_map<Blend, GLenum> BlendMap = {
 		{ Blend::One, GL_ONE },
 		{ Blend::Zero, GL_ZERO },
@@ -982,14 +988,16 @@ void BackendGL::setBlendMode(const BlendMode& value)
 		{ BlendFunction::Max, GL_MAX },
 	};
 
+	const auto& blend = blend_mode.value();
+
 	glEnable(GL_BLEND);
-	glBlendEquationSeparate(BlendOpMap.at(value.color_blend_func), BlendOpMap.at(value.alpha_blend_func));
-	glBlendFuncSeparate(BlendMap.at(value.color_src_blend), BlendMap.at(value.color_dst_blend), 
-		BlendMap.at(value.alpha_src_blend), BlendMap.at(value.alpha_dst_blend));
-	glColorMask(value.color_mask.red, value.color_mask.green, value.color_mask.blue, value.color_mask.alpha);
+	glBlendEquationSeparate(BlendOpMap.at(blend.color_blend_func), BlendOpMap.at(blend.alpha_blend_func));
+	glBlendFuncSeparate(BlendMap.at(blend.color_src_blend), BlendMap.at(blend.color_dst_blend),
+		BlendMap.at(blend.alpha_src_blend), BlendMap.at(blend.alpha_dst_blend));
+	glColorMask(blend.color_mask.red, blend.color_mask.green, blend.color_mask.blue, blend.color_mask.alpha);
 }
 
-void BackendGL::setDepthMode(std::optional<DepthMode> depth_mode)
+void BackendGL::setDepthMode(const std::optional<DepthMode>& depth_mode)
 {
 	if (!depth_mode.has_value())
 	{
@@ -1001,7 +1009,7 @@ void BackendGL::setDepthMode(std::optional<DepthMode> depth_mode)
 	glDepthFunc(ComparisonFuncMap.at(depth_mode.value().func));
 }
 
-void BackendGL::setStencilMode(std::optional<StencilMode> stencil_mode)
+void BackendGL::setStencilMode(const std::optional<StencilMode>& stencil_mode)
 {
 	if (!stencil_mode.has_value())
 	{

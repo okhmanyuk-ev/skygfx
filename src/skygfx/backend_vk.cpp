@@ -144,7 +144,7 @@ struct ContextVK
 	Topology topology = Topology::TriangleList;
 	VertexBufferVK* vertex_buffer = nullptr;
 	IndexBufferVK* index_buffer = nullptr;
-	BlendMode blend_mode = BlendStates::AlphaBlend;
+	std::optional<BlendMode> blend_mode;
 
 	bool scissor_dirty = true;
 	bool viewport_dirty = true;
@@ -1530,31 +1530,38 @@ static void PrepareForDrawing()
 			{ BlendFunction::Max, vk::BlendOp::eMax },
 		};
 
-		auto color_mask = vk::ColorComponentFlags();
+		gContext->getCurrentFrame().command_buffer.setColorBlendEnableEXT(0, { gContext->blend_mode.has_value() });
 
-		if (gContext->blend_mode.color_mask.red)
-			color_mask |= vk::ColorComponentFlagBits::eR;
+		if (gContext->blend_mode.has_value())
+		{
+			const auto& blend_mode_nn = gContext->blend_mode.value();
 
-		if (gContext->blend_mode.color_mask.green)
-			color_mask |= vk::ColorComponentFlagBits::eG;
+			auto color_mask = vk::ColorComponentFlags();
 
-		if (gContext->blend_mode.color_mask.blue)
-			color_mask |= vk::ColorComponentFlagBits::eB;
+			if (blend_mode_nn.color_mask.red)
+				color_mask |= vk::ColorComponentFlagBits::eR;
 
-		if (gContext->blend_mode.color_mask.alpha)
-			color_mask |= vk::ColorComponentFlagBits::eA;
+			if (blend_mode_nn.color_mask.green)
+				color_mask |= vk::ColorComponentFlagBits::eG;
 
-		auto color_blend_equation = vk::ColorBlendEquationEXT()
-			.setSrcColorBlendFactor(BlendFactorMap.at(gContext->blend_mode.color_src_blend))
-			.setDstColorBlendFactor(BlendFactorMap.at(gContext->blend_mode.color_dst_blend))
-			.setColorBlendOp(BlendFuncMap.at(gContext->blend_mode.color_blend_func))
-			.setSrcAlphaBlendFactor(BlendFactorMap.at(gContext->blend_mode.alpha_src_blend))
-			.setDstAlphaBlendFactor(BlendFactorMap.at(gContext->blend_mode.alpha_dst_blend))
-			.setAlphaBlendOp(BlendFuncMap.at(gContext->blend_mode.alpha_blend_func));
+			if (blend_mode_nn.color_mask.blue)
+				color_mask |= vk::ColorComponentFlagBits::eB;
 
-		gContext->getCurrentFrame().command_buffer.setColorBlendEnableEXT(0, { true });
-		gContext->getCurrentFrame().command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
-		gContext->getCurrentFrame().command_buffer.setColorWriteMaskEXT(0, { color_mask });
+			if (blend_mode_nn.color_mask.alpha)
+				color_mask |= vk::ColorComponentFlagBits::eA;
+
+			gContext->getCurrentFrame().command_buffer.setColorWriteMaskEXT(0, { color_mask });
+
+			auto color_blend_equation = vk::ColorBlendEquationEXT()
+				.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode_nn.color_src_blend))
+				.setDstColorBlendFactor(BlendFactorMap.at(blend_mode_nn.color_dst_blend))
+				.setColorBlendOp(BlendFuncMap.at(blend_mode_nn.color_blend_func))
+				.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode_nn.alpha_src_blend))
+				.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode_nn.alpha_dst_blend))
+				.setAlphaBlendOp(BlendFuncMap.at(blend_mode_nn.alpha_blend_func));
+
+			gContext->getCurrentFrame().command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
+		}
 
 		gContext->blend_mode_dirty = false;
 	}
@@ -2159,7 +2166,7 @@ void BackendVK::setAccelerationStructure(uint32_t binding, AccelerationStructure
 	gContext->acceleration_structures[binding] = acceleration_structure;
 }
 
-void BackendVK::setBlendMode(const BlendMode& value)
+void BackendVK::setBlendMode(const std::optional<BlendMode>& value)
 {
 	if (gContext->blend_mode == value)
 		return;
@@ -2168,7 +2175,7 @@ void BackendVK::setBlendMode(const BlendMode& value)
 	gContext->blend_mode_dirty = true;
 }
 
-void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
+void BackendVK::setDepthMode(const std::optional<DepthMode>& depth_mode)
 {
 	if (gContext->depth_mode == depth_mode)
 		return;
@@ -2177,7 +2184,7 @@ void BackendVK::setDepthMode(std::optional<DepthMode> depth_mode)
 	gContext->depth_mode_dirty = true;
 }
 
-void BackendVK::setStencilMode(std::optional<StencilMode> stencil_mode)
+void BackendVK::setStencilMode(const std::optional<StencilMode>& stencil_mode)
 {
 	gContext->getCurrentFrame().command_buffer.setStencilTestEnable(stencil_mode.has_value());
 }

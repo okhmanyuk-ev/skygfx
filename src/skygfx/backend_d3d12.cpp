@@ -53,7 +53,7 @@ struct PipelineStateD3D12
 	ShaderD3D12* shader = nullptr;
 	RasterizerStateD3D12 rasterizer_state;
 	std::optional<DepthMode> depth_mode;
-	BlendMode blend_mode = BlendStates::Opaque;
+	std::optional<BlendMode> blend_mode;
 	TopologyKind topology_kind = TopologyKind::Triangles;
 	DXGI_FORMAT color_attachment_format;
 	DXGI_FORMAT depth_stencil_format;
@@ -701,27 +701,35 @@ static void PrepareForDrawing(bool indexed)
 		{
 			auto& blend = blend_state.RenderTarget[i];
 
-			if (blend_mode.color_mask.red)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
-
-			if (blend_mode.color_mask.green)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_GREEN;
-
-			if (blend_mode.color_mask.blue)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_BLUE;
-
-			if (blend_mode.color_mask.alpha)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
+			if (!blend_mode.has_value())
+			{
+				blend.BlendEnable = false;
+				continue;
+			}
 
 			blend.BlendEnable = true;
 
-			blend.SrcBlend = BlendMap.at(blend_mode.color_src_blend);
-			blend.DestBlend = BlendMap.at(blend_mode.color_dst_blend);
-			blend.BlendOp = BlendOpMap.at(blend_mode.color_blend_func);
+			const auto& blend_mode_nn = blend_mode.value();
 
-			blend.SrcBlendAlpha = BlendMap.at(blend_mode.alpha_src_blend);
-			blend.DestBlendAlpha = BlendMap.at(blend_mode.alpha_dst_blend);
-			blend.BlendOpAlpha = BlendOpMap.at(blend_mode.alpha_blend_func);
+			if (blend_mode_nn.color_mask.red)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
+
+			if (blend_mode_nn.color_mask.green)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_GREEN;
+
+			if (blend_mode_nn.color_mask.blue)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_BLUE;
+
+			if (blend_mode_nn.color_mask.alpha)
+				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
+
+			blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src_blend);
+			blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst_blend);
+			blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_blend_func);
+
+			blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src_blend);
+			blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst_blend);
+			blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_blend_func);
 		}
 
 		auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -1146,17 +1154,17 @@ void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 	gContext->uniform_buffers[binding] = buffer;
 }
 
-void BackendD3D12::setBlendMode(const BlendMode& value)
+void BackendD3D12::setBlendMode(const std::optional<BlendMode>& value)
 {
 	gContext->pipeline_state.blend_mode = value;
 }
 
-void BackendD3D12::setDepthMode(std::optional<DepthMode> depth_mode)
+void BackendD3D12::setDepthMode(const std::optional<DepthMode>& depth_mode)
 {
 	gContext->pipeline_state.depth_mode = depth_mode;
 }
 
-void BackendD3D12::setStencilMode(std::optional<StencilMode> stencil_mode)
+void BackendD3D12::setStencilMode(const std::optional<StencilMode>& stencil_mode)
 {
 }
 

@@ -22,9 +22,9 @@ namespace skygfx
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
-		virtual void setBlendMode(const BlendMode& value) = 0;
-		virtual void setDepthMode(std::optional<DepthMode> depth_mode) = 0;
-		virtual void setStencilMode(std::optional<StencilMode> stencil_mode) = 0;
+		virtual void setBlendMode(const std::optional<BlendMode>& blend_mode) = 0;
+		virtual void setDepthMode(const std::optional<DepthMode>& depth_mode) = 0;
+		virtual void setStencilMode(const std::optional<StencilMode>& stencil_mode) = 0;
 		virtual void setCullMode(CullMode cull_mode) = 0;
 		virtual void setSampler(Sampler value) = 0;
 		virtual void setTextureAddress(TextureAddress value) = 0;

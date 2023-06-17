@@ -431,9 +431,9 @@ void skygfx::SetAccelerationStructure(uint32_t binding, const AccelerationStruct
 	gRaytracingBackend->setAccelerationStructure(binding, const_cast<AccelerationStructure&>(value));
 }
 
-void skygfx::SetBlendMode(const BlendMode& value)
+void skygfx::SetBlendMode(const std::optional<BlendMode>& blend_mode)
 {
-	gBackend->setBlendMode(value);
+	gBackend->setBlendMode(blend_mode);
 }
 
 void skygfx::SetDepthMode(const std::optional<DepthMode>& depth_mode)

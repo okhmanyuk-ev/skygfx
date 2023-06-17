@@ -422,7 +422,7 @@ Shader utils::MakeEffectShader(const std::string& effect_shader_func)
 	});
 }
 
-void utils::SetBlendMode(Commands& cmds, BlendMode blend_mode)
+void utils::SetBlendMode(Commands& cmds, std::optional<BlendMode> blend_mode)
 {
 	cmds.push_back(commands::SetBlendMode{
 		.blend_mode = std::move(blend_mode)
@@ -539,7 +539,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
 	}, { 0, 1, 2, 0, 2, 3 });
 
-	auto blend_mode = BlendStates::AlphaBlend;
+	std::optional<BlendMode> blend_mode;
 	bool blend_mode_dirty = true;
 
 	auto sampler = Sampler::Linear;

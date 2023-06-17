@@ -575,7 +575,7 @@ namespace skygfx
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
 	void SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value);
-	void SetBlendMode(const BlendMode& value);
+	void SetBlendMode(const std::optional<BlendMode>& blend_mode);
 	void SetDepthMode(const std::optional<DepthMode>& depth_mode);
 	void SetStencilMode(const std::optional<StencilMode>& stencil_mode);
 	void SetCullMode(CullMode cull_mode);

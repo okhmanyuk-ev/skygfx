@@ -78,7 +78,7 @@ struct ContextD3D11
 	ComPtr<IDXGISwapChain> swapchain;
 	ComPtr<ID3D11Device> device;
 	ComPtr<ID3D11DeviceContext> context;
-	std::unordered_map<BlendMode, ComPtr<ID3D11BlendState>> blend_modes;
+	std::unordered_map<std::optional<BlendMode>, ComPtr<ID3D11BlendState>> blend_modes;
 	DepthStencilStateD3D11 depth_stencil_state;
 	bool depth_stencil_state_dirty = true;
 	std::unordered_map<DepthStencilStateD3D11, ComPtr<ID3D11DepthStencilState>> depth_stencil_states;
@@ -695,9 +695,9 @@ void BackendD3D11::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 	gContext->context->PSSetConstantBuffers(binding, 1, buffer->getD3D11Buffer().GetAddressOf());
 }
 
-void BackendD3D11::setBlendMode(const BlendMode& value)
+void BackendD3D11::setBlendMode(const std::optional<BlendMode>& blend_mode)
 {
-	if (gContext->blend_modes.count(value) == 0)
+	if (gContext->blend_modes.count(blend_mode) == 0)
 	{
 		const static std::unordered_map<Blend, D3D11_BLEND> BlendMap = {
 			{ Blend::One, D3D11_BLEND_ONE },
@@ -727,43 +727,51 @@ void BackendD3D11::setBlendMode(const BlendMode& value)
 		{
 			auto& blend = desc.RenderTarget[i];
 
-			if (value.color_mask.red)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
-
-			if (value.color_mask.green)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
-
-			if (value.color_mask.blue)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
-
-			if (value.color_mask.alpha)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+			if (!blend_mode.has_value())
+			{
+				blend.BlendEnable = false;
+				continue;
+			}
 
 			blend.BlendEnable = true;
 
-			blend.SrcBlend = BlendMap.at(value.color_src_blend);
-			blend.DestBlend = BlendMap.at(value.color_dst_blend);
-			blend.BlendOp = BlendOpMap.at(value.color_blend_func);
+			const auto& blend_mode_nn = blend_mode.value();
 
-			blend.SrcBlendAlpha = BlendMap.at(value.alpha_src_blend);
-			blend.DestBlendAlpha = BlendMap.at(value.alpha_dst_blend);
-			blend.BlendOpAlpha = BlendOpMap.at(value.alpha_blend_func);
+			if (blend_mode_nn.color_mask.red)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
+
+			if (blend_mode_nn.color_mask.green)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
+
+			if (blend_mode_nn.color_mask.blue)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
+
+			if (blend_mode_nn.color_mask.alpha)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+
+			blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src_blend);
+			blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst_blend);
+			blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_blend_func);
+
+			blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src_blend);
+			blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst_blend);
+			blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_blend_func);
 		}
 
-		gContext->device->CreateBlendState(&desc, gContext->blend_modes[value].GetAddressOf());
+		gContext->device->CreateBlendState(&desc, gContext->blend_modes[blend_mode].GetAddressOf());
 	}
 
 	const float blend_factor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-	gContext->context->OMSetBlendState(gContext->blend_modes.at(value).Get(), blend_factor, 0xFFFFFFFF);
+	gContext->context->OMSetBlendState(gContext->blend_modes.at(blend_mode).Get(), blend_factor, 0xFFFFFFFF);
 }
 
-void BackendD3D11::setDepthMode(std::optional<DepthMode> depth_mode)
+void BackendD3D11::setDepthMode(const std::optional<DepthMode>& depth_mode)
 {
 	gContext->depth_stencil_state.depth_mode = depth_mode;
 	gContext->depth_stencil_state_dirty = true;
 }
 
-void BackendD3D11::setStencilMode(std::optional<StencilMode> stencil_mode)
+void BackendD3D11::setStencilMode(const std::optional<StencilMode>& stencil_mode)
 {
 	gContext->depth_stencil_state.stencil_mode = stencil_mode;
 	gContext->depth_stencil_state_dirty = true;
