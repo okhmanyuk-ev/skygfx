@@ -25,7 +25,7 @@ namespace skygfx
 		void setVertexBuffer(VertexBufferHandle* handle) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
-		void setBlendMode(const std::optional<BlendMode>& value) override;
+		void setBlendMode(const std::optional<BlendMode>& blend_mode) override;
 		void setDepthMode(const std::optional<DepthMode>& depth_mode) override;
 		void setStencilMode(const std::optional<StencilMode>& stencil_mode) override;
 		void setCullMode(CullMode cull_mode) override;

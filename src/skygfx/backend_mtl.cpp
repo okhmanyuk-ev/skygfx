@@ -28,7 +28,7 @@ struct PipelineStateMetal
 	ShaderMetal* shader = nullptr;
 	MTLPixelFormat color_attachment_pixel_format;
 	MTLPixelFormat depth_stencil_attachment_pixel_format;
-	BlendMode blend_mode = BlendStates::AlphaBlend;
+	std::optional<BlendMode> blend_mode;
 	
 	bool operator==(const PipelineStateMetal& value) const
 	{
@@ -626,6 +626,10 @@ void BackendMetal::resize(uint32_t width, uint32_t height)
 {
 }
 
+void BackendMetal::setVsync(bool value)
+{
+}
+
 void BackendMetal::setTopology(Topology topology)
 {
 	const static std::unordered_map<Topology, MTLPrimitiveType> TopologyMap = {
@@ -719,16 +723,16 @@ void BackendMetal::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 	gUniformBuffers[binding] = buffer;
 }
 
-void BackendMetal::setBlendMode(const BlendMode& value)
+void BackendMetal::setBlendMode(const std::optional<BlendMode>& blend_mode)
 {
-	if (gPipelineState.blend_mode == value)
+	if (gPipelineState.blend_mode == blend_mode)
 		return;
 	
-	gPipelineState.blend_mode = value;
+	gPipelineState.blend_mode = blend_mode;
 	gPipelineStateDirty = true;
 }
 
-void BackendMetal::setDepthMode(std::optional<DepthMode> depth_mode)
+void BackendMetal::setDepthMode(const std::optional<DepthMode>& depth_mode)
 {
 	if (gDepthStencilState.depth_mode == depth_mode)
 		return;
@@ -737,7 +741,7 @@ void BackendMetal::setDepthMode(std::optional<DepthMode> depth_mode)
 	gDepthStencilStateDirty = true;
 }
 
-void BackendMetal::setStencilMode(std::optional<StencilMode> stencil_mode)
+void BackendMetal::setStencilMode(const std::optional<StencilMode>& stencil_mode)
 {
 	if (gDepthStencilState.stencil_mode == stencil_mode)
 		return;
@@ -1199,33 +1203,36 @@ void BackendMetal::prepareForDrawing()
 				{ BlendFunction::Min, MTLBlendOperationMin },
 				{ BlendFunction::Max, MTLBlendOperationMax },
 			};
-			
-			const auto& blend_mode = gPipelineState.blend_mode;
-			
-			attachment_0.blendingEnabled = true;
-			
-			attachment_0.sourceRGBBlendFactor = BlendMap.at(blend_mode.color_src_blend);
-			attachment_0.sourceAlphaBlendFactor = BlendMap.at(blend_mode.alpha_src_blend);
-			attachment_0.destinationRGBBlendFactor = BlendMap.at(blend_mode.color_dst_blend);
-			attachment_0.destinationAlphaBlendFactor = BlendMap.at(blend_mode.alpha_dst_blend);
-			
-			attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_blend_func);
-			attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_blend_func);
 
-			attachment_0.writeMask = MTLColorWriteMaskNone;
-			
-			if (blend_mode.color_mask.red)
-				attachment_0.writeMask |= MTLColorWriteMaskRed;
-			
-			if (blend_mode.color_mask.green)
-				attachment_0.writeMask |= MTLColorWriteMaskGreen;
-			
-			if (blend_mode.color_mask.blue)
-				attachment_0.writeMask |= MTLColorWriteMaskBlue;
-			
-			if (blend_mode.color_mask.alpha)
-				attachment_0.writeMask |= MTLColorWriteMaskAlpha;
-					
+			attachment_0.blendingEnabled = gPipelineState.blend_mode.has_value();
+
+			if (gPipelineState.blend_mode.has_value())
+			{
+				const auto& blend_mode = gPipelineState.blend_mode.value();
+
+				attachment_0.sourceRGBBlendFactor = BlendMap.at(blend_mode.color_src_blend);
+				attachment_0.sourceAlphaBlendFactor = BlendMap.at(blend_mode.alpha_src_blend);
+				attachment_0.destinationRGBBlendFactor = BlendMap.at(blend_mode.color_dst_blend);
+				attachment_0.destinationAlphaBlendFactor = BlendMap.at(blend_mode.alpha_dst_blend);
+
+				attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_blend_func);
+				attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_blend_func);
+
+				attachment_0.writeMask = MTLColorWriteMaskNone;
+
+				if (blend_mode.color_mask.red)
+					attachment_0.writeMask |= MTLColorWriteMaskRed;
+
+				if (blend_mode.color_mask.green)
+					attachment_0.writeMask |= MTLColorWriteMaskGreen;
+
+				if (blend_mode.color_mask.blue)
+					attachment_0.writeMask |= MTLColorWriteMaskBlue;
+
+				if (blend_mode.color_mask.alpha)
+					attachment_0.writeMask |= MTLColorWriteMaskAlpha;
+			}
+
 			NSError* error = nullptr;
 
 			auto pso = [gDevice newRenderPipelineStateWithDescriptor:desc error:&error];

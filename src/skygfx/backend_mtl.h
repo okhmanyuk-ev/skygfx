@@ -13,6 +13,7 @@ namespace skygfx
 		~BackendMetal();
 
 		void resize(uint32_t width, uint32_t height) override;
+		void setVsync(bool value) override;
 
 		void setTopology(Topology topology) override;
 		void setViewport(std::optional<Viewport> viewport) override;
@@ -24,9 +25,9 @@ namespace skygfx
 		void setVertexBuffer(VertexBufferHandle* handle) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
-		void setBlendMode(const BlendMode& value) override;
-		void setDepthMode(std::optional<DepthMode> depth_mode) override;
-		void setStencilMode(std::optional<StencilMode> stencil_mode) override;
+		void setBlendMode(const std::optional<BlendMode>& blend_mode) override;
+		void setDepthMode(const std::optional<DepthMode>& depth_mode) override;
+		void setStencilMode(const std::optional<StencilMode>& stencil_mode) override;
 		void setCullMode(CullMode cull_mode) override;
 		void setSampler(Sampler value) override;
 		void setTextureAddress(TextureAddress value) override;

@@ -1154,9 +1154,9 @@ void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 	gContext->uniform_buffers[binding] = buffer;
 }
 
-void BackendD3D12::setBlendMode(const std::optional<BlendMode>& value)
+void BackendD3D12::setBlendMode(const std::optional<BlendMode>& blend_mode)
 {
-	gContext->pipeline_state.blend_mode = value;
+	gContext->pipeline_state.blend_mode = blend_mode;
 }
 
 void BackendD3D12::setDepthMode(const std::optional<DepthMode>& depth_mode)
