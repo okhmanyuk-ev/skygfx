@@ -913,6 +913,11 @@ TextureHandle* BackendMetal::createTexture(uint32_t width, uint32_t height, Form
 	return (TextureHandle*)texture;
 }
 
+void BackendMetal::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
+	uint32_t offset_x, uint32_t offset_y)
+{
+}
+
 void BackendMetal::destroyTexture(TextureHandle* handle)
 {
 	auto texture = (TextureMetal*)handle;

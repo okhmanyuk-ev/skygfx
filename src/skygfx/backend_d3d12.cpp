@@ -1405,6 +1405,11 @@ TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Form
 	return (TextureHandle*)texture;
 }
 
+void BackendD3D12::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
+	uint32_t offset_x, uint32_t offset_y)
+{
+}
+
 void BackendD3D12::destroyTexture(TextureHandle* handle)
 {
 	gContext->execute_after_present.add([handle] {

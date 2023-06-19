@@ -401,45 +401,51 @@ public:
 		mHeight(height),
 		mFormat(format)
 	{
-		GLint last_texture;
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-		glGenTextures(1, &mTexture);
-		glBindTexture(GL_TEXTURE_2D, mTexture);
-
 		auto internal_format = TextureInternalFormatMap.at(format);
 		auto texture_format = TextureFormatMap.at(format);
 		auto format_type = FormatTypeMap.at(format);
 
+		GLint last_texture;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+		glGenTextures(1, &mTexture);
+		glBindTexture(GL_TEXTURE_2D, mTexture);
 		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, format_type, nullptr);
 		
 		if (memory)
 		{
-			auto channels_count = GetFormatChannelsCount(format);
-			auto channel_size = GetFormatChannelSize(format);
+			write(width, height, format, memory, 0, 0);
 
-			auto flipped_image = std::vector<uint8_t>(width * height * channels_count * channel_size);
-			const auto row_size = width * channels_count * channel_size;
-
-			for (size_t i = 0; i < (size_t)height; i++)
-			{
-				auto src = (void*)(size_t(memory) + i * row_size);
-				auto dst = (void*)(size_t(flipped_image.data()) + size_t(height - 1 - i) * row_size);
-				memcpy(dst, src, row_size);
-			}
-
-			glBindTexture(GL_TEXTURE_2D, mTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, format_type, flipped_image.data());
-			
 			if (mipmap)
 				glGenerateMipmap(GL_TEXTURE_2D);
 		}
-
-		glBindTexture(GL_TEXTURE_2D, last_texture);
 	}
 
 	~TextureGL()
 	{
 		glDeleteTextures(1, &mTexture);
+	}
+
+	void write(uint32_t width, uint32_t height, Format format, void* memory,
+		uint32_t offset_x, uint32_t offset_y)
+	{
+		auto channels_count = GetFormatChannelsCount(format);
+		auto channel_size = GetFormatChannelSize(format);
+		auto format_type = FormatTypeMap.at(format);
+		auto texture_format = TextureFormatMap.at(format);
+
+		auto flipped_image = std::vector<uint8_t>(width * height * channels_count * channel_size);
+		const auto row_size = width * channels_count * channel_size;
+
+		for (size_t i = 0; i < (size_t)height; i++)
+		{
+			auto src = (void*)(size_t(memory) + i * row_size);
+			auto dst = (void*)(size_t(flipped_image.data()) + size_t(height - 1 - i) * row_size);
+			memcpy(dst, src, row_size);
+		}
+
+		glBindTexture(GL_TEXTURE_2D, mTexture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, (mHeight - height) - offset_y, width, height,
+			texture_format, format_type, flipped_image.data());
 	}
 };
 
@@ -1223,6 +1229,13 @@ TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format 
 {
 	auto texture = new TextureGL(width, height, format, memory, mipmap);
 	return (TextureHandle*)texture;
+}
+
+void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
+	uint32_t offset_x, uint32_t offset_y)
+{
+	auto texture = (TextureGL*)handle;
+	texture->write(width, height, format, memory, offset_x, offset_y);
 }
 
 void BackendGL::destroyTexture(TextureHandle* handle)

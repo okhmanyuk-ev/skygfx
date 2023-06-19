@@ -2545,6 +2545,11 @@ void BackendVK::present()
 	Begin();
 }
 
+void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
+	uint32_t offset_x, uint32_t offset_y)
+{
+}
+
 TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
 {
 	auto texture = new TextureVK(width, height, FormatMap.at(format), memory, mipmap);
