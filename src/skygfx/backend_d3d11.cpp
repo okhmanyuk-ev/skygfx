@@ -961,7 +961,7 @@ TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, Form
 }
 
 void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
-	uint32_t offset_x, uint32_t offset_y)
+	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 }
 

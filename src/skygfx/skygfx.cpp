@@ -44,9 +44,9 @@ Texture::~Texture()
 }
 
 void Texture::write(uint32_t width, uint32_t height, Format format, void* memory,
-	uint32_t offset_x, uint32_t offset_y)
+	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
-	gBackend->writeTexturePixels(mTextureHandle, width, height, format, memory, offset_x, offset_y);
+	gBackend->writeTexturePixels(mTextureHandle, width, height, format, memory, mip_level, offset_x, offset_y);
 }
 
 Texture& Texture::operator=(Texture&& other) noexcept

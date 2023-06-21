@@ -93,7 +93,7 @@ namespace skygfx
 		virtual ~Texture();
 
 		void write(uint32_t width, uint32_t height, Format format, void* memory,
-			uint32_t offset_x = 0, uint32_t offset_y = 0);
+			uint32_t mip_level = 0, uint32_t offset_x = 0, uint32_t offset_y = 0);
 
 		Texture& operator=(Texture&& other) noexcept;
 

@@ -393,6 +393,7 @@ private:
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
 	Format mFormat;
+	std::unordered_set<uint32_t> mMipLevels;
 
 public:
 	TextureGL(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
@@ -408,15 +409,15 @@ public:
 		GLint last_texture;
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
 		glGenTextures(1, &mTexture);
-		glBindTexture(GL_TEXTURE_2D, mTexture);
-		glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, texture_format, format_type, nullptr);
-		
+
+		ensureMipLevel(0);
+
 		if (memory)
 		{
-			write(width, height, format, memory, 0, 0);
+			write(width, height, format, memory, 0, 0, 0);
 
 			if (mipmap)
-				glGenerateMipmap(GL_TEXTURE_2D);
+				glGenerateMipmap(GL_TEXTURE_2D); // TODO: fill mMipLevels
 		}
 	}
 
@@ -425,16 +426,40 @@ public:
 		glDeleteTextures(1, &mTexture);
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, void* memory,
-		uint32_t offset_x, uint32_t offset_y)
+	void ensureMipLevel(uint32_t mip_level)
 	{
+		if (mMipLevels.contains(mip_level))
+			return;
+
+		if (mip_level > 0)
+			mMipmap = true;
+
+		auto mip_width = glm::max<uint32_t>(1, glm::floor<uint32_t>(mWidth >> mip_level));
+		auto mip_height = glm::max<uint32_t>(1, glm::floor<uint32_t>(mHeight >> mip_level));
+
+		auto internal_format = TextureInternalFormatMap.at(mFormat);
+		auto texture_format = TextureFormatMap.at(mFormat);
+		auto format_type = FormatTypeMap.at(mFormat);
+
+		glBindTexture(GL_TEXTURE_2D, mTexture);
+		glTexImage2D(GL_TEXTURE_2D, mip_level, internal_format, mip_width, mip_height, 0, texture_format,
+			format_type, nullptr);
+
+		mMipLevels.insert(mip_level);
+	}
+
+	void write(uint32_t width, uint32_t height, Format format, void* memory,
+		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+	{
+		ensureMipLevel(mip_level);
+
 		auto channels_count = GetFormatChannelsCount(format);
 		auto channel_size = GetFormatChannelSize(format);
 		auto format_type = FormatTypeMap.at(format);
 		auto texture_format = TextureFormatMap.at(format);
 
 		auto flipped_image = std::vector<uint8_t>(width * height * channels_count * channel_size);
-		const auto row_size = width * channels_count * channel_size;
+		auto row_size = width * channels_count * channel_size;
 
 		for (size_t i = 0; i < (size_t)height; i++)
 		{
@@ -443,8 +468,10 @@ public:
 			memcpy(dst, src, row_size);
 		}
 
+		auto mip_height = glm::max<uint32_t>(1, glm::floor<uint32_t>(mHeight >> mip_level));
+
 		glBindTexture(GL_TEXTURE_2D, mTexture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, (mHeight - height) - offset_y, width, height,
+		glTexSubImage2D(GL_TEXTURE_2D, mip_level, offset_x, (mip_height - height) - offset_y, width, height,
 			texture_format, format_type, flipped_image.data());
 	}
 };
@@ -1232,10 +1259,10 @@ TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format 
 }
 
 void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
-	uint32_t offset_x, uint32_t offset_y)
+	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureGL*)handle;
-	texture->write(width, height, format, memory, offset_x, offset_y);
+	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
 }
 
 void BackendGL::destroyTexture(TextureHandle* handle)
