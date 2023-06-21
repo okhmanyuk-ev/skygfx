@@ -3,7 +3,7 @@
 
 using namespace skygfx;
 
-const std::string vertex_shader_code = R"(
+static const std::string vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -43,7 +43,7 @@ void main()
 	gl_Position = settings.projection * settings.view * settings.model * vec4(aPosition, 1.0);
 })";
 
-const std::string fragment_shader_code = R"(
+static const std::string fragment_shader_code = R"(
 #version 450 core
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
@@ -312,6 +312,8 @@ void effect(inout vec4 result)
 	result.rgb = mix(result.rgb, vec3(gray), grayscale.intensity);
 })";
 
+static std::optional<skygfx::Shader> gDefaultShader;
+
 utils::Mesh::Mesh()
 {
 }
@@ -424,6 +426,24 @@ Shader utils::MakeEffectShader(const std::string& effect_shader_func)
 		"EFFECT_UNIFORM_BINDING 3",
 		"EFFECT_FUNC effect"
 	});
+}
+
+void utils::EnsureDefaultShader()
+{
+	if (gDefaultShader.has_value())
+		return;
+
+	gDefaultShader.emplace(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, std::vector<std::string>{
+		"COLOR_TEXTURE_BINDING 0",
+		"NORMAL_TEXTURE_BINDING 1",
+		"SETTINGS_UNIFORM_BINDING 2"
+	});
+}
+
+const Shader& utils::GetDefaultShader()
+{
+	EnsureDefaultShader();
+	return gDefaultShader.value();
 }
 
 void utils::SetBlendMode(Commands& cmds, std::optional<BlendMode> blend_mode)
@@ -693,13 +713,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 				if (shader_dirty)
 				{
-					static auto default_shader = Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, {
-						"COLOR_TEXTURE_BINDING 0",
-						"NORMAL_TEXTURE_BINDING 1",
-						"SETTINGS_UNIFORM_BINDING 2"
-					});
-
-					SetShader(shader == nullptr ? default_shader : *shader);
+					SetShader(shader == nullptr ? GetDefaultShader() : *shader);
 					shader_dirty = false;
 				}
 

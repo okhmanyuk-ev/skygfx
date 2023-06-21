@@ -161,6 +161,9 @@ namespace skygfx::utils
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
 
+	void EnsureDefaultShader();
+	const Shader& GetDefaultShader();
+
 	namespace commands
 	{
 		struct SetEffect
