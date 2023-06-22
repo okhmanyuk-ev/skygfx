@@ -312,6 +312,18 @@ void effect(inout vec4 result)
 	result.rgb = mix(result.rgb, vec3(gray), grayscale.intensity);
 })";
 
+const std::string utils::effects::AlphaTest::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _alphatest
+{
+	float threshold;
+} alphatest;
+
+void effect(inout vec4 result)
+{
+	if (result.a <= alphatest.threshold)
+		discard;
+})";
+
 static std::optional<skygfx::Shader> gDefaultShader;
 
 utils::Mesh::Mesh()

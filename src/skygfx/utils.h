@@ -132,6 +132,13 @@ namespace skygfx::utils
 			static const std::string Shader;
 		};
 
+		struct alignas(16) AlphaTest
+		{
+			float threshold = 0.0f;
+
+			static const std::string Shader;
+		};
+
 		template <typename T>
 		concept Effect = requires { T::Shader; } && std::is_same<std::remove_const_t<decltype(T::Shader)>, std::string>::value;
 	}
