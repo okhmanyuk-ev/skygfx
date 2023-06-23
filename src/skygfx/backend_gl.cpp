@@ -595,6 +595,23 @@ public:
 	}
 };
 
+struct SamplerStateGL
+{
+	Sampler sampler = Sampler::Linear;
+	TextureAddress texture_address = TextureAddress::Clamp;
+
+	bool operator==(const SamplerStateGL& value) const
+	{
+		return
+			sampler == value.sampler &&
+			texture_address == value.texture_address;
+	}
+};
+
+SKYGFX_MAKE_HASHABLE(SamplerStateGL,
+	t.sampler,
+	t.texture_address);
+
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 static HGLRC WglContext;
 static HDC gHDC;
@@ -612,6 +629,23 @@ EGLConfig gEglConfig;
 
 struct ContextGL
 {
+	ContextGL()
+	{
+		glGenBuffers(1, &pixel_buffer);
+	}
+
+	~ContextGL()
+	{
+		glDeleteBuffers(1, &pixel_buffer);
+
+		for (const auto& [state, objects_map] : sampler_states)
+		{
+			for (const auto& [type, object] : objects_map)
+			{
+				glDeleteSamplers(1, &object);
+			}
+		}
+	}
 	uint32_t width = 0;
 	uint32_t height = 0;
 
@@ -620,10 +654,16 @@ struct ContextGL
 	std::unordered_map<uint32_t, TextureGL*> textures;
 	std::unordered_set<uint32_t> dirty_textures;
 
-	Sampler sampler = Sampler::Linear;
-	TextureAddress texture_address = TextureAddress::Wrap;
-	bool tex_params_dirty = true;
-	
+	enum class SamplerType
+	{
+		Mipmap,
+		NoMipmap
+	};
+
+	std::unordered_map<SamplerStateGL, std::unordered_map<SamplerType, GLuint>> sampler_states;
+	SamplerStateGL sampler_state;
+	bool sampler_state_dirty = true;
+
 	RenderTargetGL* render_target = nullptr;
 
 	GLenum index_type;
@@ -666,8 +706,6 @@ Format ContextGL::getBackbufferFormat()
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 {
-	gContext = new ContextGL();
-
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	gHDC = GetDC((HWND)window);
 
@@ -844,7 +882,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 	eglMakeCurrent(gEglDisplay, gEglSurface, gEglSurface, gEglContext);
 #endif
 
-	glGenBuffers(1, &gContext->pixel_buffer);
+	gContext = new ContextGL();
 
 	gContext->width = width;
 	gContext->height = height;
@@ -852,8 +890,6 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
 
 BackendGL::~BackendGL()
 {
-	glDeleteBuffers(1, &gContext->pixel_buffer);
-
 	delete gContext;
 	gContext = nullptr;
 	
@@ -920,7 +956,7 @@ void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 		
 	gContext->textures[binding] = texture;
 	gContext->dirty_textures.insert(binding);
-	gContext->tex_params_dirty = true;
+	gContext->sampler_state_dirty = true;
 }
 
 void BackendGL::setRenderTarget(RenderTargetHandle* handle)
@@ -1090,20 +1126,20 @@ void BackendGL::setCullMode(CullMode cull_mode)
 
 void BackendGL::setSampler(Sampler value)
 {
-	if (gContext->sampler == value)
+	if (gContext->sampler_state.sampler == value)
 		return;
 
-	gContext->sampler = value;
-	gContext->tex_params_dirty = true;
+	gContext->sampler_state.sampler = value;
+	gContext->sampler_state_dirty = true;
 }
 
 void BackendGL::setTextureAddress(TextureAddress value)
 {
-	if (gContext->texture_address == value)
+	if (gContext->sampler_state.texture_address == value)
 		return;
 		
-	gContext->texture_address = value;
-	gContext->tex_params_dirty = true;
+	gContext->sampler_state.texture_address = value;
+	gContext->sampler_state_dirty = true;
 }
 
 void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -1407,43 +1443,56 @@ void BackendGL::prepareForDrawing()
 
 	gContext->dirty_textures.clear();
 
-	if (gContext->tex_params_dirty)
+	if (gContext->sampler_state_dirty)
 	{
-		for (auto [binding, texture_handle] : gContext->textures)
+		gContext->sampler_state_dirty = false;
+
+		const auto& value = gContext->sampler_state;
+
+		if (!gContext->sampler_states.contains(value))
 		{
-			glActiveTexture(GL_TEXTURE0 + binding);
+			const static std::unordered_map<Sampler, std::unordered_map<ContextGL::SamplerType, GLint>> SamplerMap = {
+				{ Sampler::Nearest, {
+					{ ContextGL::SamplerType::Mipmap, GL_NEAREST_MIPMAP_NEAREST },
+					{ ContextGL::SamplerType::NoMipmap, GL_NEAREST },
+				} },
+				{ Sampler::Linear, {
+					{ ContextGL::SamplerType::Mipmap, GL_LINEAR_MIPMAP_LINEAR },
+					{ ContextGL::SamplerType::NoMipmap, GL_LINEAR },
+				} },
+			};
 
-			bool texture_has_mipmap = ((TextureGL*)texture_handle)->isMipmap();
+			const static std::unordered_map<TextureAddress, GLint> TextureAddressMap = {
+				{ TextureAddress::Clamp, GL_CLAMP_TO_EDGE },
+				{ TextureAddress::Wrap, GL_REPEAT },
+				{ TextureAddress::MirrorWrap, GL_MIRRORED_REPEAT }
+			};
 
-			if (gContext->sampler == Sampler::Linear)
+			std::unordered_map<ContextGL::SamplerType, GLuint> sampler_state_map;
+
+			for (auto sampler_type : { ContextGL::SamplerType::Mipmap, ContextGL::SamplerType::NoMipmap })
 			{
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			}
-			else if (gContext->sampler == Sampler::Nearest)
-			{
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, texture_has_mipmap ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				GLuint sampler_object;
+				glGenSamplers(1, &sampler_object);
+
+				glSamplerParameteri(sampler_object, GL_TEXTURE_MIN_FILTER, SamplerMap.at(value.sampler).at(sampler_type));
+				glSamplerParameteri(sampler_object, GL_TEXTURE_MAG_FILTER, SamplerMap.at(value.sampler).at(ContextGL::SamplerType::NoMipmap));
+				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_S, TextureAddressMap.at(value.texture_address));
+				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_T, TextureAddressMap.at(value.texture_address));
+
+				sampler_state_map.insert({ sampler_type, sampler_object });
 			}
 
-			if (gContext->texture_address == TextureAddress::Clamp)
-			{
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			}
-			else if (gContext->texture_address == TextureAddress::Wrap)
-			{
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-			}
-			else if (gContext->texture_address == TextureAddress::MirrorWrap)
-			{
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-			}
+			gContext->sampler_states.insert({ value, sampler_state_map });
 		}
 
-		gContext->tex_params_dirty = false;
+		for (auto [binding, texture_handle] : gContext->textures)
+		{
+			bool texture_has_mipmap = ((TextureGL*)texture_handle)->isMipmap();
+			auto sampler_type = texture_has_mipmap ? ContextGL::SamplerType::Mipmap : ContextGL::SamplerType::NoMipmap;
+			auto sampler = gContext->sampler_states.at(value).at(sampler_type);
+			glBindSampler(binding, sampler);
+		}
 	}
 
 	if (gContext->viewport_dirty)
