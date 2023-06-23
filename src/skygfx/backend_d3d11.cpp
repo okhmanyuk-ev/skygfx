@@ -40,12 +40,14 @@ struct RasterizerStateD3D11
 {
 	bool scissor_enabled = false;
 	CullMode cull_mode = CullMode::None;
+	FrontFace front_face = FrontFace::Clockwise;
 
 	bool operator==(const RasterizerStateD3D11& value) const
 	{
 		return 
 			scissor_enabled == value.scissor_enabled && 
-			cull_mode == value.cull_mode;
+			cull_mode == value.cull_mode &&
+			front_face == value.front_face;
 	}
 };
 
@@ -79,20 +81,26 @@ struct ContextD3D11
 	ComPtr<ID3D11Device> device;
 	ComPtr<ID3D11DeviceContext> context;
 	std::unordered_map<std::optional<BlendMode>, ComPtr<ID3D11BlendState>> blend_modes;
-	DepthStencilStateD3D11 depth_stencil_state;
-	bool depth_stencil_state_dirty = true;
-	std::unordered_map<DepthStencilStateD3D11, ComPtr<ID3D11DepthStencilState>> depth_stencil_states;
-	std::unordered_map<RasterizerStateD3D11, ComPtr<ID3D11RasterizerState>> rasterizer_states;
-	RasterizerStateD3D11 rasterizer_state;
-	bool rasterizer_state_dirty = true;
-	std::unordered_map<SamplerStateD3D11, ComPtr<ID3D11SamplerState>> sampler_states;
-	SamplerStateD3D11 sampler_state;
-	bool sampler_state_dirty = true;
 	TextureD3D11* backbuffer_texture = nullptr;
 	RenderTargetD3D11* main_render_target = nullptr;
 	RenderTargetD3D11* render_target = nullptr;
+	
+	std::unordered_map<DepthStencilStateD3D11, ComPtr<ID3D11DepthStencilState>> depth_stencil_states;
+	DepthStencilStateD3D11 depth_stencil_state;
+	
+	std::unordered_map<RasterizerStateD3D11, ComPtr<ID3D11RasterizerState>> rasterizer_states;
+	RasterizerStateD3D11 rasterizer_state;
+	
+	std::unordered_map<SamplerStateD3D11, ComPtr<ID3D11SamplerState>> sampler_states;
+	SamplerStateD3D11 sampler_state;
+	
 	std::optional<Viewport> viewport;
+
+	bool depth_stencil_state_dirty = true;
+	bool rasterizer_state_dirty = true;
+	bool sampler_state_dirty = true;
 	bool viewport_dirty = true;
+
 	uint32_t width = 0;
 	uint32_t height = 0;
 	std::unordered_map<uint32_t, TextureD3D11*> textures;
@@ -458,6 +466,7 @@ static void PrepareForDrawing()
 			auto desc = CD3D11_RASTERIZER_DESC(D3D11_DEFAULT);
 			desc.CullMode = CullMap.at(value.cull_mode);
 			desc.ScissorEnable = value.scissor_enabled;
+			desc.FrontCounterClockwise = value.front_face == FrontFace::CounterClockwise;
 			gContext->device->CreateRasterizerState(&desc, gContext->rasterizer_states[value].GetAddressOf());
 		}
 
@@ -797,6 +806,11 @@ void BackendD3D11::setTextureAddress(TextureAddress value)
 
 void BackendD3D11::setFrontFace(FrontFace value)
 {
+	if (gContext->rasterizer_state.front_face == value)
+		return;
+
+	gContext->rasterizer_state.front_face = value;
+	gContext->rasterizer_state_dirty = true;
 }
 
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
