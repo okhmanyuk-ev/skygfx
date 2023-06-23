@@ -795,6 +795,10 @@ void BackendD3D11::setTextureAddress(TextureAddress value)
 	gContext->sampler_state_dirty = true;
 }
 
+void BackendD3D11::setFrontFace(FrontFace value)
+{
+}
+
 void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

@@ -467,6 +467,11 @@ void skygfx::SetTextureAddress(TextureAddress value)
 	gBackend->setTextureAddress(value);
 }
 
+void skygfx::SetFrontFace(FrontFace value)
+{
+	gBackend->setFrontFace(value);
+}
+
 void skygfx::Clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

@@ -664,7 +664,6 @@ struct ContextGL
 
 	std::unordered_map<SamplerStateGL, std::unordered_map<SamplerType, GLuint>> sampler_states;
 	SamplerStateGL sampler_state;
-	bool sampler_state_dirty = true;
 
 	RenderTargetGL* render_target = nullptr;
 
@@ -677,12 +676,15 @@ struct ContextGL
 	IndexBufferGL* index_buffer = nullptr;
 	std::optional<Viewport> viewport;
 	std::optional<Scissor> scissor;
+	FrontFace front_face = FrontFace::Clockwise;
 
 	bool shader_dirty = false;
 	bool vertex_buffer_dirty = false;
 	bool index_buffer_dirty = false;
 	bool viewport_dirty = true;
 	bool scissor_dirty = true;
+	bool sampler_state_dirty = true;
+	bool front_face_dirty = true;
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
@@ -1122,7 +1124,6 @@ void BackendGL::setCullMode(CullMode cull_mode)
 	};
 
 	glEnable(GL_CULL_FACE);
-	glFrontFace(GL_CW);
 	glCullFace(CullMap.at(cull_mode));
 }
 
@@ -1142,6 +1143,15 @@ void BackendGL::setTextureAddress(TextureAddress value)
 		
 	gContext->sampler_state.texture_address = value;
 	gContext->sampler_state_dirty = true;
+}
+
+void BackendGL::setFrontFace(FrontFace value)
+{
+	if (gContext->front_face == value)
+		return;
+
+	gContext->front_face = value;
+	gContext->front_face_dirty = true;
 }
 
 void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
@@ -1495,6 +1505,18 @@ void BackendGL::prepareForDrawing()
 			auto sampler = gContext->sampler_states.at(value).at(sampler_type);
 			glBindSampler(binding, sampler);
 		}
+	}
+
+	if (gContext->front_face_dirty)
+	{
+		gContext->front_face_dirty = false;
+
+		static const std::unordered_map<FrontFace, GLenum> FrontFaceMap = {
+			{ FrontFace::Clockwise, GL_CW },
+			{ FrontFace::CounterClockwise, GL_CCW }
+		};
+
+		glFrontFace(FrontFaceMap.at(gContext->front_face));
 	}
 
 	if (gContext->viewport_dirty)

@@ -777,6 +777,10 @@ void BackendMetal::setTextureAddress(TextureAddress value)
 	gSamplerStateDirty = true;
 }
 
+void BackendMetal::setFrontFace(FrontFace value)
+{
+}
+
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

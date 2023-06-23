@@ -2208,6 +2208,10 @@ void BackendVK::setTextureAddress(TextureAddress value)
 	gContext->sampler_state.texture_address = value;
 }
 
+void BackendVK::setFrontFace(FrontFace value)
+{
+}
+
 void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

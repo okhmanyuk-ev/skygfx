@@ -557,6 +557,12 @@ namespace skygfx
 		MirrorWrap
 	};
 
+	enum class FrontFace
+	{
+		Clockwise,
+		CounterClockwise
+	};
+
 	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,
 		const std::unordered_set<Feature>& features = {});
 	void Finalize();
@@ -584,6 +590,7 @@ namespace skygfx
 	void SetCullMode(CullMode cull_mode);
 	void SetSampler(Sampler value);
 	void SetTextureAddress(TextureAddress value);
+	void SetFrontFace(FrontFace value);
 
 	void Clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f },
 		const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
