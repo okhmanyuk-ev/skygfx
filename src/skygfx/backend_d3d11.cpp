@@ -56,19 +56,19 @@ SKYGFX_MAKE_HASHABLE(RasterizerStateD3D11,
 struct SamplerStateD3D11
 {
 	Sampler sampler = Sampler::Linear;
-	TextureAddress textureAddress = TextureAddress::Clamp;
+	TextureAddress texture_address = TextureAddress::Clamp;
 
 	bool operator==(const SamplerStateD3D11& value) const
 	{
 		return
 			sampler == value.sampler &&
-			textureAddress == value.textureAddress;
+			texture_address == value.texture_address;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(SamplerStateD3D11,
 	t.sampler,
-	t.textureAddress);
+	t.texture_address);
 
 class TextureD3D11;
 class RenderTargetD3D11;
@@ -472,12 +472,12 @@ static void PrepareForDrawing()
 
 		const auto& value = gContext->sampler_state;
 
-		if (gContext->sampler_states.count(value) == 0)
+		if (!gContext->sampler_states.contains(value))
 		{
 			// TODO: see D3D11_ENCODE_BASIC_FILTER
 
 			const static std::unordered_map<Sampler, D3D11_FILTER> SamplerMap = {
-				{ Sampler::Linear, D3D11_FILTER_MIN_MAG_MIP_LINEAR  },
+				{ Sampler::Linear, D3D11_FILTER_MIN_MAG_MIP_LINEAR },
 				{ Sampler::Nearest, D3D11_FILTER_MIN_MAG_MIP_POINT },
 			};
 
@@ -489,9 +489,9 @@ static void PrepareForDrawing()
 
 			auto desc = CD3D11_SAMPLER_DESC(D3D11_DEFAULT);
 			desc.Filter = SamplerMap.at(value.sampler);
-			desc.AddressU = TextureAddressMap.at(value.textureAddress);
-			desc.AddressV = TextureAddressMap.at(value.textureAddress);
-			desc.AddressW = TextureAddressMap.at(value.textureAddress);
+			desc.AddressU = TextureAddressMap.at(value.texture_address);
+			desc.AddressV = TextureAddressMap.at(value.texture_address);
+			desc.AddressW = TextureAddressMap.at(value.texture_address);
 			gContext->device->CreateSamplerState(&desc, gContext->sampler_states[value].GetAddressOf());
 		}
 
@@ -791,7 +791,7 @@ void BackendD3D11::setSampler(Sampler value)
 
 void BackendD3D11::setTextureAddress(TextureAddress value)
 {
-	gContext->sampler_state.textureAddress = value;
+	gContext->sampler_state.texture_address = value;
 	gContext->sampler_state_dirty = true;
 }
 

@@ -343,6 +343,11 @@ utils::Mesh::Mesh(const Vertices& vertices, const Indices& indices)
 
 void utils::Mesh::setVertices(const Vertex* memory, uint32_t count)
 {
+	mVertexCount = count;
+
+	if (count == 0)
+		return;
+
 	size_t size = count * sizeof(Vertex);
 	size_t stride = sizeof(Vertex);
 
@@ -350,7 +355,6 @@ void utils::Mesh::setVertices(const Vertex* memory, uint32_t count)
 		mVertexBuffer.emplace(size, stride);
 
 	mVertexBuffer.value().write(memory, count);
-	mVertexCount = count;
 }
 
 void utils::Mesh::setVertices(const Vertices& value)
@@ -360,6 +364,11 @@ void utils::Mesh::setVertices(const Vertices& value)
 
 void utils::Mesh::setIndices(const Index* memory, uint32_t count)
 {
+	mIndexCount = count;
+
+	if (count == 0)
+		return;
+
 	size_t size = count * sizeof(Index);
 	size_t stride = sizeof(Index);
 
@@ -367,7 +376,6 @@ void utils::Mesh::setIndices(const Index* memory, uint32_t count)
 		mIndexBuffer.emplace(size, stride);
 
 	mIndexBuffer.value().write(memory, count);
-	mIndexCount = count;
 }
 
 void utils::Mesh::setIndices(const Indices& value)
