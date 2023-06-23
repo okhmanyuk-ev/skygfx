@@ -419,6 +419,8 @@ public:
 			if (mipmap)
 				glGenerateMipmap(GL_TEXTURE_2D); // TODO: fill mMipLevels
 		}
+
+		glBindTexture(GL_TEXTURE_2D, last_texture);
 	}
 
 	~TextureGL()
