@@ -27,6 +27,12 @@ namespace skygfx
 		Metal
 	};
 
+	enum class Adapter
+	{
+		MinimumPower,
+		HighPerformance
+	};
+
 	enum class Feature
 	{
 		Raytracing
@@ -564,7 +570,7 @@ namespace skygfx
 	};
 
 	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,
-		const std::unordered_set<Feature>& features = {});
+		Adapter adapter = Adapter::HighPerformance, const std::unordered_set<Feature>& features = {});
 	void Finalize();
 
 	void Resize(uint32_t width, uint32_t height);

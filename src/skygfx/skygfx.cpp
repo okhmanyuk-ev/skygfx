@@ -293,7 +293,7 @@ AccelerationStructure::~AccelerationStructure()
 // device
 
 void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type,
-	const std::unordered_set<Feature>& features)
+	Adapter adapter, const std::unordered_set<Feature>& features)
 {
 	assert(gBackend == nullptr);
 
@@ -301,19 +301,19 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 
 #ifdef SKYGFX_HAS_D3D11
 	if (type == BackendType::D3D11)
-		gBackend = new BackendD3D11(window, width, height);
+		gBackend = new BackendD3D11(window, width, height, adapter);
 #endif
 #ifdef SKYGFX_HAS_D3D12
 	if (type == BackendType::D3D12)
-		gBackend = new BackendD3D12(window, width, height);
+		gBackend = new BackendD3D12(window, width, height, adapter);
 #endif
 #ifdef SKYGFX_HAS_OPENGL
 	if (type == BackendType::OpenGL)
-		gBackend = new BackendGL(window, width, height);
+		gBackend = new BackendGL(window, width, height, adapter);
 #endif
 #ifdef SKYGFX_HAS_VULKAN
 	if (type == BackendType::Vulkan)
-		gBackend = new BackendVK(window, width, height, features);
+		gBackend = new BackendVK(window, width, height, adapter, features);
 #endif
 #ifdef SKYGFX_HAS_METAL
 	if (type == BackendType::Metal)

@@ -1789,7 +1789,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
 }
 #endif
 
-BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, const std::unordered_set<Feature>& features)
+BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adapter,
+	const std::unordered_set<Feature>& features)
 {
 	gContext = new ContextVK;
 
@@ -1894,10 +1895,11 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, const std::u
 
 	auto devices = gContext->instance.enumeratePhysicalDevices();
 	size_t device_index = 0;
+	auto preferred_device_type = adapter == Adapter::HighPerformance ? vk::PhysicalDeviceType::eDiscreteGpu : vk::PhysicalDeviceType::eIntegratedGpu;
 	for (size_t i = 0; i < devices.size(); i++)
 	{
 		auto properties = devices.at(i).getProperties();
-		if (properties.deviceType == vk::PhysicalDeviceType::eDiscreteGpu)
+		if (properties.deviceType == preferred_device_type)
 		{
 			device_index = i;
 			break;

@@ -907,7 +907,7 @@ static void End()
 	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), false);
 }
 
-BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
+BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapter _adapter)
 {
 	gContext = new ContextD3D12();
 
@@ -922,7 +922,8 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height)
 	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
 
 	IDXGIAdapter1* adapter;
-	dxgi_factory->EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter));
+	auto gpu_preference = _adapter == Adapter::HighPerformance ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_MINIMUM_POWER;
+	dxgi_factory->EnumAdapterByGpuPreference(0, gpu_preference, IID_PPV_ARGS(&adapter));
 
 	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(gContext->device.GetAddressOf()));
 

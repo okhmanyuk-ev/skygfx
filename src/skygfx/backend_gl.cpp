@@ -708,9 +708,12 @@ Format ContextGL::getBackbufferFormat()
 	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
 }
 
-BackendGL::BackendGL(void* window, uint32_t width, uint32_t height)
+BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adapter)
 {
 #if defined(SKYGFX_PLATFORM_WINDOWS)
+	NvOptimusEnablement = adapter == Adapter::HighPerformance ? 1 : 0;
+	AmdPowerXpressRequestHighPerformance = adapter == Adapter::HighPerformance ? 1 : 0;
+
 	gHDC = GetDC((HWND)window);
 
 	PIXELFORMATDESCRIPTOR pfd;

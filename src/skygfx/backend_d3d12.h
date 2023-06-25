@@ -9,7 +9,7 @@ namespace skygfx
 	class BackendD3D12 : public Backend
 	{
 	public:
-		BackendD3D12(void* window, uint32_t width, uint32_t height);
+		BackendD3D12(void* window, uint32_t width, uint32_t height, Adapter adapter);
 		~BackendD3D12();
 
 		void resize(uint32_t width, uint32_t height) override;
