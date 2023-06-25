@@ -37,16 +37,19 @@ class UniformBufferD3D12;
 struct RasterizerStateD3D12
 {
 	CullMode cull_mode = CullMode::None;
+	FrontFace front_face = FrontFace::Clockwise;
 
 	bool operator==(const RasterizerStateD3D12& value) const
 	{
-		return 
-			cull_mode == value.cull_mode;
+		return
+			cull_mode == value.cull_mode &&
+			front_face == value.front_face;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(RasterizerStateD3D12,
-	t.cull_mode);
+	t.cull_mode,
+	t.front_face);
 
 struct PipelineStateD3D12
 {
@@ -731,6 +734,7 @@ static void PrepareForDrawing(bool indexed)
 
 		auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 		rasterizer_state.CullMode = CullMap.at(gContext->pipeline_state.rasterizer_state.cull_mode);
+		rasterizer_state.FrontCounterClockwise = gContext->pipeline_state.rasterizer_state.front_face == FrontFace::CounterClockwise;
 
 		const static std::unordered_map<TopologyKind, D3D12_PRIMITIVE_TOPOLOGY_TYPE> TopologyTypeMap = {
 			{ TopologyKind::Points, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT },
