@@ -101,6 +101,7 @@ struct ContextD3D11
 	bool sampler_state_dirty = true;
 	bool viewport_dirty = true;
 
+	bool vsync = false;
 	uint32_t width = 0;
 	uint32_t height = 0;
 	std::unordered_map<uint32_t, TextureD3D11*> textures;
@@ -587,7 +588,7 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 
 void BackendD3D11::setVsync(bool value)
 {
-	// TODO: implement
+	gContext->vsync = value;
 }
 
 void BackendD3D11::setTopology(Topology topology)
@@ -965,8 +966,7 @@ std::vector<uint8_t> BackendD3D11::getPixels()
 
 void BackendD3D11::present()
 {
-	bool vsync = false; // TODO: globalize this var
-	gContext->swapchain->Present(vsync ? 1 : 0, 0);
+	gContext->swapchain->Present(gContext->vsync ? 1 : 0, 0);
 }
 
 TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, Format format,
