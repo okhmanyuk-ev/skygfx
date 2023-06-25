@@ -1315,7 +1315,7 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 	}
 }
 
-static void PrepareForDrawing()
+static void PrepareForDrawing(bool indexed)
 {
 	assert(gContext->vertex_buffer);
 
@@ -1328,7 +1328,7 @@ static void PrepareForDrawing()
 		gContext->vertex_buffer_dirty = false;
 	}
 
-	if (gContext->index_buffer_dirty)
+	if (gContext->index_buffer_dirty && indexed)
 	{
 		gContext->getCurrentFrame().command_buffer.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0,
 			GetIndexTypeFromStride(gContext->index_buffer->getStride()));
@@ -2287,14 +2287,14 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 
 void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
-	PrepareForDrawing();
+	PrepareForDrawing(false);
 	EnsureRenderPassActivated();
 	gContext->getCurrentFrame().command_buffer.draw(vertex_count, 1, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
-	PrepareForDrawing();
+	PrepareForDrawing(true);
 	EnsureRenderPassActivated();
 	gContext->getCurrentFrame().command_buffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
