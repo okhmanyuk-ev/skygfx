@@ -141,6 +141,7 @@ struct ContextVK
 	std::optional<Viewport> viewport;
 	std::optional<DepthMode> depth_mode = DepthMode();
 	CullMode cull_mode = CullMode::None;
+	FrontFace front_face = FrontFace::Clockwise;
 	Topology topology = Topology::TriangleList;
 	VertexBufferVK* vertex_buffer = nullptr;
 	IndexBufferVK* index_buffer = nullptr;
@@ -150,6 +151,7 @@ struct ContextVK
 	bool viewport_dirty = true;
 	bool depth_mode_dirty = true;
 	bool cull_mode_dirty = true;
+	bool front_face_dirty = true;
 	bool topology_dirty = true;
 	bool vertex_buffer_dirty = true;
 	bool index_buffer_dirty = true;
@@ -1501,10 +1503,19 @@ static void PrepareForDrawing()
 			{ CullMode::Back, vk::CullModeFlagBits::eBack },
 		};
 
-		gContext->getCurrentFrame().command_buffer.setFrontFace(vk::FrontFace::eClockwise);
 		gContext->getCurrentFrame().command_buffer.setCullMode(CullModeMap.at(gContext->cull_mode));
-
 		gContext->cull_mode_dirty = false;
+	}
+
+	if (gContext->front_face_dirty)
+	{
+		const static std::unordered_map<FrontFace, vk::FrontFace> FrontFaceMap = {
+			{ FrontFace::Clockwise, vk::FrontFace::eClockwise },
+			{ FrontFace::CounterClockwise, vk::FrontFace::eCounterClockwise },
+		};
+
+		gContext->getCurrentFrame().command_buffer.setFrontFace(FrontFaceMap.at(gContext->front_face));
+		gContext->front_face_dirty = false;
 	}
 
 	if (gContext->blend_mode_dirty)
@@ -1691,6 +1702,7 @@ static void Begin()
 	gContext->viewport_dirty = true;
 	gContext->scissor_dirty = true;
 	gContext->cull_mode_dirty = true;
+	gContext->front_face_dirty = true;
 	gContext->vertex_buffer_dirty = true;
 	gContext->index_buffer_dirty = true;
 	gContext->blend_mode_dirty = true;
@@ -2212,6 +2224,8 @@ void BackendVK::setTextureAddress(TextureAddress value)
 
 void BackendVK::setFrontFace(FrontFace value)
 {
+	gContext->front_face = value;
+	gContext->front_face_dirty = true;
 }
 
 void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
