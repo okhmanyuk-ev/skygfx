@@ -403,7 +403,7 @@ static void PrepareForDrawing()
 		auto depth_mode = depth_stencil_state.depth_mode.value_or(DepthMode());
 		auto stencil_mode = depth_stencil_state.stencil_mode.value_or(StencilMode());
 
-		if (gContext->depth_stencil_states.count(depth_stencil_state) == 0)
+		if (!gContext->depth_stencil_states.contains(depth_stencil_state))
 		{
 			const static std::unordered_map<ComparisonFunc, D3D11_COMPARISON_FUNC> ComparisonFuncMap = {
 				{ ComparisonFunc::Always, D3D11_COMPARISON_ALWAYS },
@@ -456,7 +456,7 @@ static void PrepareForDrawing()
 
 		const auto& value = gContext->rasterizer_state;
 
-		if (gContext->rasterizer_states.count(value) == 0)
+		if (!gContext->rasterizer_states.contains(value))
 		{
 			const static std::unordered_map<CullMode, D3D11_CULL_MODE> CullMap = {
 				{ CullMode::None, D3D11_CULL_NONE },
@@ -708,7 +708,7 @@ void BackendD3D11::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 
 void BackendD3D11::setBlendMode(const std::optional<BlendMode>& blend_mode)
 {
-	if (gContext->blend_modes.count(blend_mode) == 0)
+	if (!gContext->blend_modes.contains(blend_mode))
 	{
 		const static std::unordered_map<Blend, D3D11_BLEND> BlendMap = {
 			{ Blend::One, D3D11_BLEND_ONE },
@@ -732,7 +732,6 @@ void BackendD3D11::setBlendMode(const std::optional<BlendMode>& blend_mode)
 		};
 
 		auto desc = CD3D11_BLEND_DESC(D3D11_DEFAULT);
-		desc.AlphaToCoverageEnable = false;
 
 		for (int i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
 		{
