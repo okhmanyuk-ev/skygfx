@@ -400,7 +400,7 @@ namespace skygfx
 			color_src_blend(_color_src_blend), color_dst_blend(_color_dst_blend), alpha_src_blend(_alpha_src_blend), alpha_dst_blend(_alpha_dst_blend)
 		{}
 
-		BlendMode(Blend srcBlend, Blend dstBlend) : BlendMode(srcBlend, dstBlend, srcBlend, dstBlend) { }
+		BlendMode(Blend srcBlend, Blend dstBlend) : BlendMode(srcBlend, dstBlend, Blend::One, Blend::Zero) { }
 
 		BlendFunction color_blend_func = BlendFunction::Add;
 		Blend color_src_blend;
