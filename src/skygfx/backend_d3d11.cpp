@@ -53,7 +53,8 @@ struct RasterizerStateD3D11
 
 SKYGFX_MAKE_HASHABLE(RasterizerStateD3D11,
 	t.cull_mode,
-	t.scissor_enabled);
+	t.scissor_enabled,
+	t.front_face);
 
 struct SamplerStateD3D11
 {
