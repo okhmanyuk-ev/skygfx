@@ -81,7 +81,6 @@ struct ContextD3D11
 	ComPtr<IDXGISwapChain> swapchain;
 	ComPtr<ID3D11Device> device;
 	ComPtr<ID3D11DeviceContext> context;
-	std::unordered_map<std::optional<BlendMode>, ComPtr<ID3D11BlendState>> blend_modes;
 	TextureD3D11* backbuffer_texture = nullptr;
 	RenderTargetD3D11* main_render_target = nullptr;
 	RenderTargetD3D11* render_target = nullptr;
@@ -94,12 +93,16 @@ struct ContextD3D11
 	
 	std::unordered_map<SamplerStateD3D11, ComPtr<ID3D11SamplerState>> sampler_states;
 	SamplerStateD3D11 sampler_state;
-	
+
+	std::unordered_map<std::optional<BlendMode>, ComPtr<ID3D11BlendState>> blend_modes;
+	std::optional<BlendMode> blend_mode;
+
 	std::optional<Viewport> viewport;
 
 	bool depth_stencil_state_dirty = true;
 	bool rasterizer_state_dirty = true;
 	bool sampler_state_dirty = true;
+	bool blend_mode_dirty = true;
 	bool viewport_dirty = true;
 
 	bool vsync = false;
@@ -393,8 +396,6 @@ static void DestroyMainRenderTarget()
 
 static void PrepareForDrawing()
 {
-	// depthstencil state
-
 	if (gContext->depth_stencil_state_dirty)
 	{
 		gContext->depth_stencil_state_dirty = false;
@@ -449,8 +450,6 @@ static void PrepareForDrawing()
 		gContext->context->OMSetDepthStencilState(gContext->depth_stencil_states.at(depth_stencil_state).Get(), stencil_mode.reference);
 	}
 
-	// rasterizer state
-
 	if (gContext->rasterizer_state_dirty)
 	{
 		gContext->rasterizer_state_dirty = false;
@@ -474,8 +473,6 @@ static void PrepareForDrawing()
 
 		gContext->context->RSSetState(gContext->rasterizer_states.at(value).Get());
 	}
-
-	// sampler state
 
 	if (gContext->sampler_state_dirty)
 	{
@@ -512,7 +509,75 @@ static void PrepareForDrawing()
 		}
 	}
 
-	// viewport
+	if (gContext->blend_mode_dirty)
+	{
+		gContext->blend_mode_dirty = false;
+
+		const auto& blend_mode = gContext->blend_mode;
+
+		if (!gContext->blend_modes.contains(blend_mode))
+		{
+			const static std::unordered_map<Blend, D3D11_BLEND> BlendMap = {
+				{ Blend::One, D3D11_BLEND_ONE },
+				{ Blend::Zero, D3D11_BLEND_ZERO },
+				{ Blend::SrcColor, D3D11_BLEND_SRC_COLOR },
+				{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_COLOR },
+				{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
+				{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
+				{ Blend::DstColor, D3D11_BLEND_DEST_COLOR },
+				{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_COLOR },
+				{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
+				{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
+			};
+
+			const static std::unordered_map<BlendFunction, D3D11_BLEND_OP> BlendOpMap = {
+				{ BlendFunction::Add, D3D11_BLEND_OP_ADD },
+				{ BlendFunction::Subtract, D3D11_BLEND_OP_SUBTRACT },
+				{ BlendFunction::ReverseSubtract, D3D11_BLEND_OP_REV_SUBTRACT },
+				{ BlendFunction::Min, D3D11_BLEND_OP_MIN },
+				{ BlendFunction::Max, D3D11_BLEND_OP_MAX },
+			};
+
+			auto desc = CD3D11_BLEND_DESC(D3D11_DEFAULT);
+
+			for (int i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
+			{
+				auto& blend = desc.RenderTarget[i];
+
+				blend.BlendEnable = blend_mode.has_value();
+
+				if (!blend.BlendEnable)
+					continue;
+
+				const auto& blend_mode_nn = blend_mode.value();
+
+				if (blend_mode_nn.color_mask.red)
+					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
+
+				if (blend_mode_nn.color_mask.green)
+					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
+
+				if (blend_mode_nn.color_mask.blue)
+					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
+
+				if (blend_mode_nn.color_mask.alpha)
+					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+
+				blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src_blend);
+				blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst_blend);
+				blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_blend_func);
+
+				blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src_blend);
+				blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst_blend);
+				blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_blend_func);
+			}
+
+			gContext->device->CreateBlendState(&desc, gContext->blend_modes[blend_mode].GetAddressOf());
+		}
+
+		const float blend_factor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		gContext->context->OMSetBlendState(gContext->blend_modes.at(blend_mode).Get(), blend_factor, 0xFFFFFFFF);
+	}
 
 	if (gContext->viewport_dirty)
 	{
@@ -709,68 +774,11 @@ void BackendD3D11::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 
 void BackendD3D11::setBlendMode(const std::optional<BlendMode>& blend_mode)
 {
-	if (!gContext->blend_modes.contains(blend_mode))
-	{
-		const static std::unordered_map<Blend, D3D11_BLEND> BlendMap = {
-			{ Blend::One, D3D11_BLEND_ONE },
-			{ Blend::Zero, D3D11_BLEND_ZERO },
-			{ Blend::SrcColor, D3D11_BLEND_SRC_COLOR },
-			{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_COLOR },
-			{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
-			{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
-			{ Blend::DstColor, D3D11_BLEND_DEST_COLOR },
-			{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_COLOR },
-			{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
-			{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
-		};
+	if (gContext->blend_mode == blend_mode)
+		return;
 
-		const static std::unordered_map<BlendFunction, D3D11_BLEND_OP> BlendOpMap = {
-			{ BlendFunction::Add, D3D11_BLEND_OP_ADD },
-			{ BlendFunction::Subtract, D3D11_BLEND_OP_SUBTRACT },
-			{ BlendFunction::ReverseSubtract, D3D11_BLEND_OP_REV_SUBTRACT },
-			{ BlendFunction::Min, D3D11_BLEND_OP_MIN },
-			{ BlendFunction::Max, D3D11_BLEND_OP_MAX },
-		};
-
-		auto desc = CD3D11_BLEND_DESC(D3D11_DEFAULT);
-
-		for (int i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
-		{
-			auto& blend = desc.RenderTarget[i];
-
-			blend.BlendEnable = blend_mode.has_value();
-
-			if (!blend.BlendEnable)
-				continue;
-
-			const auto& blend_mode_nn = blend_mode.value();
-
-			if (blend_mode_nn.color_mask.red)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
-
-			if (blend_mode_nn.color_mask.green)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
-
-			if (blend_mode_nn.color_mask.blue)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
-
-			if (blend_mode_nn.color_mask.alpha)
-				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
-
-			blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src_blend);
-			blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst_blend);
-			blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_blend_func);
-
-			blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src_blend);
-			blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst_blend);
-			blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_blend_func);
-		}
-
-		gContext->device->CreateBlendState(&desc, gContext->blend_modes[blend_mode].GetAddressOf());
-	}
-
-	const float blend_factor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-	gContext->context->OMSetBlendState(gContext->blend_modes.at(blend_mode).Get(), blend_factor, 0xFFFFFFFF);
+	gContext->blend_mode = blend_mode;
+	gContext->blend_mode_dirty = true;
 }
 
 void BackendD3D11::setDepthMode(const std::optional<DepthMode>& depth_mode)
