@@ -701,13 +701,10 @@ static void PrepareForDrawing(bool indexed)
 		{
 			auto& blend = blend_state.RenderTarget[i];
 
-			if (!blend_mode.has_value())
-			{
-				blend.BlendEnable = false;
+			blend.BlendEnable = blend_mode.has_value();
+			
+			if (!blend.BlendEnable)
 				continue;
-			}
-
-			blend.BlendEnable = true;
 
 			const auto& blend_mode_nn = blend_mode.value();
 

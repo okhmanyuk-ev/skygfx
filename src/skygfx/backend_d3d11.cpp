@@ -737,13 +737,10 @@ void BackendD3D11::setBlendMode(const std::optional<BlendMode>& blend_mode)
 		{
 			auto& blend = desc.RenderTarget[i];
 
-			if (!blend_mode.has_value())
-			{
-				blend.BlendEnable = false;
-				continue;
-			}
+			blend.BlendEnable = blend_mode.has_value();
 
-			blend.BlendEnable = true;
+			if (!blend.BlendEnable)
+				continue;
 
 			const auto& blend_mode_nn = blend_mode.value();
 
