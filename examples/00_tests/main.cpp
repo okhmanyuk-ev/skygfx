@@ -42,7 +42,7 @@ bool Clear(skygfx::BackendType backend, PixelsFunc pixels_func)
 
 	skygfx::Clear(clear_color);
 			
-	auto pixels = skygfx::GetPixels();
+	auto pixels = skygfx::GetBackbufferPixels();
 	pixels_func(gWidth, gHeight, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
@@ -65,7 +65,7 @@ bool ClearRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
 	skygfx::SetRenderTarget(target);
 	skygfx::Clear(clear_color);
 
-	auto pixels = skygfx::GetPixels();
+	auto pixels = skygfx::GetBackbufferPixels();
 	pixels_func(target.getWidth(), target.getHeight(), pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
@@ -127,7 +127,7 @@ void main()
 	skygfx::Clear();
 	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 
-	auto pixels = skygfx::GetPixels();
+	auto pixels = skygfx::GetBackbufferPixels();
 	pixels_func(gWidth, gHeight, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
@@ -195,7 +195,7 @@ void main()
 	skygfx::Clear();
 	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 
-	auto pixels = skygfx::GetPixels();
+	auto pixels = skygfx::GetBackbufferPixels();
 	pixels_func(target.getWidth(), target.getHeight(), pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 

@@ -1260,29 +1260,6 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
-std::vector<uint8_t> BackendGL::getPixels()
-{
-#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-	return {};
-#else
-	auto width = gContext->getBackbufferWidth();
-	auto height = gContext->getBackbufferHeight();
-	auto format = gContext->getBackbufferFormat();
-	auto channels_count = GetFormatChannelsCount(format);
-	auto channel_size = GetFormatChannelSize(format);
-
-	auto texture = TextureGL(width, height, format, 1);
-
-	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);
-
-	std::vector<uint8_t> result(width * height * channels_count * channel_size);
-
-	texture.read(0, 0, width, height, 0, result.data());
-
-	return result;
-#endif
-}
-
 void BackendGL::present()
 {
 	CheckErrors();

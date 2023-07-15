@@ -597,11 +597,6 @@ void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Textu
 	gBackend->readPixels(pos, size, dst_texture);
 }
 
-std::vector<uint8_t> skygfx::GetPixels()
-{
-	return gBackend->getPixels();
-}
-
 void skygfx::DispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
 	gRaytracingBackend->dispatchRays(width, height, depth);
@@ -686,6 +681,16 @@ uint32_t skygfx::GetBackbufferHeight()
 Format skygfx::GetBackbufferFormat()
 {
 	return gBackbufferFormat;
+}
+
+std::vector<uint8_t> skygfx::GetBackbufferPixels()
+{
+	auto width = GetBackbufferWidth();
+	auto height = GetBackbufferHeight();
+	auto format = GetBackbufferFormat();
+	auto texture = Texture(width, height, format, 1);
+	ReadPixels({ 0, 0 }, { width, height }, texture);
+	return texture.read(0, 0, width, height, 0);
 }
 
 BackendType skygfx::GetBackendType()

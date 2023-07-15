@@ -2398,26 +2398,6 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	gContext->getCurrentFrame().command_buffer.copyImage2(copy_image_info);
 }
 
-std::vector<uint8_t> BackendVK::getPixels()
-{
-	auto width = gContext->getBackbufferWidth();
-	auto height = gContext->getBackbufferHeight();
-	auto format = gContext->getBackbufferFormat();
-	auto _format = ReversedFormatMap.at(format);
-	auto channels_count = GetFormatChannelsCount(_format);
-	auto channel_size = GetFormatChannelSize(_format);
-
-	std::vector<uint8_t> result(width * height * channels_count * channel_size);
-
-	auto texture = TextureVK(width, height, format, 1);
-
-	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);
-
-	texture.read(0, 0, width, height, 0, result.data());
-
-	return result;
-}
-
 template<typename T>
 inline T AlignUp(T size, size_t alignment) noexcept
 {
