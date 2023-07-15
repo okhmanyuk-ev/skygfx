@@ -359,7 +359,7 @@ void utils::Mesh::setVertices(const Vertex* memory, uint32_t count)
 
 void utils::Mesh::setVertices(const Vertices& value)
 {
-	setVertices(value.data(), value.size());
+	setVertices(value.data(), static_cast<uint32_t>(value.size()));
 }
 
 void utils::Mesh::setIndices(const Index* memory, uint32_t count)
@@ -380,7 +380,7 @@ void utils::Mesh::setIndices(const Index* memory, uint32_t count)
 
 void utils::Mesh::setIndices(const Indices& value)
 {
-	setIndices(value.data(), value.size());
+	setIndices(value.data(), static_cast<uint32_t>(value.size()));
 }
 
 utils::effects::BloomDownsample::BloomDownsample(const glm::vec2& _resolution, uint32_t _step_number) :
