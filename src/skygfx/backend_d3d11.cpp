@@ -13,6 +13,8 @@
 
 #pragma comment(lib, "d3d11")
 #pragma comment(lib, "d3dcompiler")
+#pragma comment(lib, "dxgi")
+#pragma comment(lib, "dxguid.lib")
 
 #include <wrl.h>
 
@@ -210,7 +212,6 @@ public:
 	const auto& getD3D11ShaderResourceView() const { return mShaderResourceView; }
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
-	bool isMipmap() const { return mMipmap; }
 	auto getFormat() const { return mFormat; }
 
 private:
@@ -218,36 +219,24 @@ private:
 	ComPtr<ID3D11Texture2D> mTexture2D;
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
-	bool mMipmap = false;
+	uint32_t mMipCount = 0;
 	Format mFormat;
 
 public:
-	TextureD3D11(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
+	TextureD3D11(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
 		mWidth(width),
 		mHeight(height),
-		mMipmap(mipmap),
-		mFormat(format)
+		mFormat(format),
+		mMipCount(mip_count)
 	{
 		auto tex_desc = CD3D11_TEXTURE2D_DESC(FormatMap.at(format), width, height);
-		tex_desc.MipLevels = mipmap ? 0 : 1;
+		tex_desc.MipLevels = mip_count;
 		tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 		tex_desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 		gContext->device->CreateTexture2D(&tex_desc, NULL, mTexture2D.GetAddressOf());
 
 		auto srv_desc = CD3D11_SHADER_RESOURCE_VIEW_DESC(mTexture2D.Get(), D3D11_SRV_DIMENSION_TEXTURE2D);
 		gContext->device->CreateShaderResourceView(mTexture2D.Get(), &srv_desc, mShaderResourceView.GetAddressOf());
-
-		if (memory)
-		{
-			auto channels = GetFormatChannelsCount(format);
-			auto channel_size = GetFormatChannelSize(format);
-			auto memPitch = width * channels * channel_size;
-			auto memSlicePitch = width * height * channels * channel_size;
-			gContext->context->UpdateSubresource(mTexture2D.Get(), 0, NULL, memory, memPitch, memSlicePitch);
-
-			if (mipmap)
-				gContext->context->GenerateMips(mShaderResourceView.Get());
-		}
 	}
 
 	TextureD3D11(uint32_t width, uint32_t height, Format format, ComPtr<ID3D11Texture2D> texture) :
@@ -256,6 +245,58 @@ public:
 		mFormat(format),
 		mTexture2D(texture)
 	{
+	}
+
+	void write(uint32_t width, uint32_t height, Format format, void* memory,
+		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+	{
+		auto channels = GetFormatChannelsCount(format);
+		auto channel_size = GetFormatChannelSize(format);
+		auto mem_pitch = width * channels * channel_size;
+		auto mem_slice_pitch = width * height * channels * channel_size;
+		auto dst_box = CD3D11_BOX(offset_x, offset_y, 0, offset_x + width, offset_y + height, 1);
+		gContext->context->UpdateSubresource(mTexture2D.Get(), mip_level, &dst_box, memory, mem_pitch,
+			mem_slice_pitch);
+	}
+
+	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+		uint32_t mip_level, void* dst_memory)
+	{
+		CD3D11_TEXTURE2D_DESC desc(FormatMap.at(mFormat), width, height, 1, 1, 0, D3D11_USAGE_STAGING,
+			D3D11_CPU_ACCESS_READ);
+
+		ComPtr<ID3D11Texture2D> staging_texture = nullptr;
+		gContext->device->CreateTexture2D(&desc, nullptr, staging_texture.GetAddressOf());
+
+		auto src_box = CD3D11_BOX(pos_x, pos_y, 0, pos_x + width, pos_y + height, 1);
+
+		gContext->context->CopySubresourceRegion(staging_texture.Get(), 0, 0, 0, 0, mTexture2D.Get(), mip_level, &src_box);
+
+		D3D11_MAPPED_SUBRESOURCE resource;
+		ZeroMemory(&resource, sizeof(D3D11_MAPPED_SUBRESOURCE));
+
+		gContext->context->Map(staging_texture.Get(), 0, D3D11_MAP_READ, 0, &resource);
+
+		auto channels_count = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
+
+		auto src = (uint8_t*)resource.pData;
+		auto dst = (uint8_t*)dst_memory;
+		auto row_size = width * channels_count * channel_size;
+
+		for (uint32_t i = 0; i < height; i++)
+		{
+			memcpy(dst, src, row_size);
+			src += resource.RowPitch;
+			dst += row_size;
+		}
+
+		gContext->context->Unmap(staging_texture.Get(), 0);
+	}
+
+	void generateMips()
+	{
+		gContext->context->GenerateMips(mShaderResourceView.Get());
 	}
 };
 
@@ -924,9 +965,6 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	{
 		gContext->context->CopySubresourceRegion(dst_texture->getD3D11Texture2D().Get(), 0, dst_x, dst_y, 0,
 			rtv_resource.Get(), 0, &box);
-
-		if (dst_texture->isMipmap())
-			gContext->context->GenerateMips(dst_texture->getD3D11ShaderResourceView().Get());
 	}
 }
 
@@ -938,36 +976,13 @@ std::vector<uint8_t> BackendD3D11::getPixels()
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
 
-	std::vector<uint8_t> result(width * height * channels_count * channel_size);
-
-	auto texture = TextureD3D11(width, height, format, nullptr, false);
+	auto texture = TextureD3D11(width, height, format, 1);
 
 	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);	
 
-	CD3D11_TEXTURE2D_DESC desc(FormatMap.at(format), width, height, 1, 1, 0, D3D11_USAGE_STAGING,
-		D3D11_CPU_ACCESS_READ);
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
 
-	ComPtr<ID3D11Texture2D> dstTexture = nullptr;
-	gContext->device->CreateTexture2D(&desc, nullptr, dstTexture.GetAddressOf());
-
-	gContext->context->CopyResource(dstTexture.Get(), texture.getD3D11Texture2D().Get());
-
-	D3D11_MAPPED_SUBRESOURCE resource;
-	ZeroMemory(&resource, sizeof(D3D11_MAPPED_SUBRESOURCE));
-
-	gContext->context->Map(dstTexture.Get(), 0, D3D11_MAP_READ, 0, &resource);
-
-	auto src = (uint8_t*)resource.pData;
-	auto dst = result.data();
-	auto row_size = width * channels_count * channel_size;
-	for (uint32_t i = 0; i < height; i++)
-	{
-		memcpy(dst, src, row_size);
-		src += resource.RowPitch;
-		dst += row_size;
-	}
-
-	gContext->context->Unmap(texture.getD3D11Texture2D().Get(), 0);
+	texture.read(0, 0, width, height, 0, result.data());
 
 	return result;
 }
@@ -978,15 +993,30 @@ void BackendD3D11::present()
 }
 
 TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, Format format,
-	void* memory, bool mipmap)
+	uint32_t mip_count)
 {
-	auto texture = new TextureD3D11(width, height, format, memory, mipmap);
+	auto texture = new TextureD3D11(width, height, format, mip_count);
 	return (TextureHandle*)texture;
 }
 
 void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
+	auto texture = (TextureD3D11*)handle;
+	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+}
+
+void BackendD3D11::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level, void* dst_memory)
+{
+	auto texture = (TextureD3D11*)handle;
+	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
+}
+
+void BackendD3D11::generateMips(TextureHandle* handle)
+{
+	auto texture = (TextureD3D11*)handle;
+	texture->generateMips();
 }
 
 void BackendD3D11::destroyTexture(TextureHandle* handle)

@@ -21,12 +21,25 @@ static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
 
 // texture
 
-Texture::Texture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
+Texture::Texture(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
 	mWidth(width),
 	mHeight(height),
-	mFormat(format)
+	mFormat(format),
+	mMipCount(mip_count)
 {
-	mTextureHandle = gBackend->createTexture(width, height, format, memory, mipmap);
+	assert(width > 0);
+	assert(height > 0);
+	assert(mip_count > 0);
+	mTextureHandle = gBackend->createTexture(width, height, format, mip_count);
+}
+
+Texture::Texture(uint32_t width, uint32_t height, Format format, void* memory, bool generate_mips) :
+	Texture(width, height, format, generate_mips ? GetMipCount(width, height) : 1)
+{
+	write(width, height, format, memory);
+
+	if (generate_mips)
+		generateMips();
 }
 
 Texture::Texture(Texture&& other) noexcept
@@ -35,6 +48,7 @@ Texture::Texture(Texture&& other) noexcept
 	mWidth = std::exchange(other.mWidth, 0);
 	mHeight = std::exchange(other.mHeight, 0);
 	mFormat = std::exchange(other.mFormat, {});
+	mMipCount = std::exchange(other.mMipCount, 0);
 }
 
 Texture::~Texture()
@@ -46,7 +60,37 @@ Texture::~Texture()
 void Texture::write(uint32_t width, uint32_t height, Format format, void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
+	assert(width > 0);
+	assert(height > 0);
+	assert(offset_x + width <= GetMipWidth(mWidth, mip_level));
+	assert(offset_y + height <= GetMipHeight(mHeight, mip_level));
+	assert(mip_level < mMipCount);
+	assert(memory != nullptr);
 	gBackend->writeTexturePixels(mTextureHandle, width, height, format, memory, mip_level, offset_x, offset_y);
+}
+
+std::vector<uint8_t> Texture::read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level)
+{
+	assert(width > 0);
+	assert(height > 0);
+	assert(pos_x + width <= GetMipWidth(mWidth, mip_level));
+	assert(pos_y + height <= GetMipHeight(mHeight, mip_level));
+	assert(mip_level < mMipCount);
+
+	auto channels_count = GetFormatChannelsCount(mFormat);
+	auto channel_size = GetFormatChannelSize(mFormat);
+
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
+
+	gBackend->readTexturePixels(mTextureHandle, pos_x, pos_y, width, height, mip_level, result.data());
+
+	return result;
+}
+
+void Texture::generateMips()
+{
+	gBackend->generateMips(mTextureHandle);
 }
 
 Texture& Texture::operator=(Texture&& other) noexcept
@@ -61,11 +105,12 @@ Texture& Texture::operator=(Texture&& other) noexcept
 	mWidth = std::exchange(other.mWidth, 0);
 	mHeight = std::exchange(other.mHeight, 0);
 	mFormat = std::exchange(other.mFormat, {});
+	mMipCount = std::exchange(other.mMipCount, 0);
 
 	return *this;
 }
 
-RenderTarget::RenderTarget(uint32_t width, uint32_t height, Format format) : Texture(width, height, format, nullptr)
+RenderTarget::RenderTarget(uint32_t width, uint32_t height, Format format) : Texture(width, height, format, 1)
 {
 	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
 }
@@ -288,6 +333,65 @@ AccelerationStructure::~AccelerationStructure()
 {
 	if (gRaytracingBackend && mAccelerationStructureHandle)
 		gRaytracingBackend->destroyAccelerationStructure(mAccelerationStructureHandle);
+}
+
+// helper functions
+
+TopologyKind skygfx::GetTopologyKind(Topology topology)
+{
+	static const std::unordered_map<Topology, TopologyKind> TopologyKindMap = {
+		{ Topology::PointList, TopologyKind::Points },
+		{ Topology::LineList, TopologyKind::Lines},
+		{ Topology::LineStrip, TopologyKind::Lines },
+		{ Topology::TriangleList, TopologyKind::Triangles },
+		{ Topology::TriangleStrip, TopologyKind::Triangles }
+	};
+	return TopologyKindMap.at(topology);
+}
+
+uint32_t skygfx::GetFormatChannelsCount(Format format)
+{
+	static const std::unordered_map<Format, uint32_t> FormatChannelsMap = {
+		{ Format::Float1, 1 },
+		{ Format::Float2, 2 },
+		{ Format::Float3, 3 },
+		{ Format::Float4, 4 },
+		{ Format::Byte1, 1 },
+		{ Format::Byte2, 2 },
+		{ Format::Byte3, 3 },
+		{ Format::Byte4, 4 }
+	};
+	return FormatChannelsMap.at(format);
+}
+
+uint32_t skygfx::GetFormatChannelSize(Format format)
+{
+	static const std::unordered_map<Format, uint32_t> FormatChannelSizeMap = {
+		{ Format::Float1, 4 },
+		{ Format::Float2, 4 },
+		{ Format::Float3, 4 },
+		{ Format::Float4, 4 },
+		{ Format::Byte1, 1 },
+		{ Format::Byte2, 1 },
+		{ Format::Byte3, 1 },
+		{ Format::Byte4, 1 }
+	};
+	return FormatChannelSizeMap.at(format);
+}
+
+uint32_t skygfx::GetMipCount(uint32_t width, uint32_t height)
+{
+	return static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
+}
+
+uint32_t skygfx::GetMipWidth(uint32_t base_width, uint32_t mip_level)
+{
+	return glm::max<uint32_t>(1, glm::floor<uint32_t>(base_width >> mip_level));
+}
+
+uint32_t skygfx::GetMipHeight(uint32_t base_height, uint32_t mip_level)
+{
+	return glm::max<uint32_t>(1, glm::floor<uint32_t>(base_height >> mip_level));
 }
 
 // device

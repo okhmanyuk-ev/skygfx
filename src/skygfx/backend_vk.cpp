@@ -499,8 +499,7 @@ public:
 	auto getFormat() const { return mFormat; }
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
-	auto isMipmap() const { return mMipLevels > 1; }
-
+	
 private:
 	std::optional<vk::raii::Image> mImage;
 	std::optional<vk::raii::DeviceMemory> mDeviceMemory;
@@ -508,21 +507,17 @@ private:
 	vk::raii::ImageView mImageView = nullptr;
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
+	uint32_t mMipCount = 0;
 	vk::Format mFormat;
-	uint32_t mMipLevels = 1;
 	vk::ImageLayout mCurrentState = vk::ImageLayout::eUndefined;
 
 public:
-	TextureVK(uint32_t width, uint32_t height, vk::Format format, void* memory, bool mipmap) :
+	TextureVK(uint32_t width, uint32_t height, vk::Format format, uint32_t mip_count) :
 		mWidth(width),
 		mHeight(height),
-		mFormat(format)
+		mFormat(format),
+		mMipCount(mip_count)
 	{
-		if (mipmap)
-		{
-			mMipLevels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
-		}
-
 		auto usage = 
 			vk::ImageUsageFlagBits::eSampled |
 			vk::ImageUsageFlagBits::eTransferDst |
@@ -531,38 +526,9 @@ public:
 			vk::ImageUsageFlagBits::eStorage;
 
 		std::tie(mImage, mDeviceMemory, mImageView) = CreateImage(width, height, format, usage,
-			vk::ImageAspectFlagBits::eColor, mMipLevels);
+			vk::ImageAspectFlagBits::eColor, mip_count);
 
 		mImagePtr = *mImage.value();
-
-		if (memory)
-		{
-			auto _format = ReversedFormatMap.at(format);
-			auto channels = GetFormatChannelsCount(_format);
-			auto channel_size = GetFormatChannelSize(_format);
-			auto size = width * height * channels * channel_size;
-
-			auto [upload_buffer, upload_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
-
-			WriteToBuffer(upload_buffer_memory, memory, size);
-
-			OneTimeSubmit([&](auto& cmdbuf) {
-				ensureState(cmdbuf, vk::ImageLayout::eTransferDstOptimal);
-
-				auto image_subresource_layers = vk::ImageSubresourceLayers()
-					.setAspectMask(vk::ImageAspectFlagBits::eColor)
-					.setLayerCount(1);
-
-				auto region = vk::BufferImageCopy()
-					.setImageSubresource(image_subresource_layers)
-					.setImageExtent({ mWidth, mHeight, 1 });
-
-				cmdbuf.copyBufferToImage(*upload_buffer, mImagePtr, vk::ImageLayout::eTransferDstOptimal, { region });
-
-				if (isMipmap())
-					generateMips(cmdbuf);
-			});
-		}
 	}
 
 	TextureVK(uint32_t width, uint32_t height, vk::Format format, vk::Image image) :
@@ -583,11 +549,89 @@ public:
 			gContext->getCurrentFrame().staging_objects.push_back(std::move(mDeviceMemory.value()));
 	}
 
+	void write(uint32_t width, uint32_t height, Format format, void* memory,
+		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+	{
+		auto channels = GetFormatChannelsCount(format);
+		auto channel_size = GetFormatChannelSize(format);
+		auto size = width * height * channels * channel_size;
+
+		auto [upload_buffer, upload_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
+
+		WriteToBuffer(upload_buffer_memory, memory, size);
+
+		OneTimeSubmit([&](auto& cmdbuf) {
+			ensureState(cmdbuf, vk::ImageLayout::eTransferDstOptimal);
+
+			auto image_subresource_layers = vk::ImageSubresourceLayers()
+				.setAspectMask(vk::ImageAspectFlagBits::eColor)
+				.setMipLevel(mip_level)
+				.setLayerCount(1);
+
+			auto region = vk::BufferImageCopy()
+				.setImageSubresource(image_subresource_layers)
+				.setImageExtent({ width, height, 1 });
+
+			cmdbuf.copyBufferToImage(*upload_buffer, mImagePtr, vk::ImageLayout::eTransferDstOptimal, { region });
+		});
+	}
+
+	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+		uint32_t mip_level, void* dst_memory)
+	{
+		EnsureRenderPassDeactivated();
+		gContext->getCurrentFrame().command_buffer.end();
+
+		auto submit_info = vk::SubmitInfo()
+			.setCommandBuffers(*gContext->getCurrentFrame().command_buffer);
+
+		gContext->queue.submit(submit_info);
+		gContext->queue.waitIdle();
+
+		auto _format = ReversedFormatMap.at(mFormat);
+		auto channels_count = GetFormatChannelsCount(_format);
+		auto channel_size = GetFormatChannelSize(_format);
+		auto size = width * height * channels_count * channel_size;
+
+		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
+
+		auto subresource = vk::ImageSubresourceLayers()
+			.setAspectMask(vk::ImageAspectFlagBits::eColor)
+			.setMipLevel(mip_level)
+			.setLayerCount(1);
+
+		auto region = vk::BufferImageCopy2()
+			.setImageSubresource(subresource)
+			.setBufferImageHeight(height)
+			.setBufferRowLength(0)
+			.setImageExtent({ width, height, 1 });
+
+		auto copy_image_to_buffer_info = vk::CopyImageToBufferInfo2()
+			.setSrcImage(getImage())
+			.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
+			.setDstBuffer(*staging_buffer)
+			.setRegions(region);
+
+		OneTimeSubmit([&](auto& cmdbuf) {
+			ensureState(cmdbuf, vk::ImageLayout::eTransferSrcOptimal);
+			cmdbuf.copyImageToBuffer2(copy_image_to_buffer_info);
+		});
+
+		auto ptr = staging_buffer_memory.mapMemory(0, size);
+		memcpy(dst_memory, ptr, size);
+		staging_buffer_memory.unmapMemory();
+
+		auto begin_info = vk::CommandBufferBeginInfo()
+			.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+
+		gContext->getCurrentFrame().command_buffer.begin(begin_info);
+	}
+
 	void generateMips(const vk::raii::CommandBuffer& cmdbuf)
 	{
 		ensureState(cmdbuf, vk::ImageLayout::eTransferSrcOptimal);
 
-		for (uint32_t i = 1; i < mMipLevels; i++)
+		for (uint32_t i = 1; i < mMipCount; i++)
 		{
 			SetImageMemoryBarrier(cmdbuf, mImagePtr, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eUndefined,
 				vk::ImageLayout::eTransferDstOptimal, i, 1);
@@ -614,6 +658,13 @@ public:
 			SetImageMemoryBarrier(cmdbuf, mImagePtr, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eTransferDstOptimal,
 				vk::ImageLayout::eTransferSrcOptimal, i, 1);
 		}
+	}
+
+	void generateMips()
+	{
+		OneTimeSubmit([&](auto& cmdbuf) {
+			generateMips(cmdbuf);
+		});
 	}
 
 	void ensureState(const vk::raii::CommandBuffer& cmdbuf, vk::ImageLayout state)
@@ -2345,9 +2396,6 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 		.setRegions(region);
 
 	gContext->getCurrentFrame().command_buffer.copyImage2(copy_image_info);
-
-	if (dst_texture->isMipmap())
-		dst_texture->generateMips(gContext->getCurrentFrame().command_buffer);
 }
 
 std::vector<uint8_t> BackendVK::getPixels()
@@ -2358,54 +2406,14 @@ std::vector<uint8_t> BackendVK::getPixels()
 	auto _format = ReversedFormatMap.at(format);
 	auto channels_count = GetFormatChannelsCount(_format);
 	auto channel_size = GetFormatChannelSize(_format);
-	auto size = width * height * channels_count * channel_size;
 
-	std::vector<uint8_t> result(size);
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
 
-	auto texture = TextureVK(width, height, format, nullptr, false);
+	auto texture = TextureVK(width, height, format, 1);
 
 	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);
 
-	EnsureRenderPassDeactivated();
-	gContext->getCurrentFrame().command_buffer.end();
-
-	auto submit_info = vk::SubmitInfo()
-		.setCommandBuffers(*gContext->getCurrentFrame().command_buffer);
-
-	gContext->queue.submit(submit_info);
-	gContext->queue.waitIdle();
-
-	auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
-
-	auto subresource = vk::ImageSubresourceLayers()
-		.setAspectMask(vk::ImageAspectFlagBits::eColor)
-		.setLayerCount(1);
-
-	auto region = vk::BufferImageCopy2()
-		.setImageSubresource(subresource)
-		.setBufferImageHeight(height)
-		.setBufferRowLength(0)
-		.setImageExtent({ width, height, 1 });
-
-	auto copy_image_to_buffer_info = vk::CopyImageToBufferInfo2()
-		.setSrcImage(texture.getImage())
-		.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
-		.setDstBuffer(*staging_buffer)
-		.setRegions(region);
-
-	OneTimeSubmit([&](auto& cmdbuf) {
-		texture.ensureState(cmdbuf, vk::ImageLayout::eTransferSrcOptimal);
-		cmdbuf.copyImageToBuffer2(copy_image_to_buffer_info);
-	});
-	
-	auto ptr = staging_buffer_memory.mapMemory(0, size);
-	memcpy(result.data(), ptr, size);
-	staging_buffer_memory.unmapMemory();
-
-	auto begin_info = vk::CommandBufferBeginInfo()
-		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-	gContext->getCurrentFrame().command_buffer.begin(begin_info);
+	texture.read(0, 0, width, height, 0, result.data());
 
 	return result;
 }
@@ -2565,9 +2573,10 @@ void BackendVK::present()
 	Begin();
 }
 
-TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
+TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format,
+	uint32_t mip_count)
 {
-	auto texture = new TextureVK(width, height, FormatMap.at(format), memory, mipmap);
+	auto texture = new TextureVK(width, height, FormatMap.at(format), mip_count);
 	gContext->objects.insert(texture);
 	return (TextureHandle*)texture;
 }
@@ -2575,6 +2584,21 @@ TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format 
 void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
+	auto texture = (TextureVK*)handle;
+	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+}
+
+void BackendVK::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level, void* dst_memory)
+{
+	auto texture = (TextureVK*)handle;
+	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
+}
+
+void BackendVK::generateMips(TextureHandle* handle)
+{
+	auto texture = (TextureVK*)handle;
+	texture->generateMips();
 }
 
 void BackendVK::destroyTexture(TextureHandle* handle)

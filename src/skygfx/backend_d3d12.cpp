@@ -214,6 +214,19 @@ void OneTimeSubmit(std::function<void(ID3D12GraphicsCommandList*)> func)
 	EndCommandList(cmd_queue.Get(), cmd_list.Get(), true);
 }
 
+ComPtr<ID3D12Resource> CreateBuffer(size_t size)
+{
+	ComPtr<ID3D12Resource> result;
+
+	auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE, D3D12_MEMORY_POOL_L0);
+	auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
+
+	gContext->device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
+		D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(result.GetAddressOf()));
+
+	return result;
+}
+
 class ShaderD3D12
 {
 public:
@@ -344,38 +357,30 @@ public:
 class TextureD3D12
 {
 public:
-	auto getWidth() const { return mWidth; }
-	auto getHeight() const { return mHeight; }
-	auto isMipmap() const { return mMipmap; }
 	const auto& getD3D12Texture() const { return mTexture; }
 	auto getGpuDescriptorHandle() const { return mGpuDescriptorHandle; }
+	auto getWidth() const { return mWidth; }
+	auto getHeight() const { return mHeight; }
 	auto getFormat() const { return mFormat; }
 
 private:
-	uint32_t mWidth;
-	uint32_t mHeight;
-	bool mMipmap;
 	ComPtr<ID3D12Resource> mTexture;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mGpuDescriptorHandle;
-	Format mFormat;
 	D3D12_RESOURCE_STATES mCurrentState = D3D12_RESOURCE_STATE_COMMON;
+	uint32_t mWidth = 0;
+	uint32_t mHeight = 0;
+	uint32_t mMipCount = 0;
+	Format mFormat;
 	
 public:
-	TextureD3D12(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
+	TextureD3D12(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
 		mWidth(width),
 		mHeight(height),
-		mMipmap(mipmap),
+		mMipCount(mip_count),
 		mFormat(format)
 	{
-		uint32_t mip_levels = 1;
-
-		if (mipmap)
-		{
-			mip_levels = static_cast<uint32_t>(glm::floor(glm::log2(glm::max(width, height)))) + 1;
-		}
-
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(FormatMap.at(mFormat), width, height, 1, (UINT16)mip_levels);
+		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(FormatMap.at(mFormat), width, height, 1, (UINT16)mip_count);
 
 		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
@@ -388,34 +393,76 @@ public:
 
 		gContext->descriptor_heap_cpu_handle.Offset(1, gContext->descriptor_handle_increment_size);
 		gContext->descriptor_heap_gpu_handle.Offset(1, gContext->descriptor_handle_increment_size);
+	}
 
-		if (memory)
+	void write(uint32_t width, uint32_t height, Format format, void* memory,
+		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+	{
+		auto upload_size = GetRequiredIntermediateSize(mTexture.Get(), mip_level, 1);
+		auto upload_desc = CD3DX12_RESOURCE_DESC::Buffer(upload_size);
+		auto upload_prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+		ComPtr<ID3D12Resource> upload_buffer = NULL;
+
+		gContext->device->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
+			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
+
+		auto channels = GetFormatChannelsCount(format);
+		auto channel_size = GetFormatChannelSize(format);
+
+		D3D12_SUBRESOURCE_DATA subersource_data = {};
+		subersource_data.pData = memory;
+		subersource_data.RowPitch = width * channels * channel_size;
+		subersource_data.SlicePitch = width * height * channels * channel_size;
+
+		OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
+			ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_DEST);
+			UpdateSubresources(cmdlist, mTexture.Get(), upload_buffer.Get(), 0, mip_level, 1, &subersource_data);
+		});
+	}
+
+	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+		uint32_t mip_level, void* dst_memory)
+	{
+		EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), true);
+
+		auto texture_desc = mTexture->GetDesc();
+
+		UINT64 required_size = 0;
+		D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
+		UINT num_rows = 0;
+		UINT64 row_sizes_in_bytes = 0;
+		gContext->device->GetCopyableFootprints(&texture_desc, mip_level, 1, 0, &layout, &num_rows, &row_sizes_in_bytes, &required_size);
+
+		auto staging_buffer = CreateBuffer(required_size);
+
+		OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
+			ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_SOURCE);
+			auto src_loc = CD3DX12_TEXTURE_COPY_LOCATION(mTexture.Get(), mip_level);
+			auto dst_loc = CD3DX12_TEXTURE_COPY_LOCATION(staging_buffer.Get(), layout);
+			cmdlist->CopyTextureRegion(&dst_loc, 0, 0, 0, &src_loc, NULL); // TODO: box
+		});
+
+		UINT8* ptr = nullptr;
+		staging_buffer->Map(0, nullptr, reinterpret_cast<void**>(&ptr));
+
+		auto channels_count = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
+		auto dst_row_size = width * channels_count * channel_size;
+
+		UINT8* src_ptr = ptr + layout.Offset;
+		UINT8* dst_ptr = (uint8_t*)dst_memory;// +layouts[i].Offset;
+
+		for (UINT j = 0; j < num_rows; ++j)
 		{
-			auto upload_size = GetRequiredIntermediateSize(mTexture.Get(), 0, 1);
-			auto upload_desc = CD3DX12_RESOURCE_DESC::Buffer(upload_size);
-			auto upload_prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-
-			ComPtr<ID3D12Resource> upload_buffer = NULL;
-
-			gContext->device->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
-				D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
-
-			auto channels = GetFormatChannelsCount(format);
-			auto channel_size = GetFormatChannelSize(format);
-
-			D3D12_SUBRESOURCE_DATA subersource_data = {};
-			subersource_data.pData = memory;
-			subersource_data.RowPitch = width * channels * channel_size;
-			subersource_data.SlicePitch = width * height * channels * channel_size;
-
-			OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
-				ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_DEST);
-				UpdateSubresources(cmdlist, mTexture.Get(), upload_buffer.Get(), 0, 0, 1, &subersource_data);
-
-				if (mipmap)
-					generateMips(cmdlist, gContext->staging_objects);
-			});
+			memcpy(dst_ptr, src_ptr, dst_row_size);
+			src_ptr += layout.Footprint.RowPitch;
+			dst_ptr += dst_row_size;
 		}
+
+		staging_buffer->Unmap(0, nullptr);
+
+		BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
 	}
 
 	void generateMips(ID3D12GraphicsCommandList* cmdlist, std::vector<ComPtr<ID3D12DeviceChild>>& staging_objects)
@@ -423,6 +470,13 @@ public:
 		ensureState(cmdlist, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 		D3D12GenerateMips(gContext->device.Get(), cmdlist, mTexture.Get(), staging_objects);
 		mCurrentState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+	}
+
+	void generateMips()
+	{
+		OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
+			generateMips(cmdlist, gContext->staging_objects);
+		});
 	}
 
 	void ensureState(ID3D12GraphicsCommandList* cmdlist, D3D12_RESOURCE_STATES state)
@@ -497,19 +551,6 @@ uint32_t ContextD3D12::getBackbufferHeight()
 Format ContextD3D12::getBackbufferFormat()
 {
 	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
-}
-
-ComPtr<ID3D12Resource> CreateBuffer(size_t size)
-{
-	ComPtr<ID3D12Resource> result;
-
-	auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_CPU_PAGE_PROPERTY_WRITE_COMBINE, D3D12_MEMORY_POOL_L0);
-	auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
-
-	gContext->device->CreateCommittedResource(&prop, D3D12_HEAP_FLAG_NONE, &desc,
-		D3D12_RESOURCE_STATE_COMMON, NULL, IID_PPV_ARGS(result.GetAddressOf()));
-
-	return result;
 }
 
 class BufferD3D12
@@ -926,7 +967,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 	auto gpu_preference = _adapter == Adapter::HighPerformance ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_MINIMUM_POWER;
 	dxgi_factory->EnumAdapterByGpuPreference(0, gpu_preference, IID_PPV_ARGS(&adapter));
 
-	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_2, IID_PPV_ARGS(gContext->device.GetAddressOf()));
+	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gContext->device.GetAddressOf()));
 
 	ComPtr<ID3D12InfoQueue> info_queue;
 	gContext->device.As(&info_queue);
@@ -1321,9 +1362,6 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
 			D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
-
-	if (dst_texture->isMipmap())
-		dst_texture->generateMips(gContext->cmdlist.Get(), gContext->staging_objects);
 }
 
 std::vector<uint8_t> BackendD3D12::getPixels()
@@ -1336,60 +1374,12 @@ std::vector<uint8_t> BackendD3D12::getPixels()
 
 	std::vector<uint8_t> result(width * height * channels_count * channel_size);
 
-	auto texture = TextureD3D12(width, height, format, nullptr, false);
+	auto texture = TextureD3D12(width, height, format, 1);
 
 	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);	
 
-	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), true);
+	texture.read(0, 0, width, height, 0, result.data());
 
-	auto texture_desc = texture.getD3D12Texture()->GetDesc();
-
-	UINT64 required_size = 0;
-	UINT num_subresources = texture_desc.DepthOrArraySize * texture_desc.MipLevels;
-	std::vector<D3D12_PLACED_SUBRESOURCE_FOOTPRINT> layouts(num_subresources);
-	std::vector<UINT> num_rows(num_subresources);
-	std::vector<UINT64> row_sizes_in_bytes(num_subresources);
-	
-	gContext->device->GetCopyableFootprints(&texture_desc, 0, num_subresources, 0, layouts.data(),
-		num_rows.data(), row_sizes_in_bytes.data(), &required_size);
-
-	auto staging_buffer = CreateBuffer(required_size);
-
-	OneTimeSubmit([&](ID3D12GraphicsCommandList* cmdlist) {
-		texture.ensureState(cmdlist, D3D12_RESOURCE_STATE_COPY_SOURCE);
-
-		for (UINT i = 0; i < num_subresources; ++i)
-		{
-			auto src_loc = CD3DX12_TEXTURE_COPY_LOCATION(texture.getD3D12Texture().Get(), i);
-			auto dst_loc = CD3DX12_TEXTURE_COPY_LOCATION(staging_buffer.Get(), layouts[i]);
-			cmdlist->CopyTextureRegion(&dst_loc, 0, 0, 0, &src_loc, nullptr);
-		}
-	});
-
-	UINT8* ptr = nullptr;
-	staging_buffer->Map(0, nullptr, reinterpret_cast<void**>(&ptr));
-
-	auto dst_row_size = width * channels_count * channel_size;
-
-	for (UINT i = 0; i < num_subresources; ++i)
-	{
-		UINT8* src_ptr = ptr + layouts[i].Offset;
-		UINT8* dst_ptr = result.data() + layouts[i].Offset;
-
-		for (UINT j = 0; j < num_rows[i]; ++j)
-		{
-			memcpy(dst_ptr, src_ptr, dst_row_size);
-			src_ptr += layouts[i].Footprint.RowPitch;
-			dst_ptr += dst_row_size;
-		}
-
-		break; // we save use only first level
-	}
-
-	staging_buffer->Unmap(0, nullptr);
-
-	BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
-	
 	return result;
 }
 
@@ -1405,15 +1395,31 @@ void BackendD3D12::present()
 	Begin();
 }
 
-TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
+TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Format format,
+	uint32_t mip_count)
 {
-	auto texture = new TextureD3D12(width, height, format, memory, mipmap);
+	auto texture = new TextureD3D12(width, height, format, mip_count);
 	return (TextureHandle*)texture;
 }
 
 void BackendD3D12::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
+	auto texture = (TextureD3D12*)handle;
+	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+}
+
+void BackendD3D12::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level, void* dst_memory)
+{
+	auto texture = (TextureD3D12*)handle;
+	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
+}
+
+void BackendD3D12::generateMips(TextureHandle* handle)
+{
+	auto texture = (TextureD3D12*)handle;
+	texture->generateMips();
 }
 
 void BackendD3D12::destroyTexture(TextureHandle* handle)

@@ -382,42 +382,41 @@ class TextureGL
 {
 public:
 	auto getGLTexture() const { return mTexture; }
-	auto isMipmap() const { return mMipmap; }
 	auto getWidth() const { return mWidth; }
 	auto getHeight() const { return mHeight; }
 	auto getFormat() const { return mFormat; }
+	auto getMipCount() const { return mMipCount; }
 
 private:
 	GLuint mTexture = 0;
-	bool mMipmap = false;
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
+	uint32_t mMipCount = 0;
 	Format mFormat;
-	std::unordered_set<uint32_t> mMipLevels;
 
 public:
-	TextureGL(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
-		mMipmap(mipmap),
+	TextureGL(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
 		mWidth(width),
 		mHeight(height),
-		mFormat(format)
+		mFormat(format),
+		mMipCount(mip_count)
 	{
-		auto internal_format = TextureInternalFormatMap.at(format);
-		auto texture_format = TextureFormatMap.at(format);
-		auto format_type = FormatTypeMap.at(format);
+		glGenTextures(1, &mTexture);
+
+		auto internal_format = TextureInternalFormatMap.at(mFormat);
+		auto texture_format = TextureFormatMap.at(mFormat);
+		auto format_type = FormatTypeMap.at(mFormat);
 
 		GLint last_texture;
 		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-		glGenTextures(1, &mTexture);
+		glBindTexture(GL_TEXTURE_2D, mTexture);
 
-		ensureMipLevel(0);
-
-		if (memory)
+		for (uint32_t i = 0; i < mip_count; i++)
 		{
-			write(width, height, format, memory, 0, 0, 0);
-
-			if (mipmap)
-				glGenerateMipmap(GL_TEXTURE_2D); // TODO: fill mMipLevels
+			auto mip_width = GetMipWidth(width, i);
+			auto mip_height = GetMipHeight(height, i);
+			glTexImage2D(GL_TEXTURE_2D, i, internal_format, mip_width, mip_height, 0, texture_format,
+				format_type, nullptr);
 		}
 
 		glBindTexture(GL_TEXTURE_2D, last_texture);
@@ -428,33 +427,9 @@ public:
 		glDeleteTextures(1, &mTexture);
 	}
 
-	void ensureMipLevel(uint32_t mip_level)
-	{
-		if (mMipLevels.contains(mip_level))
-			return;
-
-		if (mip_level > 0)
-			mMipmap = true;
-
-		auto mip_width = glm::max<uint32_t>(1, glm::floor<uint32_t>(mWidth >> mip_level));
-		auto mip_height = glm::max<uint32_t>(1, glm::floor<uint32_t>(mHeight >> mip_level));
-
-		auto internal_format = TextureInternalFormatMap.at(mFormat);
-		auto texture_format = TextureFormatMap.at(mFormat);
-		auto format_type = FormatTypeMap.at(mFormat);
-
-		glBindTexture(GL_TEXTURE_2D, mTexture);
-		glTexImage2D(GL_TEXTURE_2D, mip_level, internal_format, mip_width, mip_height, 0, texture_format,
-			format_type, nullptr);
-
-		mMipLevels.insert(mip_level);
-	}
-
 	void write(uint32_t width, uint32_t height, Format format, void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
-		ensureMipLevel(mip_level);
-
 		auto channels_count = GetFormatChannelsCount(format);
 		auto channel_size = GetFormatChannelSize(format);
 		auto format_type = FormatTypeMap.at(format);
@@ -470,11 +445,50 @@ public:
 			memcpy(dst, src, row_size);
 		}
 
-		auto mip_height = glm::max<uint32_t>(1, glm::floor<uint32_t>(mHeight >> mip_level));
+		auto mip_height = GetMipHeight(mHeight, mip_level);
 
+		GLint last_texture;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
 		glBindTexture(GL_TEXTURE_2D, mTexture);
 		glTexSubImage2D(GL_TEXTURE_2D, mip_level, offset_x, (mip_height - height) - offset_y, width, height,
 			texture_format, format_type, flipped_image.data());
+		glBindTexture(GL_TEXTURE_2D, last_texture);
+	}
+
+	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+		uint32_t mip_level, void* dst_memory)
+	{
+		auto channels_count = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
+		auto format_type = FormatTypeMap.at(mFormat);
+		auto texture_format = TextureFormatMap.at(mFormat);
+
+		GLint last_texture;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+		glBindTexture(GL_TEXTURE_2D, mTexture);
+		glGetTexImage(GL_TEXTURE_2D, mip_level, texture_format, format_type, dst_memory);
+		glBindTexture(GL_TEXTURE_2D, last_texture);
+
+		auto row_size = width * channels_count * channel_size;
+		auto temp_row = std::vector<uint8_t>(row_size);
+
+		for (size_t i = 0; i < size_t(height / 2); i++)
+		{
+			auto src = (void*)(size_t(dst_memory) + (i * row_size));
+			auto dst = (void*)(size_t(dst_memory) + ((height - i - 1) * row_size));
+			memcpy(temp_row.data(), src, row_size);
+			memcpy(src, dst, row_size);
+			memcpy(dst, temp_row.data(), row_size);
+		}
+	}
+
+	void generateMips()
+	{
+		GLint last_texture;
+		glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+		glBindTexture(GL_TEXTURE_2D, mTexture);
+		glGenerateMipmap(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, last_texture);
 	}
 };
 
@@ -1243,9 +1257,6 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	glTexImage2D(GL_TEXTURE_2D, 0, TextureInternalFormatMap.at(format), width, height, 0,
 		TextureFormatMap.at(format), FormatTypeMap.at(format), 0);
 
-	if (dst_texture->isMipmap())
-		glGenerateMipmap(GL_TEXTURE_2D);
-
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
@@ -1260,29 +1271,13 @@ std::vector<uint8_t> BackendGL::getPixels()
 	auto channels_count = GetFormatChannelsCount(format);
 	auto channel_size = GetFormatChannelSize(format);
 
-	std::vector<uint8_t> result(width * height * channels_count * channel_size);
-
-	auto texture = TextureGL(width, height, format, nullptr, false);
+	auto texture = TextureGL(width, height, format, 1);
 
 	readPixels({ 0, 0 }, { width, height }, (TextureHandle*)&texture);
 
-	GLint last_texture;
-	glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-	glBindTexture(GL_TEXTURE_2D, texture.getGLTexture());
-	glGetTexImage(GL_TEXTURE_2D, 0, TextureFormatMap.at(format), FormatTypeMap.at(format), result.data());
-	glBindTexture(GL_TEXTURE_2D, last_texture);
+	std::vector<uint8_t> result(width * height * channels_count * channel_size);
 
-	const auto row_size = width * channels_count * channel_size;
-	auto temp_row = std::vector<uint8_t>(row_size);
-
-	for (size_t i = 0; i < size_t(height / 2); i++)
-	{
-		auto src = (void*)(size_t(result.data()) + (i * row_size));
-		auto dst = (void*)(size_t(result.data()) + ((height - i - 1) * row_size));
-		memcpy(temp_row.data(), src, row_size);
-		memcpy(src, dst, row_size);
-		memcpy(dst, temp_row.data(), row_size);
-	}
+	texture.read(0, 0, width, height, 0, result.data());
 
 	return result;
 #endif
@@ -1303,9 +1298,10 @@ void BackendGL::present()
 	gContext->execute_after_present.flush();
 }
 
-TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap)
+TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format format,
+	uint32_t mip_count)
 {
-	auto texture = new TextureGL(width, height, format, memory, mipmap);
+	auto texture = new TextureGL(width, height, format, mip_count);
 	return (TextureHandle*)texture;
 }
 
@@ -1314,6 +1310,19 @@ void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32
 {
 	auto texture = (TextureGL*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+}
+
+void BackendGL::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level, void* dst_memory)
+{
+	auto texture = (TextureGL*)handle;
+	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
+}
+
+void BackendGL::generateMips(TextureHandle* handle)
+{
+	auto texture = (TextureGL*)handle;
+	texture->generateMips();
 }
 
 void BackendGL::destroyTexture(TextureHandle* handle)
@@ -1503,8 +1512,8 @@ void BackendGL::prepareForDrawing()
 
 		for (auto [binding, texture_handle] : gContext->textures)
 		{
-			bool texture_has_mipmap = ((TextureGL*)texture_handle)->isMipmap();
-			auto sampler_type = texture_has_mipmap ? ContextGL::SamplerType::Mipmap : ContextGL::SamplerType::NoMipmap;
+			bool texture_has_mips = ((TextureGL*)texture_handle)->getMipCount() > 1;
+			auto sampler_type = texture_has_mips ? ContextGL::SamplerType::Mipmap : ContextGL::SamplerType::NoMipmap;
 			auto sampler = gContext->sampler_states.at(value).at(sampler_type);
 			glBindSampler(binding, sampler);
 		}

@@ -94,12 +94,16 @@ namespace skygfx
 	class Texture : private noncopyable
 	{
 	public:
-		Texture(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap = false);
+		Texture(uint32_t width, uint32_t height, Format format, uint32_t mip_count);
+		Texture(uint32_t width, uint32_t height, Format format, void* memory, bool generate_mips = false);
 		Texture(Texture&& other) noexcept;
 		virtual ~Texture();
 
 		void write(uint32_t width, uint32_t height, Format format, void* memory,
 			uint32_t mip_level = 0, uint32_t offset_x = 0, uint32_t offset_y = 0);
+		std::vector<uint8_t> read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+			uint32_t mip_level);
+		void generateMips();
 
 		Texture& operator=(Texture&& other) noexcept;
 
@@ -108,12 +112,14 @@ namespace skygfx
 		auto getWidth() const { return mWidth; }
 		auto getHeight() const { return mHeight; }
 		auto getFormat() const { return mFormat; }
+		auto getMipCount() const { return mMipCount; }
 
 	private:
 		TextureHandle* mTextureHandle = nullptr;
 		uint32_t mWidth = 0;
 		uint32_t mHeight = 0;
 		Format mFormat;
+		uint32_t mMipCount = 0;
 	};
 
 	class RenderTarget : public Texture
@@ -296,48 +302,13 @@ namespace skygfx
 		Triangles
 	};
 
-	inline TopologyKind GetTopologyKind(Topology topology)
-	{
-		static const std::unordered_map<Topology, TopologyKind> TopologyKindMap = {
-			{ Topology::PointList, TopologyKind::Points },
-			{ Topology::LineList, TopologyKind::Lines},
-			{ Topology::LineStrip, TopologyKind::Lines },
-			{ Topology::TriangleList, TopologyKind::Triangles },
-			{ Topology::TriangleStrip, TopologyKind::Triangles }
-		};
-		return TopologyKindMap.at(topology);
-	}
-
-	inline uint32_t GetFormatChannelsCount(Format format)
-	{
-		static const std::unordered_map<Format, uint32_t> FormatChannelsMap = {
-			{ Format::Float1, 1 },
-			{ Format::Float2, 2 },
-			{ Format::Float3, 3 },
-			{ Format::Float4, 4 },
-			{ Format::Byte1, 1 },
-			{ Format::Byte2, 2 },
-			{ Format::Byte3, 3 },
-			{ Format::Byte4, 4 }
-		};
-		return FormatChannelsMap.at(format);
-	}
-
-	inline uint32_t GetFormatChannelSize(Format format)
-	{
-		static const std::unordered_map<Format, uint32_t> FormatChannelSizeMap = {
-			{ Format::Float1, 4 },
-			{ Format::Float2, 4 },
-			{ Format::Float3, 4 },
-			{ Format::Float4, 4 },
-			{ Format::Byte1, 1 },
-			{ Format::Byte2, 1 },
-			{ Format::Byte3, 1 },
-			{ Format::Byte4, 1 }
-		};
-		return FormatChannelSizeMap.at(format);
-	}
-
+	TopologyKind GetTopologyKind(Topology topology);
+	uint32_t GetFormatChannelsCount(Format format);
+	uint32_t GetFormatChannelSize(Format format);
+	uint32_t GetMipCount(uint32_t width, uint32_t height);
+	uint32_t GetMipWidth(uint32_t base_width, uint32_t mip_level);
+	uint32_t GetMipHeight(uint32_t base_height, uint32_t mip_level);
+	
 	struct Viewport
 	{
 		glm::vec2 position = { 0.0f, 0.0f };
