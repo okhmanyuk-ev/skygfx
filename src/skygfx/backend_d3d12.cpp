@@ -49,7 +49,8 @@ struct RasterizerStateD3D12
 
 SKYGFX_MAKE_HASHABLE(RasterizerStateD3D12,
 	t.cull_mode,
-	t.front_face);
+	t.front_face
+);
 
 struct PipelineStateD3D12
 {
@@ -81,7 +82,8 @@ SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
 	t.blend_mode,
 	t.topology_kind,
 	t.color_attachment_format,
-	t.depth_stencil_format);
+	t.depth_stencil_format
+);
 
 static int const NUM_BACK_BUFFERS = 2;
 

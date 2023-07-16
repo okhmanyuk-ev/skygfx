@@ -38,7 +38,8 @@ struct PipelineStateVK
 SKYGFX_MAKE_HASHABLE(PipelineStateVK,
 	t.shader,
 	t.color_attachment_format,
-	t.depth_stencil_format);
+	t.depth_stencil_format
+);
 
 struct RaytracingPipelineStateVK
 {
@@ -52,7 +53,8 @@ struct RaytracingPipelineStateVK
 };
 
 SKYGFX_MAKE_HASHABLE(RaytracingPipelineStateVK,
-	t.shader);
+	t.shader
+);
 
 struct SamplerStateVK
 {
@@ -69,7 +71,8 @@ struct SamplerStateVK
 
 SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 	t.sampler,
-	t.texture_address);
+	t.texture_address
+);
 
 using VulkanObject = std::variant<
 	vk::raii::Buffer,

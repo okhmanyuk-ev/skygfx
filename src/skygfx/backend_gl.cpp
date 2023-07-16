@@ -630,7 +630,8 @@ struct SamplerStateGL
 
 SKYGFX_MAKE_HASHABLE(SamplerStateGL,
 	t.sampler,
-	t.texture_address);
+	t.texture_address
+);
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 static HGLRC WglContext;

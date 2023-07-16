@@ -36,7 +36,8 @@ struct DepthStencilStateD3D11
 
 SKYGFX_MAKE_HASHABLE(DepthStencilStateD3D11,
 	t.depth_mode,
-	t.stencil_mode);
+	t.stencil_mode
+);
 
 struct RasterizerStateD3D11
 {
@@ -59,7 +60,8 @@ SKYGFX_MAKE_HASHABLE(RasterizerStateD3D11,
 	t.cull_mode,
 	t.scissor_enabled,
 	t.front_face,
-	t.depth_bias);
+	t.depth_bias
+);
 
 struct SamplerStateD3D11
 {
@@ -76,7 +78,8 @@ struct SamplerStateD3D11
 
 SKYGFX_MAKE_HASHABLE(SamplerStateD3D11,
 	t.sampler,
-	t.texture_address);
+	t.texture_address
+);
 
 class TextureD3D11;
 class RenderTargetD3D11;

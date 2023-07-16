@@ -645,7 +645,8 @@ SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,
 	t.red,
 	t.green,
 	t.blue,
-	t.alpha);
+	t.alpha
+);
 
 SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
 	t.alpha_blend_func,
@@ -654,10 +655,12 @@ SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
 	t.color_blend_func,
 	t.color_dst_blend,
 	t.color_src_blend,
-	t.color_mask);
+	t.color_mask
+);
 
 SKYGFX_MAKE_HASHABLE(skygfx::DepthMode,
-	t.func);
+	t.func
+);
 
 SKYGFX_MAKE_HASHABLE(skygfx::StencilMode,
 	t.read_mask,
@@ -665,8 +668,10 @@ SKYGFX_MAKE_HASHABLE(skygfx::StencilMode,
 	t.depth_fail_op,
 	t.fail_op,
 	t.func,
-	t.pass_op);
+	t.pass_op
+);
 
 SKYGFX_MAKE_HASHABLE(skygfx::DepthBias,
 	t.factor,
-	t.units)
+	t.units
+)

@@ -44,7 +44,8 @@ SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
 	t.shader,
 	t.color_attachment_pixel_format,
 	t.depth_stencil_attachment_pixel_format,
-	t.blend_mode);
+	t.blend_mode
+);
 	
 struct SamplerStateMetal
 {
@@ -61,7 +62,8 @@ struct SamplerStateMetal
 
 SKYGFX_MAKE_HASHABLE(SamplerStateMetal,
 	t.sampler,
-	t.texture_address);
+	t.texture_address
+);
 	
 struct DepthStencilStateMetal
 {
@@ -78,7 +80,8 @@ struct DepthStencilStateMetal
 
 SKYGFX_MAKE_HASHABLE(DepthStencilStateMetal,
 	t.depth_mode,
-	t.stencil_mode);
+	t.stencil_mode
+);
 
 static NSAutoreleasePool* gAutoreleasePool = nullptr;
 static id<MTLDevice> gDevice = nullptr;
