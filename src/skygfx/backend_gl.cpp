@@ -102,18 +102,22 @@ void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLen
 
 void CheckErrors()
 {
+	static const std::unordered_map<GLenum, std::string> ErrorMap = {
+		{ GL_INVALID_ENUM, "GL_INVALID_ENUM" }, // Set when an enumeration parameter is not legal.
+		{ GL_INVALID_VALUE, "GL_INVALID_VALUE" }, // Set when a value parameter is not legal.
+		{ GL_INVALID_OPERATION, "GL_INVALID_OPERATION" }, // Set when the state for a command is not legal for its given parameters.
+		{ GL_STACK_OVERFLOW, "GL_STACK_OVERFLOW" }, // Set when a stack pushing operation causes a stack overflow.
+		{ GL_STACK_UNDERFLOW, "GL_STACK_UNDERFLOW" }, // Set when a stack popping operation occurs while the stack is at its lowest point.
+		{ GL_OUT_OF_MEMORY, "GL_OUT_OF_MEMORY" }, // Set when a memory allocation operation cannot allocate(enough) memory.
+		{ GL_INVALID_FRAMEBUFFER_OPERATION, "GL_INVALID_FRAMEBUFFER_OPERATION" }, // Set when reading or writing to a framebuffer that is not complete.
+	};
+
 	auto error = glGetError();
-	/*
-	 GL_NO_ERROR	0	No user error reported since the last call to glGetError.
-	 GL_INVALID_ENUM	1280	Set when an enumeration parameter is not legal.
-	 GL_INVALID_VALUE	1281	Set when a value parameter is not legal.
-	 GL_INVALID_OPERATION	1282	Set when the state for a command is not legal for its given parameters.
-	 GL_STACK_OVERFLOW	1283	Set when a stack pushing operation causes a stack overflow.
-	 GL_STACK_UNDERFLOW	1284	Set when a stack popping operation occurs while the stack is at its lowest point.
-	 GL_OUT_OF_MEMORY	1285	Set when a memory allocation operation cannot allocate (enough) memory.
-	 GL_INVALID_FRAMEBUFFER_OPERATION	1286	Set when reading or writing to a framebuffer that is not complete.
-	 */
-	assert(error == GL_NO_ERROR);
+
+	if (error == GL_NO_ERROR)
+		return;
+
+	std::cout << "BackendGL::CheckError: " << error << "(" << ErrorMap.at(error)<< ")" << std::endl;
 }
 
 static const std::unordered_map<Format, GLint> SizeMap = {
