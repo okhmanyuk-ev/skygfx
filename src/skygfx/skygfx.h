@@ -540,6 +540,17 @@ namespace skygfx
 		CounterClockwise
 	};
 
+	struct DepthBias
+	{
+		DepthBias(float factor = 0.0f, float units = 0.0f);
+
+		bool operator==(const DepthBias& other) const;
+		bool operator!=(const DepthBias& other) const;
+
+		float factor;
+		float units;
+	};
+
 	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,
 		Adapter adapter = Adapter::HighPerformance, const std::unordered_set<Feature>& features = {});
 	void Finalize();
@@ -568,6 +579,7 @@ namespace skygfx
 	void SetSampler(Sampler value);
 	void SetTextureAddress(TextureAddress value);
 	void SetFrontFace(FrontFace value);
+	void SetDepthBias(const std::optional<DepthBias> depth_bias);
 
 	void Clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f },
 		const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
@@ -654,3 +666,7 @@ SKYGFX_MAKE_HASHABLE(skygfx::StencilMode,
 	t.fail_op,
 	t.func,
 	t.pass_op);
+
+SKYGFX_MAKE_HASHABLE(skygfx::DepthBias,
+	t.factor,
+	t.units)

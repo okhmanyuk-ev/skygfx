@@ -1228,6 +1228,10 @@ void BackendD3D12::setFrontFace(FrontFace value)
 {
 }
 
+void BackendD3D12::setDepthBias(const std::optional<DepthBias> depth_bias)
+{
+}
+
 void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

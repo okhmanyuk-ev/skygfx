@@ -29,6 +29,7 @@ namespace skygfx
 		virtual void setSampler(Sampler value) = 0;
 		virtual void setTextureAddress(TextureAddress value) = 0;
 		virtual void setFrontFace(FrontFace value) = 0;
+		virtual void setDepthBias(const std::optional<DepthBias> depth_bias) = 0;
 
 		virtual void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) = 0;

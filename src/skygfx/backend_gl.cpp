@@ -1171,6 +1171,18 @@ void BackendGL::setFrontFace(FrontFace value)
 	gContext->front_face_dirty = true;
 }
 
+void BackendGL::setDepthBias(const std::optional<DepthBias> depth_bias)
+{
+	if (!depth_bias.has_value())
+	{
+		glDisable(GL_POLYGON_OFFSET_FILL);
+		return;
+	}
+
+	glEnable(GL_POLYGON_OFFSET_FILL);
+	glPolygonOffset(depth_bias->factor, depth_bias->units);
+}
+
 void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

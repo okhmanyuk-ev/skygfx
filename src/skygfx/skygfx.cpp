@@ -394,6 +394,23 @@ uint32_t skygfx::GetMipHeight(uint32_t base_height, uint32_t mip_level)
 	return glm::max<uint32_t>(1, static_cast<uint32_t>(glm::floor<uint32_t>(base_height >> mip_level)));
 }
 
+// depth bias
+
+skygfx::DepthBias::DepthBias(float _factor, float _units) :
+	factor(_factor), units(_units)
+{
+}
+
+bool DepthBias::operator==(const DepthBias& other) const
+{
+	return factor == other.factor && units == other.units;
+}
+
+bool DepthBias::operator!=(const DepthBias& other) const
+{
+	return !(*this == other);
+}
+
 // device
 
 void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type,
@@ -574,6 +591,11 @@ void skygfx::SetTextureAddress(TextureAddress value)
 void skygfx::SetFrontFace(FrontFace value)
 {
 	gBackend->setFrontFace(value);
+}
+
+void skygfx::SetDepthBias(const std::optional<DepthBias> depth_bias)
+{
+	gBackend->setDepthBias(depth_bias);
 }
 
 void skygfx::Clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,

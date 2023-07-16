@@ -34,6 +34,7 @@ namespace skygfx
 		void setSampler(Sampler value) override;
 		void setTextureAddress(TextureAddress value) override;
 		void setFrontFace(FrontFace value) override;
+		void setDepthBias(const std::optional<DepthBias> depth_bias) override;
 
 		void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) override;

@@ -2279,6 +2279,10 @@ void BackendVK::setFrontFace(FrontFace value)
 	gContext->front_face_dirty = true;
 }
 
+void BackendVK::setDepthBias(const std::optional<DepthBias> depth_bias)
+{
+}
+
 void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {

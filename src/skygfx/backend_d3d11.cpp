@@ -43,20 +43,23 @@ struct RasterizerStateD3D11
 	bool scissor_enabled = false;
 	CullMode cull_mode = CullMode::None;
 	FrontFace front_face = FrontFace::Clockwise;
+	std::optional<DepthBias> depth_bias;
 
 	bool operator==(const RasterizerStateD3D11& value) const
 	{
 		return 
 			scissor_enabled == value.scissor_enabled && 
 			cull_mode == value.cull_mode &&
-			front_face == value.front_face;
+			front_face == value.front_face &&
+			depth_bias == value.depth_bias;
 	}
 };
 
 SKYGFX_MAKE_HASHABLE(RasterizerStateD3D11,
 	t.cull_mode,
 	t.scissor_enabled,
-	t.front_face);
+	t.front_face,
+	t.depth_bias);
 
 struct SamplerStateD3D11
 {
@@ -509,6 +512,16 @@ static void PrepareForDrawing()
 			desc.CullMode = CullMap.at(value.cull_mode);
 			desc.ScissorEnable = value.scissor_enabled;
 			desc.FrontCounterClockwise = value.front_face == FrontFace::CounterClockwise;
+			if (value.depth_bias.has_value())
+			{
+				desc.SlopeScaledDepthBias = value.depth_bias->factor;
+				desc.DepthBias = (INT)value.depth_bias->units;
+			}
+			else
+			{
+				desc.DepthBias = D3D11_DEFAULT_DEPTH_BIAS;
+				desc.SlopeScaledDepthBias = D3D11_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+			}
 			gContext->device->CreateRasterizerState(&desc, gContext->rasterizer_states[value].GetAddressOf());
 		}
 
@@ -858,6 +871,15 @@ void BackendD3D11::setFrontFace(FrontFace value)
 		return;
 
 	gContext->rasterizer_state.front_face = value;
+	gContext->rasterizer_state_dirty = true;
+}
+
+void BackendD3D11::setDepthBias(const std::optional<DepthBias> depth_bias)
+{
+	if (gContext->rasterizer_state.depth_bias == depth_bias)
+		return;
+
+	gContext->rasterizer_state.depth_bias = depth_bias;
 	gContext->rasterizer_state_dirty = true;
 }
 
