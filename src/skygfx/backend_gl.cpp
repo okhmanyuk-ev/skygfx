@@ -106,8 +106,12 @@ void CheckErrors()
 		{ GL_INVALID_ENUM, "GL_INVALID_ENUM" }, // Set when an enumeration parameter is not legal.
 		{ GL_INVALID_VALUE, "GL_INVALID_VALUE" }, // Set when a value parameter is not legal.
 		{ GL_INVALID_OPERATION, "GL_INVALID_OPERATION" }, // Set when the state for a command is not legal for its given parameters.
+#ifdef GL_STACK_OVERFLOW // emscripten
 		{ GL_STACK_OVERFLOW, "GL_STACK_OVERFLOW" }, // Set when a stack pushing operation causes a stack overflow.
+#endif
+#ifdef GL_STACK_UNDERFLOW // emscripten
 		{ GL_STACK_UNDERFLOW, "GL_STACK_UNDERFLOW" }, // Set when a stack popping operation occurs while the stack is at its lowest point.
+#endif
 		{ GL_OUT_OF_MEMORY, "GL_OUT_OF_MEMORY" }, // Set when a memory allocation operation cannot allocate(enough) memory.
 		{ GL_INVALID_FRAMEBUFFER_OPERATION, "GL_INVALID_FRAMEBUFFER_OPERATION" }, // Set when reading or writing to a framebuffer that is not complete.
 	};
@@ -117,7 +121,8 @@ void CheckErrors()
 	if (error == GL_NO_ERROR)
 		return;
 
-	std::cout << "BackendGL::CheckError: " << error << "(" << ErrorMap.at(error)<< ")" << std::endl;
+	std::cout << "BackendGL::CheckError: " << error << "(" << 
+		(ErrorMap.contains(error) ? ErrorMap.at(error) : "UNKNOWN") << ")" << std::endl;
 }
 
 static const std::unordered_map<Format, GLint> SizeMap = {
@@ -452,13 +457,14 @@ public:
 		auto format_type = FormatTypeMap.at(format);
 		auto texture_format = TextureFormatMap.at(format);
 
-		auto flipped_image = std::vector<uint8_t>(width * height * channels_count * channel_size);
 		auto row_size = width * channels_count * channel_size;
+		auto image_size = height * row_size;
+		auto flipped_image = std::vector<uint8_t>(image_size);
 
-		for (size_t i = 0; i < (size_t)height; i++)
+		for (uint32_t i = 0; i < height; i++)
 		{
-			auto src = (void*)(size_t(memory) + i * row_size);
-			auto dst = (void*)(size_t(flipped_image.data()) + size_t(height - 1 - i) * row_size);
+			auto src = (void*)(size_t(memory) + (size_t(i) * row_size));
+			auto dst = (void*)(size_t(flipped_image.data()) + (size_t(height - 1 - i) * row_size));
 			memcpy(dst, src, row_size);
 		}
 
@@ -478,12 +484,16 @@ public:
 		auto texture_format = TextureFormatMap.at(mFormat);
 		auto binding = ScopedBindTexture(mTexture);
 
+#ifndef EMSCRIPTEN // emscripten doesnt have this func
 		glGetTexImage(GL_TEXTURE_2D, mip_level, texture_format, format_type, dst_memory);
+#else
+		std::cout << "warning: emscripten cannot read to cpu memory" << std::endl;
+#endif
 
 		auto row_size = width * channels_count * channel_size;
 		auto temp_row = std::vector<uint8_t>(row_size);
 
-		for (size_t i = 0; i < size_t(height / 2); i++)
+		for (uint32_t i = 0; i < uint32_t(height / 2); i++)
 		{
 			auto src = (void*)(size_t(dst_memory) + (i * row_size));
 			auto dst = (void*)(size_t(dst_memory) + ((height - i - 1) * row_size));
