@@ -101,6 +101,8 @@ namespace skygfx
 
 		void write(uint32_t width, uint32_t height, Format format, void* memory,
 			uint32_t mip_level = 0, uint32_t offset_x = 0, uint32_t offset_y = 0);
+		void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+			uint32_t mip_level, void* dst_memory);
 		std::vector<uint8_t> read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
 			uint32_t mip_level);
 		void generateMips();

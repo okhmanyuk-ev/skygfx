@@ -69,22 +69,24 @@ void Texture::write(uint32_t width, uint32_t height, Format format, void* memory
 	gBackend->writeTexturePixels(mTextureHandle, width, height, format, memory, mip_level, offset_x, offset_y);
 }
 
-std::vector<uint8_t> Texture::read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level)
+void Texture::read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level, void* dst_memory)
 {
 	assert(width > 0);
 	assert(height > 0);
 	assert(pos_x + width <= GetMipWidth(mWidth, mip_level));
 	assert(pos_y + height <= GetMipHeight(mHeight, mip_level));
 	assert(mip_level < mMipCount);
+	gBackend->readTexturePixels(mTextureHandle, pos_x, pos_y, width, height, mip_level, dst_memory);
+}
 
+std::vector<uint8_t> Texture::read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level)
+{
 	auto channels_count = GetFormatChannelsCount(mFormat);
 	auto channel_size = GetFormatChannelSize(mFormat);
-
-	std::vector<uint8_t> result(width * height * channels_count * channel_size);
-
-	gBackend->readTexturePixels(mTextureHandle, pos_x, pos_y, width, height, mip_level, result.data());
-
+	auto result = std::vector<uint8_t>(width * height * channels_count * channel_size);
+	read(pos_x, pos_y, width, height, mip_level, result.data());
 	return result;
 }
 

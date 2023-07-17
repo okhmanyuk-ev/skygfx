@@ -387,26 +387,27 @@ public:
 #endif
 };
 
-class ScopedBindTexture
-{
-public:
-	ScopedBindTexture(GLuint texture)
-	{
-		glGetIntegerv(GL_TEXTURE_BINDING_2D, &mLastTexture);
-		glBindTexture(GL_TEXTURE_2D, texture);
-	}
-
-	~ScopedBindTexture()
-	{
-		glBindTexture(GL_TEXTURE_2D, mLastTexture);
-	}
-
-private:
-	GLint mLastTexture = 0;
-};
-
 class TextureGL
 {
+public:
+	class ScopedBind : public skygfx::noncopyable
+	{
+	public:
+		ScopedBind(GLuint texture)
+		{
+			glGetIntegerv(GL_TEXTURE_BINDING_2D, &mLastTexture);
+			glBindTexture(GL_TEXTURE_2D, texture);
+		}
+
+		~ScopedBind()
+		{
+			glBindTexture(GL_TEXTURE_2D, mLastTexture);
+		}
+
+	private:
+		GLint mLastTexture = 0;
+	};
+
 public:
 	auto getGLTexture() const { return mTexture; }
 	auto getWidth() const { return mWidth; }
@@ -433,7 +434,7 @@ public:
 		auto internal_format = TextureInternalFormatMap.at(mFormat);
 		auto texture_format = TextureFormatMap.at(mFormat);
 		auto format_type = FormatTypeMap.at(mFormat);
-		auto binding = ScopedBindTexture(mTexture);
+		auto binding = ScopedBind(mTexture);
 
 		for (uint32_t i = 0; i < mip_count; i++)
 		{
@@ -469,7 +470,7 @@ public:
 		}
 
 		auto mip_height = GetMipHeight(mHeight, mip_level);
-		auto binding = ScopedBindTexture(mTexture);
+		auto binding = ScopedBind(mTexture);
 
 		glTexSubImage2D(GL_TEXTURE_2D, mip_level, offset_x, (mip_height - height) - offset_y, width, height,
 			texture_format, format_type, flipped_image.data());
@@ -482,7 +483,7 @@ public:
 		auto channel_size = GetFormatChannelSize(mFormat);
 		auto format_type = FormatTypeMap.at(mFormat);
 		auto texture_format = TextureFormatMap.at(mFormat);
-		auto binding = ScopedBindTexture(mTexture);
+		auto binding = ScopedBind(mTexture);
 
 #ifndef EMSCRIPTEN // emscripten doesnt have this func
 		glGetTexImage(GL_TEXTURE_2D, mip_level, texture_format, format_type, dst_memory);
@@ -505,7 +506,7 @@ public:
 
 	void generateMips()
 	{
-		auto binding = ScopedBindTexture(mTexture);
+		auto binding = ScopedBind(mTexture);
 		glGenerateMipmap(GL_TEXTURE_2D);
 	}
 };
@@ -1282,7 +1283,7 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	glReadPixels(x, y, width, height, TextureFormatMap.at(format), FormatTypeMap.at(format), 0);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
-	auto binding = ScopedBindTexture(dst_texture->getGLTexture());
+	auto binding = TextureGL::ScopedBind(dst_texture->getGLTexture());
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gContext->pixel_buffer);
 
 	glTexImage2D(GL_TEXTURE_2D, 0, TextureInternalFormatMap.at(format), width, height, 0,
