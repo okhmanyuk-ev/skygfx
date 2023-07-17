@@ -317,21 +317,10 @@ namespace skygfx
 		glm::vec2 size = { 0.0f, 0.0f };
 		float min_depth = 0.0f;
 		float max_depth = 1.0f;
+
+		bool operator==(const Viewport& other) const;
+		bool operator!=(const Viewport& other) const;
 	};
-
-	inline bool operator==(const Viewport& left, const Viewport& right)
-	{
-		return
-			left.position == right.position &&
-			left.size == right.size &&
-			left.min_depth == right.min_depth &&
-			left.max_depth == right.max_depth;
-	}
-
-	inline bool operator!=(const Viewport& left, const Viewport& right)
-	{
-		return !(left == right);
-	}
 
 	enum class Blend
 	{
@@ -365,6 +354,9 @@ namespace skygfx
 		bool green = true;
 		bool blue = true;
 		bool alpha = true;
+
+		bool operator==(const ColorMask& other) const;
+		bool operator!=(const ColorMask& other) const;
 	};
 
 	struct BlendMode
@@ -384,38 +376,10 @@ namespace skygfx
 		Blend alpha_dst_blend;
 
 		ColorMask color_mask;
+
+		bool operator==(const BlendMode& other) const;
+		bool operator!=(const BlendMode& other) const;
 	};
-
-	inline bool operator==(const ColorMask& left, const ColorMask& right)
-	{
-		return
-			left.red == right.red &&
-			left.green == right.green &&
-			left.blue == right.blue &&
-			left.alpha == right.alpha;
-	}
-
-	inline bool operator!=(const ColorMask& left, const ColorMask& right)
-	{
-		return !(left == right);
-	}
-
-	inline bool operator==(const BlendMode& left, const BlendMode& right)
-	{
-		return
-			left.color_blend_func == right.color_blend_func &&
-			left.color_src_blend == right.color_src_blend &&
-			left.color_dst_blend == right.color_dst_blend &&
-			left.alpha_blend_func == right.alpha_blend_func &&
-			left.alpha_src_blend == right.alpha_src_blend &&
-			left.alpha_dst_blend == right.alpha_dst_blend &&
-			left.color_mask == right.color_mask;
-	}
-
-	inline bool operator!=(const BlendMode& left, const BlendMode& right)
-	{
-		return !(left == right);
-	}
 
 	namespace BlendStates
 	{
@@ -443,17 +407,10 @@ namespace skygfx
 		DepthMode(ComparisonFunc _func) : func(_func) {}
 
 		ComparisonFunc func = ComparisonFunc::Always;
+
+		bool operator==(const DepthMode& other) const;
+		bool operator!=(const DepthMode& other) const;
 	};
-
-	inline bool operator==(const DepthMode& left, const DepthMode& right)
-	{
-		return left.func == right.func;
-	}
-
-	inline bool operator!=(const DepthMode& left, const DepthMode& right)
-	{
-		return !(left == right);
-	}
 
 	enum class StencilOp
 	{
@@ -478,43 +435,19 @@ namespace skygfx
 		StencilOp pass_op = StencilOp::Keep;
 
 		uint8_t reference = 1;
+
+		bool operator==(const StencilMode& other) const;
+		bool operator!=(const StencilMode& other) const;
 	};
-
-	inline bool operator==(const StencilMode& left, const StencilMode& right)
-	{
-		return
-			left.read_mask == right.read_mask &&
-			left.write_mask == right.write_mask &&
-
-			left.depth_fail_op == right.depth_fail_op &&
-			left.fail_op == right.fail_op &&
-			left.func == right.func &&
-			left.pass_op == right.pass_op &&
-
-			left.reference == right.reference;
-	}
-
-	inline bool operator!=(const StencilMode& left, const StencilMode& right)
-	{
-		return !(left == right);
-	}
 
 	struct Scissor
 	{
 		glm::vec2 position = { 0.0f, 0.0f };
 		glm::vec2 size = { 0.0f, 0.0f };
+
+		bool operator==(const Scissor& other) const;
+		bool operator!=(const Scissor& other) const;
 	};
-
-	inline bool operator==(const Scissor& left, const Scissor& right)
-	{
-		return left.position == right.position &&
-			left.size == right.size;
-	}
-
-	inline bool operator!=(const Scissor& left, const Scissor& right)
-	{
-		return !(left == right);
-	}
 
 	enum class CullMode
 	{

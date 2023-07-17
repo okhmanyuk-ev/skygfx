@@ -441,7 +441,7 @@ public:
 			auto mip_width = GetMipWidth(width, i);
 			auto mip_height = GetMipHeight(height, i);
 			glTexImage2D(GL_TEXTURE_2D, i, internal_format, mip_width, mip_height, 0, texture_format,
-				format_type, nullptr);
+				format_type, NULL);
 		}
 	}
 
@@ -569,7 +569,7 @@ public:
 	{
 		glGenBuffers(1, &mBuffer);
 		glBindBuffer(type, mBuffer);
-		glBufferData(type, size, nullptr, GL_DYNAMIC_DRAW);
+		glBufferData(type, size, NULL, GL_DYNAMIC_DRAW);
 	}
 
 	~BufferGL()
@@ -1279,7 +1279,7 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	auto channel_size = GetFormatChannelSize(format);
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, gContext->pixel_buffer);
-	glBufferData(GL_PIXEL_PACK_BUFFER, width * height * channels_count * channel_size, nullptr, GL_STATIC_READ);
+	glBufferData(GL_PIXEL_PACK_BUFFER, width * height * channels_count * channel_size, NULL, GL_STATIC_READ);
 	glReadPixels(x, y, width, height, TextureFormatMap.at(format), FormatTypeMap.at(format), 0);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
@@ -1287,7 +1287,7 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gContext->pixel_buffer);
 
 	glTexImage2D(GL_TEXTURE_2D, 0, TextureInternalFormatMap.at(format), width, height, 0,
-		TextureFormatMap.at(format), FormatTypeMap.at(format), 0);
+		TextureFormatMap.at(format), FormatTypeMap.at(format), NULL);
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
