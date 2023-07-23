@@ -736,7 +736,7 @@ static void PrepareForDrawing(bool indexed)
 
 		auto depth_stencil_state = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 		depth_stencil_state.DepthEnable = gContext->pipeline_state.depth_mode.has_value();
-		depth_stencil_state.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+		depth_stencil_state.DepthWriteMask = depth_mode.write_mask ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
 		depth_stencil_state.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
 		depth_stencil_state.StencilEnable = false;
 

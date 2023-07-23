@@ -1112,11 +1112,13 @@ void BackendGL::setDepthMode(const std::optional<DepthMode>& depth_mode)
 	if (!depth_mode.has_value())
 	{
 		glDisable(GL_DEPTH_TEST);
+		glDepthMask(true);
 		return;
 	}
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(ComparisonFuncMap.at(depth_mode.value().func));
+	glDepthMask(depth_mode.value().write_mask);
 }
 
 void BackendGL::setStencilMode(const std::optional<StencilMode>& stencil_mode)

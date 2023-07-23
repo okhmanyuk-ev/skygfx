@@ -485,7 +485,9 @@ bool skygfx::StencilMode::operator!=(const StencilMode& other) const
 
 bool skygfx::DepthMode::operator==(const DepthMode& other) const
 {
-	return func == other.func;
+	return
+		write_mask == other.write_mask &&
+		func == other.func;
 }
 
 bool skygfx::DepthMode::operator!=(const DepthMode& other) const

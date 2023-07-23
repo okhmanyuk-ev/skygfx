@@ -406,6 +406,7 @@ namespace skygfx
 		DepthMode() {}
 		DepthMode(ComparisonFunc _func) : func(_func) {}
 
+		bool write_mask = true;
 		ComparisonFunc func = ComparisonFunc::Always;
 
 		bool operator==(const DepthMode& other) const;
@@ -594,6 +595,7 @@ SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
 );
 
 SKYGFX_MAKE_HASHABLE(skygfx::DepthMode,
+	t.write_mask,
 	t.func
 );
 

@@ -1636,13 +1636,12 @@ static void PrepareForDrawing(bool indexed)
 		if (gContext->depth_mode.has_value())
 		{
 			gContext->getCurrentFrame().command_buffer.setDepthTestEnable(true);
-			gContext->getCurrentFrame().command_buffer.setDepthWriteEnable(true);
+			gContext->getCurrentFrame().command_buffer.setDepthWriteEnable(gContext->depth_mode.value().write_mask);
 			gContext->getCurrentFrame().command_buffer.setDepthCompareOp(CompareOpMap.at(gContext->depth_mode.value().func));
 		}
 		else
 		{
 			gContext->getCurrentFrame().command_buffer.setDepthTestEnable(false);
-			gContext->getCurrentFrame().command_buffer.setDepthWriteEnable(false);
 		}
 
 		gContext->depth_mode_dirty = false;

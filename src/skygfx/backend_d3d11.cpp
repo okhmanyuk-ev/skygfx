@@ -479,6 +479,7 @@ static void PrepareForDrawing()
 			auto desc = CD3D11_DEPTH_STENCIL_DESC(D3D11_DEFAULT);
 			desc.DepthEnable = depth_stencil_state.depth_mode.has_value();
 			desc.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
+			desc.DepthWriteMask = depth_mode.write_mask ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
 
 			desc.StencilEnable = depth_stencil_state.stencil_mode.has_value();
 			desc.StencilReadMask = stencil_mode.read_mask;
