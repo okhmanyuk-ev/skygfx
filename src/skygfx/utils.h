@@ -91,15 +91,18 @@ namespace skygfx::utils
 
 		struct alignas(16) GaussianBlur
 		{
-			glm::vec2 direction;
+			GaussianBlur(glm::vec2 resolution, glm::vec2 direction);
+			GaussianBlur(const Texture& texture, glm::vec2 direction);
+
 			glm::vec2 resolution;
+			glm::vec2 direction;
 
 			static const std::string Shader;
 		};
 
 		struct alignas(16) BloomDownsample
 		{
-			BloomDownsample(const glm::vec2& resolution, uint32_t step_number);
+			BloomDownsample(glm::vec2 resolution, uint32_t step_number);
 			BloomDownsample(const Texture& texture, uint32_t step_number);
 
 			glm::vec2 resolution;
@@ -120,6 +123,8 @@ namespace skygfx::utils
 
 		struct alignas(16) BrightFilter
 		{
+			BrightFilter(float threshold);
+
 			float threshold = 0.9f;
 
 			static const std::string Shader;
@@ -269,7 +274,7 @@ namespace skygfx::utils
 			std::function<void()> func;
 		};
 
-		struct InsertSubcommands;
+		struct Subcommands;
 		struct Draw
 		{
 			Draw(std::optional<DrawCommand> draw_command = std::nullopt);
@@ -292,7 +297,7 @@ namespace skygfx::utils
 		commands::SetEyePosition,
 		commands::SetMipmapBias,
 		commands::Callback,
-		commands::InsertSubcommands,
+		commands::Subcommands,
 		commands::Draw
 	>;
 
@@ -300,11 +305,22 @@ namespace skygfx::utils
 
 	namespace commands
 	{
-		struct InsertSubcommands
+		struct Subcommands
 		{
-			InsertSubcommands(const Commands* subcommands);
-			const Commands* subcommands;
+			Subcommands(const Commands* subcommands);
+			Subcommands(Commands&& subcommands);
+			std::variant<const Commands*, Commands> subcommands;
 		};
+
+		Subcommands Blit(const Texture& texture, const RenderTarget* target = nullptr, bool clear = false);
+
+		Subcommands Blit(const Texture& texture, const RenderTarget* target, bool clear, effects::Effect auto effect)
+		{
+			return Commands{
+				commands::SetEffect(std::move(effect)),
+				Blit(texture, target, clear)
+			};
+		}
 	}
 	
 	void AddCommands(Commands& cmdlist, Commands&& cmds);
@@ -315,6 +331,8 @@ namespace skygfx::utils
 		void GaussianBlur(const RenderTarget& src, const RenderTarget& dst);
 		void Grayscale(const RenderTarget& src, const RenderTarget& dst);
 		void Bloom(const RenderTarget& src, const RenderTarget& dst, float bright_threshold = 1.0f,
+			float intensity = 2.0f);
+		void BloomGaussian(const RenderTarget& src, const RenderTarget& dst, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
 	}
 }

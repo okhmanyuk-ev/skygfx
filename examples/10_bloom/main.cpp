@@ -105,6 +105,7 @@ int main()
 
 	float threshold = 1.0f;
 	float intensity = 2.0f;
+	bool gaussian = false;
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -116,6 +117,7 @@ int main()
 		ImGui::SetWindowPos({ 16.0f, 16.0f });
 		ImGui::SliderFloat("Intensity", &intensity, 0.0f, 4.0f);
 		ImGui::SliderFloat("Threshold", &threshold, 0.0f, 1.0f);
+		ImGui::Checkbox("Gaussian", &gaussian);
 		ImGui::Checkbox("Animated", &animated);
 		ImGui::SliderAngle("Angle", &angle, 0.0f);
 		ImGui::End();
@@ -145,13 +147,13 @@ int main()
 		skygfx::SetRenderTarget(*dst_target);
 		skygfx::Clear();
 
-		skygfx::utils::passes::Bloom(*src_target, *dst_target, threshold, intensity);
-
-		skygfx::SetRenderTarget(std::nullopt);
+		if (gaussian)
+			skygfx::utils::passes::BloomGaussian(*src_target, *dst_target, threshold, intensity);
+		else
+			skygfx::utils::passes::Bloom(*src_target, *dst_target, threshold, intensity);
 
 		skygfx::utils::ExecuteCommands({
-			skygfx::utils::commands::SetColorTexture{ dst_target },
-			skygfx::utils::commands::Draw{}
+			skygfx::utils::commands::Blit(*dst_target)
 		});
 
 		imgui.draw();
