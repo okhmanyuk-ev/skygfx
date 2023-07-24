@@ -67,12 +67,13 @@ void ImguiHelper::draw()
 	mMesh.setVertices(std::move(vertices));
 	mMesh.setIndices(std::move(indices));
 
-	skygfx::utils::Commands draw_cmds;
-	skygfx::utils::SetBlendMode(draw_cmds, skygfx::BlendStates::NonPremultiplied);
-	skygfx::utils::SetSampler(draw_cmds, skygfx::Sampler::Nearest);
-	skygfx::utils::SetMesh(draw_cmds, &mMesh);
-	skygfx::utils::SetCamera(draw_cmds, skygfx::utils::OrthogonalCamera{});
-	skygfx::utils::SetModelMatrix(draw_cmds, model);
+	skygfx::utils::Commands draw_cmds = {
+		skygfx::utils::commands::SetBlendMode(skygfx::BlendStates::NonPremultiplied),
+		skygfx::utils::commands::SetSampler(skygfx::Sampler::Nearest),
+		skygfx::utils::commands::SetMesh(&mMesh),
+		skygfx::utils::commands::SetCamera(skygfx::utils::OrthogonalCamera{}),
+		skygfx::utils::commands::SetModelMatrix(model)
+	};
 
 	uint32_t index_offset = 0;
 
@@ -88,16 +89,18 @@ void ImguiHelper::draw()
 			}
 			else
 			{
-				skygfx::utils::Callback(draw_cmds, [cmd]{
-					skygfx::SetScissor(skygfx::Scissor{
-						.position = { cmd.ClipRect.x, cmd.ClipRect.y },
-						.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
-					});
-				});
-				skygfx::utils::SetColorTexture(draw_cmds, (skygfx::Texture*)cmd.TextureId);
-				skygfx::utils::Draw(draw_cmds, skygfx::utils::DrawIndexedVerticesCommand{
-					.index_count = cmd.ElemCount,
-					.index_offset = index_offset
+				skygfx::utils::AddCommands(draw_cmds, {
+					skygfx::utils::commands::Callback([cmd] {
+						skygfx::SetScissor(skygfx::Scissor{
+							.position = { cmd.ClipRect.x, cmd.ClipRect.y },
+							.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
+						});
+					}),
+					skygfx::utils::commands::SetColorTexture((skygfx::Texture*)cmd.TextureId),
+					skygfx::utils::commands::Draw(skygfx::utils::DrawIndexedVerticesCommand{
+						.index_count = cmd.ElemCount,
+						.index_offset = index_offset
+					})
 				});
 			}
 

@@ -175,7 +175,7 @@ namespace skygfx::utils
 	{
 		struct SetEffect
 		{
-			SetEffect() {}
+			SetEffect(std::nullopt_t) {}
 
 			template<effects::Effect T>
 			SetEffect(T value) {
@@ -188,21 +188,93 @@ namespace skygfx::utils
 			std::vector<uint8_t> uniform_data;
 		};
 
-		struct SetBlendMode { std::optional<BlendMode> blend_mode; };
-		struct SetSampler { Sampler sampler = Sampler::Linear; };
-		struct SetMesh { const Mesh* mesh; };
-		struct SetColorTexture { const Texture* color_texture; };
-		struct SetNormalTexture { const Texture* normal_texture; };
-		struct SetColor { glm::vec4 color; };
-		struct SetProjectionMatrix { glm::mat4 projection_matrix; };
-		struct SetViewMatrix { glm::mat4 view_matrix; };
-		struct SetModelMatrix { glm::mat4 model_matrix; };
-		struct SetCamera { Camera camera; std::optional<uint32_t> width; std::optional<uint32_t> height; };
-		struct SetEyePosition { glm::vec3 eye_position; };
-		struct SetMipmapBias { float mipmap_bias; };
-		struct Callback { std::function<void()> func; };
+		struct SetBlendMode
+		{
+			SetBlendMode(std::optional<BlendMode> blend_mode);
+			std::optional<BlendMode> blend_mode;
+		};
+
+		struct SetSampler
+		{
+			SetSampler(Sampler sampler);
+			Sampler sampler;
+		};
+
+		struct SetMesh
+		{
+			SetMesh(const Mesh* mesh);
+			const Mesh* mesh;
+		};
+
+		struct SetColorTexture
+		{
+			SetColorTexture(const Texture* color_texture);
+			const Texture* color_texture;
+		};
+
+		struct SetNormalTexture
+		{
+			SetNormalTexture(const Texture* normal_texture);
+			const Texture* normal_texture;
+		};
+
+		struct SetColor
+		{
+			SetColor(glm::vec4 color);
+			glm::vec4 color;
+		};
+
+		struct SetProjectionMatrix
+		{
+			SetProjectionMatrix(glm::mat4 projection_matrix);
+			glm::mat4 projection_matrix;
+		};
+
+		struct SetViewMatrix
+		{
+			SetViewMatrix(glm::mat4 view_matrix);
+			glm::mat4 view_matrix;
+		};
+
+		struct SetModelMatrix
+		{
+			SetModelMatrix(glm::mat4 model_matrix);
+			glm::mat4 model_matrix;
+		};
+
+		struct SetCamera
+		{
+			SetCamera(Camera camera, std::optional<uint32_t> width = std::nullopt,
+				std::optional<uint32_t> height = std::nullopt);
+			Camera camera;
+			std::optional<uint32_t> width;
+			std::optional<uint32_t> height;
+		};
+
+		struct SetEyePosition
+		{
+			SetEyePosition(glm::vec3 eye_position);
+			glm::vec3 eye_position;
+		};
+
+		struct SetMipmapBias
+		{
+			SetMipmapBias(float mipmap_bias);
+			float mipmap_bias;
+		};
+
+		struct Callback
+		{
+			Callback(std::function<void()> func);
+			std::function<void()> func;
+		};
+
 		struct InsertSubcommands;
-		struct Draw { std::optional<DrawCommand> draw_command; };
+		struct Draw
+		{
+			Draw(std::optional<DrawCommand> draw_command = std::nullopt);
+			std::optional<DrawCommand> draw_command;
+		};
 	}
 
 	using Command = std::variant<
@@ -228,35 +300,14 @@ namespace skygfx::utils
 
 	namespace commands
 	{
-		struct InsertSubcommands { Commands* subcommands; };
+		struct InsertSubcommands
+		{
+			InsertSubcommands(const Commands* subcommands);
+			const Commands* subcommands;
+		};
 	}
-
-	void SetBlendMode(Commands& cmds, std::optional<BlendMode> blend_mode);
-	void SetSampler(Commands& cmds, Sampler sampler);
-	void SetMesh(Commands& cmds, const Mesh* mesh);
-
-	template<class T>
-	concept EffectCommandConstructible = std::is_constructible_v<commands::SetEffect, T>;
-
-	void SetEffect(Commands& cmds, EffectCommandConstructible auto effect)
-	{
-		cmds.push_back(commands::SetEffect{ std::move(effect) });
-	}
-
-	void SetColorTexture(Commands& cmds, const Texture* color_texture);
-	void SetNormalTexture(Commands& cmds, const Texture* normal_texture);
-	void SetColor(Commands& cmds, glm::vec4 color);
-	void SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix);
-	void SetViewMatrix(Commands& cmds, glm::mat4 view_matrix);
-	void SetModelMatrix(Commands& cmds, glm::mat4 model_matrix);
-	void SetCamera(Commands& cmds, Camera camera, std::optional<uint32_t> width = std::nullopt,
-		std::optional<uint32_t> height = std::nullopt);
-	void SetEyePosition(Commands& cmds, glm::vec3 eye_position);
-	void SetMipmapBias(Commands& cmds, float mipmap_bias);
-	void Callback(Commands& cmds, std::function<void()> func);
-	void InsertSubcommands(Commands& cmds, const Commands* subcommands);
-	void Draw(Commands& cmds, std::optional<DrawCommand> draw_command = std::nullopt);
-
+	
+	void AddCommands(Commands& cmdlist, Commands&& cmds);
 	void ExecuteCommands(const Commands& cmds);
 
 	namespace passes

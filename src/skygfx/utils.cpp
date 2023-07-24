@@ -184,12 +184,12 @@ vec3 getSample(sampler2D srcSampler, const vec2 uv)
 
 float getLuminance(vec3 c)
 {
-    return 0.2125 * c.r + 0.7154 * c.g + 0.0721 * c.b;
+	return 0.2125 * c.r + 0.7154 * c.g + 0.0721 * c.b;
 }
 
 float getKarisWeight(const vec3 box4x4)
 {
-    return 1.0 / (1.0 + getLuminance(box4x4));
+	return 1.0 / (1.0 + getLuminance(box4x4));
 }
 
 vec3 downsample13tap(sampler2D srcSampler, const vec2 centerUV)
@@ -277,7 +277,7 @@ void effect(inout vec4 result)
 		2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0,
 		1.0 / 16.0, 2.0 / 16.0, 1.0 / 16.0,
 	};
-    
+
 	vec3 r = vec3(0.0);
 
 	for (int i = 0; i < 9; i++)
@@ -467,112 +467,89 @@ const Shader& utils::GetDefaultShader()
 	return gDefaultShader.value();
 }
 
-void utils::SetBlendMode(Commands& cmds, std::optional<BlendMode> blend_mode)
+// commands
+
+utils::commands::SetBlendMode::SetBlendMode(std::optional<BlendMode> _blend_mode) :
+	blend_mode(std::move(_blend_mode))
 {
-	cmds.push_back(commands::SetBlendMode{
-		.blend_mode = std::move(blend_mode)
-	});
 }
 
-void utils::SetSampler(Commands& cmds, Sampler sampler)
+utils::commands::SetSampler::SetSampler(Sampler _sampler) :
+	sampler(_sampler)
 {
-	cmds.push_back(commands::SetSampler{
-		.sampler = sampler
-	});
 }
 
-void utils::SetMesh(Commands& cmds, const Mesh* mesh)
+utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
+	mesh(_mesh)
 {
-	cmds.push_back(commands::SetMesh{
-		.mesh = mesh
-	});
 }
 
-void utils::SetColorTexture(Commands& cmds, const Texture* color_texture)
+utils::commands::SetColorTexture::SetColorTexture(const Texture* _color_texture) :
+	color_texture(_color_texture)
 {
-	cmds.push_back(commands::SetColorTexture{
-		.color_texture = color_texture
-	});
 }
 
-void utils::SetNormalTexture(Commands& cmds, const Texture* normal_texture)
+utils::commands::SetNormalTexture::SetNormalTexture(const Texture* _normal_texture) :
+	normal_texture(_normal_texture)
 {
-	cmds.push_back(commands::SetNormalTexture{
-		.normal_texture = normal_texture
-	});
 }
 
-void utils::SetColor(Commands& cmds, glm::vec4 color)
+utils::commands::SetColor::SetColor(glm::vec4 _color) :
+	color(std::move(_color))
 {
-	cmds.push_back(commands::SetColor{
-		.color = std::move(color)
-	});
 }
 
-void utils::SetProjectionMatrix(Commands& cmds, glm::mat4 projection_matrix)
+utils::commands::SetProjectionMatrix::SetProjectionMatrix(glm::mat4 _projection_matrix) :
+	projection_matrix(std::move(_projection_matrix))
 {
-	cmds.push_back(commands::SetProjectionMatrix{
-		.projection_matrix = std::move(projection_matrix)
-	});
 }
 
-void utils::SetViewMatrix(Commands& cmds, glm::mat4 view_matrix)
+utils::commands::SetViewMatrix::SetViewMatrix(glm::mat4 _view_matrix) :
+	view_matrix(std::move(_view_matrix))
 {
-	cmds.push_back(commands::SetViewMatrix{
-		.view_matrix = std::move(view_matrix)
-	});
 }
 
-void utils::SetModelMatrix(Commands& cmds, glm::mat4 model_matrix)
+utils::commands::SetModelMatrix::SetModelMatrix(glm::mat4 _model_matrix) :
+	model_matrix(std::move(_model_matrix))
 {
-	cmds.push_back(commands::SetModelMatrix{
-		.model_matrix = std::move(model_matrix)
-	});
 }
 
-void utils::SetCamera(Commands& cmds, Camera camera, std::optional<uint32_t> width,
-		std::optional<uint32_t> height)
+utils::commands::SetCamera::SetCamera(Camera _camera, std::optional<uint32_t> _width, std::optional<uint32_t> _height) :
+	camera(std::move(_camera)), width(_width), height(_height)
 {
-	cmds.push_back(commands::SetCamera{
-		.camera = std::move(camera),
-		.width = width,
-		.height = height
-	});
 }
 
-void utils::SetEyePosition(Commands& cmds, glm::vec3 eye_position)
+utils::commands::SetEyePosition::SetEyePosition(glm::vec3 _eye_position) :
+	eye_position(std::move(_eye_position))
 {
-	cmds.push_back(commands::SetEyePosition{
-		.eye_position = std::move(eye_position)
-	});
 }
 
-void utils::SetMipmapBias(Commands& cmds, float mipmap_bias)
+utils::commands::SetMipmapBias::SetMipmapBias(float _mipmap_bias) :
+	mipmap_bias(_mipmap_bias)
 {
-	cmds.push_back(commands::SetMipmapBias{
-		.mipmap_bias = mipmap_bias
-	});
 }
 
-void utils::Callback(Commands& cmds, std::function<void()> func)
+utils::commands::Callback::Callback(std::function<void()> _func) :
+	func(_func)
 {
-	cmds.push_back(commands::Callback{
-		.func = func
-	});
 }
 
-void utils::InsertSubcommands(Commands& cmds, const Commands* subcommands)
+utils::commands::InsertSubcommands::InsertSubcommands(const Commands* _subcommands) :
+	subcommands(_subcommands)
 {
-	cmds.push_back(commands::InsertSubcommands{
-		.subcommands = const_cast<Commands*>(subcommands)
-	});
 }
 
-void utils::Draw(Commands& cmds, std::optional<DrawCommand> draw_command)
+utils::commands::Draw::Draw(std::optional<DrawCommand> _draw_command) :
+	draw_command(std::move(_draw_command))
 {
-	cmds.push_back(commands::Draw{
-		.draw_command = std::move(draw_command)
-	});
+}
+
+void utils::AddCommands(Commands& cmdlist, Commands&& cmds)
+{
+	for (auto&& cmd : cmds)
+	{
+		cmdlist.push_back(std::move(cmd));
+	}
 }
 
 void utils::ExecuteCommands(const Commands& cmds)
