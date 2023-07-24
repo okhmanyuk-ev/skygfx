@@ -261,45 +261,9 @@ namespace skygfx::utils
 
 	namespace passes
 	{
-		class Pass
-		{
-		public:
-			virtual void execute(const RenderTarget& src, const RenderTarget& dst) = 0;
-		};
-
-		class GaussianBlur : public Pass
-		{
-		public:
-			void execute(const RenderTarget& src, const RenderTarget& dst) override;
-
-		private:
-			std::optional<RenderTarget> mBlurTarget;
-		};
-
-		class Bloom : public Pass
-		{
-		public:
-			void execute(const RenderTarget& src, const RenderTarget& dst) override;
-
-		public:
-			auto getIntensity() const { return mIntensity; }
-			void setIntensity(float value) { mIntensity = value; }
-
-			auto getBrightThreshold() const { return mBrightThreshold; }
-			void setBrightThreshold(float value) { mBrightThreshold = value; }
-
-		private:
-			std::optional<RenderTarget> mBrightTarget;
-			std::vector<RenderTarget> mTexChain;
-			std::optional<glm::u32vec2> mPrevSize;
-			float mBrightThreshold = 1.0f;
-			float mIntensity = 2.0f;
-		};
-
-		class Grayscale : public Pass
-		{
-		public:
-			void execute(const RenderTarget& src, const RenderTarget& dst) override;
-		};
+		void GaussianBlur(const RenderTarget& src, const RenderTarget& dst);
+		void Grayscale(const RenderTarget& src, const RenderTarget& dst);
+		void Bloom(const RenderTarget& src, const RenderTarget& dst, float bright_threshold = 1.0f,
+			float intensity = 2.0f);
 	}
 }

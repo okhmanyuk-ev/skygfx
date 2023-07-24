@@ -96,20 +96,6 @@ int main()
 	cube_mesh.setVertices(vertices);
 	cube_mesh.setIndices(indices);
 
-	std::optional<skygfx::RenderTarget> src_target;
-	std::optional<skygfx::RenderTarget> dst_target;
-
-	skygfx::utils::passes::Bloom bloom_pass;
-
-	auto ensureTargetSize = [&](auto& target) {
-		int win_width;
-		int win_height;
-		glfwGetFramebufferSize(window, &win_width, &win_height);
-
-		if (!target.has_value() || target.value().getWidth() != win_width || target.value().getHeight() != win_height)
-			target.emplace(win_width, win_height);
-	};
-
 	auto imgui = ImguiHelper();
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -117,14 +103,14 @@ int main()
 	float angle = 1.0f;
 	bool animated = true;
 
+	float threshold = 1.0f;
+	float intensity = 2.0f;
+
 	while (!glfwWindowShouldClose(window))
 	{
 		ImGui_ImplGlfw_NewFrame();
 		
 		ImGui::NewFrame();
-
-		auto intensity = bloom_pass.getIntensity();
-		auto threshold = bloom_pass.getBrightThreshold();
 
 		ImGui::Begin("Settings", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
 		ImGui::SetWindowPos({ 16.0f, 16.0f });
@@ -134,11 +120,8 @@ int main()
 		ImGui::SliderAngle("Angle", &angle, 0.0f);
 		ImGui::End();
 
-		bloom_pass.setIntensity(intensity);
-		bloom_pass.setBrightThreshold(threshold);
-
-		ensureTargetSize(src_target);
-		ensureTargetSize(dst_target);
+		auto src_target = skygfx::GetTemporaryRenderTarget();
+		auto dst_target = skygfx::GetTemporaryRenderTarget();
 
 		if (animated)
 			angle = glm::wrapAngle((float)glfwGetTime());
@@ -147,7 +130,7 @@ int main()
 
 		skygfx::SetCullMode(skygfx::CullMode::Back);
 
-		skygfx::SetRenderTarget(src_target.value());
+		skygfx::SetRenderTarget(*src_target);
 		skygfx::Clear();
 
 		skygfx::utils::ExecuteCommands({
@@ -159,15 +142,15 @@ int main()
 			skygfx::utils::commands::Draw{}
 		});
 
-		skygfx::SetRenderTarget(dst_target.value());
+		skygfx::SetRenderTarget(*dst_target);
 		skygfx::Clear();
 
-		bloom_pass.execute(src_target.value(), dst_target.value());
+		skygfx::utils::passes::Bloom(*src_target, *dst_target, threshold, intensity);
 
 		skygfx::SetRenderTarget(std::nullopt);
 
 		skygfx::utils::ExecuteCommands({
-			skygfx::utils::commands::SetColorTexture{ &dst_target.value() },
+			skygfx::utils::commands::SetColorTexture{ dst_target },
 			skygfx::utils::commands::Draw{}
 		});
 

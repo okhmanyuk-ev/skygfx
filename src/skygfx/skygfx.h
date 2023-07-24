@@ -575,6 +575,10 @@ namespace skygfx
 
 	std::unordered_set<BackendType> GetAvailableBackends(const std::unordered_set<Feature>& features = {});
 	std::optional<BackendType> GetDefaultBackend(const std::unordered_set<Feature>& features = {});
+
+	RenderTarget* GetTemporaryRenderTarget(uint32_t width = GetBackbufferWidth(), uint32_t height = GetBackbufferHeight(),
+		Format format = Format::Float4);
+	void ReleaseTemporaryRenderTarget(RenderTarget* target);
 }
 
 SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,

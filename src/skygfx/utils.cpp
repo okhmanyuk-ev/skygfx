@@ -1,5 +1,6 @@
 #include "utils.h"
 #include <ranges>
+#include <array>
 
 using namespace skygfx;
 
@@ -800,14 +801,13 @@ void utils::ExecuteCommands(const Commands& cmds)
 	}
 }
 
-void utils::passes::GaussianBlur::execute(const RenderTarget& src, const RenderTarget& dst)
+void utils::passes::GaussianBlur(const RenderTarget& src, const RenderTarget& dst)
 {
-	if (!mBlurTarget.has_value() || mBlurTarget.value().getWidth() != src.getWidth() || mBlurTarget.value().getHeight() != src.getHeight())
-		mBlurTarget.emplace(src.getWidth(), src.getHeight());
+	auto blur_target = skygfx::GetTemporaryRenderTarget(src.getWidth(), src.getHeight());
 
 	auto resolution = glm::vec2{ static_cast<float>(src.getWidth()), static_cast<float>(src.getHeight()) };
 
-	SetRenderTarget(mBlurTarget.value());
+	SetRenderTarget(*blur_target);
 	Clear();
 
 	ExecuteCommands({
@@ -828,72 +828,78 @@ void utils::passes::GaussianBlur::execute(const RenderTarget& src, const RenderT
 		commands::Callback{ [&] {
 			SetRenderTarget(dst);		
 		} },
-		commands::SetColorTexture{ &mBlurTarget.value() },
+		commands::SetColorTexture{ blur_target },
 		commands::Draw{}
+	});
+
+	skygfx::ReleaseTemporaryRenderTarget(blur_target);
+}
+
+void utils::passes::Grayscale(const RenderTarget& src, const RenderTarget& dst)
+{
+	SetRenderTarget(dst);
+	ExecuteCommands({
+		commands::SetColorTexture{ &src },
+		commands::SetEffect{ effects::Grayscale{} },
+		commands::Draw{},
 	});
 }
 
-void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& dst)
+void utils::passes::Bloom(const RenderTarget& src, const RenderTarget& dst, float bright_threshold, float intensity)
 {
-	glm::u32vec2 src_size = { src.getWidth(), src.getHeight() };
-
 	constexpr int ChainSize = 8;
 
-	if (!mPrevSize.has_value() || mPrevSize != src_size)
+	auto bright_target = skygfx::GetTemporaryRenderTarget(src.getWidth(), src.getHeight());
+
+	std::array<RenderTarget*, ChainSize> tex_chain;
+
+	for (int i = 0; i < ChainSize; i++)
 	{
-		mPrevSize = src_size;
+		auto w = src.getWidth() >> i;
+		auto h = src.getHeight() >> i;
 
-		mBrightTarget.emplace(src_size.x, src_size.y);
-		mTexChain.clear();
+		w = glm::max(w, 1u);
+		h = glm::max(h, 1u);
 
-		for (int i = 0; i < ChainSize; i++)
-		{
-			auto w = src_size.x >> i;
-			auto h = src_size.y >> i;
-
-			w = glm::max(w, 1u);
-			h = glm::max(h, 1u);
-
-			mTexChain.emplace_back(w, h);
-		}
+		tex_chain[i] = skygfx::GetTemporaryRenderTarget(w, h);
 	}
 
 	// extract bright
 
 	Texture* downsample_src = const_cast<RenderTarget*>(&src);
 
-	if (mBrightThreshold > 0.0f)
+	if (bright_threshold > 0.0f)
 	{
-		SetRenderTarget(mBrightTarget.value());
+		SetRenderTarget(*bright_target);
 		Clear();
 
 		ExecuteCommands({
 			commands::SetColorTexture{ &src },
 			commands::SetEffect{
 				effects::BrightFilter{
-					.threshold = mBrightThreshold
+					.threshold = bright_threshold
 				}
 			},
 			commands::Draw{},
 		});
 
-		downsample_src = &mBrightTarget.value();
+		downsample_src = bright_target;
 	}
 
 	// downsample
 
 	uint32_t step_number = 0;
 
-	for (auto& target : mTexChain)
+	for (auto target : tex_chain)
 	{
-		SetRenderTarget(target);
+		SetRenderTarget(*target);
 		ExecuteCommands({
 			commands::SetColorTexture{ downsample_src },
 			commands::SetEffect{ effects::BloomDownsample(*downsample_src, step_number) },
 			commands::Draw{}
 		});
 
-		downsample_src = &target;
+		downsample_src = target;
 		step_number += 1;
 	}
 
@@ -901,11 +907,11 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 
 	Texture* prev_downsampled = nullptr;
 
-	for (auto it = mTexChain.rbegin(); it != mTexChain.rend(); ++it)
+	for (auto it = tex_chain.rbegin(); it != tex_chain.rend(); ++it)
 	{
 		if (prev_downsampled != nullptr)
 		{
-			SetRenderTarget(*it);
+			SetRenderTarget(**it);
 			ExecuteCommands({
 				commands::SetBlendMode{ BlendStates::Additive },
 				commands::SetColorTexture{ prev_downsampled },
@@ -914,7 +920,7 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 			});
 		}
 
-		prev_downsampled = &*it;
+		prev_downsampled = *it;
 	}
 
 	// combine
@@ -926,18 +932,14 @@ void utils::passes::Bloom::execute(const RenderTarget& src, const RenderTarget& 
 		commands::SetBlendMode{ BlendStates::Additive },
 		commands::SetColorTexture{ prev_downsampled },
 		commands::SetEffect{ effects::BloomUpsample(*prev_downsampled) },
-		commands::SetColor{ glm::vec4(mIntensity) },
+		commands::SetColor{ glm::vec4(intensity) },
 		commands::Draw{}
 	});
-}
 
-void utils::passes::Grayscale::execute(const RenderTarget& src, const RenderTarget& dst)
-{
-	SetRenderTarget(dst);
+	skygfx::ReleaseTemporaryRenderTarget(bright_target);
 
-	ExecuteCommands({
-		commands::SetColorTexture{ &src },
-		commands::SetEffect{ effects::Grayscale{} },
-		commands::Draw{},
-	});
+	for (auto target : tex_chain)
+	{
+		skygfx::ReleaseTemporaryRenderTarget(target);
+	}
 }
