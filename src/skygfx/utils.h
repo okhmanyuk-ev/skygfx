@@ -309,18 +309,9 @@ namespace skygfx::utils
 		{
 			Subcommands(const Commands* subcommands);
 			Subcommands(Commands&& subcommands);
-			std::variant<const Commands*, Commands> subcommands;
+			Subcommands(std::function<Commands()> subcommands);
+			std::variant<const Commands*, Commands, std::function<Commands()>> subcommands;
 		};
-
-		Subcommands Blit(const Texture& texture, const RenderTarget* target = nullptr, bool clear = false);
-
-		Subcommands Blit(const Texture& texture, const RenderTarget* target, bool clear, effects::Effect auto effect)
-		{
-			return Commands{
-				commands::SetEffect(std::move(effect)),
-				Blit(texture, target, clear)
-			};
-		}
 	}
 	
 	void AddCommands(Commands& cmdlist, Commands&& cmds);
@@ -328,11 +319,27 @@ namespace skygfx::utils
 
 	namespace passes
 	{
-		void GaussianBlur(const RenderTarget& src, const RenderTarget& dst);
-		void Grayscale(const RenderTarget& src, const RenderTarget& dst);
-		void Bloom(const RenderTarget& src, const RenderTarget& dst, float bright_threshold = 1.0f,
+		void Blit(const Texture* src, const RenderTarget* dst, bool clear,
+			Commands&& commands);
+
+		void Blit(const Texture* src, const RenderTarget* dst = nullptr, bool clear = false,
+			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f });
+
+		void Blit(const Texture* src, const RenderTarget* dst, effects::Effect auto effect, bool clear = false,
+			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f })
+		{
+			Blit(src, dst, clear, {
+				commands::SetEffect(std::move(effect)),
+				commands::SetBlendMode(std::move(blend_mode)),
+				commands::SetColor(std::move(color))
+			});
+		}
+
+		void GaussianBlur(const RenderTarget* src, const RenderTarget* dst = nullptr);
+		void Grayscale(const RenderTarget* src, const RenderTarget* dst = nullptr);
+		void Bloom(const RenderTarget* src, const RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
-		void BloomGaussian(const RenderTarget& src, const RenderTarget& dst, float bright_threshold = 1.0f,
+		void BloomGaussian(const RenderTarget* src, const RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
 	}
 }

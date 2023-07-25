@@ -123,7 +123,6 @@ int main()
 		ImGui::End();
 
 		auto src_target = skygfx::GetTemporaryRenderTarget();
-		auto dst_target = skygfx::GetTemporaryRenderTarget();
 
 		if (animated)
 			angle = glm::wrapAngle((float)glfwGetTime());
@@ -144,17 +143,10 @@ int main()
 			skygfx::utils::commands::Draw{}
 		});
 
-		skygfx::SetRenderTarget(*dst_target);
-		skygfx::Clear();
-
 		if (gaussian)
-			skygfx::utils::passes::BloomGaussian(*src_target, *dst_target, threshold, intensity);
+			skygfx::utils::passes::BloomGaussian(src_target, nullptr, threshold, intensity);
 		else
-			skygfx::utils::passes::Bloom(*src_target, *dst_target, threshold, intensity);
-
-		skygfx::utils::ExecuteCommands({
-			skygfx::utils::commands::Blit(*dst_target)
-		});
+			skygfx::utils::passes::Bloom(src_target, nullptr, threshold, intensity);
 
 		imgui.draw();
 
