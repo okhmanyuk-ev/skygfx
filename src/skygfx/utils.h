@@ -342,4 +342,16 @@ namespace skygfx::utils
 		void BloomGaussian(const RenderTarget* src, const RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
 	}
+
+	struct Model
+	{
+
+		Mesh* mesh = nullptr;
+		Texture* color_texture = nullptr;
+		Texture* normal_texture = nullptr;
+		std::optional<DrawCommand> draw_command = std::nullopt;
+		glm::mat4 model_matrix = glm::mat4(1.0f);
+	};
+
+	void DrawScene(const std::vector<Model>& models, const std::vector<Light>& lights, const Camera& camera);
 }

@@ -871,8 +871,8 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (int i = 0; i < ChainSize; i++)
 	{
-		auto w = src->getWidth() >> i;
-		auto h = src->getHeight() >> i;
+		auto w = src->getWidth() >> (i + 1);
+		auto h = src->getHeight() >> (i + 1);
 
 		w = glm::max(w, 1u);
 		h = glm::max(h, 1u);
@@ -955,4 +955,54 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 
 	skygfx::ReleaseTemporaryRenderTarget(bright);
 	skygfx::ReleaseTemporaryRenderTarget(blur_dst);
+}
+
+void utils::DrawScene(const std::vector<Model>& models, const std::vector<Light>& lights, const Camera& camera)
+{
+	assert(!models.empty());
+	assert(!lights.empty());
+
+	Commands model_cmds;
+
+	for (const auto& model : models)
+	{
+		AddCommands(model_cmds, {
+			commands::SetMesh(model.mesh),
+			commands::SetModelMatrix(model.model_matrix),
+			commands::SetColorTexture(model.color_texture),
+			commands::SetNormalTexture(model.normal_texture),
+			commands::Draw(model.draw_command)
+		});
+	}
+
+	Commands cmds = {
+		commands::SetCamera(camera),
+	};
+
+	bool first_light_done = false;
+
+	for (const auto& light : lights)
+	{
+		std::visit(cases{
+			[&](const auto& value) {
+				AddCommands(cmds, {
+					commands::SetEffect(value)
+				});
+			}
+		}, light);
+
+		AddCommands(cmds, {
+			commands::Subcommands(&model_cmds)
+		});
+
+		if (!first_light_done)
+		{
+			first_light_done = true;
+			AddCommands(cmds, {
+				commands::SetBlendMode(skygfx::BlendStates::Additive)
+			});
+		}
+	}
+
+	ExecuteCommands(cmds);
 }
