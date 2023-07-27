@@ -495,6 +495,11 @@ utils::commands::SetSampler::SetSampler(Sampler _sampler) :
 {
 }
 
+utils::commands::SetCullMode::SetCullMode(CullMode _cull_mode) :
+	cull_mode(_cull_mode)
+{
+}
+
 utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
 	mesh(_mesh)
 {
@@ -580,7 +585,7 @@ void utils::AddCommands(Commands& cmdlist, Commands&& cmds)
 
 void utils::ExecuteCommands(const Commands& cmds)
 {
-	static auto default_mesh = Mesh({
+	static const auto default_mesh = Mesh({
 		{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
 		{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
 		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
@@ -593,17 +598,20 @@ void utils::ExecuteCommands(const Commands& cmds)
 	auto sampler = Sampler::Linear;
 	bool sampler_dirty = true;
 
-	Mesh* mesh = nullptr;
+	auto cull_mode = CullMode::None;
+	bool cull_mode_dirty = true;
+
+	const Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
 	Shader* shader = nullptr;
 	bool shader_dirty = true;
 
-	std::vector<uint8_t>* uniform_data = nullptr;
+	const std::vector<uint8_t>* uniform_data = nullptr;
 	bool uniform_dirty = true;
 
-	Texture* color_texture = nullptr;
-	Texture* normal_texture = nullptr;
+	const Texture* color_texture = nullptr;
+	const Texture* normal_texture = nullptr;
 	bool textures_dirty = true;
 
 	struct alignas(16) Settings
@@ -634,17 +642,24 @@ void utils::ExecuteCommands(const Commands& cmds)
 				sampler = cmd.sampler;
 				sampler_dirty = true;
 			},
+			[&](const commands::SetCullMode& cmd) {
+				if (cull_mode == cmd.cull_mode)
+					return;
+
+				cull_mode = cmd.cull_mode;
+				cull_mode_dirty = true;
+			},
 			[&](const commands::SetMesh& cmd) {
 				if (mesh == cmd.mesh)
 					return;
 
-				mesh = const_cast<Mesh*>(cmd.mesh);
+				mesh = cmd.mesh;
 				mesh_dirty = true;
 			},
 			[&](const commands::SetEffect& cmd) {
 				shader = cmd.shader;
 				if (shader)
-					uniform_data = const_cast<std::vector<uint8_t>*>(&cmd.uniform_data);
+					uniform_data = &cmd.uniform_data;
 				else
 					uniform_data = nullptr;
 
@@ -655,14 +670,14 @@ void utils::ExecuteCommands(const Commands& cmds)
 				if (color_texture == cmd.color_texture)
 					return;
 
-				color_texture = const_cast<Texture*>(cmd.color_texture);
+				color_texture = cmd.color_texture;
 				textures_dirty = true;
 			},
 			[&](const commands::SetNormalTexture& cmd) {
 				if (normal_texture == cmd.normal_texture)
 					return;
 				
-				normal_texture = const_cast<Texture*>(cmd.normal_texture);
+				normal_texture = cmd.normal_texture;
 				textures_dirty = true;
 			},
 			[&](const commands::SetColor& cmd) {
@@ -731,6 +746,12 @@ void utils::ExecuteCommands(const Commands& cmds)
 					sampler_dirty = false;
 				}
 
+				if (cull_mode_dirty)
+				{
+					SetCullMode(cull_mode);
+					cull_mode_dirty = false;
+				}
+
 				if (mesh == nullptr)
 					mesh = &default_mesh;
 
@@ -761,7 +782,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 				{
 					if (uniform_data != nullptr)
 					{
-						SetUniformBuffer(3, uniform_data->data(), uniform_data->size());
+						SetUniformBuffer(3, (void*)uniform_data->data(), uniform_data->size());
 					}
 					uniform_dirty = false;
 				}
@@ -769,7 +790,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 				if (textures_dirty)
 				{
 					uint32_t white_pixel = 0xFFFFFFFF;
-					static auto white_pixel_texture = Texture(1, 1, skygfx::Format::Byte4, &white_pixel);
+					static const auto white_pixel_texture = Texture(1, 1, skygfx::Format::Byte4, &white_pixel);
 
 					const auto& _color_texture = color_texture != nullptr ? *color_texture : white_pixel_texture;
 					const auto& _normal_texture = normal_texture != nullptr ? *normal_texture : white_pixel_texture;
@@ -957,10 +978,9 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 	skygfx::ReleaseTemporaryRenderTarget(blur_dst);
 }
 
-void utils::DrawScene(const std::vector<Model>& models, const std::vector<Light>& lights, const Camera& camera)
+void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights)
 {
 	assert(!models.empty());
-	assert(!lights.empty());
 
 	Commands model_cmds;
 
@@ -968,9 +988,10 @@ void utils::DrawScene(const std::vector<Model>& models, const std::vector<Light>
 	{
 		AddCommands(model_cmds, {
 			commands::SetMesh(model.mesh),
-			commands::SetModelMatrix(model.model_matrix),
+			commands::SetModelMatrix(model.matrix),
 			commands::SetColorTexture(model.color_texture),
 			commands::SetNormalTexture(model.normal_texture),
+			commands::SetCullMode(model.cull_mode),
 			commands::Draw(model.draw_command)
 		});
 	}
@@ -978,6 +999,15 @@ void utils::DrawScene(const std::vector<Model>& models, const std::vector<Light>
 	Commands cmds = {
 		commands::SetCamera(camera),
 	};
+
+	if (lights.empty())
+	{
+		AddCommands(cmds, {
+			commands::Subcommands(&model_cmds)
+		});
+		ExecuteCommands(cmds);
+		return;
+	}
 
 	bool first_light_done = false;
 

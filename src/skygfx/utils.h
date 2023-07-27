@@ -205,6 +205,12 @@ namespace skygfx::utils
 			Sampler sampler;
 		};
 
+		struct SetCullMode
+		{
+			SetCullMode(CullMode cull_mode);
+			CullMode cull_mode;
+		};
+
 		struct SetMesh
 		{
 			SetMesh(const Mesh* mesh);
@@ -285,6 +291,7 @@ namespace skygfx::utils
 	using Command = std::variant<
 		commands::SetBlendMode,
 		commands::SetSampler,
+		commands::SetCullMode,
 		commands::SetMesh,
 		commands::SetEffect,
 		commands::SetColorTexture,
@@ -345,13 +352,13 @@ namespace skygfx::utils
 
 	struct Model
 	{
-
 		Mesh* mesh = nullptr;
 		Texture* color_texture = nullptr;
 		Texture* normal_texture = nullptr;
 		std::optional<DrawCommand> draw_command = std::nullopt;
-		glm::mat4 model_matrix = glm::mat4(1.0f);
+		glm::mat4 matrix = glm::mat4(1.0f);
+		CullMode cull_mode = CullMode::None;
 	};
 
-	void DrawScene(const std::vector<Model>& models, const std::vector<Light>& lights, const Camera& camera);
+	void DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights = {});
 }

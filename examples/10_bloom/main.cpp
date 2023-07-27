@@ -107,6 +107,12 @@ int main()
 	float intensity = 2.0f;
 	bool gaussian = false;
 
+	auto model = skygfx::utils::Model{
+		.mesh = &cube_mesh,
+		.color_texture = &texture,
+		.cull_mode = skygfx::CullMode::Back
+	};
+
 	while (!glfwWindowShouldClose(window))
 	{
 		ImGui_ImplGlfw_NewFrame();
@@ -127,21 +133,12 @@ int main()
 		if (animated)
 			angle = glm::wrapAngle((float)glfwGetTime());
 
-		auto model = glm::rotate(glm::mat4(1.0f), angle, { 0.0f, 1.0f, 0.0f });
-
-		skygfx::SetCullMode(skygfx::CullMode::Back);
+		model.matrix = glm::rotate(glm::mat4(1.0f), angle, { 0.0f, 1.0f, 0.0f });
 
 		skygfx::SetRenderTarget(*src_target);
 		skygfx::Clear();
 
-		skygfx::utils::ExecuteCommands({
-			skygfx::utils::commands::SetMesh{ &cube_mesh },
-			skygfx::utils::commands::SetCamera{ camera },
-			skygfx::utils::commands::SetEffect{ light },
-			skygfx::utils::commands::SetColorTexture{ &texture },
-			skygfx::utils::commands::SetModelMatrix{ model },
-			skygfx::utils::commands::Draw{}
-		});
+		skygfx::utils::DrawScene(camera, { model }, { light });
 
 		if (gaussian)
 			skygfx::utils::passes::BloomGaussian(src_target, nullptr, threshold, intensity);
