@@ -500,6 +500,16 @@ utils::commands::SetCullMode::SetCullMode(CullMode _cull_mode) :
 {
 }
 
+utils::commands::SetTextureAddress::SetTextureAddress(TextureAddress _texture_address) :
+	texture_address(_texture_address)
+{
+}
+
+utils::commands::SetDepthMode::SetDepthMode(DepthMode _depth_mode) :
+	depth_mode(_depth_mode)
+{
+}
+
 utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
 	mesh(_mesh)
 {
@@ -601,6 +611,12 @@ void utils::ExecuteCommands(const Commands& cmds)
 	auto cull_mode = CullMode::None;
 	bool cull_mode_dirty = true;
 
+	auto texture_address = TextureAddress::Clamp;
+	bool texture_address_dirty = true;
+
+	auto depth_mode = DepthMode();
+	bool depth_mode_dirty = true;
+
 	const Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
@@ -648,6 +664,20 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 				cull_mode = cmd.cull_mode;
 				cull_mode_dirty = true;
+			},
+			[&](const commands::SetTextureAddress& cmd) {
+				if (texture_address == cmd.texture_address)
+					return;
+
+				texture_address = cmd.texture_address;
+				texture_address_dirty = true;
+			},
+			[&](const commands::SetDepthMode& cmd) {
+				if (depth_mode == cmd.depth_mode)
+					return;
+
+				depth_mode = cmd.depth_mode;
+				depth_mode_dirty = true;
 			},
 			[&](const commands::SetMesh& cmd) {
 				if (mesh == cmd.mesh)
@@ -750,6 +780,18 @@ void utils::ExecuteCommands(const Commands& cmds)
 				{
 					SetCullMode(cull_mode);
 					cull_mode_dirty = false;
+				}
+
+				if (texture_address_dirty)
+				{
+					SetTextureAddress(texture_address);
+					texture_address_dirty = false;
+				}
+
+				if (depth_mode_dirty)
+				{
+					SetDepthMode(depth_mode);
+					depth_mode_dirty = false;
 				}
 
 				if (mesh == nullptr)
@@ -992,6 +1034,9 @@ void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, co
 			commands::SetColorTexture(model.color_texture),
 			commands::SetNormalTexture(model.normal_texture),
 			commands::SetCullMode(model.cull_mode),
+			commands::SetTextureAddress(model.texture_address),
+			commands::SetDepthMode(model.depth_mode),
+			commands::SetColor(model.color),
 			commands::Draw(model.draw_command)
 		});
 	}

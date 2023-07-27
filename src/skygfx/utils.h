@@ -211,6 +211,18 @@ namespace skygfx::utils
 			CullMode cull_mode;
 		};
 
+		struct SetTextureAddress
+		{
+			SetTextureAddress(TextureAddress texture_address);
+			TextureAddress texture_address;
+		};
+
+		struct SetDepthMode
+		{
+			SetDepthMode(DepthMode depth_mode);
+			DepthMode depth_mode;
+		};
+
 		struct SetMesh
 		{
 			SetMesh(const Mesh* mesh);
@@ -292,6 +304,8 @@ namespace skygfx::utils
 		commands::SetBlendMode,
 		commands::SetSampler,
 		commands::SetCullMode,
+		commands::SetTextureAddress,
+		commands::SetDepthMode,
 		commands::SetMesh,
 		commands::SetEffect,
 		commands::SetColorTexture,
@@ -355,9 +369,12 @@ namespace skygfx::utils
 		Mesh* mesh = nullptr;
 		Texture* color_texture = nullptr;
 		Texture* normal_texture = nullptr;
+		glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
 		std::optional<DrawCommand> draw_command = std::nullopt;
 		glm::mat4 matrix = glm::mat4(1.0f);
 		CullMode cull_mode = CullMode::None;
+		TextureAddress texture_address = TextureAddress::Clamp;
+		DepthMode depth_mode;
 	};
 
 	void DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights = {});
