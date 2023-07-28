@@ -229,19 +229,29 @@ class TextureMetal
 {
 public:
 	auto getMetalTexture() const { return mTexture; }
-	auto isMipmap() const { return mMipmap; }
+	auto getWidth() const { return mWidth; }
+	auto getHeight() const { return mHeight; }
+	auto getFormat() const { return mFormat; }
+	auto getMipCount() const { return mMipCount; }
 
 private:
 	id<MTLTexture> mTexture = nullptr;
-	bool mMipmap = false;
+	uint32_t mWidth = 0;
+	uint32_t mHeight = 0;
+	uint32_t mMipCount = 0;
+	Format mFormat;
 
 public:
-	TextureMetal(uint32_t width, uint32_t height, Format format, void* memory, bool mipmap) :
-		mMipmap(mipmap)
+	TextureMetal(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
+		mWidth(width),
+		mHeight(height),
+		mFormat(format),
+		mMipCount(mip_count)
 	{
 		auto desc = [[MTLTextureDescriptor alloc] init];
 		desc.width = width;
 		desc.height = height;
+		desc.mipmapLevelCount = mip_count;
 		desc.pixelFormat = PixelFormatMap.at(format);
 		desc.textureType = MTLTextureType2D;
 		desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
@@ -250,46 +260,34 @@ public:
 #elif defined(SKYGFX_PLATFORM_IOS)
 		desc.storageMode = MTLStorageModeShared;
 #endif
-	
-		if (mipmap)
-		{
-			int height_levels = ceil(log2(height));
-			int width_levels = ceil(log2(width));
-			int mip_count = (height_levels > width_levels) ? height_levels : width_levels;
-			desc.mipmapLevelCount = mip_count;
-		}
-
 		mTexture = [gDevice newTextureWithDescriptor:desc];
-
 		[desc release];
-
-		if (memory != nullptr)
-		{
-			auto region = MTLRegionMake2D(0, 0, width, height);
-			auto channels = GetFormatChannelsCount(format);
-			auto channel_size = GetFormatChannelSize(format);
-
-			[mTexture replaceRegion:region mipmapLevel:0 withBytes:memory bytesPerRow:width * channels * channel_size];
-		
-			if (mipmap)
-			{
-				generateMips();
-			}
-		}
 	}
 
 	~TextureMetal()
 	{
 		[mTexture release];
 	}
-	
+
+	void write(uint32_t width, uint32_t height, Format format, void* memory,
+		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+	{
+		auto region = MTLRegionMake2D(offset_x, offset_y, width, height);
+		auto channels = GetFormatChannelsCount(format);
+		auto channel_size = GetFormatChannelSize(format);
+
+		[mTexture replaceRegion:region mipmapLevel:mip_level withBytes:memory
+			bytesPerRow:width * channels * channel_size];
+	}
+
+	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+		uint32_t mip_level, void* dst_memory)
+	{
+		// not implemented
+	}
+
 	void generateMips()
 	{
-		assert(mMipmap);
-		
-		if (!mMipmap)
-			return;
-		
 		auto cmd = gCommandQueue.commandBuffer;
 		auto enc = cmd.blitCommandEncoder;
 
@@ -784,6 +782,10 @@ void BackendMetal::setFrontFace(FrontFace value)
 {
 }
 
+void BackendMetal::setDepthBias(const std::optional<DepthBias> depth_bias)
+{
+}
+
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
@@ -885,16 +887,8 @@ void BackendMetal::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		destinationOrigin:MTLOriginMake((uint32_t)dst_x, (uint32_t)dst_y, 0)
 	];
 
-	if (dst_texture->isMipmap())
-		[gBlitCommandEncoder generateMipmapsForTexture:dst_texture->getMetalTexture()];
-
 	endBlitPass();
 	beginRenderPass();
-}
-
-std::vector<uint8_t> BackendMetal::getPixels()
-{
-	return {};
 }
 
 void BackendMetal::present()
@@ -914,15 +908,30 @@ void BackendMetal::present()
 }
 
 TextureHandle* BackendMetal::createTexture(uint32_t width, uint32_t height, Format format,
-	void* memory, bool mipmap)
+	uint32_t mip_count)
 {
-	auto texture = new TextureMetal(width, height, format, memory, mipmap);
+	auto texture = new TextureMetal(width, height, format, mip_count);
 	return (TextureHandle*)texture;
 }
 
 void BackendMetal::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
+	auto texture = (TextureMetal*)handle;
+	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+}
+
+void BackendMetal::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
+	uint32_t mip_level, void* dst_memory)
+{
+	auto texture = (TextureMetal*)handle;
+	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
+}
+
+void BackendMetal::generateMips(TextureHandle* handle)
+{
+	auto texture = (TextureMetal*)handle;
+	texture->generateMips();
 }
 
 void BackendMetal::destroyTexture(TextureHandle* handle)
