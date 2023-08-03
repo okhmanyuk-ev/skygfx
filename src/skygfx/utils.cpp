@@ -911,10 +911,9 @@ void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear
 
 void utils::passes::GaussianBlur(const RenderTarget* src, const RenderTarget* dst)
 {
-	auto blur_target = skygfx::GetTemporaryRenderTarget(src->getWidth(), src->getHeight());
+	auto blur_target = skygfx::TemporaryRenderTarget(src->getWidth(), src->getHeight());
 	Blit(src, blur_target, effects::GaussianBlur(*src, { 1.0f, 0.0f }), true);
 	Blit(blur_target, dst, effects::GaussianBlur(*src, { 0.0f, 1.0f }));
-	skygfx::ReleaseTemporaryRenderTarget(blur_target);
 }
 
 void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst)
@@ -933,9 +932,9 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	// get targets
 
-	auto bright = skygfx::GetTemporaryRenderTarget(src->getWidth(), src->getHeight());
+	auto bright = skygfx::TemporaryRenderTarget(src->getWidth(), src->getHeight());
 
-	std::array<RenderTarget*, ChainSize> tex_chain;
+	std::vector<TemporaryRenderTarget> tex_chain;
 
 	for (int i = 0; i < ChainSize; i++)
 	{
@@ -945,7 +944,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 		w = glm::max(w, 1u);
 		h = glm::max(h, 1u);
 
-		tex_chain[i] = skygfx::GetTemporaryRenderTarget(w, h);
+		tex_chain.push_back(skygfx::TemporaryRenderTarget(w, h));
 	}
 
 	// extract bright
@@ -962,7 +961,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	uint32_t step_number = 0;
 
-	for (auto target : tex_chain)
+	for (auto& target : tex_chain)
 	{
 		Blit(downsample_src, target, effects::BloomDownsample(*downsample_src, step_number));
 		downsample_src = target;
@@ -986,15 +985,6 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 	// apply
 	
 	Blit(prev_downsampled, dst, effects::BloomUpsample(*prev_downsampled), false, BlendStates::Additive, glm::vec4(intensity));
-
-	// release targets
-
-	skygfx::ReleaseTemporaryRenderTarget(bright);
-
-	for (auto target : tex_chain)
-	{
-		skygfx::ReleaseTemporaryRenderTarget(target);
-	}
 }
 
 void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* dst, float bright_threshold,
@@ -1010,8 +1000,8 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 	auto width = static_cast<uint32_t>(glm::floor(static_cast<float>(src->getWidth()) / static_cast<float>(DownsampleCount)));
 	auto height = static_cast<uint32_t>(glm::floor(static_cast<float>(src->getHeight()) / static_cast<float>(DownsampleCount)));
 
-	auto bright = skygfx::GetTemporaryRenderTarget(width, height);
-	auto blur_dst = skygfx::GetTemporaryRenderTarget(width, height);
+	auto bright = skygfx::TemporaryRenderTarget(width, height);
+	auto blur_dst = skygfx::TemporaryRenderTarget(width, height);
 	auto blur_src = src;
 
 	if (bright_threshold > 0.0f)
@@ -1023,9 +1013,6 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 	GaussianBlur(blur_src, blur_dst);
 
 	Blit(blur_dst, dst, false, BlendStates::Additive, glm::vec4(intensity));
-
-	skygfx::ReleaseTemporaryRenderTarget(bright);
-	skygfx::ReleaseTemporaryRenderTarget(blur_dst);
 }
 
 void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights)

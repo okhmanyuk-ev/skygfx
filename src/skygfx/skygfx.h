@@ -139,6 +139,22 @@ namespace skygfx
 		RenderTargetHandle* mRenderTargetHandle = nullptr;
 	};
 
+	class TemporaryRenderTarget : private noncopyable
+	{
+	public:
+		TemporaryRenderTarget(uint32_t width, uint32_t height,
+			Format format = Format::Float4);
+		TemporaryRenderTarget(TemporaryRenderTarget&& other) noexcept;
+		~TemporaryRenderTarget();
+
+		TemporaryRenderTarget& operator=(TemporaryRenderTarget&& other) noexcept;
+
+		operator RenderTarget* () { return mRenderTarget; }
+
+	private:
+		RenderTarget* mRenderTarget;
+	};
+
 	class Shader : private noncopyable
 	{
 	public:

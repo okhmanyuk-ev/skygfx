@@ -112,6 +112,8 @@ Texture& Texture::operator=(Texture&& other) noexcept
 	return *this;
 }
 
+// render target
+
 RenderTarget::RenderTarget(uint32_t width, uint32_t height, Format format) : Texture(width, height, format, 1)
 {
 	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
@@ -139,6 +141,36 @@ RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept
 		gBackend->destroyRenderTarget(mRenderTargetHandle);
 
 	mRenderTargetHandle = std::exchange(other.mRenderTargetHandle, nullptr);
+
+	return *this;
+}
+
+// temporary render target
+
+TemporaryRenderTarget::TemporaryRenderTarget(uint32_t width, uint32_t height, Format format)
+{
+	mRenderTarget = GetTemporaryRenderTarget(width, height, format);
+}
+
+TemporaryRenderTarget::TemporaryRenderTarget(TemporaryRenderTarget&& other) noexcept
+{
+	mRenderTarget = std::exchange(other.mRenderTarget, nullptr);
+}
+
+TemporaryRenderTarget::~TemporaryRenderTarget()
+{
+	ReleaseTemporaryRenderTarget(mRenderTarget);
+}
+
+TemporaryRenderTarget& TemporaryRenderTarget::operator=(TemporaryRenderTarget&& other) noexcept
+{
+	if (this == &other)
+		return *this;
+
+	if (mRenderTarget != nullptr)
+		ReleaseTemporaryRenderTarget(mRenderTarget);
+
+	mRenderTarget = std::exchange(other.mRenderTarget, nullptr);
 
 	return *this;
 }
@@ -545,7 +577,7 @@ SKYGFX_MAKE_HASHABLE(TemporaryRenderTargetDesc,
 	t.format
 );
 
-class TemporaryRenderTarget : public RenderTarget
+class TemporaryRT : public RenderTarget
 {
 public:
 	enum class State
@@ -566,7 +598,7 @@ private:
 	State mState = State::Active;
 };
 
-static std::unordered_map<TemporaryRenderTargetDesc, std::unordered_set<std::shared_ptr<TemporaryRenderTarget>>> gTemporaryRenderTargets;
+static std::unordered_map<TemporaryRenderTargetDesc, std::unordered_set<std::shared_ptr<TemporaryRT>>> gTemporaryRenderTargets;
 
 RenderTarget* skygfx::GetTemporaryRenderTarget(uint32_t width, uint32_t height, Format format)
 {
@@ -579,15 +611,15 @@ RenderTarget* skygfx::GetTemporaryRenderTarget(uint32_t width, uint32_t height, 
 
 		for (auto& temporary_rt : temporary_rts)
 		{
-			if (temporary_rt->getState() == TemporaryRenderTarget::State::Active)
+			if (temporary_rt->getState() == TemporaryRT::State::Active)
 				continue;
 
-			temporary_rt->setState(TemporaryRenderTarget::State::Active);
+			temporary_rt->setState(TemporaryRT::State::Active);
 			return temporary_rt.get();
 		}
 	}
 
-	auto temporary_rt = std::make_shared<TemporaryRenderTarget>(width, height, format);
+	auto temporary_rt = std::make_shared<TemporaryRT>(width, height, format);
 	gTemporaryRenderTargets[desc].insert(temporary_rt);
 	return temporary_rt.get();
 }
@@ -601,7 +633,7 @@ void skygfx::ReleaseTemporaryRenderTarget(RenderTarget* target)
 			if (temporary_rt.get() != target)
 				continue;
 
-			temporary_rt->setState(TemporaryRenderTarget::State::Inactive);
+			temporary_rt->setState(TemporaryRT::State::Inactive);
 			return;
 		}
 	}
@@ -611,13 +643,13 @@ void DestroyTemporaryRenderTargets()
 {	
 	for (auto& [desc, temporary_rts] : gTemporaryRenderTargets)
 	{
-		std::erase_if(temporary_rts, [](const std::shared_ptr<TemporaryRenderTarget>& temporary_rt) {
-			return temporary_rt->getState() == TemporaryRenderTarget::State::Destroy;
+		std::erase_if(temporary_rts, [](const std::shared_ptr<TemporaryRT>& temporary_rt) {
+			return temporary_rt->getState() == TemporaryRT::State::Destroy;
 		});
 
 		for (auto& temporary_rt : temporary_rts)
 		{
-			temporary_rt->setState(TemporaryRenderTarget::State::Destroy);
+			temporary_rt->setState(TemporaryRT::State::Destroy);
 		}
 	}
 
