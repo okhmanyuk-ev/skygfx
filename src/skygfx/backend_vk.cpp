@@ -129,7 +129,6 @@ struct ContextVK
 	std::unordered_map<uint32_t, UniformBufferVK*> uniform_buffers;
 	std::unordered_map<uint32_t, AccelerationStructureVK*> acceleration_structures;
 
-	PipelineStateVK pipeline_state;
 	std::unordered_map<PipelineStateVK, vk::raii::Pipeline> pipeline_states;
 
 	RaytracingPipelineStateVK raytracing_pipeline_state;
@@ -140,6 +139,7 @@ struct ContextVK
 
 	RenderTargetVK* render_target = nullptr;
 
+	PipelineStateVK pipeline_state;
 	std::optional<Scissor> scissor;
 	std::optional<Viewport> viewport;
 	std::optional<DepthMode> depth_mode = DepthMode();
@@ -150,6 +150,7 @@ struct ContextVK
 	IndexBufferVK* index_buffer = nullptr;
 	std::optional<BlendMode> blend_mode;
 
+	bool pipeline_state_dirty = true;
 	bool scissor_dirty = true;
 	bool viewport_dirty = true;
 	bool depth_mode_dirty = true;
@@ -1369,6 +1370,89 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 	}
 }
 
+static vk::raii::Pipeline CreateGraphicsPipelineState(const PipelineStateVK& pipeline_state)
+{
+	auto pipeline_shader_stage_create_info = {
+		vk::PipelineShaderStageCreateInfo()
+			.setStage(vk::ShaderStageFlagBits::eVertex)
+			.setModule(*pipeline_state.shader->getVertexShaderModule())
+			.setPName("main"),
+
+		vk::PipelineShaderStageCreateInfo()
+			.setStage(vk::ShaderStageFlagBits::eFragment)
+			.setModule(*pipeline_state.shader->getFragmentShaderModule())
+			.setPName("main")
+	};
+
+	auto pipeline_input_assembly_state_create_info = vk::PipelineInputAssemblyStateCreateInfo()
+		.setTopology(vk::PrimitiveTopology::eTriangleList);
+
+	auto pipeline_viewport_state_create_info = vk::PipelineViewportStateCreateInfo()
+		.setViewportCount(1)
+		.setScissorCount(1);
+
+	auto pipeline_rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo()
+		.setPolygonMode(vk::PolygonMode::eFill);
+
+	auto pipeline_multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo()
+		.setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+	auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
+
+	auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo();
+
+	auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
+		.setVertexBindingDescriptions(pipeline_state.shader->getVertexInputBindingDescription())
+		.setVertexAttributeDescriptions(pipeline_state.shader->getVertexInputAttributeDescriptions());
+
+	auto dynamic_states = {
+		vk::DynamicState::eViewport,
+		vk::DynamicState::eScissor,
+		vk::DynamicState::ePrimitiveTopology,
+		vk::DynamicState::eLineWidth,
+		vk::DynamicState::eCullMode,
+		vk::DynamicState::eFrontFace,
+		vk::DynamicState::eVertexInputBindingStride,
+		vk::DynamicState::eDepthTestEnable,
+		vk::DynamicState::eDepthCompareOp,
+		vk::DynamicState::eDepthWriteEnable,
+		vk::DynamicState::eColorWriteMaskEXT,
+		vk::DynamicState::eColorBlendEquationEXT,
+		vk::DynamicState::eColorBlendEnableEXT
+	};
+
+	auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
+		.setDynamicStates(dynamic_states);
+
+	auto color_attachment_formats = {
+		pipeline_state.color_attachment_format
+	};
+
+	auto depth_stencil_format = pipeline_state.depth_stencil_format;
+
+	auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
+		.setColorAttachmentFormats(color_attachment_formats)
+		.setDepthAttachmentFormat(depth_stencil_format)
+		.setStencilAttachmentFormat(depth_stencil_format);
+
+	auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
+		.setLayout(*pipeline_state.shader->getPipelineLayout())
+		.setFlags(vk::PipelineCreateFlagBits())
+		.setStages(pipeline_shader_stage_create_info)
+		.setPVertexInputState(&pipeline_vertex_input_state_create_info)
+		.setPInputAssemblyState(&pipeline_input_assembly_state_create_info)
+		.setPViewportState(&pipeline_viewport_state_create_info)
+		.setPRasterizationState(&pipeline_rasterization_state_create_info)
+		.setPMultisampleState(&pipeline_multisample_state_create_info)
+		.setPDepthStencilState(&pipeline_depth_stencil_state_create_info)
+		.setPColorBlendState(&pipeline_color_blend_state_create_info)
+		.setPDynamicState(&pipeline_dynamic_state_create_info)
+		.setRenderPass(nullptr)
+		.setPNext(&pipeline_rendering_create_info);
+
+	return gContext->device.createGraphicsPipeline(nullptr, graphics_pipeline_create_info);
+}
+
 static void PrepareForDrawing(bool indexed)
 {
 	assert(gContext->vertex_buffer);
@@ -1403,100 +1487,22 @@ static void PrepareForDrawing(bool indexed)
 		gContext->topology_dirty = false;
 	}
 
-	auto shader = gContext->pipeline_state.shader;
-	assert(shader);
-
-	if (!gContext->pipeline_states.contains(gContext->pipeline_state))
+	if (gContext->pipeline_state_dirty)
 	{
-		auto pipeline_shader_stage_create_info = {
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eVertex)
-				.setModule(*shader->getVertexShaderModule())
-				.setPName("main"),
+		gContext->pipeline_state_dirty = false;
 
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eFragment)
-				.setModule(*shader->getFragmentShaderModule())
-				.setPName("main")
-		};
+		if (!gContext->pipeline_states.contains(gContext->pipeline_state))
+		{
+			auto pipeline = CreateGraphicsPipelineState(gContext->pipeline_state);
+			gContext->pipeline_states.insert({ gContext->pipeline_state, std::move(pipeline) });
+		}
 
-		auto pipeline_input_assembly_state_create_info = vk::PipelineInputAssemblyStateCreateInfo()
-			.setTopology(vk::PrimitiveTopology::eTriangleList);
-
-		auto pipeline_viewport_state_create_info = vk::PipelineViewportStateCreateInfo()
-			.setViewportCount(1)
-			.setScissorCount(1);
-
-		auto pipeline_rasterization_state_create_info = vk::PipelineRasterizationStateCreateInfo()
-			.setPolygonMode(vk::PolygonMode::eFill);
-
-		auto pipeline_multisample_state_create_info = vk::PipelineMultisampleStateCreateInfo()
-			.setRasterizationSamples(vk::SampleCountFlagBits::e1);
-
-		auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
-
-		auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo();
-
-		auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
-			.setVertexBindingDescriptions(shader->getVertexInputBindingDescription())
-			.setVertexAttributeDescriptions(shader->getVertexInputAttributeDescriptions());
-
-		auto dynamic_states = {
-			vk::DynamicState::eViewport,
-			vk::DynamicState::eScissor,
-			vk::DynamicState::ePrimitiveTopology,
-			vk::DynamicState::eLineWidth,
-			vk::DynamicState::eCullMode,
-			vk::DynamicState::eFrontFace,
-			vk::DynamicState::eVertexInputBindingStride,
-			vk::DynamicState::eDepthTestEnable,
-			vk::DynamicState::eDepthCompareOp,
-			vk::DynamicState::eDepthWriteEnable,
-			vk::DynamicState::eColorWriteMaskEXT,
-			vk::DynamicState::eColorBlendEquationEXT,
-			vk::DynamicState::eColorBlendEnableEXT
-		};
-
-		auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
-			.setDynamicStates(dynamic_states);
-
-		auto color_attachment_formats = {
-			gContext->pipeline_state.color_attachment_format
-		};
-
-		auto depth_stencil_format = gContext->pipeline_state.depth_stencil_format;
-
-		auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
-			.setColorAttachmentFormats(color_attachment_formats)
-			.setDepthAttachmentFormat(depth_stencil_format)
-			.setStencilAttachmentFormat(depth_stencil_format);
-
-		auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
-			.setLayout(*shader->getPipelineLayout())
-			.setFlags(vk::PipelineCreateFlagBits())
-			.setStages(pipeline_shader_stage_create_info)
-			.setPVertexInputState(&pipeline_vertex_input_state_create_info)
-			.setPInputAssemblyState(&pipeline_input_assembly_state_create_info)
-			.setPViewportState(&pipeline_viewport_state_create_info)
-			.setPRasterizationState(&pipeline_rasterization_state_create_info)
-			.setPMultisampleState(&pipeline_multisample_state_create_info)
-			.setPDepthStencilState(&pipeline_depth_stencil_state_create_info)
-			.setPColorBlendState(&pipeline_color_blend_state_create_info)
-			.setPDynamicState(&pipeline_dynamic_state_create_info)
-			.setRenderPass(nullptr)
-			.setPNext(&pipeline_rendering_create_info);
-
-		auto pipeline = gContext->device.createGraphicsPipeline(nullptr, graphics_pipeline_create_info);
-
-		gContext->pipeline_states.insert({ gContext->pipeline_state, std::move(pipeline) });
+		const auto& pipeline = gContext->pipeline_states.at(gContext->pipeline_state);
+		gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 	}
 
-	const auto& pipeline = gContext->pipeline_states.at(gContext->pipeline_state);
-
-	gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
-
-	const auto& pipeline_layout = shader->getPipelineLayout();
-	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
+	const auto& pipeline_layout = gContext->pipeline_state.shader->getPipelineLayout();
+	const auto& required_descriptor_bindings = gContext->pipeline_state.shader->getRequiredDescriptorBindings();
 
 	PushDescriptors(vk::PipelineBindPoint::eGraphics, pipeline_layout, required_descriptor_bindings);
 
@@ -1595,38 +1601,33 @@ static void PrepareForDrawing(bool indexed)
 			{ BlendFunction::Max, vk::BlendOp::eMax },
 		};
 
+		const auto& blend_mode = gContext->blend_mode.value_or(BlendStates::Opaque);
+
+		auto color_mask = vk::ColorComponentFlags();
+
+		if (blend_mode.color_mask.red)
+			color_mask |= vk::ColorComponentFlagBits::eR;
+
+		if (blend_mode.color_mask.green)
+			color_mask |= vk::ColorComponentFlagBits::eG;
+
+		if (blend_mode.color_mask.blue)
+			color_mask |= vk::ColorComponentFlagBits::eB;
+
+		if (blend_mode.color_mask.alpha)
+			color_mask |= vk::ColorComponentFlagBits::eA;
+
+		auto color_blend_equation = vk::ColorBlendEquationEXT()
+			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src_blend))
+			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst_blend))
+			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_blend_func))
+			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src_blend))
+			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst_blend))
+			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_blend_func));
+
 		gContext->getCurrentFrame().command_buffer.setColorBlendEnableEXT(0, { gContext->blend_mode.has_value() });
-
-		if (gContext->blend_mode.has_value())
-		{
-			const auto& blend_mode_nn = gContext->blend_mode.value();
-
-			auto color_mask = vk::ColorComponentFlags();
-
-			if (blend_mode_nn.color_mask.red)
-				color_mask |= vk::ColorComponentFlagBits::eR;
-
-			if (blend_mode_nn.color_mask.green)
-				color_mask |= vk::ColorComponentFlagBits::eG;
-
-			if (blend_mode_nn.color_mask.blue)
-				color_mask |= vk::ColorComponentFlagBits::eB;
-
-			if (blend_mode_nn.color_mask.alpha)
-				color_mask |= vk::ColorComponentFlagBits::eA;
-
-			gContext->getCurrentFrame().command_buffer.setColorWriteMaskEXT(0, { color_mask });
-
-			auto color_blend_equation = vk::ColorBlendEquationEXT()
-				.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode_nn.color_src_blend))
-				.setDstColorBlendFactor(BlendFactorMap.at(blend_mode_nn.color_dst_blend))
-				.setColorBlendOp(BlendFuncMap.at(blend_mode_nn.color_blend_func))
-				.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode_nn.alpha_src_blend))
-				.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode_nn.alpha_dst_blend))
-				.setAlphaBlendOp(BlendFuncMap.at(blend_mode_nn.alpha_blend_func));
-
-			gContext->getCurrentFrame().command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
-		}
+		gContext->getCurrentFrame().command_buffer.setColorWriteMaskEXT(0, { color_mask });
+		gContext->getCurrentFrame().command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
 
 		gContext->blend_mode_dirty = false;
 	}
@@ -1751,6 +1752,7 @@ static void Begin()
 	assert(!gContext->working);
 	gContext->working = true;
 
+	gContext->pipeline_state_dirty = true;
 	gContext->topology_dirty = true;
 	gContext->viewport_dirty = true;
 	gContext->scissor_dirty = true;
@@ -2158,6 +2160,7 @@ void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 	if (gContext->render_target == render_target)
 		return;
 
+	gContext->pipeline_state_dirty = true;
 	gContext->pipeline_state.color_attachment_format = render_target->getTexture()->getFormat();
 	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
 	gContext->render_target = render_target;
@@ -2175,6 +2178,7 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 	if (gContext->render_target == nullptr)
 		return;
 
+	gContext->pipeline_state_dirty = true;
 	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
 	gContext->pipeline_state.depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
 	gContext->render_target = nullptr;
@@ -2190,7 +2194,12 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 void BackendVK::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderVK*)handle;
+
+	if (gContext->pipeline_state.shader == shader)
+		return;
+
 	gContext->pipeline_state.shader = shader;
+	gContext->pipeline_state_dirty = true;
 }
 
 void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
