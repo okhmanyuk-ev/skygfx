@@ -924,6 +924,11 @@ void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst)
 
 void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, float bright_threshold, float intensity)
 {
+	Blit(src, dst);
+
+	if (intensity <= 0.0f)
+		return;
+
 	constexpr int ChainSize = 8;
 
 	// get targets
@@ -978,9 +983,8 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 		prev_downsampled = *it;
 	}
 
-	// combine
+	// apply
 	
-	Blit(src, dst);
 	Blit(prev_downsampled, dst, effects::BloomUpsample(*prev_downsampled), false, BlendStates::Additive, glm::vec4(intensity));
 
 	// release targets
@@ -996,6 +1000,11 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* dst, float bright_threshold,
 	float intensity)
 {
+	Blit(src, dst);
+
+	if (intensity <= 0.0f)
+		return;
+
 	constexpr auto DownsampleCount = 8;
 
 	auto width = static_cast<uint32_t>(glm::floor(static_cast<float>(src->getWidth()) / static_cast<float>(DownsampleCount)));
@@ -1013,7 +1022,6 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 
 	GaussianBlur(blur_src, blur_dst);
 
-	Blit(src, dst);
 	Blit(blur_dst, dst, false, BlendStates::Additive, glm::vec4(intensity));
 
 	skygfx::ReleaseTemporaryRenderTarget(bright);
