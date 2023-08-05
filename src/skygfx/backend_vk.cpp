@@ -265,7 +265,8 @@ static vk::DeviceAddress GetBufferDeviceAddress(vk::Buffer buffer)
 	return gContext->device.getBufferAddress(info);
 };
 
-static void WriteToBuffer(vk::raii::DeviceMemory& memory, const void* data, size_t size) {
+static void WriteToBuffer(vk::raii::DeviceMemory& memory, const void* data, size_t size)
+{
 	auto ptr = memory.mapMemory(0, size);
 	memcpy(ptr, data, size);
 	memory.unmapMemory();
@@ -721,8 +722,8 @@ private:
 public:
 	BufferVK(size_t size, vk::BufferUsageFlags usage)
 	{
-		std::tie(mBuffer, mDeviceMemory) = CreateBuffer(size,
-			vk::BufferUsageFlagBits::eTransferDst | usage);
+		usage |= vk::BufferUsageFlagBits::eTransferDst;
+		std::tie(mBuffer, mDeviceMemory) = CreateBuffer(size, usage);
 	}
 
 	~BufferVK()
@@ -1653,7 +1654,6 @@ static void WaitForGpu()
 {
 	const auto& fence = gContext->getCurrentFrame().fence;
 	auto wait_result = gContext->device.waitForFences({ *fence }, true, UINT64_MAX);
-	gContext->getCurrentFrame().staging_objects.clear();
 }
 
 static void CreateSwapchain(uint32_t width, uint32_t height)
@@ -1745,6 +1745,7 @@ static void MoveToNextFrame()
 	auto [result, image_index] = gContext->swapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
 
 	gContext->frame_index = image_index;
+	gContext->getCurrentFrame().staging_objects.clear();
 }
 
 static void Begin()
