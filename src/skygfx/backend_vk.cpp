@@ -734,15 +734,21 @@ public:
 
 	void write(void* memory, size_t size)
 	{
+		EnsureRenderPassDeactivated();
+		EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eTransfer);
+
+		if (size < 65536)
+		{
+			gContext->getCurrentFrame().command_buffer.updateBuffer<uint8_t>(*mBuffer, 0, { (uint32_t)size, (uint8_t*)memory });
+			return;
+		}
+		
 		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
 
 		WriteToBuffer(staging_buffer_memory, memory, size);
 
 		auto region = vk::BufferCopy()
 			.setSize(size);
-
-		EnsureRenderPassDeactivated();
-		EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eTransfer);
 
 		gContext->getCurrentFrame().command_buffer.copyBuffer(*staging_buffer, *mBuffer, { region });
 		gContext->getCurrentFrame().staging_objects.push_back(std::move(staging_buffer));
@@ -1654,6 +1660,7 @@ static void WaitForGpu()
 {
 	const auto& fence = gContext->getCurrentFrame().fence;
 	auto wait_result = gContext->device.waitForFences({ *fence }, true, UINT64_MAX);
+	gContext->getCurrentFrame().staging_objects.clear();
 }
 
 static void CreateSwapchain(uint32_t width, uint32_t height)
@@ -1745,7 +1752,6 @@ static void MoveToNextFrame()
 	auto [result, image_index] = gContext->swapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
 
 	gContext->frame_index = image_index;
-	gContext->getCurrentFrame().staging_objects.clear();
 }
 
 static void Begin()
