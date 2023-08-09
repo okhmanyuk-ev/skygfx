@@ -64,12 +64,13 @@ const std::string closesthit_shader_code = R"(
 layout(location = 0) rayPayloadInEXT vec3 hitValue;
 hitAttributeEXT vec3 attribs;
 
+layout(binding = 3) uniform sampler2D tex;
+
 void main()
 {
-	//const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
-	//hitValue = barycentricCoords;
-
-	hitValue = vec3(1.0, 1.0, 1.0);
+	vec2 texCoords = attribs.xy;
+	vec4 texColor = texture(tex, texCoords);
+	hitValue = texColor.rgb;
 })";
 
 const std::vector<glm::vec3> vertices = {
@@ -143,6 +144,10 @@ int main()
 
 	auto shader = skygfx::RaytracingShader(raygen_shader_code, miss_shader_code, closesthit_shader_code);
 	
+	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
+
+	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::Format::Byte4, tex_memory, true);
+
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -5.0f, 2.0f, 0.0f };
@@ -165,6 +170,7 @@ int main()
 
 		auto target = skygfx::GetTemporaryRenderTarget();
 
+		skygfx::SetTexture(3, texture);
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(*target);
 		skygfx::SetAccelerationStructure(0, acceleration_structure);
