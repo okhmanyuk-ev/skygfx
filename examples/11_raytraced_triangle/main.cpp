@@ -86,21 +86,17 @@ int main()
 
 	auto shader = skygfx::RaytracingShader(raygen_shader_code, miss_shader_code, closesthit_shader_code);
 	auto acceleration_structure = skygfx::AccelerationStructure(vertices, indices);
-	auto target = skygfx::RenderTarget(800, 600);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		skygfx::SetShader(shader);
-		skygfx::SetRenderTarget(target);
-		skygfx::SetAccelerationStructure(0, acceleration_structure);
-		skygfx::DispatchRays(target.getWidth(), target.getHeight(), 1);
+		auto target = skygfx::GetTemporaryRenderTarget();
 
-		skygfx::SetRenderTarget(std::nullopt);
-		skygfx::Clear();
-		skygfx::utils::ExecuteCommands({
-			skygfx::utils::commands::SetColorTexture{ &target },
-			skygfx::utils::commands::Draw()
-		});
+		skygfx::SetShader(shader);
+		skygfx::SetRenderTarget(*target);
+		skygfx::SetAccelerationStructure(0, acceleration_structure);
+		skygfx::DispatchRays(target->getWidth(), target->getHeight(), 1);
+
+		skygfx::utils::passes::Blit(target, nullptr, true);
 
 		skygfx::Present();
 
