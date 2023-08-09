@@ -855,7 +855,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 
 	auto blas_build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
 		vk::AccelerationStructureBuildTypeKHR::eDevice, blas_build_geometry_info, { 1 });
-		
+
 	auto [blas_buffer, blas_memory] = CreateBuffer(blas_build_sizes.accelerationStructureSize,
 		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
 
@@ -881,7 +881,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::DeviceAddress, vk::rai
 
 	auto blas_build_geometry_infos = { blas_build_geometry_info };
 	std::vector blas_build_range_infos = { &blas_build_range_info };
-		
+
 	OneTimeSubmit([&](auto& cmdbuf) {
 		cmdbuf.buildAccelerationStructuresKHR(blas_build_geometry_infos, blas_build_range_infos);
 	});
@@ -1528,10 +1528,8 @@ static vk::raii::Pipeline CreateRaytracingPipeline(const RaytracingPipelineState
 	return gContext->device.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
 }
 
-static void PrepareForDrawing(bool indexed)
+static void EnsureGraphicsState(bool draw_indexed)
 {
-	assert(gContext->vertex_buffer);
-
 	EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eAllGraphics);
 
 	if (gContext->vertex_buffer_dirty)
@@ -1541,7 +1539,7 @@ static void PrepareForDrawing(bool indexed)
 		gContext->vertex_buffer_dirty = false;
 	}
 
-	if (gContext->index_buffer_dirty && indexed)
+	if (gContext->index_buffer_dirty && draw_indexed)
 	{
 		gContext->getCurrentFrame().command_buffer.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0,
 			GetIndexTypeFromStride(gContext->index_buffer->getStride()));
@@ -1722,6 +1720,7 @@ static void PrepareForDrawing(bool indexed)
 
 		gContext->depth_mode_dirty = false;
 	}
+	EnsureRenderPassActivated();
 }
 
 static void WaitForGpu()
@@ -2428,15 +2427,13 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 
 void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
 {
-	PrepareForDrawing(false);
-	EnsureRenderPassActivated();
+	EnsureGraphicsState(false);
 	gContext->getCurrentFrame().command_buffer.draw(vertex_count, 1, vertex_offset, 0);
 }
 
 void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
 {
-	PrepareForDrawing(true);
-	EnsureRenderPassActivated();
+	EnsureGraphicsState(true);
 	gContext->getCurrentFrame().command_buffer.drawIndexed(index_count, 1, index_offset, 0, 0);
 }
 
