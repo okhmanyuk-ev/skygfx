@@ -13,6 +13,12 @@
 
 #include <iostream>
 
+#define HAS_STB_IMAGE __has_include(<stb_image.h>)
+
+#if HAS_STB_IMAGE
+	#include <stb_image.h>	
+#endif
+
 namespace utils
 {
 	const std::string& GetBackendName(skygfx::BackendType backend)
@@ -104,4 +110,14 @@ namespace utils
 
 		return { window, native_window, fb_width, fb_height };
 	}
+
+#if HAS_STB_IMAGE
+	std::tuple<uint32_t, uint32_t, void*> LoadTexture(const std::string& filename)
+	{
+		int width = 0;
+		int height = 0;
+		void* memory = stbi_load(filename.c_str(), &width, &height, nullptr, 4);
+		return { width, height, memory };
+	}
+#endif
 }

@@ -1,5 +1,6 @@
 #include <skygfx/skygfx.h>
 #include <skygfx/utils.h>
+#define STB_IMAGE_IMPLEMENTATION
 #include "../utils/utils.h"
 
 const std::string raygen_shader_code = R"(

@@ -26,17 +26,11 @@ int main()
 	while (!glfwWindowShouldClose(window))
 	{
 		ImGui_ImplGlfw_NewFrame();
-
 		ImGui::NewFrame();
-	
 		ImGui::ShowDemoWindow();
-
 		skygfx::Clear();
-
 		imgui.draw();
-
 		skygfx::Present();
-
 		glfwPollEvents();
 	}
 

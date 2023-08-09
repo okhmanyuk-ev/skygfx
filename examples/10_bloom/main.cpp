@@ -1,12 +1,10 @@
 #include <skygfx/skygfx.h>
 #include <skygfx/utils.h>
+#define STB_IMAGE_IMPLEMENTATION
 #include "../utils/utils.h"
 #include "../utils/imgui_helper.h"
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
-
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>	
 
 const auto WhiteColor = glm::vec4{ 1.0f, 1.0f, 1.0f, 1.0f };
 
@@ -72,9 +70,7 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
-	int tex_width = 0;
-	int tex_height = 0;
-	void* tex_memory = stbi_load("assets/bricks.jpg", &tex_width, &tex_height, nullptr, 4);
+	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
 
 	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::Format::Byte4, tex_memory, true);
 

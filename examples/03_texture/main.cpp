@@ -1,9 +1,7 @@
 #include <skygfx/skygfx.h>
 #include <skygfx/vertex.h>
-#include "../utils/utils.h"
-
 #define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>	
+#include "../utils/utils.h"
 
 const std::string vertex_shader_code = R"(
 #version 450 core
@@ -66,9 +64,7 @@ int main()
 
 	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 
-	int tex_width = 0;
-	int tex_height = 0;
-	void* tex_memory = stbi_load("assets/bricks.jpg", &tex_width, &tex_height, nullptr, 4);
+	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
 
 	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::Format::Byte4, tex_memory);
 
