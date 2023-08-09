@@ -748,7 +748,7 @@ public:
 			gContext->getCurrentFrame().command_buffer.updateBuffer<uint8_t>(*mBuffer, 0, { (uint32_t)size, (uint8_t*)memory });
 			return;
 		}
-		
+
 		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
 
 		WriteToBuffer(staging_buffer_memory, memory, size);
@@ -2505,6 +2505,7 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 	assert(gContext->render_target != nullptr);
 
 	EnsureRenderPassDeactivated();
+	EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eAllGraphics);
 
 	if (!gContext->raytracing_pipeline_states.contains(gContext->raytracing_pipeline_state))
 	{
