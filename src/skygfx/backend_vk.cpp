@@ -78,7 +78,8 @@ using VulkanObject = std::variant<
 	vk::raii::Buffer,
 	vk::raii::Image,
 	vk::raii::DeviceMemory,
-	vk::raii::Pipeline
+	vk::raii::Pipeline,
+	vk::raii::AccelerationStructureKHR
 >;
 
 struct ContextVK
@@ -271,6 +272,11 @@ static void WriteToBuffer(vk::raii::DeviceMemory& memory, const void* data, size
 	memcpy(ptr, data, size);
 	memory.unmapMemory();
 };
+
+static void DestroyStaging(VulkanObject&& object)
+{
+	gContext->getCurrentFrame().staging_objects.push_back(std::move(object));
+}
 
 static void BeginRenderPass();
 static void EndRenderPass();
@@ -548,10 +554,10 @@ public:
 	~TextureVK()
 	{
 		if (mImage.has_value())
-			gContext->getCurrentFrame().staging_objects.push_back(std::move(mImage.value()));
+			DestroyStaging(std::move(mImage.value()));
 
 		if (mDeviceMemory.has_value())
-			gContext->getCurrentFrame().staging_objects.push_back(std::move(mDeviceMemory.value()));
+			DestroyStaging(std::move(mDeviceMemory.value()));
 	}
 
 	void write(uint32_t width, uint32_t height, Format format, void* memory,
@@ -728,8 +734,8 @@ public:
 
 	~BufferVK()
 	{
-		gContext->getCurrentFrame().staging_objects.push_back(std::move(mBuffer));
-		gContext->getCurrentFrame().staging_objects.push_back(std::move(mDeviceMemory));
+		DestroyStaging(std::move(mBuffer));
+		DestroyStaging(std::move(mDeviceMemory));
 	}
 
 	void write(void* memory, size_t size)
@@ -751,8 +757,9 @@ public:
 			.setSize(size);
 
 		gContext->getCurrentFrame().command_buffer.copyBuffer(*staging_buffer, *mBuffer, { region });
-		gContext->getCurrentFrame().staging_objects.push_back(std::move(staging_buffer));
-		gContext->getCurrentFrame().staging_objects.push_back(std::move(staging_buffer_memory));
+		
+		DestroyStaging(std::move(staging_buffer));
+		DestroyStaging(std::move(staging_buffer_memory));
 	}
 };
 
@@ -978,6 +985,16 @@ public:
 			CreateBottomLevelAccelerationStrucutre(vertices, indices, transform);
 		std::tie(mTlas, mTlasBuffer, mTlasMemory) = CreateTopLevelAccelerationStructure(
 			glm::mat4(1.0f), mBlasDeviceAddress);
+	}
+
+	~AccelerationStructureVK()
+	{
+		DestroyStaging(std::move(mTlas));
+		DestroyStaging(std::move(mBlas));
+		DestroyStaging(std::move(mTlasBuffer));
+		DestroyStaging(std::move(mBlasBuffer));
+		DestroyStaging(std::move(mTlasMemory));
+		DestroyStaging(std::move(mBlasMemory));
 	}
 };
 
@@ -1377,7 +1394,7 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 	}
 }
 
-static vk::raii::Pipeline CreateGraphicsPipelineState(const PipelineStateVK& pipeline_state)
+static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline_state)
 {
 	auto pipeline_shader_stage_create_info = {
 		vk::PipelineShaderStageCreateInfo()
@@ -1460,6 +1477,57 @@ static vk::raii::Pipeline CreateGraphicsPipelineState(const PipelineStateVK& pip
 	return gContext->device.createGraphicsPipeline(nullptr, graphics_pipeline_create_info);
 }
 
+static vk::raii::Pipeline CreateRaytracingPipeline(const RaytracingPipelineStateVK& pipeline_state)
+{
+	auto pipeline_shader_stage_create_info = {
+		vk::PipelineShaderStageCreateInfo()
+			.setStage(vk::ShaderStageFlagBits::eRaygenKHR)
+			.setModule(*pipeline_state.shader->getRaygenShaderModule())
+			.setPName("main"),
+
+		vk::PipelineShaderStageCreateInfo()
+			.setStage(vk::ShaderStageFlagBits::eMissKHR)
+			.setModule(*pipeline_state.shader->getMissShaderModule())
+			.setPName("main"),
+
+		vk::PipelineShaderStageCreateInfo()
+			.setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
+			.setModule(*pipeline_state.shader->getClosestHitShaderModule())
+			.setPName("main")
+	};
+
+	auto raytracing_shader_groups = { 
+		vk::RayTracingShaderGroupCreateInfoKHR() // raygen
+			.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+			.setGeneralShader(0)
+			.setClosestHitShader(VK_SHADER_UNUSED_KHR)
+			.setAnyHitShader(VK_SHADER_UNUSED_KHR)
+			.setIntersectionShader(VK_SHADER_UNUSED_KHR),
+
+		vk::RayTracingShaderGroupCreateInfoKHR() // miss
+			.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
+			.setGeneralShader(1)
+			.setClosestHitShader(VK_SHADER_UNUSED_KHR)
+			.setAnyHitShader(VK_SHADER_UNUSED_KHR)
+			.setIntersectionShader(VK_SHADER_UNUSED_KHR),
+
+		vk::RayTracingShaderGroupCreateInfoKHR() // closesthit
+			.setType(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup)
+			.setGeneralShader(VK_SHADER_UNUSED_KHR)
+			.setClosestHitShader(2)
+			.setAnyHitShader(VK_SHADER_UNUSED_KHR)
+			.setIntersectionShader(VK_SHADER_UNUSED_KHR)
+	};
+
+	auto raytracing_pipeline_create_info = vk::RayTracingPipelineCreateInfoKHR()
+		.setLayout(*pipeline_state.shader->getPipelineLayout())
+		.setStages(pipeline_shader_stage_create_info)
+		.setGroups(raytracing_shader_groups)
+		.setMaxPipelineRayRecursionDepth(1);
+
+	return gContext->device.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
+}
+
 static void PrepareForDrawing(bool indexed)
 {
 	assert(gContext->vertex_buffer);
@@ -1500,7 +1568,7 @@ static void PrepareForDrawing(bool indexed)
 
 		if (!gContext->pipeline_states.contains(gContext->pipeline_state))
 		{
-			auto pipeline = CreateGraphicsPipelineState(gContext->pipeline_state);
+			auto pipeline = CreateGraphicsPipeline(gContext->pipeline_state);
 			gContext->pipeline_states.insert({ gContext->pipeline_state, std::move(pipeline) });
 		}
 
@@ -2438,69 +2506,17 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	EnsureRenderPassDeactivated();
 
-	auto shader = gContext->raytracing_pipeline_state.shader;
-	assert(shader);
-
-	const auto& pipeline_layout = shader->getPipelineLayout();
-
 	if (!gContext->raytracing_pipeline_states.contains(gContext->raytracing_pipeline_state))
 	{
-		auto pipeline_shader_stage_create_info = {
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eRaygenKHR)
-				.setModule(*shader->getRaygenShaderModule())
-				.setPName("main"),
-
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eMissKHR)
-				.setModule(*shader->getMissShaderModule())
-				.setPName("main"),
-
-			vk::PipelineShaderStageCreateInfo()
-				.setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
-				.setModule(*shader->getClosestHitShaderModule())
-				.setPName("main")
-		};
-
-		auto raytracing_shader_groups = { 
-			vk::RayTracingShaderGroupCreateInfoKHR() // raygen
-				.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-				.setGeneralShader(0)
-				.setClosestHitShader(VK_SHADER_UNUSED_KHR)
-				.setAnyHitShader(VK_SHADER_UNUSED_KHR)
-				.setIntersectionShader(VK_SHADER_UNUSED_KHR),
-
-			vk::RayTracingShaderGroupCreateInfoKHR() // miss
-				.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-				.setGeneralShader(1)
-				.setClosestHitShader(VK_SHADER_UNUSED_KHR)
-				.setAnyHitShader(VK_SHADER_UNUSED_KHR)
-				.setIntersectionShader(VK_SHADER_UNUSED_KHR),
-
-			vk::RayTracingShaderGroupCreateInfoKHR() // closesthit
-				.setType(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup)
-				.setGeneralShader(VK_SHADER_UNUSED_KHR)
-				.setClosestHitShader(2)
-				.setAnyHitShader(VK_SHADER_UNUSED_KHR)
-				.setIntersectionShader(VK_SHADER_UNUSED_KHR)
-		};
-
-		auto raytracing_pipeline_create_info = vk::RayTracingPipelineCreateInfoKHR()
-			.setLayout(*pipeline_layout)
-			.setStages(pipeline_shader_stage_create_info)
-			.setGroups(raytracing_shader_groups)
-			.setMaxPipelineRayRecursionDepth(1);
-
-		auto pipeline = gContext->device.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
-
+		auto pipeline = CreateRaytracingPipeline(gContext->raytracing_pipeline_state);
 		gContext->raytracing_pipeline_states.insert({ gContext->raytracing_pipeline_state, std::move(pipeline) });
 	}
 
 	const auto& pipeline = gContext->raytracing_pipeline_states.at(gContext->raytracing_pipeline_state);
-
 	gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
 
-	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
+	const auto& pipeline_layout = gContext->raytracing_pipeline_state.shader->getPipelineLayout();
+	const auto& required_descriptor_bindings = gContext->raytracing_pipeline_state.shader->getRequiredDescriptorBindings();
 
 	PushDescriptors(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, required_descriptor_bindings);
 
@@ -2648,7 +2664,7 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 		if (state.shader != shader)
 			continue;
 
-		gContext->getCurrentFrame().staging_objects.push_back(std::move(pipeline));
+		DestroyStaging(std::move(pipeline));
 	}
 
 	std::erase_if(gContext->pipeline_states, [&](const auto& item) {
