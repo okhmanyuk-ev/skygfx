@@ -118,3 +118,11 @@ set_target_properties(10_bloom PROPERTIES RESOURCE ${RESOURCES})
 
 add_executable(11_raytraced_triangle 11_raytraced_triangle/main.cpp ${RESOURCES})
 target_link_libraries(11_raytraced_triangle glfw skygfx)
+
+# 12 - raytraced cube
+
+add_executable(12_raytraced_cube 12_raytraced_cube/main.cpp ${RESOURCES})
+target_link_libraries(12_raytraced_cube glfw skygfx imgui)
+target_include_directories(12_raytraced_cube PUBLIC lib/stb)
+set_target_properties(12_raytraced_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(12_raytraced_cube PROPERTIES RESOURCE ${RESOURCES})

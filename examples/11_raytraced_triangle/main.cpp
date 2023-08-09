@@ -14,18 +14,18 @@ layout(location = 0) rayPayloadEXT vec3 hitValue;
 
 void main()
 {
-	const vec2 uv = vec2(gl_LaunchIDEXT.xy) / vec2(gl_LaunchSizeEXT.xy - 1);
+	vec2 uv = vec2(gl_LaunchIDEXT.xy) / vec2(gl_LaunchSizeEXT.xy);
 
-	const vec3 origin = vec3(uv.x, 1.0f - uv.y, -1.0f);
-	const vec3 direction = vec3(0.0f, 0.0f, 1.0f);
+	vec3 origin = vec3(uv.x, 1.0f - uv.y, -1.0f);
+	vec3 direction = vec3(0.0f, 0.0f, 1.0f);
 
-	const uint rayFlags = gl_RayFlagsNoneEXT;
-	const uint cullMask = 0xFF;
-	const uint sbtRecordOffset = 0;
-	const uint sbtRecordStride = 0;
-	const uint missIndex = 0;
-	const float tmin = 0.0f;
-	const float tmax = 10.0f;
+	uint rayFlags = gl_RayFlagsNoneEXT;
+	uint cullMask = 0xFF;
+	uint sbtRecordOffset = 0;
+	uint sbtRecordStride = 0;
+	uint missIndex = 0;
+	float tmin = 0.0f;
+	float tmax = 10.0f;
 	const int payloadLocation = 0;
 
     hitValue = vec3(0.0);
