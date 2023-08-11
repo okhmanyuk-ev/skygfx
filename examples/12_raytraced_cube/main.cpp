@@ -161,8 +161,8 @@ int main()
 		auto model = glm::mat4(1.0f);
 		model = glm::rotate(model, time, { 0.0f, 1.0f, 0.0f });
 
-		auto acceleration_structure = skygfx::AccelerationStructure(vertices, indices, model);
-	
+		auto acceleration_structure = skygfx::AccelerationStructure(vertices, 0, indices, 0, model);
+
 		skygfx::SetUniformBuffer(2, Settings{
 			.viewInverse = glm::inverse(view),
 			.projInverse = glm::inverse(projection)

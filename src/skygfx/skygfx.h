@@ -303,9 +303,24 @@ namespace skygfx
 	class AccelerationStructure : public noncopyable
 	{
 	public:
-		AccelerationStructure(const std::vector<glm::vec3>& vertices, const std::vector<uint32_t>& indices,
-			const glm::mat4& transform = glm::mat4(1.0f));
+		AccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
+			uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_offset,
+			uint32_t index_stride, const glm::mat4& transform);
 		~AccelerationStructure();
+
+		template<class Vertex, class Index>
+		explicit AccelerationStructure(Vertex* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
+			Index* index_memory, uint32_t index_count, uint32_t index_offset, const glm::mat4& transform)
+			: AccelerationStructure((void*)vertex_memory, vertex_count, vertex_offset, sizeof(Vertex),
+				(void*)index_memory, index_count, index_offset, sizeof(Index), transform)
+		{}
+
+		template<class Vertex, class Index>
+		explicit AccelerationStructure(const std::vector<Vertex>& vertices, uint32_t vertex_offset,
+			const std::vector<Index>& indices, uint32_t index_offset, const glm::mat4& transform)
+			: AccelerationStructure(vertices.data(), (uint32_t)vertices.size(), vertex_offset,
+				indices.data(), (uint32_t)indices.size(), index_offset, transform)
+		{}
 
 		operator AccelerationStructureHandle* () { return mAccelerationStructureHandle; }
 

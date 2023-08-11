@@ -82,8 +82,9 @@ namespace skygfx
 			const std::string& closesthit_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyRaytracingShader(RaytracingShaderHandle* handle) = 0;
 
-		virtual AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
-			const std::vector<uint32_t>& indices, const glm::mat4& transform) = 0;
+		virtual AccelerationStructureHandle* createAccelerationStructure(void* vertex_memory,
+			uint32_t vertex_count, uint32_t vertex_stride, void* index_memory, uint32_t index_count,
+			uint32_t index_stride, const glm::mat4& transform) = 0;
 		virtual void destroyAccelerationStructure(AccelerationStructureHandle* handle) = 0;
 
 		virtual StorageBufferHandle* createStorageBuffer(size_t size) = 0;

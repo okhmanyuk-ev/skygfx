@@ -85,7 +85,7 @@ int main()
 	});
 
 	auto shader = skygfx::RaytracingShader(raygen_shader_code, miss_shader_code, closesthit_shader_code);
-	auto acceleration_structure = skygfx::AccelerationStructure(vertices, indices);
+	auto acceleration_structure = skygfx::AccelerationStructure(vertices, 0, indices, 0, glm::mat4(1.0f));
 
 	while (!glfwWindowShouldClose(window))
 	{

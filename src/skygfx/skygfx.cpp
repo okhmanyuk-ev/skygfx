@@ -369,10 +369,15 @@ void StorageBuffer::write(void* memory, size_t size)
 
 // acceleration structure
 
-AccelerationStructure::AccelerationStructure(const std::vector<glm::vec3>& vertices,
-	const std::vector<uint32_t>& indices, const glm::mat4& transform)
+AccelerationStructure::AccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
+	uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_offset, uint32_t index_stride,
+	const glm::mat4& transform)
 {
-	mAccelerationStructureHandle = gRaytracingBackend->createAccelerationStructure(vertices, indices, transform);
+	auto vertex_memory_with_offset = (void*)((size_t)vertex_memory + vertex_offset);
+	auto index_memory_with_offset = (void*)((size_t)index_memory + index_offset);
+
+	mAccelerationStructureHandle = gRaytracingBackend->createAccelerationStructure(vertex_memory_with_offset,
+		vertex_count, vertex_stride, index_memory_with_offset, index_count, index_stride, transform);
 }
 
 AccelerationStructure::~AccelerationStructure()
