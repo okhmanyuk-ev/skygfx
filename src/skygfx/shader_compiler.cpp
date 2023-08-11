@@ -262,7 +262,8 @@ ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 		{ SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ShaderReflection::Descriptor::Type::CombinedImageSampler },
 		{ SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ShaderReflection::Descriptor::Type::UniformBuffer },
 		{ SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE, ShaderReflection::Descriptor::Type::StorageImage },
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, ShaderReflection::Descriptor::Type::AccelerationStructure }
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, ShaderReflection::Descriptor::Type::AccelerationStructure },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShaderReflection::Descriptor::Type::StorageBuffer }
 	};
 
 	static const std::unordered_map<SpvReflectShaderStageFlagBits, ShaderStage> StageMap = {

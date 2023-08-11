@@ -27,7 +27,8 @@ namespace skygfx
 				CombinedImageSampler,
 				UniformBuffer,
 				StorageImage,
-				AccelerationStructure
+				AccelerationStructure,
+				StorageBuffer
 			};
 
 			std::string name;

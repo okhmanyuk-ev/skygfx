@@ -18,6 +18,7 @@ static BackendType gBackendType = BackendType::OpenGL;
 static std::optional<VertexBuffer> gVertexBuffer;
 static std::optional<IndexBuffer> gIndexBuffer;
 static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
+static std::unordered_map<uint32_t, StorageBuffer> gStorageBuffers;
 
 // texture
 
@@ -321,6 +322,49 @@ UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) noexcept
 void UniformBuffer::write(void* memory, size_t size)
 {
 	gBackend->writeUniformBufferMemory(mUniformBufferHandle, memory, size);
+}
+
+// storage buffer
+
+StorageBuffer::StorageBuffer(size_t size) : Buffer(size)
+{
+	mStorageBufferHandle = gRaytracingBackend->createStorageBuffer(size);
+}
+
+StorageBuffer::StorageBuffer(void* memory, size_t size) : StorageBuffer(size)
+{
+	write(memory, size);
+}
+
+StorageBuffer::StorageBuffer(StorageBuffer&& other) noexcept : Buffer(std::move(other))
+{
+	mStorageBufferHandle = std::exchange(other.mStorageBufferHandle, nullptr);
+}
+
+StorageBuffer::~StorageBuffer()
+{
+	if (gRaytracingBackend && mStorageBufferHandle)
+		gRaytracingBackend->destroyStorageBuffer(mStorageBufferHandle);
+}
+
+StorageBuffer& StorageBuffer::operator=(StorageBuffer&& other) noexcept
+{
+	Buffer::operator=(std::move(other));
+
+	if (this == &other)
+		return *this;
+
+	if (mStorageBufferHandle)
+		gRaytracingBackend->destroyStorageBuffer(mStorageBufferHandle);
+
+	mStorageBufferHandle = std::exchange(other.mStorageBufferHandle, nullptr);
+
+	return *this;
+}
+
+void StorageBuffer::write(void* memory, size_t size)
+{
+	gRaytracingBackend->writeStorageBufferMemory(mStorageBufferHandle, memory, size);
 }
 
 // acceleration structure
@@ -682,6 +726,7 @@ void skygfx::Finalize()
 	gIndexBuffer.reset();
 	gVertexBuffer.reset();
 	gUniformBuffers.clear();
+	gStorageBuffers.clear();
 
 	delete gBackend;
 	gBackend = nullptr;
@@ -766,6 +811,11 @@ void skygfx::SetIndexBuffer(const IndexBuffer& value)
 void skygfx::SetUniformBuffer(uint32_t binding, const UniformBuffer& value)
 {
 	gBackend->setUniformBuffer(binding, const_cast<UniformBuffer&>(value));
+}
+
+void skygfx::SetStorageBuffer(uint32_t binding, const StorageBuffer& value)
+{
+	gRaytracingBackend->setStorageBuffer(binding, const_cast<StorageBuffer&>(value));
 }
 
 void skygfx::SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value)
@@ -882,7 +932,7 @@ void skygfx::SetIndexBuffer(void* memory, size_t size, size_t stride)
 void skygfx::SetUniformBuffer(uint32_t binding, void* memory, size_t size)
 {
 	assert(size > 0);
-	
+
 	if (!gUniformBuffers.contains(binding))
 		gUniformBuffers.emplace(binding, size);
 
@@ -894,6 +944,23 @@ void skygfx::SetUniformBuffer(uint32_t binding, void* memory, size_t size)
 	buffer.write(memory, size);
 
 	SetUniformBuffer(binding, buffer);
+}
+
+void skygfx::SetStorageBuffer(uint32_t binding, void* memory, size_t size)
+{
+	assert(size > 0);
+
+	if (!gStorageBuffers.contains(binding))
+		gStorageBuffers.emplace(binding, size);
+
+	auto& buffer = gStorageBuffers.at(binding);
+
+	if (buffer.getSize() < size)
+		buffer = StorageBuffer(size);
+
+	buffer.write(memory, size);
+
+	SetStorageBuffer(binding, buffer);
 }
 
 uint32_t skygfx::GetWidth()

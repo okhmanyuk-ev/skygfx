@@ -72,6 +72,7 @@ namespace skygfx
 	class RaytracingBackend
 	{
 	public:
+		virtual void setStorageBuffer(uint32_t binding, StorageBufferHandle* handle) = 0;
 		virtual void setRaytracingShader(RaytracingShaderHandle* handle) = 0;
 		virtual void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) = 0;
 
@@ -84,5 +85,9 @@ namespace skygfx
 		virtual AccelerationStructureHandle* createAccelerationStructure(const std::vector<glm::vec3>& vertices,
 			const std::vector<uint32_t>& indices, const glm::mat4& transform) = 0;
 		virtual void destroyAccelerationStructure(AccelerationStructureHandle* handle) = 0;
+
+		virtual StorageBufferHandle* createStorageBuffer(size_t size) = 0;
+		virtual void destroyStorageBuffer(StorageBufferHandle* handle) = 0;
+		virtual void writeStorageBufferMemory(StorageBufferHandle* handle, void* memory, size_t size) = 0;
 	};
 }

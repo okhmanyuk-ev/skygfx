@@ -14,6 +14,7 @@ class ObjectVK;
 class ShaderVK;
 class RaytracingShaderVK;
 class UniformBufferVK;
+class StorageBufferVK;
 class AccelerationStructureVK;
 class TextureVK;
 class RenderTargetVK;
@@ -128,6 +129,7 @@ struct ContextVK
 
 	std::unordered_map<uint32_t, TextureVK*> textures;
 	std::unordered_map<uint32_t, UniformBufferVK*> uniform_buffers;
+	std::unordered_map<uint32_t, StorageBufferVK*> storage_buffers;
 	std::unordered_map<uint32_t, AccelerationStructureVK*> acceleration_structures;
 
 	std::unordered_map<PipelineStateVK, vk::raii::Pipeline> pipeline_states;
@@ -340,7 +342,8 @@ const static std::unordered_map<ShaderReflection::Descriptor::Type, vk::Descript
 	{ ShaderReflection::Descriptor::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
 	{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer },
 	{ ShaderReflection::Descriptor::Type::StorageImage, vk::DescriptorType::eStorageImage },
-	{ ShaderReflection::Descriptor::Type::AccelerationStructure, vk::DescriptorType::eAccelerationStructureKHR }
+	{ ShaderReflection::Descriptor::Type::AccelerationStructure, vk::DescriptorType::eAccelerationStructureKHR },
+	{ ShaderReflection::Descriptor::Type::StorageBuffer, vk::DescriptorType::eStorageBuffer }
 };
 
 std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<vk::DescriptorSetLayoutBinding>> CreatePipelineLayout(
@@ -799,6 +802,14 @@ class UniformBufferVK : public BufferVK
 {
 public:
 	UniformBufferVK(size_t size) : BufferVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
+	{
+	}
+};
+
+class StorageBufferVK : public BufferVK
+{
+public:
+	StorageBufferVK(size_t size) : BufferVK(size, vk::BufferUsageFlagBits::eStorageBuffer)
 	{
 	}
 };
@@ -1326,8 +1337,9 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 	EnsureSamplerState();
 
 	std::unordered_map<TextureVK*, vk::DescriptorImageInfo> descriptor_image_info_cache;
-	std::unordered_map<UniformBufferVK*, vk::DescriptorBufferInfo> descriptor_buffer_info_cache;
-	std::unordered_map<AccelerationStructureVK*, vk::WriteDescriptorSetAccelerationStructureKHR> acceleration_structure_info_cache;	
+	std::unordered_map<UniformBufferVK*, vk::DescriptorBufferInfo> descriptor_uniform_buffer_info_cache;
+	std::unordered_map<StorageBufferVK*, vk::DescriptorBufferInfo> descriptor_storage_buffer_info_cache;
+	std::unordered_map<AccelerationStructureVK*, vk::WriteDescriptorSetAccelerationStructureKHR> acceleration_structure_info_cache;
 
 	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
 
@@ -1357,7 +1369,7 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 		{
 			auto buffer = gContext->uniform_buffers.at(binding);
 
-			auto& descriptor_buffer_info = descriptor_buffer_info_cache[buffer]
+			auto& descriptor_buffer_info = descriptor_uniform_buffer_info_cache[buffer]
 				.setBuffer(*buffer->getBuffer())
 				.setRange(VK_WHOLE_SIZE);
 
@@ -1383,6 +1395,16 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 				.setImageView(image_view);
 
 			write_descriptor_set.setImageInfo(descriptor_image_info);
+		}
+		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageBuffer)
+		{
+			auto buffer = gContext->storage_buffers.at(binding);
+
+			auto& descriptor_buffer_info = descriptor_storage_buffer_info_cache[buffer]
+				.setBuffer(*buffer->getBuffer())
+				.setRange(VK_WHOLE_SIZE);
+
+			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
 		}
 		else
 		{
@@ -2310,6 +2332,12 @@ void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 	gContext->uniform_buffers[binding] = buffer;
 }
 
+void BackendVK::setStorageBuffer(uint32_t binding, StorageBufferHandle* handle)
+{
+	auto buffer = (StorageBufferVK*)handle;
+	gContext->storage_buffers[binding] = buffer;
+}
+
 void BackendVK::setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle)
 {
 	auto acceleration_structure = (AccelerationStructureVK*)handle;
@@ -2788,6 +2816,32 @@ void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle
 
 	gContext->objects.erase(acceleration_structure);
 	delete acceleration_structure;
+}
+
+StorageBufferHandle* BackendVK::createStorageBuffer(size_t size)
+{
+	auto buffer = new StorageBufferVK(size);
+	gContext->objects.insert(buffer);
+	return (StorageBufferHandle*)buffer;
+}
+
+void BackendVK::destroyStorageBuffer(StorageBufferHandle* handle)
+{
+	auto buffer = (StorageBufferVK*)handle;
+
+	std::erase_if(gContext->storage_buffers, [&](const auto& item) {
+		const auto& [binding, _buffer] = item;
+		return buffer == _buffer;
+	});
+
+	gContext->objects.erase(buffer);
+	delete buffer;
+}
+
+void BackendVK::writeStorageBufferMemory(StorageBufferHandle* handle, void* memory, size_t size)
+{
+	auto buffer = (StorageBufferVK*)handle;
+	buffer->write(memory, size);
 }
 
 #endif

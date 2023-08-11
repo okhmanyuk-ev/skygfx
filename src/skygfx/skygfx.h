@@ -79,6 +79,7 @@ namespace skygfx
 	using VertexBufferHandle = struct VertexBufferHandle;
 	using IndexBufferHandle = struct IndexBufferHandle;
 	using UniformBufferHandle = struct UniformBufferHandle;
+	using StorageBufferHandle = struct StorageBufferHandle;
 	using AccelerationStructureHandle = struct AccelerationStructureHandle;
 
 	class noncopyable
@@ -273,6 +274,30 @@ namespace skygfx
 
 	private:
 		UniformBufferHandle* mUniformBufferHandle = nullptr;
+	};
+
+	class StorageBuffer : public Buffer
+	{
+	public:
+		StorageBuffer(size_t size);
+		StorageBuffer(void* memory, size_t size);
+		StorageBuffer(StorageBuffer&& other) noexcept;
+		~StorageBuffer();
+
+		StorageBuffer& operator=(StorageBuffer&& other) noexcept;
+
+		template <class T>
+		explicit StorageBuffer(T value) : StorageBuffer(&value, sizeof(T)) {}
+
+		void write(void* memory, size_t size);
+
+		template <class T>
+		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
+
+		operator StorageBufferHandle* () { return mStorageBufferHandle; }
+
+	private:
+		StorageBufferHandle* mStorageBufferHandle = nullptr;
 	};
 
 	class AccelerationStructure : public noncopyable
@@ -507,6 +532,7 @@ namespace skygfx
 	void SetVertexBuffer(const VertexBuffer& value);
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
+	void SetStorageBuffer(uint32_t binding, const StorageBuffer& value);
 	void SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value);
 	void SetBlendMode(const std::optional<BlendMode>& blend_mode);
 	void SetDepthMode(const std::optional<DepthMode>& depth_mode);
@@ -555,13 +581,15 @@ namespace skygfx
 		SetIndexBuffer(values.data(), values.size());
 	}
 
-	void SetUniformBuffer(uint32_t binding,	void* memory, size_t size);
+	void SetUniformBuffer(uint32_t binding, void* memory, size_t size);
 
 	template <class T>
 	void SetUniformBuffer(uint32_t binding, const T& value)
 	{
 		SetUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
 	}
+
+	void SetStorageBuffer(uint32_t binding, void* memory, size_t size);
 
 	uint32_t GetWidth();
 	uint32_t GetHeight();
