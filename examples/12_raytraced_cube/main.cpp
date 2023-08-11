@@ -5,7 +5,6 @@
 
 const std::string raygen_shader_code = R"(
 #version 460
-
 #extension GL_EXT_ray_tracing : require
 
 layout(binding = 2) uniform _settings
@@ -24,7 +23,7 @@ void main()
 	vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
 	vec2 uv = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
 	vec2 d = uv * 2.0 - 1.0;
-	
+
 	vec4 origin = settings.viewInverse * vec4(0, 0, 0, 1);
 	vec4 target = settings.projInverse * vec4(d.x, d.y, 1, 1);
 	vec4 direction = settings.viewInverse * vec4(normalize(target.xyz), 0);
@@ -66,52 +65,93 @@ hitAttributeEXT vec3 attribs;
 
 layout(binding = 3) uniform sampler2D tex;
 
-void main()
+layout(binding = 4) buffer Indices { uint i[]; } indices;
+layout(binding = 5) buffer Vertices { vec4 v[]; } vertices;
+
+struct Vertex
 {
-	vec2 texCoords = attribs.xy;
-	vec4 texColor = texture(tex, texCoords);
-	hitValue = texColor.rgb;
-})";
-
-const std::vector<glm::vec3> vertices = {
-	/* front */
-	/* 0  */ { -1.0f,  1.0f,  1.0f },
-	/* 1  */ {  1.0f,  1.0f,  1.0f },
-	/* 2  */ { -1.0f, -1.0f,  1.0f },
-	/* 3  */ {  1.0f, -1.0f,  1.0f },
-
-	/* top */
-	/* 4  */ { -1.0f,  1.0f,  1.0f },
-	/* 5  */ { -1.0f,  1.0f, -1.0f },
-	/* 6  */ {  1.0f,  1.0f,  1.0f },
-	/* 7  */ {  1.0f,  1.0f, -1.0f },
-
-	/* left */
-	/* 8  */ { -1.0f,  1.0f, -1.0f },
-	/* 9  */ { -1.0f,  1.0f,  1.0f },
-	/* 10 */ { -1.0f, -1.0f, -1.0f },
-	/* 11 */ { -1.0f, -1.0f,  1.0f },
-
-	/* back */
-	/* 12 */ { -1.0f,  1.0f, -1.0f },
-	/* 13 */ { -1.0f, -1.0f, -1.0f },
-	/* 14 */ {  1.0f,  1.0f, -1.0f },
-	/* 15 */ {  1.0f, -1.0f, -1.0f },
-
-	/* bottom */
-	/* 16 */ { -1.0f, -1.0f,  1.0f },
-	/* 17 */ {  1.0f, -1.0f,  1.0f },
-	/* 18 */ { -1.0f, -1.0f, -1.0f },
-	/* 19 */ {  1.0f, -1.0f, -1.0f },
-
-	/* right */
-	/* 20 */ { 1.0f, -1.0f, -1.0f },
-	/* 21 */ { 1.0f, -1.0f,  1.0f },
-	/* 22 */ { 1.0f,  1.0f, -1.0f },
-	/* 23 */ { 1.0f,  1.0f,  1.0f },
+	vec3 pos;
+	vec4 color;
+	vec2 texcoord;
+	vec3 normal;
 };
 
-const std::vector<uint32_t> indices = {
+uint vertexSize = 3; // number of vec4 values used to represent a vertex
+
+Vertex unpackVertex(uint index)
+{
+	Vertex v;
+
+	vec4 d0 = vertices.v[vertexSize * index + 0];
+	vec4 d1 = vertices.v[vertexSize * index + 1];
+	vec4 d2 = vertices.v[vertexSize * index + 2];
+
+	v.pos = d0.xyz;
+	v.color = vec4(d0.w, d1.xyz);
+	v.texcoord = vec2(d1.w, d2.x);
+	v.normal = vec3(d2.y, d2.z, d2.w);
+
+	return v;
+}
+
+void main()
+{
+	uint index0 = indices.i[gl_PrimitiveID * 3 + 0];
+	uint index1 = indices.i[gl_PrimitiveID * 3 + 1];
+	uint index2 = indices.i[gl_PrimitiveID * 3 + 2];
+
+	Vertex v0 = unpackVertex(index0);
+	Vertex v1 = unpackVertex(index1);
+	Vertex v2 = unpackVertex(index2);
+
+	vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
+	//vec3 normal = normalize(v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z);
+
+    vec2 texcoord = v0.texcoord * barycentrics.x + v1.texcoord * barycentrics.y + v2.texcoord * barycentrics.z;
+	hitValue = texture(tex, texcoord).xyz;
+})";
+
+const auto WhiteColor = glm::vec4{ 1.0f, 1.0f, 1.0f, 1.0f };
+
+const skygfx::utils::Mesh::Vertices vertices = {
+	/* front */
+	/* 0  */ { { -1.0f,  1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+	/* 1  */ { {  1.0f,  1.0f,  1.0f }, WhiteColor, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+	/* 2  */ { { -1.0f, -1.0f,  1.0f }, WhiteColor, { 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+	/* 3  */ { {  1.0f, -1.0f,  1.0f }, WhiteColor, { 1.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+
+	/* top */
+	/* 4  */ { { -1.0f,  1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+	/* 5  */ { { -1.0f,  1.0f, -1.0f }, WhiteColor, { 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
+	/* 6  */ { {  1.0f,  1.0f,  1.0f }, WhiteColor, { 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+	/* 7  */ { {  1.0f,  1.0f, -1.0f }, WhiteColor, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
+
+	/* left */
+	/* 8  */ { { -1.0f,  1.0f, -1.0f }, WhiteColor, { 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f } },
+	/* 9  */ { { -1.0f,  1.0f,  1.0f }, WhiteColor, { 1.0f, 0.0f }, { -1.0f, 0.0f, 0.0f } },
+	/* 10 */ { { -1.0f, -1.0f, -1.0f }, WhiteColor, { 0.0f, 1.0f }, { -1.0f, 0.0f, 0.0f } },
+	/* 11 */ { { -1.0f, -1.0f,  1.0f }, WhiteColor, { 1.0f, 1.0f }, { -1.0f, 0.0f, 0.0f } },
+
+	/* back */
+	/* 12 */ { { -1.0f,  1.0f, -1.0f }, WhiteColor, { 1.0f, 0.0f }, { 0.0f, 0.0f, -1.0f } },
+	/* 13 */ { { -1.0f, -1.0f, -1.0f }, WhiteColor, { 1.0f, 1.0f }, { 0.0f, 0.0f, -1.0f } },
+	/* 14 */ { {  1.0f,  1.0f, -1.0f }, WhiteColor, { 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f } },
+	/* 15 */ { {  1.0f, -1.0f, -1.0f }, WhiteColor, { 0.0f, 1.0f }, { 0.0f, 0.0f, -1.0f } },
+
+	/* bottom */
+	/* 16 */ { { -1.0f, -1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 0.0f, -1.0f, 0.0f } },
+	/* 17 */ { {  1.0f, -1.0f,  1.0f }, WhiteColor, { 0.0f, 1.0f }, { 0.0f, -1.0f, 0.0f } },
+	/* 18 */ { { -1.0f, -1.0f, -1.0f }, WhiteColor, { 1.0f, 0.0f }, { 0.0f, -1.0f, 0.0f } },
+	/* 19 */ { {  1.0f, -1.0f, -1.0f }, WhiteColor, { 1.0f, 1.0f }, { 0.0f, -1.0f, 0.0f } },
+
+	/* right */
+	/* 20 */ { { 1.0f, -1.0f, -1.0f }, WhiteColor, { 1.0f, 1.0f }, { 1.0f, 0.0f, 0.0f } },
+	/* 21 */ { { 1.0f, -1.0f,  1.0f }, WhiteColor, { 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f } },
+	/* 22 */ { { 1.0f,  1.0f, -1.0f }, WhiteColor, { 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+	/* 23 */ { { 1.0f,  1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+};
+
+const skygfx::utils::Mesh::Indices indices = {
 	0, 1, 2, 1, 3, 2, // front
 	4, 5, 6, 5, 7, 6, // top
 	8, 9, 10, 9, 11, 10, // left
@@ -170,6 +210,8 @@ int main()
 
 		auto target = skygfx::GetTemporaryRenderTarget();
 
+		skygfx::SetStorageBuffer(4, (void*)indices.data(), indices.size() * sizeof(uint32_t));
+		skygfx::SetStorageBuffer(5, (void*)vertices.data(), vertices.size() * sizeof(skygfx::utils::Mesh::Vertex));
 		skygfx::SetTexture(3, texture);
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(*target);

@@ -4,7 +4,6 @@
 
 const std::string raygen_shader_code = R"(
 #version 460
-
 #extension GL_EXT_ray_tracing : require
 
 layout(binding = 0) uniform accelerationStructureEXT topLevelAS;
@@ -56,7 +55,7 @@ hitAttributeEXT vec3 attribs;
 
 void main()
 {
-	const vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
+	vec3 barycentricCoords = vec3(1.0f - attribs.x - attribs.y, attribs.x, attribs.y);
 	hitValue = barycentricCoords;
 })";
 
