@@ -367,23 +367,43 @@ void StorageBuffer::write(void* memory, size_t size)
 	gRaytracingBackend->writeStorageBufferMemory(mStorageBufferHandle, memory, size);
 }
 
-// acceleration structure
+// bottom level acceleration structure
 
-AccelerationStructure::AccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
+BottomLevelAccelerationStructure::BottomLevelAccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
 	uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_offset, uint32_t index_stride,
 	const glm::mat4& transform)
 {
 	auto vertex_memory_with_offset = (void*)((size_t)vertex_memory + vertex_offset);
 	auto index_memory_with_offset = (void*)((size_t)index_memory + index_offset);
 
-	mAccelerationStructureHandle = gRaytracingBackend->createAccelerationStructure(vertex_memory_with_offset,
+	mBottomLevelAccelerationStructureHandle = gRaytracingBackend->createBottomLevelAccelerationStructure(vertex_memory_with_offset,
 		vertex_count, vertex_stride, index_memory_with_offset, index_count, index_stride, transform);
 }
 
-AccelerationStructure::~AccelerationStructure()
+BottomLevelAccelerationStructure::~BottomLevelAccelerationStructure()
 {
-	if (gRaytracingBackend && mAccelerationStructureHandle)
-		gRaytracingBackend->destroyAccelerationStructure(mAccelerationStructureHandle);
+	if (gRaytracingBackend && mBottomLevelAccelerationStructureHandle)
+		gRaytracingBackend->destroyBottomLevelAccelerationStructure(mBottomLevelAccelerationStructureHandle);
+}
+
+// top level acceleration structure
+
+TopLevelAccelerationStructure::TopLevelAccelerationStructure(
+	const std::vector<BottomLevelAccelerationStructure*>& bottom_level_acceleration_structures)
+{
+	std::vector<BottomLevelAccelerationStructureHandle*> handles;
+	for (const auto& blas : bottom_level_acceleration_structures)
+	{
+		auto& _blas = const_cast<BottomLevelAccelerationStructure&>(*blas);
+		handles.push_back((BottomLevelAccelerationStructureHandle*)_blas);
+	}
+	mTopLevelAccelerationStructureHandle = gRaytracingBackend->createTopLevelAccelerationStructure(handles);
+}
+
+TopLevelAccelerationStructure::~TopLevelAccelerationStructure()
+{
+	if (gRaytracingBackend && mTopLevelAccelerationStructureHandle)
+		gRaytracingBackend->destroyTopLevelAccelerationStructure(mTopLevelAccelerationStructureHandle);
 }
 
 // helper functions
@@ -823,9 +843,9 @@ void skygfx::SetStorageBuffer(uint32_t binding, const StorageBuffer& value)
 	gRaytracingBackend->setStorageBuffer(binding, const_cast<StorageBuffer&>(value));
 }
 
-void skygfx::SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value)
+void skygfx::SetAccelerationStructure(uint32_t binding, const TopLevelAccelerationStructure& value)
 {
-	gRaytracingBackend->setAccelerationStructure(binding, const_cast<AccelerationStructure&>(value));
+	gRaytracingBackend->setAccelerationStructure(binding, const_cast<TopLevelAccelerationStructure&>(value));
 }
 
 void skygfx::SetBlendMode(const std::optional<BlendMode>& blend_mode)

@@ -80,7 +80,8 @@ namespace skygfx
 	using IndexBufferHandle = struct IndexBufferHandle;
 	using UniformBufferHandle = struct UniformBufferHandle;
 	using StorageBufferHandle = struct StorageBufferHandle;
-	using AccelerationStructureHandle = struct AccelerationStructureHandle;
+	using BottomLevelAccelerationStructureHandle = struct BottomLevelAccelerationStructureHandle;
+	using TopLevelAccelerationStructureHandle = struct TopLevelAccelerationStructureHandle;
 
 	class noncopyable
 	{
@@ -300,33 +301,48 @@ namespace skygfx
 		StorageBufferHandle* mStorageBufferHandle = nullptr;
 	};
 
-	class AccelerationStructure : public noncopyable
+	class BottomLevelAccelerationStructure : public noncopyable
 	{
 	public:
-		AccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
+		BottomLevelAccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
 			uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_offset,
 			uint32_t index_stride, const glm::mat4& transform);
-		~AccelerationStructure();
+		~BottomLevelAccelerationStructure();
 
 		template<class Vertex, class Index>
-		explicit AccelerationStructure(Vertex* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
+		explicit BottomLevelAccelerationStructure(Vertex* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
 			Index* index_memory, uint32_t index_count, uint32_t index_offset, const glm::mat4& transform)
-			: AccelerationStructure((void*)vertex_memory, vertex_count, vertex_offset, sizeof(Vertex),
+			: BottomLevelAccelerationStructure((void*)vertex_memory, vertex_count, vertex_offset, sizeof(Vertex),
 				(void*)index_memory, index_count, index_offset, sizeof(Index), transform)
 		{}
 
 		template<class Vertex, class Index>
-		explicit AccelerationStructure(const std::vector<Vertex>& vertices, uint32_t vertex_offset,
+		explicit BottomLevelAccelerationStructure(const std::vector<Vertex>& vertices, uint32_t vertex_offset,
 			const std::vector<Index>& indices, uint32_t index_offset, const glm::mat4& transform)
-			: AccelerationStructure(vertices.data(), (uint32_t)vertices.size(), vertex_offset,
+			: BottomLevelAccelerationStructure(vertices.data(), (uint32_t)vertices.size(), vertex_offset,
 				indices.data(), (uint32_t)indices.size(), index_offset, transform)
 		{}
 
-		operator AccelerationStructureHandle* () { return mAccelerationStructureHandle; }
+		operator BottomLevelAccelerationStructureHandle* () { return mBottomLevelAccelerationStructureHandle; }
 
 	private:
-		AccelerationStructureHandle* mAccelerationStructureHandle = nullptr;
+		BottomLevelAccelerationStructureHandle* mBottomLevelAccelerationStructureHandle = nullptr;
 	};
+
+	class TopLevelAccelerationStructure : public noncopyable
+	{
+	public:
+		TopLevelAccelerationStructure(const std::vector<BottomLevelAccelerationStructure*>& bottom_level_acceleration_structures);
+		~TopLevelAccelerationStructure();
+
+		operator TopLevelAccelerationStructureHandle* () { return mTopLevelAccelerationStructureHandle; }
+
+	private:
+		TopLevelAccelerationStructureHandle* mTopLevelAccelerationStructureHandle = nullptr;
+	};
+
+	using BLAS = BottomLevelAccelerationStructure;
+	using TLAS = TopLevelAccelerationStructure;
 
 	enum class Topology
 	{
@@ -548,7 +564,7 @@ namespace skygfx
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
 	void SetStorageBuffer(uint32_t binding, const StorageBuffer& value);
-	void SetAccelerationStructure(uint32_t binding, const AccelerationStructure& value);
+	void SetAccelerationStructure(uint32_t binding, const TopLevelAccelerationStructure& value);
 	void SetBlendMode(const std::optional<BlendMode>& blend_mode);
 	void SetDepthMode(const std::optional<DepthMode>& depth_mode);
 	void SetStencilMode(const std::optional<StencilMode>& stencil_mode);

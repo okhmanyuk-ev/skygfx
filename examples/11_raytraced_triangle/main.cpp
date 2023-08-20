@@ -84,7 +84,8 @@ int main()
 	});
 
 	auto shader = skygfx::RaytracingShader(raygen_shader_code, miss_shader_code, closesthit_shader_code);
-	auto acceleration_structure = skygfx::AccelerationStructure(vertices, 0, indices, 0, glm::mat4(1.0f));
+	auto blas = skygfx::BLAS(vertices, 0, indices, 0, glm::mat4(1.0f));
+	auto tlas = skygfx::TLAS({ &blas });
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -92,7 +93,7 @@ int main()
 
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(*target);
-		skygfx::SetAccelerationStructure(0, acceleration_structure);
+		skygfx::SetAccelerationStructure(0, tlas);
 		skygfx::DispatchRays(target->getWidth(), target->getHeight(), 1);
 
 		skygfx::utils::passes::Blit(target, nullptr, true);

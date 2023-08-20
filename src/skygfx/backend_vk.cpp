@@ -15,7 +15,8 @@ class ShaderVK;
 class RaytracingShaderVK;
 class UniformBufferVK;
 class StorageBufferVK;
-class AccelerationStructureVK;
+class BottomLevelAccelerationStructureVK;
+class TopLevelAccelerationStructureVK;
 class TextureVK;
 class RenderTargetVK;
 class VertexBufferVK;
@@ -130,7 +131,7 @@ struct ContextVK
 	std::unordered_map<uint32_t, TextureVK*> textures;
 	std::unordered_map<uint32_t, UniformBufferVK*> uniform_buffers;
 	std::unordered_map<uint32_t, StorageBufferVK*> storage_buffers;
-	std::unordered_map<uint32_t, AccelerationStructureVK*> acceleration_structures;
+	std::unordered_map<uint32_t, TopLevelAccelerationStructureVK*> top_level_acceleration_structures;
 
 	std::unordered_map<PipelineStateVK, vk::raii::Pipeline> pipeline_states;
 
@@ -821,8 +822,10 @@ static vk::IndexType GetIndexTypeFromStride(size_t stride)
 
 static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii::DeviceMemory> CreateBottomLevelAccelerationStrucutre(
 	void* vertex_memory, uint32_t vertex_count, uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_stride,
-	const glm::mat4& transform)
+	const glm::mat4& _transform)
 {
+	auto transform = glm::transpose(_transform);
+
 	auto [vertex_buffer, vertex_buffer_memory] = CreateBuffer(vertex_count * vertex_stride,
 		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
@@ -899,32 +902,41 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 }
 
 static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii::DeviceMemory> CreateTopLevelAccelerationStructure(
-	const vk::raii::AccelerationStructureKHR& blas, const glm::mat4& transform)
+	const std::vector<vk::AccelerationStructureKHR>& blases, const glm::mat4& transform)
 {
-	auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
-		.setAccelerationStructure(*blas);
+	std::vector<vk::AccelerationStructureInstanceKHR> instances;
 
-	auto blas_device_address = gContext->device.getAccelerationStructureAddressKHR(blas_device_address_info);
+	for (const auto& blas : blases)
+	{
+		auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
+			.setAccelerationStructure(blas);
 
-	auto instance = vk::AccelerationStructureInstanceKHR()
-		.setTransform(*(vk::TransformMatrixKHR*)&transform)
-		.setMask(0xFF)
-		.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
-		.setAccelerationStructureReference(blas_device_address);
+		auto blas_device_address = gContext->device.getAccelerationStructureAddressKHR(blas_device_address_info);
 
-	auto [instance_buffer, instance_buffer_memory] = CreateBuffer(sizeof(instance),
+		auto instance = vk::AccelerationStructureInstanceKHR()
+			.setTransform(*(vk::TransformMatrixKHR*)&transform)
+			.setMask(0xFF)
+			.setInstanceCustomIndex((uint32_t)instances.size()) // gl_InstanceCustomIndexEXT
+			.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
+			.setAccelerationStructureReference(blas_device_address);
+
+		instances.push_back(instance);
+	}
+
+	auto instance_buffer_size = sizeof(vk::AccelerationStructureInstanceKHR) * instances.size();
+
+	auto [instance_buffer, instance_buffer_memory] = CreateBuffer(instance_buffer_size,
 		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
-	WriteToBuffer(instance_buffer_memory, &instance, sizeof(instance));
+	WriteToBuffer(instance_buffer_memory, instances.data(), instance_buffer_size);
 
 	auto instance_buffer_addr = GetBufferDeviceAddress(*instance_buffer);
 
-	auto instances = vk::AccelerationStructureGeometryInstancesDataKHR()
-		.setArrayOfPointers(false)
+	auto geometry_instances = vk::AccelerationStructureGeometryInstancesDataKHR()
 		.setData(instance_buffer_addr);
 
 	auto geometry_data = vk::AccelerationStructureGeometryDataKHR()
-		.setInstances(instances);
+		.setInstances(geometry_instances);
 
 	auto geometry = vk::AccelerationStructureGeometryKHR()
 		.setGeometryType(vk::GeometryTypeKHR::eInstances)
@@ -937,7 +949,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 		.setGeometries(geometry);
 
 	auto build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
-		vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { 1 });
+		vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { (uint32_t)instances.size() });
 
 	auto [buffer, memory] = CreateBuffer(build_sizes.accelerationStructureSize,
 		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
@@ -960,7 +972,7 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 		.setScratchData(scratch_buffer_addr);
 
 	auto build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
-		.setPrimitiveCount(1);
+		.setPrimitiveCount((uint32_t)instances.size());
 
 	auto build_geometry_infos = { build_geometry_info };
 	std::vector build_range_infos = { &build_range_info };
@@ -972,7 +984,33 @@ static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii
 	return { std::move(tlas), std::move(buffer), std::move(memory) };
 }
 
-class AccelerationStructureVK : public ObjectVK
+class BottomLevelAccelerationStructureVK : public ObjectVK
+{
+public:
+	const auto& getBlas() const { return mBlas; }
+
+private:
+	vk::raii::AccelerationStructureKHR mBlas = nullptr;
+	vk::raii::Buffer mBlasBuffer = nullptr;
+	vk::raii::DeviceMemory mBlasMemory = nullptr;
+
+public:
+	BottomLevelAccelerationStructureVK(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_stride,
+		void* index_memory, uint32_t index_count, uint32_t index_stride, const glm::mat4& transform)
+	{
+		std::tie(mBlas, mBlasBuffer, mBlasMemory) = CreateBottomLevelAccelerationStrucutre(vertex_memory,
+			vertex_count, vertex_stride, index_memory, index_count, index_stride, transform);
+	}
+
+	~BottomLevelAccelerationStructureVK()
+	{
+		DestroyStaging(std::move(mBlas));
+		DestroyStaging(std::move(mBlasBuffer));
+		DestroyStaging(std::move(mBlasMemory));
+	}
+};
+
+class TopLevelAccelerationStructureVK : public ObjectVK
 {
 public:
 	const auto& getTlas() const { return mTlas; }
@@ -981,26 +1019,26 @@ private:
 	vk::raii::AccelerationStructureKHR mTlas = nullptr;
 	vk::raii::Buffer mTlasBuffer = nullptr;
 	vk::raii::DeviceMemory mTlasMemory = nullptr;
-	vk::raii::AccelerationStructureKHR mBlas = nullptr;
-	vk::raii::Buffer mBlasBuffer = nullptr;
-	vk::raii::DeviceMemory mBlasMemory = nullptr;
 
 public:
-	AccelerationStructureVK(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_stride,
-		void* index_memory, uint32_t index_count, uint32_t index_stride, const glm::mat4& transform)
+	TopLevelAccelerationStructureVK(
+		const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures)
 	{
-		std::tie(mBlas, mBlasBuffer, mBlasMemory) = CreateBottomLevelAccelerationStrucutre(vertex_memory,
-			vertex_count, vertex_stride, index_memory, index_count, index_stride, transform);
-		std::tie(mTlas, mTlasBuffer, mTlasMemory) = CreateTopLevelAccelerationStructure(mBlas, glm::mat4(1.0f));
+		std::vector<vk::AccelerationStructureKHR> blases;
+
+		for (auto _blas : bottom_level_acceleration_structures)
+		{
+			auto blas = (BottomLevelAccelerationStructureVK*)_blas;
+			blases.push_back(*blas->getBlas());
+		}
+
+		std::tie(mTlas, mTlasBuffer, mTlasMemory) = CreateTopLevelAccelerationStructure(blases, glm::mat4(1.0f));
 	}
 
-	~AccelerationStructureVK()
+	~TopLevelAccelerationStructureVK()
 	{
-		DestroyStaging(std::move(mBlas));
 		DestroyStaging(std::move(mTlas));
-		DestroyStaging(std::move(mBlasBuffer));
 		DestroyStaging(std::move(mTlasBuffer));
-		DestroyStaging(std::move(mBlasMemory));
 		DestroyStaging(std::move(mTlasMemory));
 	}
 };
@@ -1335,7 +1373,7 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 	std::unordered_map<TextureVK*, vk::DescriptorImageInfo> descriptor_image_info_cache;
 	std::unordered_map<UniformBufferVK*, vk::DescriptorBufferInfo> descriptor_uniform_buffer_info_cache;
 	std::unordered_map<StorageBufferVK*, vk::DescriptorBufferInfo> descriptor_storage_buffer_info_cache;
-	std::unordered_map<AccelerationStructureVK*, vk::WriteDescriptorSetAccelerationStructureKHR> acceleration_structure_info_cache;
+	std::unordered_map<TopLevelAccelerationStructureVK*, vk::WriteDescriptorSetAccelerationStructureKHR> acceleration_structure_info_cache;
 
 	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
 
@@ -1373,7 +1411,7 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 		}
 		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eAccelerationStructureKHR)
 		{
-			auto acceleration_structure = gContext->acceleration_structures.at(binding);
+			auto acceleration_structure = gContext->top_level_acceleration_structures.at(binding);
 
 			auto& write_descriptor_set_acceleration_structure = acceleration_structure_info_cache[acceleration_structure]
 				.setAccelerationStructures(*acceleration_structure->getTlas());
@@ -2334,10 +2372,10 @@ void BackendVK::setStorageBuffer(uint32_t binding, StorageBufferHandle* handle)
 	gContext->storage_buffers[binding] = buffer;
 }
 
-void BackendVK::setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle)
+void BackendVK::setAccelerationStructure(uint32_t binding, TopLevelAccelerationStructureHandle* handle)
 {
-	auto acceleration_structure = (AccelerationStructureVK*)handle;
-	gContext->acceleration_structures[binding] = acceleration_structure;
+	auto top_level_acceleration_structure = (TopLevelAccelerationStructureVK*)handle;
+	gContext->top_level_acceleration_structures[binding] = top_level_acceleration_structure;
 }
 
 void BackendVK::setBlendMode(const std::optional<BlendMode>& value)
@@ -2793,27 +2831,42 @@ void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memo
 	buffer->write(memory, size);
 }
 
-AccelerationStructureHandle* BackendVK::createAccelerationStructure(void* vertex_memory,
+BottomLevelAccelerationStructureHandle* BackendVK::createBottomLevelAccelerationStructure(void* vertex_memory,
 	uint32_t vertex_count, uint32_t vertex_stride, void* index_memory, uint32_t index_count,
 	uint32_t index_stride, const glm::mat4& transform)
 {
-	auto acceleration_structure = new AccelerationStructureVK(vertex_memory, vertex_count, vertex_stride, index_memory,
-		index_count, index_stride, transform);
-	gContext->objects.insert(acceleration_structure);
-	return (AccelerationStructureHandle*)acceleration_structure;
+	auto bottom_level_acceleration_structure = new BottomLevelAccelerationStructureVK(vertex_memory,
+		vertex_count, vertex_stride, index_memory, index_count, index_stride, transform);
+	gContext->objects.insert(bottom_level_acceleration_structure);
+	return (BottomLevelAccelerationStructureHandle*)bottom_level_acceleration_structure;
 }
 
-void BackendVK::destroyAccelerationStructure(AccelerationStructureHandle* handle)
+void BackendVK::destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle)
 {
-	auto acceleration_structure = (AccelerationStructureVK*)handle;
+	auto bottom_level_acceleration_structure = (BottomLevelAccelerationStructureVK*)handle;
+	gContext->objects.erase(bottom_level_acceleration_structure);
+	delete bottom_level_acceleration_structure;
+}
 
-	std::erase_if(gContext->acceleration_structures, [&](const auto& item) {
+TopLevelAccelerationStructureHandle* BackendVK::createTopLevelAccelerationStructure(
+	const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures)
+{
+	auto top_level_acceleration_structure = new TopLevelAccelerationStructureVK(bottom_level_acceleration_structures);
+	gContext->objects.insert(top_level_acceleration_structure);
+	return (TopLevelAccelerationStructureHandle*)top_level_acceleration_structure;
+}
+
+void BackendVK::destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle)
+{
+	auto top_level_acceleration_structure = (TopLevelAccelerationStructureVK*)handle;
+
+	std::erase_if(gContext->top_level_acceleration_structures, [&](const auto& item) {
 		const auto& [binding, _acceleration_structure] = item;
-		return acceleration_structure == _acceleration_structure;
+		return top_level_acceleration_structure == _acceleration_structure;
 	});
 
-	gContext->objects.erase(acceleration_structure);
-	delete acceleration_structure;
+	gContext->objects.erase(top_level_acceleration_structure);
+	delete top_level_acceleration_structure;
 }
 
 StorageBufferHandle* BackendVK::createStorageBuffer(size_t size)

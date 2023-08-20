@@ -74,7 +74,7 @@ namespace skygfx
 	public:
 		virtual void setStorageBuffer(uint32_t binding, StorageBufferHandle* handle) = 0;
 		virtual void setRaytracingShader(RaytracingShaderHandle* handle) = 0;
-		virtual void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) = 0;
+		virtual void setAccelerationStructure(uint32_t binding, TopLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual void dispatchRays(uint32_t width, uint32_t height, uint32_t depth) = 0;
 
@@ -82,10 +82,14 @@ namespace skygfx
 			const std::string& closesthit_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyRaytracingShader(RaytracingShaderHandle* handle) = 0;
 
-		virtual AccelerationStructureHandle* createAccelerationStructure(void* vertex_memory,
+		virtual BottomLevelAccelerationStructureHandle* createBottomLevelAccelerationStructure(void* vertex_memory,
 			uint32_t vertex_count, uint32_t vertex_stride, void* index_memory, uint32_t index_count,
 			uint32_t index_stride, const glm::mat4& transform) = 0;
-		virtual void destroyAccelerationStructure(AccelerationStructureHandle* handle) = 0;
+		virtual void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) = 0;
+
+		virtual TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
+			const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures) = 0;
+		virtual void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual StorageBufferHandle* createStorageBuffer(size_t size) = 0;
 		virtual void destroyStorageBuffer(StorageBufferHandle* handle) = 0;

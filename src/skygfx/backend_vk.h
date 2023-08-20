@@ -27,7 +27,7 @@ namespace skygfx
 		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
 		void setStorageBuffer(uint32_t binding, StorageBufferHandle* handle) override;
-		void setAccelerationStructure(uint32_t binding, AccelerationStructureHandle* handle) override;
+		void setAccelerationStructure(uint32_t binding, TopLevelAccelerationStructureHandle* handle) override;
 		void setBlendMode(const std::optional<BlendMode>& value) override;
 		void setDepthMode(const std::optional<DepthMode>& depth_mode) override;
 		void setStencilMode(const std::optional<StencilMode>& stencil_mode) override;
@@ -80,10 +80,14 @@ namespace skygfx
 		void destroyUniformBuffer(UniformBufferHandle* handle) override;
 		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
 
-		AccelerationStructureHandle* createAccelerationStructure(void* vertex_memory,
+		BottomLevelAccelerationStructureHandle* createBottomLevelAccelerationStructure(void* vertex_memory,
 			uint32_t vertex_count, uint32_t vertex_stride, void* index_memory, uint32_t index_count,
 			uint32_t index_stride, const glm::mat4& transform) override;
-		void destroyAccelerationStructure(AccelerationStructureHandle* handle) override;
+		void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) override;
+
+		TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
+			const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures) override;
+		void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) override;
 
 		StorageBufferHandle* createStorageBuffer(size_t size) override;
 		void destroyStorageBuffer(StorageBufferHandle* handle) override;

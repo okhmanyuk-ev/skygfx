@@ -105,7 +105,6 @@ void main()
 	Vertex v2 = unpackVertex(index2);
 
 	vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
-	//vec3 normal = normalize(v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z);
 
     vec2 texcoord = v0.texcoord * barycentrics.x + v1.texcoord * barycentrics.y + v2.texcoord * barycentrics.z;
 	hitValue = texture(tex, texcoord).xyz;
@@ -183,7 +182,7 @@ int main()
 	});
 
 	auto shader = skygfx::RaytracingShader(raygen_shader_code, miss_shader_code, closesthit_shader_code);
-	
+
 	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
 
 	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::Format::Byte4, tex_memory, true);
@@ -201,7 +200,8 @@ int main()
 		auto model = glm::mat4(1.0f);
 		model = glm::rotate(model, time, { 0.0f, 1.0f, 0.0f });
 
-		auto acceleration_structure = skygfx::AccelerationStructure(vertices, 0, indices, 0, model);
+		auto blas = skygfx::BLAS(vertices, 0, indices, 0, model);
+		auto tlas = skygfx::TLAS({ &blas });
 
 		skygfx::SetUniformBuffer(2, Settings{
 			.viewInverse = glm::inverse(view),
@@ -215,7 +215,7 @@ int main()
 		skygfx::SetTexture(3, texture);
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(*target);
-		skygfx::SetAccelerationStructure(0, acceleration_structure);
+		skygfx::SetAccelerationStructure(0, tlas);
 		skygfx::DispatchRays(target->getWidth(), target->getHeight(), 1);
 
 		skygfx::utils::passes::Blit(target, nullptr, true);
