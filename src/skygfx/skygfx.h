@@ -157,7 +157,7 @@ namespace skygfx
 	class RaytracingShader : private noncopyable
 	{
 	public:
-		RaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+		RaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 			const std::string& closesthit_code, const std::vector<std::string>& defines = {});
 		virtual ~RaytracingShader();
 
@@ -332,10 +332,17 @@ namespace skygfx
 	class TopLevelAccelerationStructure : public noncopyable
 	{
 	public:
-		TopLevelAccelerationStructure(const std::vector<BottomLevelAccelerationStructure*>& bottom_level_acceleration_structures);
+		TopLevelAccelerationStructure(
+			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures);
+		TopLevelAccelerationStructure(
+			const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures);
 		~TopLevelAccelerationStructure();
 
 		operator TopLevelAccelerationStructureHandle* () { return mTopLevelAccelerationStructureHandle; }
+
+	private:
+		std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>
+			CreateIndexedBlases(const std::vector<BottomLevelAccelerationStructureHandle*>& blases);
 
 	private:
 		TopLevelAccelerationStructureHandle* mTopLevelAccelerationStructureHandle = nullptr;

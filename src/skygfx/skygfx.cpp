@@ -159,7 +159,7 @@ Shader::~Shader()
 
 // raytracing shader
 
-RaytracingShader::RaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+RaytracingShader::RaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 	const std::string& closesthit_code, const std::vector<std::string>& defines)
 {
 	mRaytracingShaderHandle = gRaytracingBackend->createRaytracingShader(raygen_code, miss_code, closesthit_code, defines);
@@ -389,21 +389,32 @@ BottomLevelAccelerationStructure::~BottomLevelAccelerationStructure()
 // top level acceleration structure
 
 TopLevelAccelerationStructure::TopLevelAccelerationStructure(
-	const std::vector<BottomLevelAccelerationStructure*>& bottom_level_acceleration_structures)
+	const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures)
 {
-	std::vector<BottomLevelAccelerationStructureHandle*> handles;
-	for (const auto& blas : bottom_level_acceleration_structures)
-	{
-		auto& _blas = const_cast<BottomLevelAccelerationStructure&>(*blas);
-		handles.push_back((BottomLevelAccelerationStructureHandle*)_blas);
-	}
-	mTopLevelAccelerationStructureHandle = gRaytracingBackend->createTopLevelAccelerationStructure(handles);
+	mTopLevelAccelerationStructureHandle = gRaytracingBackend->createTopLevelAccelerationStructure(bottom_level_acceleration_structures);
+}
+
+TopLevelAccelerationStructure::TopLevelAccelerationStructure(
+	const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures) :
+	TopLevelAccelerationStructure(CreateIndexedBlases(bottom_level_acceleration_structures))
+{
 }
 
 TopLevelAccelerationStructure::~TopLevelAccelerationStructure()
 {
 	if (gRaytracingBackend && mTopLevelAccelerationStructureHandle)
 		gRaytracingBackend->destroyTopLevelAccelerationStructure(mTopLevelAccelerationStructureHandle);
+}
+
+std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>
+	TopLevelAccelerationStructure::CreateIndexedBlases(const std::vector<BottomLevelAccelerationStructureHandle*>& blases)
+{
+	std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>> result;
+	for (auto blas : blases)
+	{
+		result.push_back({ (uint32_t)result.size(), blas });
+	}
+	return result;
 }
 
 // helper functions

@@ -201,7 +201,7 @@ int main()
 		model = glm::rotate(model, time, { 0.0f, 1.0f, 0.0f });
 
 		auto blas = skygfx::BLAS(vertices, 0, indices, 0, model);
-		auto tlas = skygfx::TLAS({ &blas });
+		auto tlas = skygfx::TLAS({ blas });
 
 		skygfx::SetUniformBuffer(2, Settings{
 			.viewInverse = glm::inverse(view),

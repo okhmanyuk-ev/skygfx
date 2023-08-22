@@ -165,6 +165,8 @@ struct ContextVK
 	bool index_buffer_dirty = true;
 	bool blend_mode_dirty = true;
 
+	std::unordered_set<uint32_t> graphics_pipeline_ignore_bindings;
+
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
 	vk::Format getBackbufferFormat();
@@ -467,42 +469,54 @@ class RaytracingShaderVK : public ObjectVK
 {
 public:
 	const auto& getRaygenShaderModule() const { return mRaygenShaderModule; }
-	const auto& getMissShaderModule() const { return mMissShaderModule; }
+	const auto& getMissShaderModules() const { return mMissShaderModules; }
 	const auto& getClosestHitShaderModule() const { return mClosestHitShaderModule; }
 	const auto& getPipelineLayout() const { return mPipelineLayout; }
 	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
 
 private:
 	vk::raii::ShaderModule mRaygenShaderModule = nullptr;
-	vk::raii::ShaderModule mMissShaderModule = nullptr;
+	std::vector<vk::raii::ShaderModule> mMissShaderModules;
 	vk::raii::ShaderModule mClosestHitShaderModule = nullptr;
 	vk::raii::DescriptorSetLayout mDescriptorSetLayout = nullptr;
 	vk::raii::PipelineLayout mPipelineLayout = nullptr;
 	std::vector<vk::DescriptorSetLayoutBinding> mRequiredDescriptorBindings;
 
 public:
-	RaytracingShaderVK(const std::string& raygen_code, const std::string& miss_code,
+	RaytracingShaderVK(const std::string& raygen_code, const std::vector<std::string>& miss_codes,
 		const std::string& closesthit_code, std::vector<std::string> defines)
 	{
 		auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code);
-		auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code);
 		auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code);
 
 		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(raygen_shader_spirv);
 
-		auto miss_shader_module_create_info = vk::ShaderModuleCreateInfo()
-			.setCode(miss_shader_spirv);
-
 		auto closesthit_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(closesthit_shader_spirv);
 
 		mRaygenShaderModule = gContext->device.createShaderModule(raygen_shader_module_create_info);
-		mMissShaderModule = gContext->device.createShaderModule(miss_shader_module_create_info);
 		mClosestHitShaderModule = gContext->device.createShaderModule(closesthit_shader_module_create_info);
 
-		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout({
-			raygen_shader_spirv, miss_shader_spirv, closesthit_shader_spirv });
+		std::vector<std::vector<uint32_t>> spirvs = {
+			raygen_shader_spirv,
+			closesthit_shader_spirv
+		};
+
+		for (const auto& miss_code : miss_codes)
+		{
+			auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code);
+
+			auto miss_shader_module_create_info = vk::ShaderModuleCreateInfo()
+				.setCode(miss_shader_spirv);
+
+			auto miss_shader_module = gContext->device.createShaderModule(miss_shader_module_create_info);
+
+			mMissShaderModules.push_back(std::move(miss_shader_module));
+			spirvs.push_back(miss_shader_spirv);
+		}
+
+		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout(spirvs);
 	}
 };
 
@@ -820,170 +834,6 @@ static vk::IndexType GetIndexTypeFromStride(size_t stride)
 	return stride == 2 ? vk::IndexType::eUint16 : vk::IndexType::eUint32;
 }
 
-static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii::DeviceMemory> CreateBottomLevelAccelerationStrucutre(
-	void* vertex_memory, uint32_t vertex_count, uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_stride,
-	const glm::mat4& _transform)
-{
-	auto transform = glm::transpose(_transform);
-
-	auto [vertex_buffer, vertex_buffer_memory] = CreateBuffer(vertex_count * vertex_stride,
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto [index_buffer, index_buffer_memory] = CreateBuffer(index_count * index_stride,
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto [transform_buffer, transform_buffer_memory] = CreateBuffer(sizeof(transform), 
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	WriteToBuffer(vertex_buffer_memory, vertex_memory, vertex_count * vertex_stride);
-	WriteToBuffer(index_buffer_memory, index_memory, index_count * index_stride);
-	WriteToBuffer(transform_buffer_memory, &transform, sizeof(transform));
-
-	auto vertex_buffer_device_address = GetBufferDeviceAddress(*vertex_buffer);
-	auto index_buffer_device_address = GetBufferDeviceAddress(*index_buffer);
-	auto transform_buffer_device_address = GetBufferDeviceAddress(*transform_buffer);
-
-	auto triangles = vk::AccelerationStructureGeometryTrianglesDataKHR()
-		.setVertexFormat(vk::Format::eR32G32B32Sfloat)
-		.setVertexData(vertex_buffer_device_address)
-		.setMaxVertex(vertex_count)
-		.setVertexStride(vertex_stride)
-		.setIndexType(GetIndexTypeFromStride(index_stride))
-		.setIndexData(index_buffer_device_address)
-		.setTransformData(transform_buffer_device_address);
-
-	auto geometry_data = vk::AccelerationStructureGeometryDataKHR()
-		.setTriangles(triangles);
-
-	auto geometry = vk::AccelerationStructureGeometryKHR()
-		.setGeometryType(vk::GeometryTypeKHR::eTriangles)
-		.setGeometry(geometry_data)
-		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
-
-	auto build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
-		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-		.setGeometries(geometry);
-
-	auto build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
-		vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { 1 });
-
-	auto [buffer, memory] = CreateBuffer(build_sizes.accelerationStructureSize,
-		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
-
-	auto create_info = vk::AccelerationStructureCreateInfoKHR()
-		.setBuffer(*buffer)
-		.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
-		.setSize(build_sizes.accelerationStructureSize);
-
-	auto blas = gContext->device.createAccelerationStructureKHR(create_info);
-
-	auto [scratch_buffer, scratch_memory] = CreateBuffer(build_sizes.buildScratchSize,
-		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto scratch_buffer_addr = GetBufferDeviceAddress(*scratch_buffer);
-
-	build_geometry_info
-		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-		.setDstAccelerationStructure(*blas)
-		.setScratchData(scratch_buffer_addr);
-
-	auto build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
-		.setPrimitiveCount(static_cast<uint32_t>(index_count / 3));
-
-	auto build_geometry_infos = { build_geometry_info };
-	std::vector build_range_infos = { &build_range_info };
-
-	OneTimeSubmit([&](auto& cmdbuf) {
-		cmdbuf.buildAccelerationStructuresKHR(build_geometry_infos, build_range_infos);
-	});
-
-	return { std::move(blas), std::move(buffer), std::move(memory) };
-}
-
-static std::tuple<vk::raii::AccelerationStructureKHR, vk::raii::Buffer, vk::raii::DeviceMemory> CreateTopLevelAccelerationStructure(
-	const std::vector<vk::AccelerationStructureKHR>& blases, const glm::mat4& transform)
-{
-	std::vector<vk::AccelerationStructureInstanceKHR> instances;
-
-	for (const auto& blas : blases)
-	{
-		auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
-			.setAccelerationStructure(blas);
-
-		auto blas_device_address = gContext->device.getAccelerationStructureAddressKHR(blas_device_address_info);
-
-		auto instance = vk::AccelerationStructureInstanceKHR()
-			.setTransform(*(vk::TransformMatrixKHR*)&transform)
-			.setMask(0xFF)
-			.setInstanceCustomIndex((uint32_t)instances.size()) // gl_InstanceCustomIndexEXT
-			.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
-			.setAccelerationStructureReference(blas_device_address);
-
-		instances.push_back(instance);
-	}
-
-	auto instance_buffer_size = sizeof(vk::AccelerationStructureInstanceKHR) * instances.size();
-
-	auto [instance_buffer, instance_buffer_memory] = CreateBuffer(instance_buffer_size,
-		vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	WriteToBuffer(instance_buffer_memory, instances.data(), instance_buffer_size);
-
-	auto instance_buffer_addr = GetBufferDeviceAddress(*instance_buffer);
-
-	auto geometry_instances = vk::AccelerationStructureGeometryInstancesDataKHR()
-		.setData(instance_buffer_addr);
-
-	auto geometry_data = vk::AccelerationStructureGeometryDataKHR()
-		.setInstances(geometry_instances);
-
-	auto geometry = vk::AccelerationStructureGeometryKHR()
-		.setGeometryType(vk::GeometryTypeKHR::eInstances)
-		.setGeometry(geometry_data)
-		.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
-
-	auto build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
-		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
-		.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
-		.setGeometries(geometry);
-
-	auto build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
-		vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { (uint32_t)instances.size() });
-
-	auto [buffer, memory] = CreateBuffer(build_sizes.accelerationStructureSize,
-		vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
-
-	auto create_info = vk::AccelerationStructureCreateInfoKHR()
-		.setBuffer(*buffer)
-		.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
-		.setSize(build_sizes.accelerationStructureSize);
-
-	auto tlas = gContext->device.createAccelerationStructureKHR(create_info);
-
-	auto [scratch_buffer, scratch_memory] = CreateBuffer(build_sizes.buildScratchSize,
-		vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto scratch_buffer_addr = GetBufferDeviceAddress(*scratch_buffer);
-
-	build_geometry_info
-		.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
-		.setDstAccelerationStructure(*tlas)
-		.setScratchData(scratch_buffer_addr);
-
-	auto build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
-		.setPrimitiveCount((uint32_t)instances.size());
-
-	auto build_geometry_infos = { build_geometry_info };
-	std::vector build_range_infos = { &build_range_info };
-
-	OneTimeSubmit([&](auto& cmdbuf) {
-		cmdbuf.buildAccelerationStructuresKHR(build_geometry_infos, build_range_infos);
-	});
-
-	return { std::move(tlas), std::move(buffer), std::move(memory) };
-}
-
 class BottomLevelAccelerationStructureVK : public ObjectVK
 {
 public:
@@ -996,10 +846,81 @@ private:
 
 public:
 	BottomLevelAccelerationStructureVK(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_stride,
-		void* index_memory, uint32_t index_count, uint32_t index_stride, const glm::mat4& transform)
+		void* index_memory, uint32_t index_count, uint32_t index_stride, const glm::mat4& _transform)
 	{
-		std::tie(mBlas, mBlasBuffer, mBlasMemory) = CreateBottomLevelAccelerationStrucutre(vertex_memory,
-			vertex_count, vertex_stride, index_memory, index_count, index_stride, transform);
+		auto transform = glm::transpose(_transform);
+
+		auto [vertex_buffer, vertex_buffer_memory] = CreateBuffer(vertex_count * vertex_stride,
+			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		auto [index_buffer, index_buffer_memory] = CreateBuffer(index_count * index_stride,
+			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		auto [transform_buffer, transform_buffer_memory] = CreateBuffer(sizeof(transform), 
+			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		WriteToBuffer(vertex_buffer_memory, vertex_memory, vertex_count * vertex_stride);
+		WriteToBuffer(index_buffer_memory, index_memory, index_count * index_stride);
+		WriteToBuffer(transform_buffer_memory, &transform, sizeof(transform));
+
+		auto vertex_buffer_device_address = GetBufferDeviceAddress(*vertex_buffer);
+		auto index_buffer_device_address = GetBufferDeviceAddress(*index_buffer);
+		auto transform_buffer_device_address = GetBufferDeviceAddress(*transform_buffer);
+
+		auto triangles = vk::AccelerationStructureGeometryTrianglesDataKHR()
+			.setVertexFormat(vk::Format::eR32G32B32Sfloat)
+			.setVertexData(vertex_buffer_device_address)
+			.setMaxVertex(vertex_count)
+			.setVertexStride(vertex_stride)
+			.setIndexType(GetIndexTypeFromStride(index_stride))
+			.setIndexData(index_buffer_device_address)
+			.setTransformData(transform_buffer_device_address);
+
+		auto geometry_data = vk::AccelerationStructureGeometryDataKHR()
+			.setTriangles(triangles);
+
+		auto geometry = vk::AccelerationStructureGeometryKHR()
+			.setGeometryType(vk::GeometryTypeKHR::eTriangles)
+			.setGeometry(geometry_data)
+			.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
+
+		auto build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
+			.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+			.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+			.setGeometries(geometry);
+
+		auto build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
+			vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { 1 });
+
+		std::tie(mBlasBuffer, mBlasMemory) = CreateBuffer(build_sizes.accelerationStructureSize,
+			vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+
+		auto create_info = vk::AccelerationStructureCreateInfoKHR()
+			.setBuffer(*mBlasBuffer)
+			.setType(vk::AccelerationStructureTypeKHR::eBottomLevel)
+			.setSize(build_sizes.accelerationStructureSize);
+
+		mBlas = gContext->device.createAccelerationStructureKHR(create_info);
+
+		auto [scratch_buffer, scratch_memory] = CreateBuffer(build_sizes.buildScratchSize,
+			vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		auto scratch_buffer_addr = GetBufferDeviceAddress(*scratch_buffer);
+
+		build_geometry_info
+			.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+			.setDstAccelerationStructure(*mBlas)
+			.setScratchData(scratch_buffer_addr);
+
+		auto build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
+			.setPrimitiveCount(static_cast<uint32_t>(index_count / 3));
+
+		auto build_geometry_infos = { build_geometry_info };
+		std::vector build_range_infos = { &build_range_info };
+
+		OneTimeSubmit([&](auto& cmdbuf) {
+			cmdbuf.buildAccelerationStructuresKHR(build_geometry_infos, build_range_infos);
+		});
 	}
 
 	~BottomLevelAccelerationStructureVK()
@@ -1022,17 +943,89 @@ private:
 
 public:
 	TopLevelAccelerationStructureVK(
-		const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures)
+		const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures)
 	{
-		std::vector<vk::AccelerationStructureKHR> blases;
+		auto transform = glm::mat4(1.0f);
 
-		for (auto _blas : bottom_level_acceleration_structures)
+		std::vector<vk::AccelerationStructureInstanceKHR> instances;
+
+		for (auto [custom_index, handle] : bottom_level_acceleration_structures)
 		{
-			auto blas = (BottomLevelAccelerationStructureVK*)_blas;
-			blases.push_back(*blas->getBlas());
+			const auto& blas = *(BottomLevelAccelerationStructureVK*)handle;
+
+			auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
+				.setAccelerationStructure(*blas.getBlas());
+
+			auto blas_device_address = gContext->device.getAccelerationStructureAddressKHR(blas_device_address_info);
+
+			auto instance = vk::AccelerationStructureInstanceKHR()
+				.setTransform(*(vk::TransformMatrixKHR*)&transform)
+				.setMask(0xFF)
+				.setInstanceShaderBindingTableRecordOffset(0)
+				.setInstanceCustomIndex(custom_index) // gl_InstanceCustomIndexEXT
+				.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
+				.setAccelerationStructureReference(blas_device_address);
+
+			instances.push_back(instance);
 		}
 
-		std::tie(mTlas, mTlasBuffer, mTlasMemory) = CreateTopLevelAccelerationStructure(blases, glm::mat4(1.0f));
+		auto instance_buffer_size = sizeof(vk::AccelerationStructureInstanceKHR) * instances.size();
+
+		auto [instance_buffer, instance_buffer_memory] = CreateBuffer(instance_buffer_size,
+			vk::BufferUsageFlagBits::eAccelerationStructureBuildInputReadOnlyKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		WriteToBuffer(instance_buffer_memory, instances.data(), instance_buffer_size);
+
+		auto instance_buffer_addr = GetBufferDeviceAddress(*instance_buffer);
+
+		auto geometry_instances = vk::AccelerationStructureGeometryInstancesDataKHR()
+			.setData(instance_buffer_addr);
+
+		auto geometry_data = vk::AccelerationStructureGeometryDataKHR()
+			.setInstances(geometry_instances);
+
+		auto geometry = vk::AccelerationStructureGeometryKHR()
+			.setGeometryType(vk::GeometryTypeKHR::eInstances)
+			.setGeometry(geometry_data)
+			.setFlags(vk::GeometryFlagBitsKHR::eOpaque);
+
+		auto build_geometry_info = vk::AccelerationStructureBuildGeometryInfoKHR()
+			.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
+			.setFlags(vk::BuildAccelerationStructureFlagBitsKHR::ePreferFastTrace)
+			.setGeometries(geometry);
+
+		auto build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
+			vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { (uint32_t)instances.size() });
+
+		std::tie(mTlasBuffer, mTlasMemory) = CreateBuffer(build_sizes.accelerationStructureSize,
+			vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+
+		auto create_info = vk::AccelerationStructureCreateInfoKHR()
+			.setBuffer(*mTlasBuffer)
+			.setType(vk::AccelerationStructureTypeKHR::eTopLevel)
+			.setSize(build_sizes.accelerationStructureSize);
+
+		mTlas = gContext->device.createAccelerationStructureKHR(create_info);
+
+		auto [scratch_buffer, scratch_memory] = CreateBuffer(build_sizes.buildScratchSize,
+			vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		auto scratch_buffer_addr = GetBufferDeviceAddress(*scratch_buffer);
+
+		build_geometry_info
+			.setMode(vk::BuildAccelerationStructureModeKHR::eBuild)
+			.setDstAccelerationStructure(*mTlas)
+			.setScratchData(scratch_buffer_addr);
+
+		auto build_range_info = vk::AccelerationStructureBuildRangeInfoKHR()
+			.setPrimitiveCount((uint32_t)instances.size());
+
+		auto build_geometry_infos = { build_geometry_info };
+		std::vector build_range_infos = { &build_range_info };
+
+		OneTimeSubmit([&](auto& cmdbuf) {
+			cmdbuf.buildAccelerationStructuresKHR(build_geometry_infos, build_range_infos);
+		});
 	}
 
 	~TopLevelAccelerationStructureVK()
@@ -1365,89 +1358,230 @@ static void EnsureSamplerState()
 	}
 }
 
-static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk::raii::PipelineLayout& pipeline_layout,
-	const std::vector<vk::DescriptorSetLayoutBinding>& required_descriptor_bindings)
+static void PushDescriptorBuffer(vk::PipelineBindPoint pipeline_bind_point,
+	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding, vk::DescriptorType type,
+	const vk::raii::Buffer& buffer)
+{
+	auto descriptor_buffer_info = vk::DescriptorBufferInfo()
+		.setBuffer(*buffer)
+		.setRange(VK_WHOLE_SIZE);
+
+	auto write_descriptor_set = vk::WriteDescriptorSet()
+		.setDstBinding(binding)
+		.setDescriptorCount(1)
+		.setDescriptorType(type)
+		.setBufferInfo(descriptor_buffer_info);
+
+	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+		*pipeline_layout, 0, write_descriptor_set);
+}
+
+static void PushDescriptorTexture(vk::PipelineBindPoint pipeline_bind_point,
+	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	EnsureSamplerState();
 
-	std::unordered_map<TextureVK*, vk::DescriptorImageInfo> descriptor_image_info_cache;
-	std::unordered_map<UniformBufferVK*, vk::DescriptorBufferInfo> descriptor_uniform_buffer_info_cache;
-	std::unordered_map<StorageBufferVK*, vk::DescriptorBufferInfo> descriptor_storage_buffer_info_cache;
-	std::unordered_map<TopLevelAccelerationStructureVK*, vk::WriteDescriptorSetAccelerationStructureKHR> acceleration_structure_info_cache;
+	auto texture = gContext->textures.at(binding);
+	texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
 
 	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
+
+	auto descriptor_image_info = vk::DescriptorImageInfo()
+		.setSampler(*sampler)
+		.setImageView(*texture->getImageView())
+		.setImageLayout(vk::ImageLayout::eGeneral);
+
+	auto write_descriptor_set = vk::WriteDescriptorSet()
+		.setDstBinding(binding)
+		.setDescriptorCount(1)
+		.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+		.setImageInfo(descriptor_image_info);
+
+	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+		*pipeline_layout, 0, write_descriptor_set);
+}
+
+static void PushDescriptorUniformBuffer(vk::PipelineBindPoint pipeline_bind_point,
+	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
+{
+	auto buffer = gContext->uniform_buffers.at(binding);
+
+	PushDescriptorBuffer(pipeline_bind_point, pipeline_layout, binding,
+		vk::DescriptorType::eUniformBuffer, buffer->getBuffer());
+}
+
+static void PushDescriptorAccelerationStructure(vk::PipelineBindPoint pipeline_bind_point,
+	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
+{
+	auto acceleration_structure = gContext->top_level_acceleration_structures.at(binding);
+
+	auto write_descriptor_set_acceleration_structure = vk::WriteDescriptorSetAccelerationStructureKHR()
+		.setAccelerationStructures(*acceleration_structure->getTlas());
+
+	auto write_descriptor_set = vk::WriteDescriptorSet()
+		.setDstBinding(binding)
+		.setDescriptorCount(1)
+		.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
+		.setPNext(&write_descriptor_set_acceleration_structure);
+
+	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+		*pipeline_layout, 0, write_descriptor_set);
+}
+
+static void PushDescriptorStorageImage(vk::PipelineBindPoint pipeline_bind_point,
+	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
+{
+	auto texture = gContext->render_target->getTexture();
+	texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
+
+	auto descriptor_image_info = vk::DescriptorImageInfo()
+		.setImageLayout(vk::ImageLayout::eGeneral)
+		.setImageView(*texture->getImageView());
+
+	auto write_descriptor_set = vk::WriteDescriptorSet()
+		.setDstBinding(binding)
+		.setDescriptorCount(1)
+		.setDescriptorType(vk::DescriptorType::eStorageImage)
+		.setImageInfo(descriptor_image_info);
+
+	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+		*pipeline_layout, 0, write_descriptor_set);
+}
+
+static void PushDescriptorStorageBuffer(vk::PipelineBindPoint pipeline_bind_point,
+	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
+{
+	auto buffer = gContext->storage_buffers.at(binding);
+
+	PushDescriptorBuffer(pipeline_bind_point, pipeline_layout, binding,
+		vk::DescriptorType::eStorageBuffer, buffer->getBuffer());
+}
+
+static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk::raii::PipelineLayout& pipeline_layout,
+	const std::vector<vk::DescriptorSetLayoutBinding>& required_descriptor_bindings,
+	const std::unordered_set<uint32_t>& ignore_bindings = {})
+{
+	using PushTypedCallback = std::function<void(vk::PipelineBindPoint pipeline_bind_point,
+		const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)>;
+
+	static const std::unordered_map<vk::DescriptorType, PushTypedCallback> PushTypedCallbacks = {
+		{ vk::DescriptorType::eCombinedImageSampler, PushDescriptorTexture },
+		{ vk::DescriptorType::eUniformBuffer, PushDescriptorUniformBuffer },
+		{ vk::DescriptorType::eAccelerationStructureKHR, PushDescriptorAccelerationStructure },
+		{ vk::DescriptorType::eStorageImage, PushDescriptorStorageImage },
+		{ vk::DescriptorType::eStorageBuffer, PushDescriptorStorageBuffer },
+	};
 
 	for (const auto& required_descriptor_binding : required_descriptor_bindings)
 	{
 		auto binding = required_descriptor_binding.binding;
 
-		auto write_descriptor_set = vk::WriteDescriptorSet()
-			.setDstBinding(binding)
-			.setDescriptorCount(1)
-			//.setDstSet() // TODO: it seems we need iterate through required_descriptor_sets, not .._bindings
-			.setDescriptorType(required_descriptor_binding.descriptorType);
+		if (ignore_bindings.contains(binding))
+			continue;
 
-		if (required_descriptor_binding.descriptorType == vk::DescriptorType::eCombinedImageSampler)
-		{
-			auto texture = gContext->textures.at(binding);
-			texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
-
-			auto& descriptor_image_info = descriptor_image_info_cache[texture]
-				.setSampler(*sampler)
-				.setImageView(*texture->getImageView())
-				.setImageLayout(vk::ImageLayout::eGeneral);
-
-			write_descriptor_set.setImageInfo(descriptor_image_info);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eUniformBuffer)
-		{
-			auto buffer = gContext->uniform_buffers.at(binding);
-
-			auto& descriptor_buffer_info = descriptor_uniform_buffer_info_cache[buffer]
-				.setBuffer(*buffer->getBuffer())
-				.setRange(VK_WHOLE_SIZE);
-
-			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eAccelerationStructureKHR)
-		{
-			auto acceleration_structure = gContext->top_level_acceleration_structures.at(binding);
-
-			auto& write_descriptor_set_acceleration_structure = acceleration_structure_info_cache[acceleration_structure]
-				.setAccelerationStructures(*acceleration_structure->getTlas());
-
-			write_descriptor_set.setPNext(&write_descriptor_set_acceleration_structure);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageImage)
-		{
-			auto texture = gContext->render_target->getTexture();
-			auto image_view = *texture->getImageView();
-			texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
-
-			auto& descriptor_image_info = descriptor_image_info_cache[texture]
-				.setImageLayout(vk::ImageLayout::eGeneral)
-				.setImageView(image_view);
-
-			write_descriptor_set.setImageInfo(descriptor_image_info);
-		}
-		else if (required_descriptor_binding.descriptorType == vk::DescriptorType::eStorageBuffer)
-		{
-			auto buffer = gContext->storage_buffers.at(binding);
-
-			auto& descriptor_buffer_info = descriptor_storage_buffer_info_cache[buffer]
-				.setBuffer(*buffer->getBuffer())
-				.setRange(VK_WHOLE_SIZE);
-
-			write_descriptor_set.setBufferInfo(descriptor_buffer_info);
-		}
-		else
-		{
-			assert(false);
-		}
-
-		gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
-			*pipeline_layout, 0, write_descriptor_set);
+		auto type = required_descriptor_binding.descriptorType;
+		const auto& callback = PushTypedCallbacks.at(type);
+		callback(pipeline_bind_point, pipeline_layout, binding);
 	}
+}
+
+template<typename T>
+inline T AlignUp(T size, size_t alignment) noexcept
+{
+	if (alignment > 0)
+	{
+		assert(((alignment - 1) & alignment) == 0);
+		auto mask = static_cast<T>(alignment - 1);
+		return (size + mask) & ~mask;
+	}
+	return size;
+}
+
+struct RaytracingShaderBindingTable
+{
+	vk::raii::Buffer raygen_buffer;
+	vk::raii::DeviceMemory raygen_memory;
+	vk::StridedDeviceAddressRegionKHR raygen_address;
+
+	vk::raii::Buffer miss_buffer;
+	vk::raii::DeviceMemory miss_memory;
+	vk::StridedDeviceAddressRegionKHR miss_address;
+
+	vk::raii::Buffer hit_buffer;
+	vk::raii::DeviceMemory hit_memory;
+	vk::StridedDeviceAddressRegionKHR hit_address;
+
+	vk::StridedDeviceAddressRegionKHR callable_address;
+};
+
+static RaytracingShaderBindingTable CreateRaytracingShaderBindingTable(const vk::raii::Pipeline& pipeline)
+{
+	auto ray_tracing_pipeline_properties = gContext->physical_device.getProperties2<vk::PhysicalDeviceProperties2,
+		vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
+
+	auto handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
+	auto handle_size_aligned = AlignUp(handle_size, ray_tracing_pipeline_properties.shaderGroupHandleAlignment);
+
+	auto [raygen_buffer, raygen_memory] = CreateBuffer(handle_size_aligned,
+		vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto [miss_buffer, miss_memory] = CreateBuffer(handle_size_aligned, 
+		vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	auto [hit_buffer, hit_memory] = CreateBuffer(handle_size_aligned,
+		vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+	const auto& shader = gContext->raytracing_pipeline_state.shader;
+
+	auto raygen_shader_count = 1;
+	auto miss_shader_count = shader->getMissShaderModules().size();
+	auto hit_shader_count = 1;
+
+	auto group_count = raygen_shader_count + miss_shader_count + hit_shader_count;
+	auto sbt_size = group_count * handle_size_aligned;
+
+	auto shader_handle_storage = pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, sbt_size);
+
+	auto get_shader_ptr = [&](size_t index) {
+		return shader_handle_storage.data() + (handle_size_aligned * index);
+	};
+
+	WriteToBuffer(raygen_memory, get_shader_ptr(0), handle_size * raygen_shader_count);
+	WriteToBuffer(miss_memory, get_shader_ptr(raygen_shader_count), handle_size * miss_shader_count);
+	WriteToBuffer(hit_memory, get_shader_ptr(raygen_shader_count + miss_shader_count), handle_size * hit_shader_count);
+
+	auto raygen_address = vk::StridedDeviceAddressRegionKHR()
+		.setStride(handle_size_aligned)
+		.setSize(handle_size_aligned)
+		.setDeviceAddress(GetBufferDeviceAddress(*raygen_buffer));
+
+	auto miss_address = vk::StridedDeviceAddressRegionKHR()
+		.setStride(handle_size_aligned)
+		.setSize(handle_size_aligned)
+		.setDeviceAddress(GetBufferDeviceAddress(*miss_buffer));
+
+	auto hit_address = vk::StridedDeviceAddressRegionKHR()
+		.setStride(handle_size_aligned)
+		.setSize(handle_size_aligned)
+		.setDeviceAddress(GetBufferDeviceAddress(*hit_buffer));
+
+	auto callable_shader_binding_table = vk::StridedDeviceAddressRegionKHR();
+
+	return RaytracingShaderBindingTable{
+		.raygen_buffer = std::move(raygen_buffer),
+		.raygen_memory = std::move(raygen_memory),
+		.raygen_address = raygen_address,
+
+		.miss_buffer = std::move(miss_buffer),
+		.miss_memory = std::move(miss_memory),
+		.miss_address = miss_address,
+
+		.hit_buffer = std::move(hit_buffer),
+		.hit_memory = std::move(hit_memory),
+		.hit_address = hit_address,
+
+		.callable_address = callable_shader_binding_table
+	};
 }
 
 static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline_state)
@@ -1535,51 +1669,58 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 
 static vk::raii::Pipeline CreateRaytracingPipeline(const RaytracingPipelineStateVK& pipeline_state)
 {
-	auto pipeline_shader_stage_create_info = {
-		vk::PipelineShaderStageCreateInfo()
-			.setStage(vk::ShaderStageFlagBits::eRaygenKHR)
-			.setModule(*pipeline_state.shader->getRaygenShaderModule())
-			.setPName("main"),
+	std::vector<vk::PipelineShaderStageCreateInfo> stages;
+	std::vector<vk::RayTracingShaderGroupCreateInfoKHR> groups;
 
-		vk::PipelineShaderStageCreateInfo()
-			.setStage(vk::ShaderStageFlagBits::eMissKHR)
-			.setModule(*pipeline_state.shader->getMissShaderModule())
-			.setPName("main"),
+	auto addShader = [&](vk::ShaderStageFlagBits stage, vk::RayTracingShaderGroupTypeKHR group_type, const vk::raii::ShaderModule& shader_module) {
+		auto stage_create_info = vk::PipelineShaderStageCreateInfo()
+			.setStage(stage)
+			.setModule(*shader_module)
+			.setPName("main");
 
-		vk::PipelineShaderStageCreateInfo()
-			.setStage(vk::ShaderStageFlagBits::eClosestHitKHR)
-			.setModule(*pipeline_state.shader->getClosestHitShaderModule())
-			.setPName("main")
-	};
+		stages.push_back(stage_create_info);
 
-	auto raytracing_shader_groups = { 
-		vk::RayTracingShaderGroupCreateInfoKHR() // raygen
-			.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-			.setGeneralShader(0)
-			.setClosestHitShader(VK_SHADER_UNUSED_KHR)
-			.setAnyHitShader(VK_SHADER_UNUSED_KHR)
-			.setIntersectionShader(VK_SHADER_UNUSED_KHR),
-
-		vk::RayTracingShaderGroupCreateInfoKHR() // miss
-			.setType(vk::RayTracingShaderGroupTypeKHR::eGeneral)
-			.setGeneralShader(1)
-			.setClosestHitShader(VK_SHADER_UNUSED_KHR)
-			.setAnyHitShader(VK_SHADER_UNUSED_KHR)
-			.setIntersectionShader(VK_SHADER_UNUSED_KHR),
-
-		vk::RayTracingShaderGroupCreateInfoKHR() // closesthit
-			.setType(vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup)
+		auto group = vk::RayTracingShaderGroupCreateInfoKHR()
+			.setType(group_type)
 			.setGeneralShader(VK_SHADER_UNUSED_KHR)
-			.setClosestHitShader(2)
+			.setClosestHitShader(VK_SHADER_UNUSED_KHR)
 			.setAnyHitShader(VK_SHADER_UNUSED_KHR)
-			.setIntersectionShader(VK_SHADER_UNUSED_KHR)
+			.setIntersectionShader(VK_SHADER_UNUSED_KHR);
+
+		auto index = (uint32_t)(stages.size() - 1);
+
+		if (group_type == vk::RayTracingShaderGroupTypeKHR::eGeneral)
+		{
+			group.setGeneralShader(index);
+		}
+		else if (group_type == vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup && stage == vk::ShaderStageFlagBits::eClosestHitKHR)
+		{
+			group.setClosestHitShader(index);
+		}
+		else
+		{
+			assert(false);
+		}
+
+		groups.push_back(group);
 	};
+
+	addShader(vk::ShaderStageFlagBits::eRaygenKHR, vk::RayTracingShaderGroupTypeKHR::eGeneral,
+		pipeline_state.shader->getRaygenShaderModule());
+
+	for (const auto& miss_module : pipeline_state.shader->getMissShaderModules())
+	{
+		addShader(vk::ShaderStageFlagBits::eMissKHR, vk::RayTracingShaderGroupTypeKHR::eGeneral, miss_module);
+	}
+
+	addShader(vk::ShaderStageFlagBits::eClosestHitKHR, vk::RayTracingShaderGroupTypeKHR::eTrianglesHitGroup,
+		pipeline_state.shader->getClosestHitShaderModule());
 
 	auto raytracing_pipeline_create_info = vk::RayTracingPipelineCreateInfoKHR()
 		.setLayout(*pipeline_state.shader->getPipelineLayout())
-		.setStages(pipeline_shader_stage_create_info)
-		.setGroups(raytracing_shader_groups)
-		.setMaxPipelineRayRecursionDepth(1);
+		.setStages(stages)
+		.setGroups(groups)
+		.setMaxPipelineRayRecursionDepth(3);
 
 	return gContext->device.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
 }
@@ -1616,6 +1757,8 @@ static void EnsureGraphicsState(bool draw_indexed)
 		gContext->topology_dirty = false;
 	}
 
+	auto& ignore_bindings = gContext->graphics_pipeline_ignore_bindings;
+
 	if (gContext->pipeline_state_dirty)
 	{
 		gContext->pipeline_state_dirty = false;
@@ -1628,12 +1771,19 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 		const auto& pipeline = gContext->pipeline_states.at(gContext->pipeline_state);
 		gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
+
+		ignore_bindings.clear();
 	}
 
 	const auto& pipeline_layout = gContext->pipeline_state.shader->getPipelineLayout();
 	const auto& required_descriptor_bindings = gContext->pipeline_state.shader->getRequiredDescriptorBindings();
 
-	PushDescriptors(vk::PipelineBindPoint::eGraphics, pipeline_layout, required_descriptor_bindings);
+	PushDescriptors(vk::PipelineBindPoint::eGraphics, pipeline_layout, required_descriptor_bindings, ignore_bindings);
+
+	for (const auto& descriptor_binding : required_descriptor_bindings)
+	{
+		ignore_bindings.insert(descriptor_binding.binding);
+	}
 
 	auto width = static_cast<float>(gContext->getBackbufferWidth());
 	auto height = static_cast<float>(gContext->getBackbufferHeight());
@@ -1776,6 +1926,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 		gContext->depth_mode_dirty = false;
 	}
+
 	EnsureRenderPassActivated();
 }
 
@@ -2280,7 +2431,13 @@ void BackendVK::setScissor(std::optional<Scissor> scissor)
 void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	auto texture = (TextureVK*)handle;
-	gContext->textures[binding] = texture;
+	auto& dst_texture = gContext->textures[binding];
+
+	if (texture == dst_texture)
+		return;
+
+	dst_texture = texture;
+	gContext->graphics_pipeline_ignore_bindings.erase(binding);
 }
 
 void BackendVK::setRenderTarget(RenderTargetHandle* handle)
@@ -2363,7 +2520,13 @@ void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
 	auto buffer = (UniformBufferVK*)handle;
-	gContext->uniform_buffers[binding] = buffer;
+	auto& dst_buffer = gContext->uniform_buffers[binding];
+
+	if (buffer == dst_buffer)
+		return;
+
+	dst_buffer = buffer;
+	gContext->graphics_pipeline_ignore_bindings.erase(binding);
 }
 
 void BackendVK::setStorageBuffer(uint32_t binding, StorageBufferHandle* handle)
@@ -2547,18 +2710,6 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	gContext->getCurrentFrame().command_buffer.copyImage2(copy_image_info);
 }
 
-template<typename T>
-inline T AlignUp(T size, size_t alignment) noexcept
-{
-	if (alignment > 0)
-	{
-		assert(((alignment - 1) & alignment) == 0);
-		auto mask = static_cast<T>(alignment - 1);
-		return (size + mask) & ~mask;
-	}
-	return size;
-}
-
 void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
 	assert(gContext->render_target != nullptr);
@@ -2580,55 +2731,10 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	PushDescriptors(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, required_descriptor_bindings);
 
-	static std::optional<vk::StridedDeviceAddressRegionKHR> raygen_shader_binding_table;
-	static std::optional<vk::StridedDeviceAddressRegionKHR> miss_shader_binding_table;
-	static std::optional<vk::StridedDeviceAddressRegionKHR> hit_shader_binding_table;
-	auto callable_shader_binding_table = vk::StridedDeviceAddressRegionKHR();
+	static auto binding_table = CreateRaytracingShaderBindingTable(pipeline);
 
-	if (!raygen_shader_binding_table.has_value())
-	{
-		static auto ray_tracing_pipeline_properties = gContext->physical_device.getProperties2<vk::PhysicalDeviceProperties2,
-			vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>().get<vk::PhysicalDeviceRayTracingPipelinePropertiesKHR>();
-
-		auto handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
-		auto handle_size_aligned = AlignUp(handle_size, ray_tracing_pipeline_properties.shaderGroupHandleAlignment);
-
-		static auto [raygen_binding_table_buffer, raygen_binding_table_memory] = CreateBuffer(handle_size_aligned,
-			vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-		static auto [miss_binding_table_buffer, miss_binding_table_memory] = CreateBuffer(handle_size_aligned, 
-			vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-		static auto [closesthit_binding_table_buffer, closesthit_binding_table_memory] = CreateBuffer(handle_size_aligned,
-			vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-		auto group_count = 3; // 3 shader groups
-		auto sbt_size = group_count * handle_size_aligned;
-
-		auto shader_handle_storage = pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, sbt_size);
-
-		WriteToBuffer(raygen_binding_table_memory, shader_handle_storage.data(), handle_size);
-		WriteToBuffer(miss_binding_table_memory, shader_handle_storage.data() + handle_size_aligned, handle_size);
-		WriteToBuffer(closesthit_binding_table_memory, shader_handle_storage.data() + (handle_size_aligned * 2), handle_size);
-
-		raygen_shader_binding_table = vk::StridedDeviceAddressRegionKHR()
-			.setStride(handle_size_aligned)
-			.setSize(handle_size_aligned)
-			.setDeviceAddress(GetBufferDeviceAddress(*raygen_binding_table_buffer));
-
-		miss_shader_binding_table = vk::StridedDeviceAddressRegionKHR()
-			.setStride(handle_size_aligned)
-			.setSize(handle_size_aligned)
-			.setDeviceAddress(GetBufferDeviceAddress(*miss_binding_table_buffer));
-
-		hit_shader_binding_table = vk::StridedDeviceAddressRegionKHR()
-			.setStride(handle_size_aligned)
-			.setSize(handle_size_aligned)
-			.setDeviceAddress(GetBufferDeviceAddress(*closesthit_binding_table_buffer));
-	}
-
-	gContext->getCurrentFrame().command_buffer.traceRaysKHR(raygen_shader_binding_table.value(), miss_shader_binding_table.value(), hit_shader_binding_table.value(),
-		callable_shader_binding_table, width, height, depth);
+	gContext->getCurrentFrame().command_buffer.traceRaysKHR(binding_table.raygen_address, binding_table.miss_address,
+		binding_table.hit_address, binding_table.callable_address, width, height, depth);
 }
 
 void BackendVK::present()
@@ -2736,7 +2842,7 @@ void BackendVK::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
-RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
+RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 	const std::string& closesthit_code, const std::vector<std::string>& defines)
 {
 	auto shader = new RaytracingShaderVK(raygen_code, miss_code, closesthit_code, defines);
@@ -2849,7 +2955,7 @@ void BackendVK::destroyBottomLevelAccelerationStructure(BottomLevelAccelerationS
 }
 
 TopLevelAccelerationStructureHandle* BackendVK::createTopLevelAccelerationStructure(
-	const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures)
+	const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures)
 {
 	auto top_level_acceleration_structure = new TopLevelAccelerationStructureVK(bottom_level_acceleration_structures);
 	gContext->objects.insert(top_level_acceleration_structure);

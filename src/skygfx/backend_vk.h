@@ -64,8 +64,9 @@ namespace skygfx
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
 
-		RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
-			const std::string& closesthit_code, const std::vector<std::string>& defines) override;
+		RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code,
+			const std::vector<std::string>& miss_code, const std::string& closesthit_code,
+			const std::vector<std::string>& defines) override;
 		void destroyRaytracingShader(RaytracingShaderHandle* handle) override;
 
 		VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) override;
@@ -86,7 +87,7 @@ namespace skygfx
 		void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) override;
 
 		TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
-			const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures) override;
+			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures) override;
 		void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) override;
 
 		StorageBufferHandle* createStorageBuffer(size_t size) override;

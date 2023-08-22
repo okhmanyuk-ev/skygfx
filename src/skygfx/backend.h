@@ -78,8 +78,9 @@ namespace skygfx
 
 		virtual void dispatchRays(uint32_t width, uint32_t height, uint32_t depth) = 0;
 
-		virtual RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code, const std::string& miss_code,
-			const std::string& closesthit_code, const std::vector<std::string>& defines) = 0;
+		virtual RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code,
+			const std::vector<std::string>& miss_code, const std::string& closesthit_code,
+			const std::vector<std::string>& defines) = 0;
 		virtual void destroyRaytracingShader(RaytracingShaderHandle* handle) = 0;
 
 		virtual BottomLevelAccelerationStructureHandle* createBottomLevelAccelerationStructure(void* vertex_memory,
@@ -88,7 +89,7 @@ namespace skygfx
 		virtual void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
-			const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures) = 0;
+			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures) = 0;
 		virtual void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual StorageBufferHandle* createStorageBuffer(size_t size) = 0;
