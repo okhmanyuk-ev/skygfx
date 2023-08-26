@@ -126,3 +126,11 @@ target_link_libraries(12_raytraced_cube glfw skygfx imgui)
 target_include_directories(12_raytraced_cube PUBLIC lib/stb)
 set_target_properties(12_raytraced_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(12_raytraced_cube PROPERTIES RESOURCE ${RESOURCES})
+
+# 13 - raytraced shadows
+
+add_executable(13_raytraced_shadows 13_raytraced_shadows/main.cpp ${RESOURCES})
+target_link_libraries(13_raytraced_shadows glfw skygfx imgui)
+target_include_directories(13_raytraced_shadows PUBLIC lib/stb)
+set_target_properties(13_raytraced_shadows PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(13_raytraced_shadows PROPERTIES RESOURCE ${RESOURCES})
