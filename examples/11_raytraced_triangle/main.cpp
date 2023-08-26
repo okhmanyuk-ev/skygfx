@@ -83,7 +83,7 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
-	auto shader = skygfx::RaytracingShader(raygen_shader_code, miss_shader_code, closesthit_shader_code);
+	auto shader = skygfx::RaytracingShader(raygen_shader_code, { miss_shader_code }, closesthit_shader_code);
 	auto blas = skygfx::BLAS(vertices, 0, indices, 0, glm::mat4(1.0f));
 	auto tlas = skygfx::TLAS({ blas });
 

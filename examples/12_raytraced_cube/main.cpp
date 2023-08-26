@@ -181,7 +181,7 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
-	auto shader = skygfx::RaytracingShader(raygen_shader_code, miss_shader_code, closesthit_shader_code);
+	auto shader = skygfx::RaytracingShader(raygen_shader_code, { miss_shader_code }, closesthit_shader_code);
 
 	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
 

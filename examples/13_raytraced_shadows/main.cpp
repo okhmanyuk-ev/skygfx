@@ -235,7 +235,7 @@ int main()
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -5.0f, 2.0f, 0.0f };
 
-	light.direction = { -1.0f, -0.5f, -0.5f };
+	light.direction = { -1.0f, 0.5f, 0.5f };
 
 	while (!glfwWindowShouldClose(window))
 	{
