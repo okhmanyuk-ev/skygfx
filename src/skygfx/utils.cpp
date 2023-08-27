@@ -505,7 +505,7 @@ utils::commands::SetTextureAddress::SetTextureAddress(TextureAddress _texture_ad
 {
 }
 
-utils::commands::SetDepthMode::SetDepthMode(DepthMode _depth_mode) :
+utils::commands::SetDepthMode::SetDepthMode(std::optional<DepthMode> _depth_mode) :
 	depth_mode(_depth_mode)
 {
 }
@@ -614,7 +614,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 	auto texture_address = TextureAddress::Clamp;
 	bool texture_address_dirty = true;
 
-	auto depth_mode = DepthMode();
+	std::optional<DepthMode> depth_mode;
 	bool depth_mode_dirty = true;
 
 	const Mesh* mesh = nullptr;

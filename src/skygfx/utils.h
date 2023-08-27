@@ -219,8 +219,8 @@ namespace skygfx::utils
 
 		struct SetDepthMode
 		{
-			SetDepthMode(DepthMode depth_mode);
-			DepthMode depth_mode;
+			SetDepthMode(std::optional<DepthMode> depth_mode);
+			std::optional<DepthMode> depth_mode;
 		};
 
 		struct SetMesh
