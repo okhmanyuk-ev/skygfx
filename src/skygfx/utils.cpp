@@ -917,9 +917,9 @@ void utils::passes::GaussianBlur(const RenderTarget* src, const RenderTarget* ds
 	skygfx::ReleaseTemporaryRenderTarget(blur_target);
 }
 
-void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst)
+void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst, float intensity)
 {
-	Blit(src, dst, effects::Grayscale());
+	Blit(src, dst, effects::Grayscale{ intensity });
 }
 
 void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, float bright_threshold, float intensity)
@@ -984,7 +984,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 	}
 
 	// apply
-	
+
 	Blit(prev_downsampled, dst, effects::BloomUpsample(*prev_downsampled), false, BlendStates::Additive, glm::vec4(intensity));
 
 	// release targets

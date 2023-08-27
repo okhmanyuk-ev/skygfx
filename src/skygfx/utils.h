@@ -357,7 +357,7 @@ namespace skygfx::utils
 		}
 
 		void GaussianBlur(const RenderTarget* src, const RenderTarget* dst = nullptr);
-		void Grayscale(const RenderTarget* src, const RenderTarget* dst = nullptr);
+		void Grayscale(const RenderTarget* src, const RenderTarget* dst = nullptr, float intensity = 1.0f);
 		void Bloom(const RenderTarget* src, const RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
 		void BloomGaussian(const RenderTarget* src, const RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
