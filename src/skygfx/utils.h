@@ -193,6 +193,18 @@ namespace skygfx::utils
 			std::vector<uint8_t> uniform_data;
 		};
 
+		struct SetViewport
+		{
+			SetViewport(std::optional<Viewport> viewport);
+			std::optional<Viewport> viewport;
+		};
+
+		struct SetScissor
+		{
+			SetScissor(std::optional<Scissor> scissor);
+			std::optional<Scissor> scissor;
+		};
+
 		struct SetBlendMode
 		{
 			SetBlendMode(std::optional<BlendMode> blend_mode);
@@ -301,6 +313,8 @@ namespace skygfx::utils
 	}
 
 	using Command = std::variant<
+		commands::SetViewport,
+		commands::SetScissor,
 		commands::SetBlendMode,
 		commands::SetSampler,
 		commands::SetCullMode,

@@ -485,6 +485,16 @@ const Shader& utils::GetDefaultShader()
 
 // commands
 
+utils::commands::SetViewport::SetViewport(std::optional<Viewport> _viewport) :
+	viewport(std::move(_viewport))
+{
+}
+
+utils::commands::SetScissor::SetScissor(std::optional<Scissor> _scissor) :
+	scissor(_scissor)
+{
+}
+
 utils::commands::SetBlendMode::SetBlendMode(std::optional<BlendMode> _blend_mode) :
 	blend_mode(std::move(_blend_mode))
 {
@@ -602,6 +612,12 @@ void utils::ExecuteCommands(const Commands& cmds)
 		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
 	}, { 0, 1, 2, 0, 2, 3 });
 
+	std::optional<Viewport> viewport;
+	bool viewport_dirty = true;
+
+	std::optional<Scissor> scissor;
+	bool scissor_dirty = true;
+
 	std::optional<BlendMode> blend_mode;
 	bool blend_mode_dirty = true;
 
@@ -644,6 +660,20 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 	std::function<void(const Command&)> execute_command = [&](const Command& _cmd) {
 		std::visit(cases{
+			[&](const commands::SetViewport& cmd) {
+				if (viewport == cmd.viewport)
+					return;
+
+				viewport = cmd.viewport;
+				viewport_dirty = true;
+			},
+			[&](const commands::SetScissor& cmd) {
+				if (scissor == cmd.scissor)
+					return;
+
+				scissor = cmd.scissor;
+				scissor_dirty = true;
+			},
 			[&](const commands::SetBlendMode& cmd) {
 				if (blend_mode == cmd.blend_mode)
 					return;
@@ -764,6 +794,18 @@ void utils::ExecuteCommands(const Commands& cmds)
 				}, cmd.subcommands);
 			},
 			[&](const commands::Draw& cmd) {
+				if (viewport_dirty)
+				{
+					SetViewport(viewport);
+					viewport_dirty = false;
+				}
+
+				if (scissor_dirty)
+				{
+					SetScissor(scissor);
+					scissor_dirty = false;
+				}
+
 				if (blend_mode_dirty)
 				{
 					SetBlendMode(blend_mode);
