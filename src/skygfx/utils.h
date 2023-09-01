@@ -392,4 +392,60 @@ namespace skygfx::utils
 	};
 
 	void DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights = {});
+
+	class MeshBuilder
+	{
+	public:
+		enum class Mode
+		{
+			Points,
+			Lines,
+			LineLoop,
+			LineStrip,
+			Triangles,
+			TriangleStrip,
+			TriangleFan,
+			Quads,
+			Polygon
+		};
+
+	public:
+		static Topology ConvertModeToTopology(Mode mode);
+
+	public:
+		void reset();
+		void begin(Mode mode);
+		void vertex(const Mesh::Vertex& vertex);
+		void vertex(const Vertex::PositionColor& vertex);
+		void vertex(const glm::vec3& pos);
+		void color(const glm::vec4& value);
+		void color(const glm::vec3& value);
+		void normal(const glm::vec3& value);
+		void texcoord(const glm::vec2& value);
+		void end();
+
+		void setToMesh(Mesh& mesh);
+
+		bool isBeginAllowed(Mode mode);
+
+	public:
+		const auto& getVertices() const { return mVertices; }
+		const auto& getIndices() const { return mIndices; }
+
+		auto getVertexCount() const { return mVertexCount; }
+		auto getIndexCount() const { return mIndexCount; }
+
+		const auto& getTopology() const { return mTopology; }
+
+	private:
+		bool mBegined = false;
+		std::optional<Mode> mMode;
+		std::optional<Topology> mTopology;
+		skygfx::utils::Mesh::Vertices mVertices;
+		skygfx::utils::Mesh::Indices mIndices;
+		uint32_t mVertexStart = 0;
+		uint32_t mVertexCount = 0;
+		uint32_t mIndexCount = 0;
+		skygfx::utils::Mesh::Vertex mVertex;
+	};
 }

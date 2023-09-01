@@ -1131,3 +1131,229 @@ void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, co
 
 	ExecuteCommands(cmds);
 }
+
+// mesh builder
+
+template<typename T>
+static void AddItem(std::vector<T>& items, uint32_t& count, const T& item)
+{
+	count++;
+	if (items.size() < count)
+		items.push_back(item);
+	else
+		items[count - 1] = item;
+}
+
+static void ExtractOrderedIndexSequence(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractLineListIndicesFromLineLoop(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	if (vertex_count == vertex_start)
+		return;
+
+	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+	AddItem(indices, index_count, vertex_start + vertex_count - 1);
+	AddItem(indices, index_count, vertex_start);
+}
+
+static void ExtractLineListIndicesFromLineStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractTrianglesIndicesFromTriangleFan(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, vertex_start);
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractTrianglesIndicesFromPolygons(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	ExtractTrianglesIndicesFromTriangleFan(vertices, vertex_start, vertex_count, indices, index_count);
+}
+
+static void ExtractTrianglesIndicesFromQuads(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 3; i < vertex_count; i += 4) {
+		// first triangle
+		AddItem(indices, index_count, i - 3);
+		AddItem(indices, index_count, i - 2);
+		AddItem(indices, index_count, i - 1);
+		// second triangle
+		AddItem(indices, index_count, i - 3);
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractTrianglesIndicesFromTriangleStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
+	{
+		if ((i - vertex_start) % 2 == 0)
+		{
+			AddItem(indices, index_count, i - 2);
+			AddItem(indices, index_count, i - 1);
+			AddItem(indices, index_count, i);
+		}
+		else
+		{
+			AddItem(indices, index_count, i - 1);
+			AddItem(indices, index_count, i - 2);
+			AddItem(indices, index_count, i);
+		}
+	}
+}
+
+Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
+{
+	static const std::unordered_map<Mode, Topology> TopologyMap = {
+		{ Mode::Points, Topology::PointList },
+		{ Mode::Lines, Topology::LineList },
+		{ Mode::LineLoop, Topology::LineList },
+		{ Mode::LineStrip, Topology::LineList },
+		{ Mode::Triangles, Topology::TriangleList },
+		{ Mode::TriangleStrip, Topology::TriangleList },
+		{ Mode::TriangleFan, Topology::TriangleList },
+		{ Mode::Quads, Topology::TriangleList },
+		{ Mode::Polygon, Topology::TriangleList }
+	};
+
+	return TopologyMap.at(mode);
+}
+
+void utils::MeshBuilder::reset()
+{
+	assert(!mBegined);
+	mIndexCount = 0;
+	mVertexCount = 0;
+	mMode.reset();
+	mTopology.reset();
+}
+
+void utils::MeshBuilder::begin(Mode mode)
+{
+	assert(!mBegined);
+	mBegined = true;
+
+	auto topology = ConvertModeToTopology(mode);
+
+	if (mTopology.has_value())
+	{
+		assert(topology == mTopology.value());
+	}
+	else
+	{
+		mTopology = topology;
+	}
+
+	mMode = mode;
+	mVertexStart = mVertexCount;
+}
+
+void utils::MeshBuilder::vertex(const Mesh::Vertex& vertex)
+{
+	assert(mBegined);
+	AddItem(mVertices, mVertexCount, vertex);
+}
+
+void utils::MeshBuilder::vertex(const Vertex::PositionColor& _vertex)
+{
+	vertex(Mesh::Vertex{
+		.pos = _vertex.pos,
+		.color = _vertex.color,
+		.texcoord = { 0.0f, 0.0f },
+		.normal = { 0.0f, 0.0f, 0.0f }
+	});
+}
+
+void utils::MeshBuilder::vertex(const glm::vec3& pos)
+{
+	mVertex.pos = pos;
+	vertex(mVertex);
+}
+
+void utils::MeshBuilder::color(const glm::vec4& value)
+{
+	mVertex.color = value;
+}
+
+void utils::MeshBuilder::color(const glm::vec3& value)
+{
+	color(glm::vec4{ value.r, value.g, value.b, mVertex.color.a });
+}
+
+void utils::MeshBuilder::normal(const glm::vec3& value)
+{
+	mVertex.normal = value;
+}
+
+void utils::MeshBuilder::texcoord(const glm::vec2& value)
+{
+	mVertex.texcoord = value;
+}
+
+void utils::MeshBuilder::end()
+{
+	assert(mBegined);
+	mBegined = false;
+
+	using ExtractIndicesFunc = std::function<void(const skygfx::utils::Mesh::Vertices& vertices,
+		uint32_t vertex_start, uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)>;
+
+	static const std::unordered_map<Mode, ExtractIndicesFunc> ExtractIndicesFuncs = {
+		{ Mode::Points, ExtractOrderedIndexSequence },
+		{ Mode::Lines, ExtractOrderedIndexSequence },
+		{ Mode::LineLoop, ExtractLineListIndicesFromLineLoop },
+		{ Mode::LineStrip, ExtractLineListIndicesFromLineStrip },
+		{ Mode::Polygon, ExtractTrianglesIndicesFromPolygons },
+		{ Mode::TriangleFan, ExtractTrianglesIndicesFromTriangleFan },
+		{ Mode::Quads, ExtractTrianglesIndicesFromQuads },
+		{ Mode::TriangleStrip, ExtractTrianglesIndicesFromTriangleStrip },
+		{ Mode::Triangles, ExtractOrderedIndexSequence }
+	};
+
+	ExtractIndicesFuncs.at(mMode.value())(mVertices, mVertexStart, mVertexCount, mIndices, mIndexCount);
+}
+
+void utils::MeshBuilder::setToMesh(Mesh& mesh)
+{
+	assert(!mBegined);
+	mesh.setTopology(mTopology.value());
+	mesh.setVertices(mVertices.data(), mVertexCount);
+	mesh.setIndices(mIndices.data(), mIndexCount);
+}
+
+bool utils::MeshBuilder::isBeginAllowed(Mode mode)
+{
+	if (!mTopology.has_value())
+		return true;
+
+	auto topology = ConvertModeToTopology(mode);
+	return topology == mTopology.value();
+}

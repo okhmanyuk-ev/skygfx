@@ -134,3 +134,8 @@ target_link_libraries(13_raytraced_shadows glfw skygfx imgui)
 target_include_directories(13_raytraced_shadows PUBLIC lib/stb)
 set_target_properties(13_raytraced_shadows PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 set_target_properties(13_raytraced_shadows PROPERTIES RESOURCE ${RESOURCES})
+
+# 14 - mesh api triangle
+
+add_executable(14_mesh_api_triangle 14_mesh_api_triangle/main.cpp)
+target_link_libraries(14_mesh_api_triangle glfw skygfx)
