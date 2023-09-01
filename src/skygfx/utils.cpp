@@ -4,7 +4,7 @@
 
 using namespace skygfx;
 
-static const std::string vertex_shader_code = R"(
+const std::string vertex_shader_code = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -44,7 +44,7 @@ void main()
 	gl_Position = settings.projection * settings.view * settings.model * vec4(aPosition, 1.0);
 })";
 
-static const std::string fragment_shader_code = R"(
+const std::string fragment_shader_code = R"(
 #version 450 core
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings

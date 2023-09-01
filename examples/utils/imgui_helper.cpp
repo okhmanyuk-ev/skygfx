@@ -32,9 +32,6 @@ void ImguiHelper::draw()
 {
 	ImGui::Render();
 
-	skygfx::SetDepthMode(std::nullopt);
-	skygfx::SetCullMode(skygfx::CullMode::None);
-
 	auto display_scale = ImGui::GetIO().DisplayFramebufferScale;
 	auto model = glm::scale(glm::mat4(1.0f), { display_scale.x, display_scale.y, 1.0f });
 
@@ -64,8 +61,8 @@ void ImguiHelper::draw()
 		}
 	}
 
-	mMesh.setVertices(std::move(vertices));
-	mMesh.setIndices(std::move(indices));
+	mMesh.setVertices(vertices);
+	mMesh.setIndices(indices);
 
 	skygfx::utils::Commands draw_cmds = {
 		skygfx::utils::commands::SetBlendMode(skygfx::BlendStates::NonPremultiplied),
@@ -90,11 +87,9 @@ void ImguiHelper::draw()
 			else
 			{
 				skygfx::utils::AddCommands(draw_cmds, {
-					skygfx::utils::commands::Callback([cmd] {
-						skygfx::SetScissor(skygfx::Scissor{
-							.position = { cmd.ClipRect.x, cmd.ClipRect.y },
-							.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
-						});
+					skygfx::utils::commands::SetScissor(skygfx::Scissor{
+						.position = { cmd.ClipRect.x, cmd.ClipRect.y },
+						.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
 					}),
 					skygfx::utils::commands::SetColorTexture((skygfx::Texture*)cmd.TextureId),
 					skygfx::utils::commands::Draw(skygfx::utils::DrawIndexedVerticesCommand{
@@ -109,6 +104,4 @@ void ImguiHelper::draw()
 	}
 
 	skygfx::utils::ExecuteCommands(draw_cmds);
-
-	skygfx::SetScissor(std::nullopt);
 }
