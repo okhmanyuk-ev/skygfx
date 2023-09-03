@@ -415,9 +415,11 @@ namespace skygfx::utils
 	public:
 		void reset();
 		void begin(Mode mode);
-		void vertex(const Mesh::Vertex& vertex);
+		void vertex(const Vertex::PositionColorTextureNormal& vertex);
+		void vertex(const Vertex::PositionColorTexture& vertex);
 		void vertex(const Vertex::PositionColor& vertex);
 		void vertex(const glm::vec3& pos);
+		void vertex(const glm::vec2& pos);
 		void color(const glm::vec4& value);
 		void color(const glm::vec3& value);
 		void normal(const glm::vec3& value);
@@ -426,9 +428,11 @@ namespace skygfx::utils
 
 		void setToMesh(Mesh& mesh);
 
-		bool isBeginAllowed(Mode mode);
+		bool isBeginAllowed(Mode mode) const;
 
 	public:
+		bool isBegan() const { return mBegan; }
+
 		const auto& getVertices() const { return mVertices; }
 		const auto& getIndices() const { return mIndices; }
 
@@ -438,7 +442,7 @@ namespace skygfx::utils
 		const auto& getTopology() const { return mTopology; }
 
 	private:
-		bool mBegined = false;
+		bool mBegan = false;
 		std::optional<Mode> mMode;
 		std::optional<Topology> mTopology;
 		skygfx::utils::Mesh::Vertices mVertices;

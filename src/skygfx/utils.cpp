@@ -1249,7 +1249,7 @@ Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
 
 void utils::MeshBuilder::reset()
 {
-	assert(!mBegined);
+	assert(!mBegan);
 	mIndexCount = 0;
 	mVertexCount = 0;
 	mMode.reset();
@@ -1258,8 +1258,8 @@ void utils::MeshBuilder::reset()
 
 void utils::MeshBuilder::begin(Mode mode)
 {
-	assert(!mBegined);
-	mBegined = true;
+	assert(!mBegan);
+	mBegan = true;
 
 	auto topology = ConvertModeToTopology(mode);
 
@@ -1276,19 +1276,28 @@ void utils::MeshBuilder::begin(Mode mode)
 	mVertexStart = mVertexCount;
 }
 
-void utils::MeshBuilder::vertex(const Mesh::Vertex& vertex)
+void utils::MeshBuilder::vertex(const Vertex::PositionColorTextureNormal& vertex)
 {
-	assert(mBegined);
+	assert(mBegan);
 	AddItem(mVertices, mVertexCount, vertex);
+}
+
+void utils::MeshBuilder::vertex(const Vertex::PositionColorTexture& _vertex)
+{
+	vertex(Vertex::PositionColorTextureNormal{
+		.pos = _vertex.pos,
+		.color = _vertex.color,
+		.texcoord = _vertex.texcoord,
+		.normal = { 0.0f, 0.0f, 0.0f }
+	});
 }
 
 void utils::MeshBuilder::vertex(const Vertex::PositionColor& _vertex)
 {
-	vertex(Mesh::Vertex{
+	vertex(Vertex::PositionColorTexture{
 		.pos = _vertex.pos,
 		.color = _vertex.color,
-		.texcoord = { 0.0f, 0.0f },
-		.normal = { 0.0f, 0.0f, 0.0f }
+		.texcoord = { 0.0f, 0.0f }
 	});
 }
 
@@ -1296,6 +1305,11 @@ void utils::MeshBuilder::vertex(const glm::vec3& pos)
 {
 	mVertex.pos = pos;
 	vertex(mVertex);
+}
+
+void utils::MeshBuilder::vertex(const glm::vec2& pos)
+{
+	vertex({ pos.x, pos.y, 0.0f });
 }
 
 void utils::MeshBuilder::color(const glm::vec4& value)
@@ -1320,8 +1334,8 @@ void utils::MeshBuilder::texcoord(const glm::vec2& value)
 
 void utils::MeshBuilder::end()
 {
-	assert(mBegined);
-	mBegined = false;
+	assert(mBegan);
+	mBegan = false;
 
 	using ExtractIndicesFunc = std::function<void(const skygfx::utils::Mesh::Vertices& vertices,
 		uint32_t vertex_start, uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)>;
@@ -1343,13 +1357,13 @@ void utils::MeshBuilder::end()
 
 void utils::MeshBuilder::setToMesh(Mesh& mesh)
 {
-	assert(!mBegined);
+	assert(!mBegan);
 	mesh.setTopology(mTopology.value());
 	mesh.setVertices(mVertices.data(), mVertexCount);
 	mesh.setIndices(mIndices.data(), mIndexCount);
 }
 
-bool utils::MeshBuilder::isBeginAllowed(Mode mode)
+bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
 {
 	if (!mTopology.has_value())
 		return true;
