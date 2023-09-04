@@ -180,15 +180,18 @@ namespace skygfx::utils
 	{
 		struct SetEffect
 		{
-			SetEffect(std::nullopt_t) {}
+			SetEffect(std::nullopt_t);
+			SetEffect(Shader* shader, void* uniform_data, size_t uniform_size);
 
 			template<effects::Effect T>
-			SetEffect(T value) {
+			SetEffect(T value)
+			{
 				static auto _shader = MakeEffectShader(T::Shader);
 				shader = &_shader;
-				uniform_data.insert(uniform_data.end(), reinterpret_cast<uint8_t*>(&value), 
-					reinterpret_cast<uint8_t*>(&value) + sizeof(T));
+				uniform_data.resize(sizeof(T));
+				std::memcpy(uniform_data.data(), &value, sizeof(T));
 			}
+
 			Shader* shader = nullptr;
 			std::vector<uint8_t> uniform_data;
 		};

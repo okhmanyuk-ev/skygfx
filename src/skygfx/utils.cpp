@@ -485,6 +485,17 @@ const Shader& utils::GetDefaultShader()
 
 // commands
 
+utils::commands::SetEffect::SetEffect(std::nullopt_t)
+{
+}
+
+utils::commands::SetEffect::SetEffect(Shader* _shader, void* _uniform_data, size_t uniform_size) :
+	shader(_shader)
+{
+	uniform_data.resize(uniform_size);
+	std::memcpy(uniform_data.data(), _uniform_data, uniform_size);
+}
+
 utils::commands::SetViewport::SetViewport(std::optional<Viewport> _viewport) :
 	viewport(std::move(_viewport))
 {
