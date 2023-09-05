@@ -25,16 +25,10 @@ class IndexBufferVK;
 struct PipelineStateVK
 {
 	ShaderVK* shader = nullptr;
-	vk::Format color_attachment_format;
-	vk::Format depth_stencil_format;
+	vk::Format color_attachment_format = vk::Format::eUndefined;
+	vk::Format depth_stencil_format = vk::Format::eUndefined;
 
-	bool operator==(const PipelineStateVK& value) const
-	{
-		return 
-			shader == value.shader &&
-			color_attachment_format == value.color_attachment_format &&
-			depth_stencil_format == value.depth_stencil_format;
-	}
+	bool operator==(const PipelineStateVK& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateVK,
@@ -47,11 +41,7 @@ struct RaytracingPipelineStateVK
 {
 	RaytracingShaderVK* shader = nullptr;
 
-	bool operator==(const RaytracingPipelineStateVK& value) const
-	{
-		return
-			shader == value.shader;
-	}
+	bool operator==(const RaytracingPipelineStateVK& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(RaytracingPipelineStateVK,
@@ -63,12 +53,7 @@ struct SamplerStateVK
 	Sampler sampler = Sampler::Linear;
 	TextureAddress texture_address = TextureAddress::Clamp;
 
-	bool operator==(const SamplerStateVK& value) const
-	{
-		return
-			sampler == value.sampler &&
-			texture_address == value.texture_address;
-	}
+	bool operator==(const SamplerStateVK& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(SamplerStateVK,

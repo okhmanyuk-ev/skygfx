@@ -26,12 +26,7 @@ struct DepthStencilStateD3D11
 	std::optional<DepthMode> depth_mode;
 	std::optional<StencilMode> stencil_mode;
 
-	bool operator==(const DepthStencilStateD3D11& value) const
-	{
-		return 
-			depth_mode == value.depth_mode && 
-			stencil_mode == value.stencil_mode;
-	}
+	bool operator==(const DepthStencilStateD3D11& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(DepthStencilStateD3D11,
@@ -46,14 +41,7 @@ struct RasterizerStateD3D11
 	FrontFace front_face = FrontFace::Clockwise;
 	std::optional<DepthBias> depth_bias;
 
-	bool operator==(const RasterizerStateD3D11& value) const
-	{
-		return 
-			scissor_enabled == value.scissor_enabled && 
-			cull_mode == value.cull_mode &&
-			front_face == value.front_face &&
-			depth_bias == value.depth_bias;
-	}
+	bool operator==(const RasterizerStateD3D11& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(RasterizerStateD3D11,
@@ -68,12 +56,7 @@ struct SamplerStateD3D11
 	Sampler sampler = Sampler::Linear;
 	TextureAddress texture_address = TextureAddress::Clamp;
 
-	bool operator==(const SamplerStateD3D11& value) const
-	{
-		return
-			sampler == value.sampler &&
-			texture_address == value.texture_address;
-	}
+	bool operator==(const SamplerStateD3D11& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(SamplerStateD3D11,

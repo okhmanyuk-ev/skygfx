@@ -635,12 +635,7 @@ struct SamplerStateGL
 	Sampler sampler = Sampler::Linear;
 	TextureAddress texture_address = TextureAddress::Clamp;
 
-	bool operator==(const SamplerStateGL& value) const
-	{
-		return
-			sampler == value.sampler &&
-			texture_address == value.texture_address;
-	}
+	bool operator==(const SamplerStateGL& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(SamplerStateGL,

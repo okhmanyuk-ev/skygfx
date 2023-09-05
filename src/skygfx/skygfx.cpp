@@ -476,38 +476,6 @@ uint32_t skygfx::GetMipHeight(uint32_t base_height, uint32_t mip_level)
 	return glm::max<uint32_t>(1, static_cast<uint32_t>(glm::floor<uint32_t>(base_height >> mip_level)));
 }
 
-// viewport
-
-bool skygfx::Viewport::operator==(const Viewport& other) const
-{
-	return
-		position == other.position &&
-		size == other.size &&
-		min_depth == other.min_depth &&
-		max_depth == other.max_depth;
-}
-
-bool skygfx::Viewport::operator!=(const Viewport& other) const
-{
-	return !(*this == other);
-}
-
-// color mask
-
-bool skygfx::ColorMask::operator==(const ColorMask& other) const
-{
-	return
-		red == other.red &&
-		green == other.green &&
-		blue == other.blue &&
-		alpha == other.alpha;
-}
-
-bool skygfx::ColorMask::operator!=(const ColorMask& other) const
-{
-	return !(*this == other);
-}
-
 // blend mode
 
 skygfx::BlendMode::BlendMode(Blend _color_src, Blend _color_dst, Blend _alpha_src, Blend _alpha_dst) :
@@ -519,86 +487,11 @@ skygfx::BlendMode::BlendMode(Blend src, Blend dst) : BlendMode(src, dst, src, ds
 {
 }
 
-bool skygfx::BlendMode::operator==(const BlendMode& other) const
-{
-	return
-		color_func == other.color_func &&
-		color_src == other.color_src &&
-		color_dst == other.color_dst &&
-		alpha_func == other.alpha_func &&
-		alpha_src == other.alpha_src &&
-		alpha_dst == other.alpha_dst &&
-		color_mask == other.color_mask;
-}
-
-bool skygfx::BlendMode::operator!=(const BlendMode& other) const
-{
-	return !(*this == other);
-}
-
-// scissor
-
-bool skygfx::Scissor::operator==(const Scissor& other) const
-{
-	return position == other.position &&
-		size == other.size;
-}
-
-bool skygfx::Scissor::operator!=(const Scissor& other) const
-{
-	return !(*this == other);
-}
-
-// stencil mode
-
-bool skygfx::StencilMode::operator==(const StencilMode& other) const
-{
-	return
-		read_mask == other.read_mask &&
-		write_mask == other.write_mask &&
-
-		depth_fail_op == other.depth_fail_op &&
-		fail_op == other.fail_op &&
-		func == other.func &&
-		pass_op == other.pass_op &&
-
-		reference == other.reference;
-}
-
-bool skygfx::StencilMode::operator!=(const StencilMode& other) const
-{
-	return !(*this == other);
-}
-
-// depth mode
-
-bool skygfx::DepthMode::operator==(const DepthMode& other) const
-{
-	return
-		write_mask == other.write_mask &&
-		func == other.func;
-}
-
-bool skygfx::DepthMode::operator!=(const DepthMode& other) const
-{
-	return !(*this == other);
-}
-
 // depth bias
 
 skygfx::DepthBias::DepthBias(float _factor, float _units) :
 	factor(_factor), units(_units)
 {
-}
-
-bool DepthBias::operator==(const DepthBias& other) const
-{
-	return factor == other.factor && units == other.units;
-}
-
-bool DepthBias::operator!=(const DepthBias& other) const
-{
-	return !(*this == other);
 }
 
 // temporary render targets
@@ -614,18 +507,7 @@ struct TemporaryRenderTargetDesc
 	uint32_t height;
 	Format format;
 
-	bool operator==(const TemporaryRenderTargetDesc& other) const
-	{
-		return
-			width == other.width &&
-			height == other.height &&
-			format == other.format;
-	}
-
-	bool operator!=(const TemporaryRenderTargetDesc& other) const
-	{
-		return !(*this == other);
-	}
+	auto operator<=>(const TemporaryRenderTargetDesc& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(TemporaryRenderTargetDesc,

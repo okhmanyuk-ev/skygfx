@@ -381,8 +381,7 @@ namespace skygfx
 		float min_depth = 0.0f;
 		float max_depth = 1.0f;
 
-		bool operator==(const Viewport& other) const;
-		bool operator!=(const Viewport& other) const;
+		bool operator==(const Viewport& other) const = default;
 	};
 
 	enum class Blend
@@ -418,8 +417,7 @@ namespace skygfx
 		bool blue = true;
 		bool alpha = true;
 
-		bool operator==(const ColorMask& other) const;
-		bool operator!=(const ColorMask& other) const;
+		bool operator==(const ColorMask& other) const = default;
 	};
 
 	struct BlendMode
@@ -437,8 +435,7 @@ namespace skygfx
 
 		ColorMask color_mask;
 
-		bool operator==(const BlendMode& other) const;
-		bool operator!=(const BlendMode& other) const;
+		bool operator==(const BlendMode& other) const = default;
 	};
 
 	namespace BlendStates
@@ -469,8 +466,7 @@ namespace skygfx
 		bool write_mask = true;
 		ComparisonFunc func = ComparisonFunc::Always;
 
-		bool operator==(const DepthMode& other) const;
-		bool operator!=(const DepthMode& other) const;
+		bool operator==(const DepthMode& other) const = default;
 	};
 
 	enum class StencilOp
@@ -497,8 +493,7 @@ namespace skygfx
 
 		uint8_t reference = 1;
 
-		bool operator==(const StencilMode& other) const;
-		bool operator!=(const StencilMode& other) const;
+		bool operator==(const StencilMode& other) const = default;
 	};
 
 	struct Scissor
@@ -506,8 +501,7 @@ namespace skygfx
 		glm::vec2 position = { 0.0f, 0.0f };
 		glm::vec2 size = { 0.0f, 0.0f };
 
-		bool operator==(const Scissor& other) const;
-		bool operator!=(const Scissor& other) const;
+		bool operator==(const Scissor& other) const = default;
 	};
 
 	enum class CullMode
@@ -540,11 +534,10 @@ namespace skygfx
 	{
 		DepthBias(float factor = 0.0f, float units = 0.0f);
 
-		bool operator==(const DepthBias& other) const;
-		bool operator!=(const DepthBias& other) const;
-
 		float factor;
 		float units;
+
+		bool operator==(const DepthBias& other) const = default;
 	};
 
 	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,

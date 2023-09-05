@@ -39,12 +39,7 @@ struct RasterizerStateD3D12
 	CullMode cull_mode = CullMode::None;
 	FrontFace front_face = FrontFace::Clockwise;
 
-	bool operator==(const RasterizerStateD3D12& value) const
-	{
-		return
-			cull_mode == value.cull_mode &&
-			front_face == value.front_face;
-	}
+	bool operator==(const RasterizerStateD3D12& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(RasterizerStateD3D12,
@@ -62,17 +57,7 @@ struct PipelineStateD3D12
 	DXGI_FORMAT color_attachment_format;
 	DXGI_FORMAT depth_stencil_format;
 
-	bool operator==(const PipelineStateD3D12& value) const
-	{
-		return 
-			shader == value.shader &&
-			rasterizer_state == value.rasterizer_state &&
-			depth_mode == value.depth_mode &&
-			blend_mode == value.blend_mode &&
-			topology_kind == value.topology_kind &&
-			color_attachment_format == value.color_attachment_format &&
-			depth_stencil_format == value.depth_stencil_format;
-	}
+	bool operator==(const PipelineStateD3D12& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,

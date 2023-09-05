@@ -29,15 +29,8 @@ struct PipelineStateMetal
 	MTLPixelFormat color_attachment_pixel_format;
 	MTLPixelFormat depth_stencil_attachment_pixel_format;
 	std::optional<BlendMode> blend_mode;
-	
-	bool operator==(const PipelineStateMetal& value) const
-	{
-		return
-			shader == value.shader &&
-			color_attachment_pixel_format == value.color_attachment_pixel_format &&
-			depth_stencil_attachment_pixel_format == value.depth_stencil_attachment_pixel_format &&
-			blend_mode == value.blend_mode;
-	}
+
+	bool operator==(const PipelineStateMetal& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
@@ -52,12 +45,7 @@ struct SamplerStateMetal
 	Sampler sampler = Sampler::Linear;
 	TextureAddress texture_address = TextureAddress::Clamp;
 
-	bool operator==(const SamplerStateMetal& value) const
-	{
-		return
-			sampler == value.sampler &&
-			texture_address == value.texture_address;
-	}
+	bool operator==(const SamplerStateMetal& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(SamplerStateMetal,
@@ -70,12 +58,7 @@ struct DepthStencilStateMetal
 	std::optional<DepthMode> depth_mode;
 	std::optional<StencilMode> stencil_mode;
 
-	bool operator==(const DepthStencilStateMetal& value) const
-	{
-		return
-			depth_mode == value.depth_mode &&
-			stencil_mode == value.stencil_mode;
-	}
+	bool operator==(const DepthStencilStateMetal& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(DepthStencilStateMetal,
