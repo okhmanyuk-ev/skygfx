@@ -581,6 +581,8 @@ public:
 	void write(uint32_t width, uint32_t height, Format format, void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
+		EnsureRenderPassDeactivated();
+
 		auto channels = GetFormatChannelsCount(format);
 		auto channel_size = GetFormatChannelSize(format);
 		auto size = width * height * channels * channel_size;
@@ -589,20 +591,22 @@ public:
 
 		WriteToBuffer(upload_buffer_memory, memory, size);
 
-		OneTimeSubmit([&](auto& cmdbuf) {
-			ensureState(cmdbuf, vk::ImageLayout::eTransferDstOptimal);
+		ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);
 
-			auto image_subresource_layers = vk::ImageSubresourceLayers()
-				.setAspectMask(vk::ImageAspectFlagBits::eColor)
-				.setMipLevel(mip_level)
-				.setLayerCount(1);
+		auto image_subresource_layers = vk::ImageSubresourceLayers()
+			.setAspectMask(vk::ImageAspectFlagBits::eColor)
+			.setMipLevel(mip_level)
+			.setLayerCount(1);
 
-			auto region = vk::BufferImageCopy()
-				.setImageSubresource(image_subresource_layers)
-				.setImageExtent({ width, height, 1 });
+		auto region = vk::BufferImageCopy()
+			.setImageSubresource(image_subresource_layers)
+			.setImageExtent({ width, height, 1 });
 
-			cmdbuf.copyBufferToImage(*upload_buffer, mImagePtr, vk::ImageLayout::eTransferDstOptimal, { region });
-		});
+		gContext->getCurrentFrame().command_buffer.copyBufferToImage(*upload_buffer, mImagePtr,
+			vk::ImageLayout::eTransferDstOptimal, { region });
+
+		DestroyStaging(std::move(upload_buffer));
+		DestroyStaging(std::move(upload_buffer_memory));
 	}
 
 	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
@@ -656,14 +660,14 @@ public:
 		gContext->getCurrentFrame().command_buffer.begin(begin_info);
 	}
 
-	void generateMips(const vk::raii::CommandBuffer& cmdbuf)
+	void generateMips()
 	{
-		ensureState(cmdbuf, vk::ImageLayout::eTransferSrcOptimal);
+		ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
 
 		for (uint32_t i = 1; i < mMipCount; i++)
 		{
-			SetImageMemoryBarrier(cmdbuf, mImagePtr, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eUndefined,
-				vk::ImageLayout::eTransferDstOptimal, i, 1);
+			SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, mImagePtr, vk::ImageAspectFlagBits::eColor,
+				vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal, i, 1);
 
 			auto src_subresource = vk::ImageSubresourceLayers()
 				.setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -681,19 +685,12 @@ public:
 				.setSrcOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(mWidth >> (i - 1)), int32_t(mHeight >> (i - 1)), 1 } })
 				.setDstOffsets({ vk::Offset3D{ 0, 0, 0 }, vk::Offset3D{ int32_t(mWidth >> i), int32_t(mHeight >> i), 1 } });
 
-			cmdbuf.blitImage(mImagePtr, vk::ImageLayout::eTransferSrcOptimal, mImagePtr,
-				vk::ImageLayout::eTransferDstOptimal, { mip_region }, vk::Filter::eLinear);
+			gContext->getCurrentFrame().command_buffer.blitImage(mImagePtr, vk::ImageLayout::eTransferSrcOptimal,
+				mImagePtr, vk::ImageLayout::eTransferDstOptimal, { mip_region }, vk::Filter::eLinear);
 
-			SetImageMemoryBarrier(cmdbuf, mImagePtr, vk::ImageAspectFlagBits::eColor, vk::ImageLayout::eTransferDstOptimal,
-				vk::ImageLayout::eTransferSrcOptimal, i, 1);
+			SetImageMemoryBarrier(gContext->getCurrentFrame().command_buffer, mImagePtr, vk::ImageAspectFlagBits::eColor,
+				vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal, i, 1);
 		}
-	}
-
-	void generateMips()
-	{
-		OneTimeSubmit([&](auto& cmdbuf) {
-			generateMips(cmdbuf);
-		});
 	}
 
 	void ensureState(const vk::raii::CommandBuffer& cmdbuf, vk::ImageLayout state)
@@ -1540,7 +1537,7 @@ static RaytracingShaderBindingTable CreateRaytracingShaderBindingTable(const vk:
 	auto group_count = raygen_shader_count + miss_shader_count + hit_shader_count;
 	auto sbt_size = group_count * handle_size_aligned;
 
-	auto shader_handle_storage = pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, group_count, sbt_size);
+	auto shader_handle_storage = pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, (uint32_t)group_count, sbt_size);
 
 	auto get_shader_ptr = [&](size_t index) {
 		return shader_handle_storage.data() + (handle_size_aligned * index);
