@@ -575,7 +575,7 @@ static void PrepareForDrawing()
 
 		if (!gContext->blend_modes.contains(blend_mode))
 		{
-			const static std::unordered_map<Blend, D3D11_BLEND> BlendMap = {
+			const static std::unordered_map<Blend, D3D11_BLEND> ColorBlendMap = {
 				{ Blend::One, D3D11_BLEND_ONE },
 				{ Blend::Zero, D3D11_BLEND_ZERO },
 				{ Blend::SrcColor, D3D11_BLEND_SRC_COLOR },
@@ -584,6 +584,19 @@ static void PrepareForDrawing()
 				{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
 				{ Blend::DstColor, D3D11_BLEND_DEST_COLOR },
 				{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_COLOR },
+				{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
+				{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
+			};
+
+			const static std::unordered_map<Blend, D3D11_BLEND> AlphaBlendMap = {
+				{ Blend::One, D3D11_BLEND_ONE },
+				{ Blend::Zero, D3D11_BLEND_ZERO },
+				{ Blend::SrcColor, D3D11_BLEND_SRC_ALPHA },
+				{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_ALPHA },
+				{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
+				{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
+				{ Blend::DstColor, D3D11_BLEND_DEST_ALPHA },
+				{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_ALPHA },
 				{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
 				{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
 			};
@@ -621,20 +634,19 @@ static void PrepareForDrawing()
 				if (blend_mode_nn.color_mask.alpha)
 					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
 
-				blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src);
-				blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst);
+				blend.SrcBlend = ColorBlendMap.at(blend_mode_nn.color_src);
+				blend.DestBlend = ColorBlendMap.at(blend_mode_nn.color_dst);
 				blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_func);
 
-				blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src);
-				blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst);
+				blend.SrcBlendAlpha = AlphaBlendMap.at(blend_mode_nn.alpha_src);
+				blend.DestBlendAlpha = AlphaBlendMap.at(blend_mode_nn.alpha_dst);
 				blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_func);
 			}
 
 			gContext->device->CreateBlendState(&desc, gContext->blend_modes[blend_mode].GetAddressOf());
 		}
 
-		const float blend_factor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-		gContext->context->OMSetBlendState(gContext->blend_modes.at(blend_mode).Get(), blend_factor, 0xFFFFFFFF);
+		gContext->context->OMSetBlendState(gContext->blend_modes.at(blend_mode).Get(), nullptr, 0xFFFFFFFF);
 	}
 
 	if (gContext->viewport_dirty)
