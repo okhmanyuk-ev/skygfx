@@ -766,13 +766,13 @@ static void PrepareForDrawing(bool indexed)
 			if (blend_mode_nn.color_mask.alpha)
 				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
 
-			blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src_blend);
-			blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst_blend);
-			blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_blend_func);
+			blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src);
+			blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst);
+			blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_func);
 
-			blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src_blend);
-			blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst_blend);
-			blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_blend_func);
+			blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src);
+			blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst);
+			blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_func);
 		}
 
 		auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);

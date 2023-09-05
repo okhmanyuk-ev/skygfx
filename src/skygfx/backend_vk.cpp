@@ -1897,12 +1897,12 @@ static void EnsureGraphicsState(bool draw_indexed)
 			color_mask |= vk::ColorComponentFlagBits::eA;
 
 		auto color_blend_equation = vk::ColorBlendEquationEXT()
-			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src_blend))
-			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst_blend))
-			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_blend_func))
-			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src_blend))
-			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst_blend))
-			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_blend_func));
+			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src))
+			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst))
+			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_func))
+			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src))
+			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst))
+			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_func));
 
 		gContext->getCurrentFrame().command_buffer.setColorBlendEnableEXT(0, { gContext->blend_mode.has_value() });
 		gContext->getCurrentFrame().command_buffer.setColorWriteMaskEXT(0, { color_mask });

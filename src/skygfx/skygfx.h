@@ -424,19 +424,16 @@ namespace skygfx
 
 	struct BlendMode
 	{
-		BlendMode(Blend _color_src_blend, Blend _color_dst_blend, Blend _alpha_src_blend, Blend _alpha_dst_blend) :
-			color_src_blend(_color_src_blend), color_dst_blend(_color_dst_blend), alpha_src_blend(_alpha_src_blend), alpha_dst_blend(_alpha_dst_blend)
-		{}
+		BlendMode(Blend color_src, Blend color_dst, Blend alpha_src, Blend alpha_dst);
+		BlendMode(Blend src, Blend dst);
 
-		BlendMode(Blend srcBlend, Blend dstBlend) : BlendMode(srcBlend, dstBlend, Blend::One, Blend::Zero) { }
+		BlendFunction color_func = BlendFunction::Add;
+		Blend color_src;
+		Blend color_dst;
 
-		BlendFunction color_blend_func = BlendFunction::Add;
-		Blend color_src_blend;
-		Blend color_dst_blend;
-
-		BlendFunction alpha_blend_func = BlendFunction::Add;
-		Blend alpha_src_blend;
-		Blend alpha_dst_blend;
+		BlendFunction alpha_func = BlendFunction::Add;
+		Blend alpha_src;
+		Blend alpha_dst;
 
 		ColorMask color_mask;
 
@@ -655,12 +652,12 @@ SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,
 );
 
 SKYGFX_MAKE_HASHABLE(skygfx::BlendMode,
-	t.alpha_blend_func,
-	t.alpha_dst_blend,
-	t.alpha_src_blend,
-	t.color_blend_func,
-	t.color_dst_blend,
-	t.color_src_blend,
+	t.alpha_func,
+	t.alpha_dst,
+	t.alpha_src,
+	t.color_func,
+	t.color_dst,
+	t.color_src,
 	t.color_mask
 );
 

@@ -510,15 +510,24 @@ bool skygfx::ColorMask::operator!=(const ColorMask& other) const
 
 // blend mode
 
+skygfx::BlendMode::BlendMode(Blend _color_src, Blend _color_dst, Blend _alpha_src, Blend _alpha_dst) :
+	color_src(_color_src), color_dst(_color_dst), alpha_src(_alpha_src), alpha_dst(_alpha_dst)
+{
+}
+
+skygfx::BlendMode::BlendMode(Blend src, Blend dst) : BlendMode(src, dst, src, dst)
+{
+}
+
 bool skygfx::BlendMode::operator==(const BlendMode& other) const
 {
 	return
-		color_blend_func == other.color_blend_func &&
-		color_src_blend == other.color_src_blend &&
-		color_dst_blend == other.color_dst_blend &&
-		alpha_blend_func == other.alpha_blend_func &&
-		alpha_src_blend == other.alpha_src_blend &&
-		alpha_dst_blend == other.alpha_dst_blend &&
+		color_func == other.color_func &&
+		color_src == other.color_src &&
+		color_dst == other.color_dst &&
+		alpha_func == other.alpha_func &&
+		alpha_src == other.alpha_src &&
+		alpha_dst == other.alpha_dst &&
 		color_mask == other.color_mask;
 }
 

@@ -1101,9 +1101,9 @@ void BackendGL::setBlendMode(const std::optional<BlendMode>& blend_mode)
 	const auto& blend = blend_mode.value();
 
 	glEnable(GL_BLEND);
-	glBlendEquationSeparate(BlendOpMap.at(blend.color_blend_func), BlendOpMap.at(blend.alpha_blend_func));
-	glBlendFuncSeparate(BlendMap.at(blend.color_src_blend), BlendMap.at(blend.color_dst_blend),
-		BlendMap.at(blend.alpha_src_blend), BlendMap.at(blend.alpha_dst_blend));
+	glBlendEquationSeparate(BlendOpMap.at(blend.color_func), BlendOpMap.at(blend.alpha_func));
+	glBlendFuncSeparate(BlendMap.at(blend.color_src), BlendMap.at(blend.color_dst),
+		BlendMap.at(blend.alpha_src), BlendMap.at(blend.alpha_dst));
 	glColorMask(blend.color_mask.red, blend.color_mask.green, blend.color_mask.blue, blend.color_mask.alpha);
 }
 
