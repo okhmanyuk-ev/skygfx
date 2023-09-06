@@ -776,14 +776,14 @@ void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optio
 	beginRenderPass(color, depth, stencil);
 }
 
-void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset)
+void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
 	prepareForDrawing();
 	[gRenderCommandEncoder drawPrimitives:gPrimitiveType vertexStart:vertex_offset
-		vertexCount:vertex_count];
+		vertexCount:vertex_count instanceCount:instance_count];
 }
 
-void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
+void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	prepareForDrawing();
 	
@@ -794,7 +794,7 @@ void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset)
 	
 	[gRenderCommandEncoder drawIndexedPrimitives:gPrimitiveType indexCount:index_count
 		indexType:gIndexType indexBuffer:gIndexBuffer->getMetalBuffer()
-		indexBufferOffset:index_offset * index_size];
+		indexBufferOffset:index_offset * index_size instanceCount:instance_count];
 }
 
 void BackendMetal::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
@@ -1214,13 +1214,13 @@ void BackendMetal::prepareForDrawing()
 			{
 				const auto& blend_mode = gPipelineState.blend_mode.value();
 
-				attachment_0.sourceRGBBlendFactor = BlendMap.at(blend_mode.color_src_blend);
-				attachment_0.sourceAlphaBlendFactor = BlendMap.at(blend_mode.alpha_src_blend);
-				attachment_0.destinationRGBBlendFactor = BlendMap.at(blend_mode.color_dst_blend);
-				attachment_0.destinationAlphaBlendFactor = BlendMap.at(blend_mode.alpha_dst_blend);
+				attachment_0.sourceRGBBlendFactor = BlendMap.at(blend_mode.color_src);
+				attachment_0.sourceAlphaBlendFactor = BlendMap.at(blend_mode.alpha_src);
+				attachment_0.destinationRGBBlendFactor = BlendMap.at(blend_mode.color_dst);
+				attachment_0.destinationAlphaBlendFactor = BlendMap.at(blend_mode.alpha_dst);
 
-				attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_blend_func);
-				attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_blend_func);
+				attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_func);
+				attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_func);
 
 				attachment_0.writeMask = MTLColorWriteMaskNone;
 
