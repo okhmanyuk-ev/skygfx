@@ -106,10 +106,19 @@ struct ContextMTL
 	std::unordered_map<SamplerStateMetal, id<MTLSamplerState>> sampler_states;
 	std::unordered_map<DepthStencilStateMetal, id<MTLDepthStencilState>> depth_stencil_states;
 	std::unordered_map<PipelineStateMetal, id<MTLRenderPipelineState>> pipeline_states;
-	std::unordered_set<BufferMetal*> used_buffers_in_this_frame;
+
+	std::vector<id<MTLBuffer>> staging_objects;
 };
 
 static ContextMTL* gContext = nullptr;
+
+static void BeginRenderPass(const std::optional<glm::vec4>& color = std::nullopt,
+	const std::optional<float>& depth = std::nullopt, const std::optional<uint8_t>& stencil = std::nullopt);
+static void EndRenderPass();
+static void BeginBlitPass();
+static void EndBlitPass();
+static void Begin();
+static void End();
 
 static const std::unordered_map<Format, MTLVertexFormat> VertexFormatMap = {
 	{ Format::Float1, MTLVertexFormatFloat },
@@ -312,77 +321,66 @@ public:
 	}
 };
 
+static id<MTLBuffer> CreateBuffer(size_t size)
+{
+	return [gContext->device newBufferWithLength:size options:MTLResourceStorageModeShared];
+}
+
+static void DestroyStaging(id<MTLBuffer> buffer)
+{
+	gContext->staging_objects.push_back(buffer);
+}
+
+static void ReleaseStagingObjects()
+{
+	for (auto buffer : gContext->staging_objects)
+	{
+		[buffer release];
+	}
+	gContext->staging_objects.clear();
+}
+
 class BufferMetal
 {
+public:
+	auto getMetalBuffer() const { return mBuffer; }
+
 private:
-	std::vector<id<MTLBuffer>> mBuffers;
+	id<MTLBuffer> mBuffer;
 	size_t mSize = 0;
-	bool mUsed = false;
-	uint32_t mIndex = 0;
-	
+
 public:
 	BufferMetal(size_t size) : mSize(size)
 	{
-		mBuffers.push_back(createBuffer());
+		mBuffer = CreateBuffer(mSize);
 	}
 	
 	~BufferMetal()
 	{
-		for (auto buffer : mBuffers)
-		{
-			[buffer release];
-		}
+		[mBuffer release];
 	}
 	
 	void write(void* memory, size_t size)
 	{
 		assert(size <= mSize);
-		
-		if (mUsed)
-		{
-			mIndex += 1;
-			mUsed = false;
-		}
-		
-		if (mIndex >= mBuffers.size())
-		{
-			mBuffers.push_back(createBuffer());
-		}
-		
-		auto buffer = mBuffers.at(mIndex);
 
-		memcpy(buffer.contents, memory, size);
-#if defined(SKYGFX_PLATFORM_MACOS)
-		[buffer didModifyRange:NSMakeRange(0, size)];
-#endif
-	}
-	
-	void markUsed()
-	{
-		mUsed = true;
-	}
-	
-	void resetIndex()
-	{
-		mIndex = 0;
-		mUsed = false;
-	}
-	
-	auto getMetalBuffer() const
-	{
-		return mBuffers.at(mIndex);
-	}
-	
-private:
-	id<MTLBuffer> createBuffer()
-	{
-#if defined(SKYGFX_PLATFORM_MACOS)
-		auto storageMode = MTLResourceStorageModeManaged;
-#elif defined(SKYGFX_PLATFORM_IOS)
-		auto storageMode = MTLResourceStorageModeShared;
-#endif
+		auto staging_buffer = CreateBuffer(size);
+		memcpy(staging_buffer.contents, memory, size);
 
-		return [gContext->device newBufferWithLength:mSize options:storageMode];
+		EndRenderPass();
+		BeginBlitPass();
+
+		[gContext->blit_command_encoder
+			copyFromBuffer:staging_buffer
+			sourceOffset:0
+			toBuffer:mBuffer
+			destinationOffset:0
+			size:size];
+
+		EndBlitPass();
+		BeginRenderPass();
+
+		DestroyStaging(staging_buffer);
 	}
 };
 
@@ -403,8 +401,8 @@ public:
 
 static NSAutoreleasePool* gFrameAutoreleasePool = nullptr;
 
-static void BeginRenderPass(const std::optional<glm::vec4>& color = std::nullopt,
-	const std::optional<float>& depth = std::nullopt, const std::optional<uint8_t>& stencil = std::nullopt)
+static void BeginRenderPass(const std::optional<glm::vec4>& color,
+	const std::optional<float>& depth, const std::optional<uint8_t>& stencil)
 {
 	assert(gContext->render_command_encoder == nullptr);
 
@@ -603,9 +601,6 @@ static void EnsureGraphicsState()
 			atIndex:binding];
 	}
 
-	gContext->vertex_buffer->markUsed();
-	gContext->used_buffers_in_this_frame.insert(gContext->vertex_buffer);
-
 	[gContext->render_command_encoder
 		setVertexBuffer:gContext->vertex_buffer->getMetalBuffer()
 		offset:0
@@ -762,9 +757,6 @@ static void EnsureGraphicsState()
 
 	for (auto [binding, buffer] : gContext->uniform_buffers)
 	{
-		buffer->markUsed();
-		gContext->used_buffers_in_this_frame.insert(buffer);
-
 		[gContext->render_command_encoder setVertexBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
 		[gContext->render_command_encoder setFragmentBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
 	}
@@ -916,6 +908,8 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 BackendMetal::~BackendMetal()
 {
 	End();
+	ReleaseStagingObjects();
+
 	for (auto [_, sampler_state] : gContext->sampler_states)
 	{
 		[sampler_state release];
@@ -1111,12 +1105,9 @@ void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t 
 void BackendMetal::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	EnsureGraphicsState();
-	
+
 	auto index_size = gContext->index_type == MTLIndexTypeUInt32 ? 4 : 2;
-	
-	gContext->index_buffer->markUsed();
-	gContext->used_buffers_in_this_frame.insert(gContext->index_buffer);
-	
+
 	[gContext->render_command_encoder
 		drawIndexedPrimitives:gContext->primitive_type
 		indexCount:index_count
@@ -1205,16 +1196,8 @@ void BackendMetal::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 void BackendMetal::present()
 {
 	End();
-
 	[gContext->view draw];
-	
-	for (auto buffer : gContext->used_buffers_in_this_frame)
-	{
-		buffer->resetIndex();
-	}
-
-	gContext->used_buffers_in_this_frame.clear();
-	
+	ReleaseStagingObjects();
 	Begin();
 }
 
