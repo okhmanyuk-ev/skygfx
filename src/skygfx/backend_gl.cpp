@@ -485,10 +485,10 @@ public:
 		auto texture_format = TextureFormatMap.at(mFormat);
 		auto binding = ScopedBind(mTexture);
 
-#ifndef EMSCRIPTEN // emscripten doesnt have this func
+#if !defined(SKYGFX_PLATFORM_IOS) & !defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 		glGetTexImage(GL_TEXTURE_2D, mip_level, texture_format, format_type, dst_memory);
 #else
-		std::cout << "warning: emscripten cannot read to cpu memory" << std::endl;
+		std::cout << "warning: cannot read to cpu memory" << std::endl;
 #endif
 
 		auto row_size = width * channels_count * channel_size;
@@ -1013,7 +1013,7 @@ void BackendGL::setRenderTarget(std::nullopt_t value)
 {
 	if (gContext->render_target == nullptr)
 		return;
-		
+
 #if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #elif defined(SKYGFX_PLATFORM_IOS)
