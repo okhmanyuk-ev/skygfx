@@ -796,14 +796,14 @@ void skygfx::Clear(const std::optional<glm::vec4>& color, const std::optional<fl
 	gBackend->clear(color, depth, stencil);
 }
 
-void skygfx::Draw(uint32_t vertex_count, uint32_t vertex_offset)
+void skygfx::Draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
-	gBackend->draw(vertex_count, vertex_offset);
+	gBackend->draw(vertex_count, vertex_offset, instance_count);
 }
 
-void skygfx::DrawIndexed(uint32_t index_count, uint32_t index_offset)
+void skygfx::DrawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
-	gBackend->drawIndexed(index_count, index_offset);
+	gBackend->drawIndexed(index_count, index_offset, instance_count);
 }
 
 void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture)

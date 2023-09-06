@@ -907,16 +907,16 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 	}
 }
 
-void BackendD3D11::draw(uint32_t vertex_count, uint32_t vertex_offset)
+void BackendD3D11::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
 	PrepareForDrawing();
-	gContext->context->Draw((UINT)vertex_count, (UINT)vertex_offset);
+	gContext->context->DrawInstanced((UINT)vertex_count, (UINT)instance_count, (UINT)vertex_offset, 0);
 }
 
-void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset)
+void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	PrepareForDrawing();
-	gContext->context->DrawIndexed((UINT)index_count, (UINT)index_offset, 0);
+	gContext->context->DrawIndexedInstanced((UINT)index_count, (UINT)instance_count, (UINT)index_offset, 0, 0);
 }
 
 void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)

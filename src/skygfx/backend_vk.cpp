@@ -2632,16 +2632,16 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 	}
 }
 
-void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset)
+void BackendVK::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
 	EnsureGraphicsState(false);
-	gContext->getCurrentFrame().command_buffer.draw(vertex_count, 1, vertex_offset, 0);
+	gContext->getCurrentFrame().command_buffer.draw(vertex_count, instance_count, vertex_offset, 0);
 }
 
-void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset)
+void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	EnsureGraphicsState(true);
-	gContext->getCurrentFrame().command_buffer.drawIndexed(index_count, 1, index_offset, 0, 0);
+	gContext->getCurrentFrame().command_buffer.drawIndexed(index_count, instance_count, index_offset, 0, 0);
 }
 
 void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)

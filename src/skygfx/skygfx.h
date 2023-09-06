@@ -573,8 +573,8 @@ namespace skygfx
 
 	void Clear(const std::optional<glm::vec4>& color = glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f },
 		const std::optional<float>& depth = 1.0f, const std::optional<uint8_t>& stencil = 0);
-	void Draw(uint32_t vertex_count, uint32_t vertex_offset = 0);
-	void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0);
+	void Draw(uint32_t vertex_count, uint32_t vertex_offset = 0, uint32_t instance_count = 1);
+	void DrawIndexed(uint32_t index_count, uint32_t index_offset = 0, uint32_t instance_count = 1);
 	void ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture);
 
 	void DispatchRays(uint32_t width, uint32_t height, uint32_t depth);

@@ -1239,18 +1239,27 @@ void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional
 	}
 }
 
-void BackendGL::draw(uint32_t vertex_count, uint32_t vertex_offset)
+void BackendGL::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
 	prepareForDrawing();
-	glDrawArrays(gContext->topology, (GLint)vertex_offset, (GLsizei)vertex_count);
+	auto mode = gContext->topology;
+	auto first = (GLint)vertex_offset;
+	auto count = (GLsizei)vertex_count;
+	auto primcount = (GLsizei)instance_count;
+	glDrawArraysInstanced(mode, first, count, primcount);
 }
 
-void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset)
+void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	assert(gContext->index_buffer);
 	prepareForDrawing();
 	uint32_t index_size = gContext->index_type == GL_UNSIGNED_INT ? 4 : 2;
-	glDrawElements(gContext->topology, (GLsizei)index_count, gContext->index_type, (void*)(size_t)(index_offset * index_size));
+	auto mode = gContext->topology;
+	auto count = (GLsizei)index_count;
+	auto type = gContext->index_type;
+	auto indices = (void*)(size_t)(index_offset * index_size);
+	auto primcount = (GLsizei)instance_count;
+	glDrawElementsInstanced(mode, count, type, indices, primcount);
 }
 
 void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)

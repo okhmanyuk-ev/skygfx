@@ -33,8 +33,8 @@ namespace skygfx
 
 		virtual void clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 			const std::optional<uint8_t>& stencil) = 0;
-		virtual void draw(uint32_t vertex_count, uint32_t vertex_offset) = 0;
-		virtual void drawIndexed(uint32_t index_count, uint32_t index_offset) = 0;
+		virtual void draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count) = 0;
+		virtual void drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count) = 0;
 
 		virtual void readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture) = 0;
 
