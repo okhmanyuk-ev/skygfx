@@ -399,7 +399,7 @@ public:
 	const auto& getVertexInputBindingDescription() const { return mVertexInputBindingDescription; }
 	const auto& getVertexInputAttributeDescriptions() const { return mVertexInputAttributeDescriptions; }
 	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
-	
+
 private:
 	vk::raii::DescriptorSetLayout mDescriptorSetLayout = nullptr;
 	vk::raii::PipelineLayout mPipelineLayout = nullptr;
@@ -1340,7 +1340,7 @@ static void EnsureSamplerState()
 	}
 }
 
-static void PushDescriptorBuffer(vk::PipelineBindPoint pipeline_bind_point,
+static void PushDescriptorBuffer(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding, vk::DescriptorType type,
 	const vk::raii::Buffer& buffer)
 {
@@ -1354,17 +1354,17 @@ static void PushDescriptorBuffer(vk::PipelineBindPoint pipeline_bind_point,
 		.setDescriptorType(type)
 		.setBufferInfo(descriptor_buffer_info);
 
-	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+	cmdlist.pushDescriptorSetKHR(pipeline_bind_point,
 		*pipeline_layout, 0, write_descriptor_set);
 }
 
-static void PushDescriptorTexture(vk::PipelineBindPoint pipeline_bind_point,
+static void PushDescriptorTexture(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	EnsureSamplerState();
 
 	auto texture = gContext->textures.at(binding);
-	texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
+	texture->ensureState(cmdlist, vk::ImageLayout::eGeneral);
 
 	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
 
@@ -1379,20 +1379,20 @@ static void PushDescriptorTexture(vk::PipelineBindPoint pipeline_bind_point,
 		.setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
 		.setImageInfo(descriptor_image_info);
 
-	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+	cmdlist.pushDescriptorSetKHR(pipeline_bind_point,
 		*pipeline_layout, 0, write_descriptor_set);
 }
 
-static void PushDescriptorUniformBuffer(vk::PipelineBindPoint pipeline_bind_point,
+static void PushDescriptorUniformBuffer(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	auto buffer = gContext->uniform_buffers.at(binding);
 
-	PushDescriptorBuffer(pipeline_bind_point, pipeline_layout, binding,
+	PushDescriptorBuffer(cmdlist, pipeline_bind_point, pipeline_layout, binding,
 		vk::DescriptorType::eUniformBuffer, buffer->getBuffer());
 }
 
-static void PushDescriptorAccelerationStructure(vk::PipelineBindPoint pipeline_bind_point,
+static void PushDescriptorAccelerationStructure(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	auto acceleration_structure = gContext->top_level_acceleration_structures.at(binding);
@@ -1406,15 +1406,15 @@ static void PushDescriptorAccelerationStructure(vk::PipelineBindPoint pipeline_b
 		.setDescriptorType(vk::DescriptorType::eAccelerationStructureKHR)
 		.setPNext(&write_descriptor_set_acceleration_structure);
 
-	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+	cmdlist.pushDescriptorSetKHR(pipeline_bind_point,
 		*pipeline_layout, 0, write_descriptor_set);
 }
 
-static void PushDescriptorStorageImage(vk::PipelineBindPoint pipeline_bind_point,
+static void PushDescriptorStorageImage(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	auto texture = gContext->render_target->getTexture();
-	texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
+	texture->ensureState(cmdlist, vk::ImageLayout::eGeneral);
 
 	auto descriptor_image_info = vk::DescriptorImageInfo()
 		.setImageLayout(vk::ImageLayout::eGeneral)
@@ -1426,24 +1426,24 @@ static void PushDescriptorStorageImage(vk::PipelineBindPoint pipeline_bind_point
 		.setDescriptorType(vk::DescriptorType::eStorageImage)
 		.setImageInfo(descriptor_image_info);
 
-	gContext->getCurrentFrame().command_buffer.pushDescriptorSetKHR(pipeline_bind_point,
+	cmdlist.pushDescriptorSetKHR(pipeline_bind_point,
 		*pipeline_layout, 0, write_descriptor_set);
 }
 
-static void PushDescriptorStorageBuffer(vk::PipelineBindPoint pipeline_bind_point,
+static void PushDescriptorStorageBuffer(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	auto buffer = gContext->storage_buffers.at(binding);
 
-	PushDescriptorBuffer(pipeline_bind_point, pipeline_layout, binding,
+	PushDescriptorBuffer(cmdlist, pipeline_bind_point, pipeline_layout, binding,
 		vk::DescriptorType::eStorageBuffer, buffer->getBuffer());
 }
 
-static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk::raii::PipelineLayout& pipeline_layout,
-	const std::vector<vk::DescriptorSetLayoutBinding>& required_descriptor_bindings,
+static void PushDescriptors(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
+	const vk::raii::PipelineLayout& pipeline_layout, const std::vector<vk::DescriptorSetLayoutBinding>& required_descriptor_bindings,
 	const std::unordered_set<uint32_t>& ignore_bindings = {})
 {
-	using PushTypedCallback = std::function<void(vk::PipelineBindPoint pipeline_bind_point,
+	using PushTypedCallback = std::function<void(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 		const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)>;
 
 	static const std::unordered_map<vk::DescriptorType, PushTypedCallback> PushTypedCallbacks = {
@@ -1463,7 +1463,7 @@ static void PushDescriptors(vk::PipelineBindPoint pipeline_bind_point, const vk:
 
 		auto type = required_descriptor_binding.descriptorType;
 		const auto& callback = PushTypedCallbacks.at(type);
-		callback(pipeline_bind_point, pipeline_layout, binding);
+		callback(cmdlist, pipeline_bind_point, pipeline_layout, binding);
 	}
 }
 
@@ -1707,209 +1707,298 @@ static vk::raii::Pipeline CreateRaytracingPipeline(const RaytracingPipelineState
 	return gContext->device.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
 }
 
-static void EnsureGraphicsState(bool draw_indexed)
+static void EnsureVertexBuffer(vk::raii::CommandBuffer& cmdlist)
 {
-	EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eAllGraphics);
+	if (!gContext->vertex_buffer_dirty)
+		return;
 
-	if (gContext->vertex_buffer_dirty)
+	gContext->vertex_buffer_dirty = false;
+	
+	cmdlist.bindVertexBuffers2(0, { *gContext->vertex_buffer->getBuffer() }, { 0 }, nullptr,
+		{ gContext->vertex_buffer->getStride() });
+}
+
+static void EnsureIndexBuffer(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->index_buffer_dirty)
+		return;
+
+	gContext->index_buffer_dirty = false;
+	
+	auto index_type = GetIndexTypeFromStride(gContext->index_buffer->getStride());
+	cmdlist.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0, index_type);
+}
+
+static void EnsureTopology(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->topology_dirty)
+		return;
+
+	gContext->topology_dirty = false;
+
+	static const std::unordered_map<Topology, vk::PrimitiveTopology> TopologyMap = {
+		{ Topology::PointList, vk::PrimitiveTopology::ePointList },
+		{ Topology::LineList, vk::PrimitiveTopology::eLineList },
+		{ Topology::LineStrip, vk::PrimitiveTopology::eLineStrip },
+		{ Topology::TriangleList, vk::PrimitiveTopology::eTriangleList },
+		{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
+	};
+
+	auto topology = TopologyMap.at(gContext->topology);
+
+	cmdlist.setPrimitiveTopology(topology);
+}
+
+static void EnsureViewport(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->viewport_dirty)
+		return;
+
+	gContext->viewport_dirty = false;
+
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
+
+	auto value = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+
+	auto viewport = vk::Viewport()
+		.setX(value.position.x)
+		.setY(value.size.y - value.position.y)
+		.setWidth(value.size.x)
+		.setHeight(-value.size.y)
+		.setMinDepth(value.min_depth)
+		.setMaxDepth(value.max_depth);
+
+	cmdlist.setViewport(0, { viewport });
+}
+
+static void EnsureScissor(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->scissor_dirty)
+		return;
+
+	gContext->scissor_dirty = false;
+
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
+
+	auto value = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+
+	auto rect = vk::Rect2D()
+		.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
+		.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
+
+	if (rect.offset.x < 0)
 	{
-		gContext->getCurrentFrame().command_buffer.bindVertexBuffers2(0, { *gContext->vertex_buffer->getBuffer() }, { 0 }, nullptr,
-			{ gContext->vertex_buffer->getStride() });
-		gContext->vertex_buffer_dirty = false;
+		rect.extent.width -= rect.offset.x;
+		rect.offset.x = 0;
 	}
 
-	if (gContext->index_buffer_dirty && draw_indexed)
+	if (rect.offset.y < 0)
 	{
-		gContext->getCurrentFrame().command_buffer.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0,
-			GetIndexTypeFromStride(gContext->index_buffer->getStride()));
-		gContext->index_buffer_dirty = false;
+		rect.extent.height -= rect.offset.y;
+		rect.offset.y = 0;
 	}
 
-	if (gContext->topology_dirty)
-	{
-		static const std::unordered_map<Topology, vk::PrimitiveTopology> TopologyMap = {
-			{ Topology::PointList, vk::PrimitiveTopology::ePointList },
-			{ Topology::LineList, vk::PrimitiveTopology::eLineList },
-			{ Topology::LineStrip, vk::PrimitiveTopology::eLineStrip },
-			{ Topology::TriangleList, vk::PrimitiveTopology::eTriangleList },
-			{ Topology::TriangleStrip, vk::PrimitiveTopology::eTriangleStrip },
-		};
+	if (rect.extent.width < 0)
+		rect.extent.width = 0;
 
-		gContext->getCurrentFrame().command_buffer.setPrimitiveTopology(TopologyMap.at(gContext->topology));
-		gContext->topology_dirty = false;
+	if (rect.extent.height < 0)
+		rect.extent.height = 0;
+
+	cmdlist.setScissor(0, { rect });
+}
+
+static void EnsureCullMode(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->cull_mode_dirty)
+		return;
+
+	gContext->cull_mode_dirty = false;
+
+	const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
+		{ CullMode::None, vk::CullModeFlagBits::eNone },
+		{ CullMode::Front, vk::CullModeFlagBits::eFront },
+		{ CullMode::Back, vk::CullModeFlagBits::eBack },
+	};
+
+	cmdlist.setCullMode(CullModeMap.at(gContext->cull_mode));
+}
+
+static void EnsureFrontFace(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->front_face_dirty)
+		return;
+
+	gContext->front_face_dirty = false;
+
+	const static std::unordered_map<FrontFace, vk::FrontFace> FrontFaceMap = {
+		{ FrontFace::Clockwise, vk::FrontFace::eClockwise },
+		{ FrontFace::CounterClockwise, vk::FrontFace::eCounterClockwise },
+	};
+
+	cmdlist.setFrontFace(FrontFaceMap.at(gContext->front_face));
+}
+
+static void EnsureBlendMode(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->blend_mode_dirty)
+		return;
+
+	gContext->blend_mode_dirty = false;
+	
+	static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
+		{ Blend::One, vk::BlendFactor::eOne },
+		{ Blend::Zero, vk::BlendFactor::eZero },
+		{ Blend::SrcColor, vk::BlendFactor::eSrcColor },
+		{ Blend::InvSrcColor, vk::BlendFactor::eOneMinusSrcColor },
+		{ Blend::SrcAlpha, vk::BlendFactor::eSrcAlpha },
+		{ Blend::InvSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha },
+		{ Blend::DstColor, vk::BlendFactor::eDstColor },
+		{ Blend::InvDstColor, vk::BlendFactor::eOneMinusDstColor },
+		{ Blend::DstAlpha, vk::BlendFactor::eDstAlpha },
+		{ Blend::InvDstAlpha, vk::BlendFactor::eOneMinusDstAlpha }
+	};
+
+	static const std::unordered_map<BlendFunction, vk::BlendOp> BlendFuncMap = {
+		{ BlendFunction::Add, vk::BlendOp::eAdd },
+		{ BlendFunction::Subtract, vk::BlendOp::eSubtract },
+		{ BlendFunction::ReverseSubtract, vk::BlendOp::eReverseSubtract },
+		{ BlendFunction::Min, vk::BlendOp::eMin },
+		{ BlendFunction::Max, vk::BlendOp::eMax },
+	};
+
+	const auto& blend_mode = gContext->blend_mode.value_or(BlendStates::Opaque);
+
+	auto color_mask = vk::ColorComponentFlags();
+
+	if (blend_mode.color_mask.red)
+		color_mask |= vk::ColorComponentFlagBits::eR;
+
+	if (blend_mode.color_mask.green)
+		color_mask |= vk::ColorComponentFlagBits::eG;
+
+	if (blend_mode.color_mask.blue)
+		color_mask |= vk::ColorComponentFlagBits::eB;
+
+	if (blend_mode.color_mask.alpha)
+		color_mask |= vk::ColorComponentFlagBits::eA;
+
+	auto color_blend_equation = vk::ColorBlendEquationEXT()
+		.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src))
+		.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst))
+		.setColorBlendOp(BlendFuncMap.at(blend_mode.color_func))
+		.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src))
+		.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst))
+		.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_func));
+
+	cmdlist.setColorBlendEnableEXT(0, { gContext->blend_mode.has_value() });
+	cmdlist.setColorWriteMaskEXT(0, { color_mask });
+	cmdlist.setColorBlendEquationEXT(0, { color_blend_equation });
+}
+
+static void EnsureDepthMode(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->depth_mode_dirty)
+		return;
+
+	gContext->depth_mode_dirty = false;
+
+	if (gContext->depth_mode.has_value())
+	{
+		cmdlist.setDepthTestEnable(true);
+		cmdlist.setDepthWriteEnable(gContext->depth_mode.value().write_mask);
+		cmdlist.setDepthCompareOp(CompareOpMap.at(gContext->depth_mode.value().func));
+	}
+	else
+	{
+		cmdlist.setDepthTestEnable(false);
+	}
+}
+
+static void EnsureGraphicsPipelineState(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->pipeline_state_dirty)
+		return;
+
+	gContext->pipeline_state_dirty = false;
+
+	if (!gContext->pipeline_states.contains(gContext->pipeline_state))
+	{
+		auto pipeline = CreateGraphicsPipeline(gContext->pipeline_state);
+		gContext->pipeline_states.insert({ gContext->pipeline_state, std::move(pipeline) });
 	}
 
-	auto& ignore_bindings = gContext->graphics_pipeline_ignore_bindings;
+	const auto& pipeline = gContext->pipeline_states.at(gContext->pipeline_state);
+	cmdlist.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
 
-	if (gContext->pipeline_state_dirty)
+	gContext->graphics_pipeline_ignore_bindings.clear();
+}
+
+static void EnsureRaytracingPipelineState(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->raytracing_pipeline_states.contains(gContext->raytracing_pipeline_state))
 	{
-		gContext->pipeline_state_dirty = false;
-
-		if (!gContext->pipeline_states.contains(gContext->pipeline_state))
-		{
-			auto pipeline = CreateGraphicsPipeline(gContext->pipeline_state);
-			gContext->pipeline_states.insert({ gContext->pipeline_state, std::move(pipeline) });
-		}
-
-		const auto& pipeline = gContext->pipeline_states.at(gContext->pipeline_state);
-		gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *pipeline);
-
-		ignore_bindings.clear();
+		auto pipeline = CreateRaytracingPipeline(gContext->raytracing_pipeline_state);
+		gContext->raytracing_pipeline_states.insert({ gContext->raytracing_pipeline_state, std::move(pipeline) });
 	}
 
+	const auto& pipeline = gContext->raytracing_pipeline_states.at(gContext->raytracing_pipeline_state);
+	cmdlist.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
+}
+
+static void EnsureGraphicsDescriptors(vk::raii::CommandBuffer& cmdlist)
+{
 	const auto& pipeline_layout = gContext->pipeline_state.shader->getPipelineLayout();
 	const auto& required_descriptor_bindings = gContext->pipeline_state.shader->getRequiredDescriptorBindings();
+	auto& ignore_bindings = gContext->graphics_pipeline_ignore_bindings;
 
-	PushDescriptors(vk::PipelineBindPoint::eGraphics, pipeline_layout, required_descriptor_bindings, ignore_bindings);
+	PushDescriptors(cmdlist, vk::PipelineBindPoint::eGraphics, pipeline_layout, required_descriptor_bindings, ignore_bindings);
 
 	for (const auto& descriptor_binding : required_descriptor_bindings)
 	{
 		ignore_bindings.insert(descriptor_binding.binding);
 	}
+}
 
-	auto width = static_cast<float>(gContext->getBackbufferWidth());
-	auto height = static_cast<float>(gContext->getBackbufferHeight());
+static void EnsureRaytracingDescriptors(vk::raii::CommandBuffer& cmdlist)
+{
+	const auto& pipeline_layout = gContext->raytracing_pipeline_state.shader->getPipelineLayout();
+	const auto& required_descriptor_bindings = gContext->raytracing_pipeline_state.shader->getRequiredDescriptorBindings();
 
-	if (gContext->viewport_dirty)
-	{
-		auto value = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+	PushDescriptors(cmdlist, vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, required_descriptor_bindings);
+}
 
-		auto viewport = vk::Viewport()
-			.setX(value.position.x)
-			.setY(value.size.y - value.position.y)
-			.setWidth(value.size.x)
-			.setHeight(-value.size.y)
-			.setMinDepth(value.min_depth)
-			.setMaxDepth(value.max_depth);
+static void EnsureGraphicsState(bool draw_indexed)
+{
+	auto& cmdlist = gContext->getCurrentFrame().command_buffer;
 
-		gContext->getCurrentFrame().command_buffer.setViewport(0, { viewport });
-		gContext->viewport_dirty = false;
-	}
+	EnsureMemoryState(cmdlist, vk::PipelineStageFlagBits2::eAllGraphics);
+	EnsureGraphicsPipelineState(cmdlist);
+	EnsureGraphicsDescriptors(cmdlist);
+	EnsureVertexBuffer(cmdlist);
 
-	if (gContext->scissor_dirty)
-	{
-		auto value = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+	if (draw_indexed)
+		EnsureIndexBuffer(cmdlist);
 
-		auto rect = vk::Rect2D()
-			.setOffset({ static_cast<int32_t>(value.position.x), static_cast<int32_t>(value.position.y) })
-			.setExtent({ static_cast<uint32_t>(value.size.x), static_cast<uint32_t>(value.size.y) });
-
-		if (rect.offset.x < 0)
-		{
-			rect.extent.width -= rect.offset.x;
-			rect.offset.x = 0;
-		}
-
-		if (rect.offset.y < 0)
-		{
-			rect.extent.height -= rect.offset.y;
-			rect.offset.y = 0;
-		}
-
-		if (rect.extent.width < 0)
-			rect.extent.width = 0;
-
-		if (rect.extent.height < 0)
-			rect.extent.height = 0;
-
-		gContext->getCurrentFrame().command_buffer.setScissor(0, { rect });
-		gContext->scissor_dirty = false;
-	}
-
-	if (gContext->cull_mode_dirty)
-	{
-		const static std::unordered_map<CullMode, vk::CullModeFlags> CullModeMap = {
-			{ CullMode::None, vk::CullModeFlagBits::eNone },
-			{ CullMode::Front, vk::CullModeFlagBits::eFront },
-			{ CullMode::Back, vk::CullModeFlagBits::eBack },
-		};
-
-		gContext->getCurrentFrame().command_buffer.setCullMode(CullModeMap.at(gContext->cull_mode));
-		gContext->cull_mode_dirty = false;
-	}
-
-	if (gContext->front_face_dirty)
-	{
-		const static std::unordered_map<FrontFace, vk::FrontFace> FrontFaceMap = {
-			{ FrontFace::Clockwise, vk::FrontFace::eClockwise },
-			{ FrontFace::CounterClockwise, vk::FrontFace::eCounterClockwise },
-		};
-
-		gContext->getCurrentFrame().command_buffer.setFrontFace(FrontFaceMap.at(gContext->front_face));
-		gContext->front_face_dirty = false;
-	}
-
-	if (gContext->blend_mode_dirty)
-	{
-		static const std::unordered_map<Blend, vk::BlendFactor> BlendFactorMap = {
-			{ Blend::One, vk::BlendFactor::eOne },
-			{ Blend::Zero, vk::BlendFactor::eZero },
-			{ Blend::SrcColor, vk::BlendFactor::eSrcColor },
-			{ Blend::InvSrcColor, vk::BlendFactor::eOneMinusSrcColor },
-			{ Blend::SrcAlpha, vk::BlendFactor::eSrcAlpha },
-			{ Blend::InvSrcAlpha, vk::BlendFactor::eOneMinusSrcAlpha },
-			{ Blend::DstColor, vk::BlendFactor::eDstColor },
-			{ Blend::InvDstColor, vk::BlendFactor::eOneMinusDstColor },
-			{ Blend::DstAlpha, vk::BlendFactor::eDstAlpha },
-			{ Blend::InvDstAlpha, vk::BlendFactor::eOneMinusDstAlpha }
-		};
-
-		static const std::unordered_map<BlendFunction, vk::BlendOp> BlendFuncMap = {
-			{ BlendFunction::Add, vk::BlendOp::eAdd },
-			{ BlendFunction::Subtract, vk::BlendOp::eSubtract },
-			{ BlendFunction::ReverseSubtract, vk::BlendOp::eReverseSubtract },
-			{ BlendFunction::Min, vk::BlendOp::eMin },
-			{ BlendFunction::Max, vk::BlendOp::eMax },
-		};
-
-		const auto& blend_mode = gContext->blend_mode.value_or(BlendStates::Opaque);
-
-		auto color_mask = vk::ColorComponentFlags();
-
-		if (blend_mode.color_mask.red)
-			color_mask |= vk::ColorComponentFlagBits::eR;
-
-		if (blend_mode.color_mask.green)
-			color_mask |= vk::ColorComponentFlagBits::eG;
-
-		if (blend_mode.color_mask.blue)
-			color_mask |= vk::ColorComponentFlagBits::eB;
-
-		if (blend_mode.color_mask.alpha)
-			color_mask |= vk::ColorComponentFlagBits::eA;
-
-		auto color_blend_equation = vk::ColorBlendEquationEXT()
-			.setSrcColorBlendFactor(BlendFactorMap.at(blend_mode.color_src))
-			.setDstColorBlendFactor(BlendFactorMap.at(blend_mode.color_dst))
-			.setColorBlendOp(BlendFuncMap.at(blend_mode.color_func))
-			.setSrcAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_src))
-			.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst))
-			.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_func));
-
-		gContext->getCurrentFrame().command_buffer.setColorBlendEnableEXT(0, { gContext->blend_mode.has_value() });
-		gContext->getCurrentFrame().command_buffer.setColorWriteMaskEXT(0, { color_mask });
-		gContext->getCurrentFrame().command_buffer.setColorBlendEquationEXT(0, { color_blend_equation });
-
-		gContext->blend_mode_dirty = false;
-	}
-
-	if (gContext->depth_mode_dirty)
-	{
-		if (gContext->depth_mode.has_value())
-		{
-			gContext->getCurrentFrame().command_buffer.setDepthTestEnable(true);
-			gContext->getCurrentFrame().command_buffer.setDepthWriteEnable(gContext->depth_mode.value().write_mask);
-			gContext->getCurrentFrame().command_buffer.setDepthCompareOp(CompareOpMap.at(gContext->depth_mode.value().func));
-		}
-		else
-		{
-			gContext->getCurrentFrame().command_buffer.setDepthTestEnable(false);
-		}
-
-		gContext->depth_mode_dirty = false;
-	}
-
+	EnsureTopology(cmdlist);
+	EnsureViewport(cmdlist);
+	EnsureScissor(cmdlist);
+	EnsureCullMode(cmdlist);
+	EnsureFrontFace(cmdlist);
+	EnsureBlendMode(cmdlist);
+	EnsureDepthMode(cmdlist);
 	EnsureRenderPassActivated();
+}
+
+static void EnsureRaytracingState()
+{
+	auto& cmdlist = gContext->getCurrentFrame().command_buffer;
+
+	EnsureRenderPassDeactivated();
+	EnsureMemoryState(cmdlist, vk::PipelineStageFlagBits2::eAllGraphics);
+	EnsureRaytracingPipelineState(cmdlist);
+	EnsureRaytracingDescriptors(cmdlist);
 }
 
 static void WaitForGpu()
@@ -2696,23 +2785,9 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
 	assert(gContext->render_target != nullptr);
 
-	EnsureRenderPassDeactivated();
-	EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eAllGraphics);
-
-	if (!gContext->raytracing_pipeline_states.contains(gContext->raytracing_pipeline_state))
-	{
-		auto pipeline = CreateRaytracingPipeline(gContext->raytracing_pipeline_state);
-		gContext->raytracing_pipeline_states.insert({ gContext->raytracing_pipeline_state, std::move(pipeline) });
-	}
+	EnsureRaytracingState();
 
 	const auto& pipeline = gContext->raytracing_pipeline_states.at(gContext->raytracing_pipeline_state);
-	gContext->getCurrentFrame().command_buffer.bindPipeline(vk::PipelineBindPoint::eRayTracingKHR, *pipeline);
-
-	const auto& pipeline_layout = gContext->raytracing_pipeline_state.shader->getPipelineLayout();
-	const auto& required_descriptor_bindings = gContext->raytracing_pipeline_state.shader->getRequiredDescriptorBindings();
-
-	PushDescriptors(vk::PipelineBindPoint::eRayTracingKHR, pipeline_layout, required_descriptor_bindings);
-
 	static auto binding_table = CreateRaytracingShaderBindingTable(pipeline);
 
 	gContext->getCurrentFrame().command_buffer.traceRaysKHR(binding_table.raygen_address, binding_table.miss_address,
