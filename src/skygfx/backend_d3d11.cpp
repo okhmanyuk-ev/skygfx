@@ -2,6 +2,8 @@
 
 #ifdef SKYGFX_HAS_D3D11
 
+//#define SKYGFX_D3D11_VALIDATION_ENABLED
+
 #include "shader_compiler.h"
 #include <stdexcept>
 #include <vector>
@@ -678,7 +680,11 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height, Adapte
 	sd.Windowed = TRUE;
 	sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
-	UINT flags = 0;// D3D11_CREATE_DEVICE_DEBUG | D3D11_CREATE_DEVICE_SINGLETHREADED;
+#ifdef SKYGFX_D3D11_VALIDATION_ENABLED
+	UINT flags = D3D11_CREATE_DEVICE_DEBUG;
+#else
+	UINT flags = 0;
+#endif
 
 	D3D11CreateDeviceAndSwapChain(adapter, D3D_DRIVER_TYPE_UNKNOWN, NULL, flags, NULL, 0,
 		D3D11_SDK_VERSION, &sd, gContext->swapchain.GetAddressOf(), gContext->device.GetAddressOf(),
