@@ -2,6 +2,8 @@
 
 #ifdef SKYGFX_HAS_D3D12
 
+//#define SKYGFX_D3D12_VALIDATION_ENABLED
+
 #include "shader_compiler.h"
 #include <stdexcept>
 #include <unordered_set>
@@ -540,6 +542,16 @@ Format ContextD3D12::getBackbufferFormat()
 	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
 }
 
+static void DestroyStaging(ComPtr<ID3D12DeviceChild> object)
+{
+	gContext->staging_objects.push_back(object);
+}
+
+static void ReleaseStaging()
+{
+	gContext->staging_objects.clear();
+}
+
 class BufferD3D12
 {
 public:
@@ -576,9 +588,8 @@ public:
 		auto barrier = ScopedBarrier(gContext->cmdlist.Get(), {
 			CD3DX12_RESOURCE_BARRIER::Transition(mBuffer.Get(), mState, D3D12_RESOURCE_STATE_COPY_DEST)
 		});
-
 		gContext->cmdlist->CopyBufferRegion(mBuffer.Get(), 0, staging_buffer.Get(), 0, (UINT64)size);
-		gContext->staging_objects.push_back(staging_buffer);
+		DestroyStaging(staging_buffer);
 	}
 };
 
@@ -671,6 +682,219 @@ static void DestroyMainRenderTarget()
 	gContext->main_render_target.depth_stencil_resource.Reset();
 }
 
+static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineStateD3D12& pipeline_state)
+{
+	const static std::unordered_map<CullMode, D3D12_CULL_MODE> CullMap = {
+		{ CullMode::None, D3D12_CULL_MODE_NONE },
+		{ CullMode::Front, D3D12_CULL_MODE_FRONT },
+		{ CullMode::Back, D3D12_CULL_MODE_BACK }
+	};
+
+	const static std::unordered_map<ComparisonFunc, D3D12_COMPARISON_FUNC> ComparisonFuncMap = {
+		{ ComparisonFunc::Always, D3D12_COMPARISON_FUNC_ALWAYS },
+		{ ComparisonFunc::Never, D3D12_COMPARISON_FUNC_NEVER },
+		{ ComparisonFunc::Less, D3D12_COMPARISON_FUNC_LESS },
+		{ ComparisonFunc::Equal, D3D12_COMPARISON_FUNC_EQUAL },
+		{ ComparisonFunc::NotEqual, D3D12_COMPARISON_FUNC_NOT_EQUAL },
+		{ ComparisonFunc::LessEqual, D3D12_COMPARISON_FUNC_LESS_EQUAL },
+		{ ComparisonFunc::Greater, D3D12_COMPARISON_FUNC_GREATER },
+		{ ComparisonFunc::GreaterEqual, D3D12_COMPARISON_FUNC_GREATER_EQUAL }
+	};
+
+	const static std::unordered_map<Blend, D3D12_BLEND> BlendMap = {
+		{ Blend::One, D3D12_BLEND_ONE },
+		{ Blend::Zero, D3D12_BLEND_ZERO },
+		{ Blend::SrcColor, D3D12_BLEND_SRC_COLOR },
+		{ Blend::InvSrcColor, D3D12_BLEND_INV_SRC_COLOR },
+		{ Blend::SrcAlpha, D3D12_BLEND_SRC_ALPHA },
+		{ Blend::InvSrcAlpha, D3D12_BLEND_INV_SRC_ALPHA },
+		{ Blend::DstColor, D3D12_BLEND_DEST_COLOR },
+		{ Blend::InvDstColor, D3D12_BLEND_INV_DEST_COLOR },
+		{ Blend::DstAlpha, D3D12_BLEND_DEST_ALPHA },
+		{ Blend::InvDstAlpha, D3D12_BLEND_INV_DEST_ALPHA }
+	};
+
+	const static std::unordered_map<BlendFunction, D3D12_BLEND_OP> BlendOpMap = {
+		{ BlendFunction::Add, D3D12_BLEND_OP_ADD },
+		{ BlendFunction::Subtract, D3D12_BLEND_OP_SUBTRACT },
+		{ BlendFunction::ReverseSubtract, D3D12_BLEND_OP_REV_SUBTRACT },
+		{ BlendFunction::Min, D3D12_BLEND_OP_MIN },
+		{ BlendFunction::Max, D3D12_BLEND_OP_MAX },
+	};
+
+	auto depth_mode = pipeline_state.depth_mode.value_or(DepthMode());
+	const auto& blend_mode = pipeline_state.blend_mode;
+
+	auto depth_stencil_state = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	depth_stencil_state.DepthEnable = pipeline_state.depth_mode.has_value();
+	depth_stencil_state.DepthWriteMask = depth_mode.write_mask ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+	depth_stencil_state.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
+	depth_stencil_state.StencilEnable = false;
+
+	auto blend_state = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	blend_state.AlphaToCoverageEnable = false;
+
+	for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
+	{
+		auto& blend = blend_state.RenderTarget[i];
+
+		blend.BlendEnable = blend_mode.has_value();
+
+		if (!blend.BlendEnable)
+			continue;
+
+		const auto& blend_mode_nn = blend_mode.value();
+
+		if (blend_mode_nn.color_mask.red)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
+
+		if (blend_mode_nn.color_mask.green)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_GREEN;
+
+		if (blend_mode_nn.color_mask.blue)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_BLUE;
+
+		if (blend_mode_nn.color_mask.alpha)
+			blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
+
+		blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src);
+		blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst);
+		blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_func);
+
+		blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src);
+		blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst);
+		blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_func);
+	}
+
+	auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	rasterizer_state.CullMode = CullMap.at(pipeline_state.rasterizer_state.cull_mode);
+	rasterizer_state.FrontCounterClockwise = pipeline_state.rasterizer_state.front_face == FrontFace::CounterClockwise;
+
+	const static std::unordered_map<TopologyKind, D3D12_PRIMITIVE_TOPOLOGY_TYPE> TopologyTypeMap = {
+		{ TopologyKind::Points, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT },
+		{ TopologyKind::Lines, D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE },
+		{ TopologyKind::Triangles, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE }
+	};
+
+	auto topology_type = TopologyTypeMap.at(pipeline_state.topology_kind);
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
+	pso_desc.VS = CD3DX12_SHADER_BYTECODE(pipeline_state.shader->getVertexShaderBlob().Get());
+	pso_desc.PS = CD3DX12_SHADER_BYTECODE(pipeline_state.shader->getPixelShaderBlob().Get());
+	pso_desc.InputLayout = {
+		pipeline_state.shader->getInput().data(),
+		(UINT)pipeline_state.shader->getInput().size()
+	};
+	pso_desc.NodeMask = 1;
+	pso_desc.PrimitiveTopologyType = topology_type;
+	pso_desc.pRootSignature = pipeline_state.shader->getRootSignature().Get();
+	pso_desc.SampleMask = UINT_MAX;
+	pso_desc.NumRenderTargets = 1;
+	pso_desc.RTVFormats[0] = pipeline_state.color_attachment_format;
+	pso_desc.DSVFormat = pipeline_state.depth_stencil_format;
+	pso_desc.SampleDesc.Count = 1;
+	pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+	pso_desc.RasterizerState = rasterizer_state;
+	pso_desc.DepthStencilState = depth_stencil_state;
+	pso_desc.BlendState = blend_state;
+
+	ComPtr<ID3D12PipelineState> result;
+	gContext->device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&result));
+
+	return result;
+}
+
+static void EnsureViewport()
+{
+	if (!gContext->viewport_dirty)
+		return;
+
+	gContext->viewport_dirty = false;
+
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
+
+	auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+
+	D3D12_VIEWPORT vp = {};
+	vp.Width = viewport.size.x;
+	vp.Height = viewport.size.y;
+	vp.MinDepth = viewport.min_depth;
+	vp.MaxDepth = viewport.max_depth;
+	vp.TopLeftX = viewport.position.x;
+	vp.TopLeftY = viewport.position.y;
+	gContext->cmdlist->RSSetViewports(1, &vp);
+}
+
+static void EnsureScissor()
+{
+	if (!gContext->scissor_dirty)
+		return;
+
+	gContext->scissor_dirty = false;
+
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
+
+	auto scissor = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+
+	D3D12_RECT rect;
+	rect.left = static_cast<LONG>(scissor.position.x);
+	rect.top = static_cast<LONG>(scissor.position.y);
+	rect.right = static_cast<LONG>(scissor.position.x + scissor.size.x);
+	rect.bottom = static_cast<LONG>(scissor.position.y + scissor.size.y);
+	gContext->cmdlist->RSSetScissorRects(1, &rect);
+}
+
+static void EnsureTopology()
+{
+	if (!gContext->topology_dirty)
+		return;
+
+		gContext->topology_dirty = false;
+	
+	const static std::unordered_map<Topology, D3D_PRIMITIVE_TOPOLOGY> TopologyMap = {
+		{ Topology::PointList, D3D_PRIMITIVE_TOPOLOGY_POINTLIST },
+		{ Topology::LineList, D3D_PRIMITIVE_TOPOLOGY_LINELIST },
+		{ Topology::LineStrip, D3D_PRIMITIVE_TOPOLOGY_LINESTRIP },
+		{ Topology::TriangleList, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST },
+		{ Topology::TriangleStrip, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP }
+	};
+
+	auto topology = TopologyMap.at(gContext->topology);
+	gContext->cmdlist->IASetPrimitiveTopology(topology);
+}
+
+static void EnsureIndexBuffer()
+{
+	if (!gContext->index_buffer_dirty)
+		return;
+
+	gContext->index_buffer_dirty = false;
+
+	D3D12_INDEX_BUFFER_VIEW buffer_view = {};
+	buffer_view.BufferLocation = gContext->index_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
+	buffer_view.SizeInBytes = (UINT)gContext->index_buffer->getSize();
+	buffer_view.Format = gContext->index_buffer->getStride() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+
+	gContext->cmdlist->IASetIndexBuffer(&buffer_view);
+}
+
+static void EnsureVertexBuffer()
+{
+	if (!gContext->vertex_buffer_dirty)
+		return;
+
+	gContext->vertex_buffer_dirty = false;
+
+	D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
+	buffer_view.BufferLocation = gContext->vertex_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
+	buffer_view.SizeInBytes = (UINT)gContext->vertex_buffer->getSize();
+	buffer_view.StrideInBytes = (UINT)gContext->vertex_buffer->getStride();
+
+	gContext->cmdlist->IASetVertexBuffers(0, 1, &buffer_view);
+}
+
 static void EnsureGraphicsState(bool draw_indexed)
 {
 	auto shader = gContext->pipeline_state.shader;
@@ -678,118 +902,8 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 	if (!gContext->pipeline_states.contains(gContext->pipeline_state))
 	{
-		const static std::unordered_map<CullMode, D3D12_CULL_MODE> CullMap = {
-			{ CullMode::None, D3D12_CULL_MODE_NONE },
-			{ CullMode::Front, D3D12_CULL_MODE_FRONT },
-			{ CullMode::Back, D3D12_CULL_MODE_BACK }
-		};
-
-		const static std::unordered_map<ComparisonFunc, D3D12_COMPARISON_FUNC> ComparisonFuncMap = {
-			{ ComparisonFunc::Always, D3D12_COMPARISON_FUNC_ALWAYS },
-			{ ComparisonFunc::Never, D3D12_COMPARISON_FUNC_NEVER },
-			{ ComparisonFunc::Less, D3D12_COMPARISON_FUNC_LESS },
-			{ ComparisonFunc::Equal, D3D12_COMPARISON_FUNC_EQUAL },
-			{ ComparisonFunc::NotEqual, D3D12_COMPARISON_FUNC_NOT_EQUAL },
-			{ ComparisonFunc::LessEqual, D3D12_COMPARISON_FUNC_LESS_EQUAL },
-			{ ComparisonFunc::Greater, D3D12_COMPARISON_FUNC_GREATER },
-			{ ComparisonFunc::GreaterEqual, D3D12_COMPARISON_FUNC_GREATER_EQUAL }
-		};
-
-		const static std::unordered_map<Blend, D3D12_BLEND> BlendMap = {
-			{ Blend::One, D3D12_BLEND_ONE },
-			{ Blend::Zero, D3D12_BLEND_ZERO },
-			{ Blend::SrcColor, D3D12_BLEND_SRC_COLOR },
-			{ Blend::InvSrcColor, D3D12_BLEND_INV_SRC_COLOR },
-			{ Blend::SrcAlpha, D3D12_BLEND_SRC_ALPHA },
-			{ Blend::InvSrcAlpha, D3D12_BLEND_INV_SRC_ALPHA },
-			{ Blend::DstColor, D3D12_BLEND_DEST_COLOR },
-			{ Blend::InvDstColor, D3D12_BLEND_INV_DEST_COLOR },
-			{ Blend::DstAlpha, D3D12_BLEND_DEST_ALPHA },
-			{ Blend::InvDstAlpha, D3D12_BLEND_INV_DEST_ALPHA }
-		};
-
-		const static std::unordered_map<BlendFunction, D3D12_BLEND_OP> BlendOpMap = {
-			{ BlendFunction::Add, D3D12_BLEND_OP_ADD },
-			{ BlendFunction::Subtract, D3D12_BLEND_OP_SUBTRACT },
-			{ BlendFunction::ReverseSubtract, D3D12_BLEND_OP_REV_SUBTRACT },
-			{ BlendFunction::Min, D3D12_BLEND_OP_MIN },
-			{ BlendFunction::Max, D3D12_BLEND_OP_MAX },
-		};
-
-		auto depth_mode = gContext->pipeline_state.depth_mode.value_or(DepthMode());
-		const auto& blend_mode = gContext->pipeline_state.blend_mode;
-
-		auto depth_stencil_state = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-		depth_stencil_state.DepthEnable = gContext->pipeline_state.depth_mode.has_value();
-		depth_stencil_state.DepthWriteMask = depth_mode.write_mask ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-		depth_stencil_state.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
-		depth_stencil_state.StencilEnable = false;
-
-		auto blend_state = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-		blend_state.AlphaToCoverageEnable = false;
-
-		for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
-		{
-			auto& blend = blend_state.RenderTarget[i];
-
-			blend.BlendEnable = blend_mode.has_value();
-			
-			if (!blend.BlendEnable)
-				continue;
-
-			const auto& blend_mode_nn = blend_mode.value();
-
-			if (blend_mode_nn.color_mask.red)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_RED;
-
-			if (blend_mode_nn.color_mask.green)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_GREEN;
-
-			if (blend_mode_nn.color_mask.blue)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_BLUE;
-
-			if (blend_mode_nn.color_mask.alpha)
-				blend.RenderTargetWriteMask |= D3D12_COLOR_WRITE_ENABLE_ALPHA;
-
-			blend.SrcBlend = BlendMap.at(blend_mode_nn.color_src);
-			blend.DestBlend = BlendMap.at(blend_mode_nn.color_dst);
-			blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_func);
-
-			blend.SrcBlendAlpha = BlendMap.at(blend_mode_nn.alpha_src);
-			blend.DestBlendAlpha = BlendMap.at(blend_mode_nn.alpha_dst);
-			blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_func);
-		}
-
-		auto rasterizer_state = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-		rasterizer_state.CullMode = CullMap.at(gContext->pipeline_state.rasterizer_state.cull_mode);
-		rasterizer_state.FrontCounterClockwise = gContext->pipeline_state.rasterizer_state.front_face == FrontFace::CounterClockwise;
-
-		const static std::unordered_map<TopologyKind, D3D12_PRIMITIVE_TOPOLOGY_TYPE> TopologyTypeMap = {
-			{ TopologyKind::Points, D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT },
-			{ TopologyKind::Lines, D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE },
-			{ TopologyKind::Triangles, D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE }
-		};
-
-		auto topology_type = TopologyTypeMap.at(gContext->pipeline_state.topology_kind);
-
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
-		pso_desc.VS = CD3DX12_SHADER_BYTECODE(shader->getVertexShaderBlob().Get());
-		pso_desc.PS = CD3DX12_SHADER_BYTECODE(shader->getPixelShaderBlob().Get());
-		pso_desc.InputLayout = { shader->getInput().data(), (UINT)shader->getInput().size() };
-		pso_desc.NodeMask = 1;
-		pso_desc.PrimitiveTopologyType = topology_type;
-		pso_desc.pRootSignature = shader->getRootSignature().Get();
-		pso_desc.SampleMask = UINT_MAX;
-		pso_desc.NumRenderTargets = 1;
-		pso_desc.RTVFormats[0] = gContext->pipeline_state.color_attachment_format;
-		pso_desc.DSVFormat = gContext->pipeline_state.depth_stencil_format;
-		pso_desc.SampleDesc.Count = 1;
-		pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-		pso_desc.RasterizerState = rasterizer_state;
-		pso_desc.DepthStencilState = depth_stencil_state;
-		pso_desc.BlendState = blend_state;
-
-		gContext->device->CreateGraphicsPipelineState(&pso_desc, IID_PPV_ARGS(&gContext->pipeline_states[gContext->pipeline_state]));
+		auto pipeline_state = CreateGraphicsPipelineState(gContext->pipeline_state);
+		gContext->pipeline_states[gContext->pipeline_state] = pipeline_state;
 	}
 
 	auto rtv_cpu_descriptor = gContext->render_target ?
@@ -837,81 +951,14 @@ static void EnsureGraphicsState(bool draw_indexed)
 		}
 	}
 
-	if (gContext->viewport_dirty || gContext->scissor_dirty)
-	{
-		auto width = static_cast<float>(gContext->getBackbufferWidth());
-		auto height = static_cast<float>(gContext->getBackbufferHeight());
+	EnsureViewport();
+	EnsureScissor();
+	EnsureTopology();
 
-		if (gContext->viewport_dirty)
-		{
-			auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+	if (draw_indexed)
+		EnsureIndexBuffer();
 
-			D3D12_VIEWPORT vp = {};
-			vp.Width = viewport.size.x;
-			vp.Height = viewport.size.y;
-			vp.MinDepth = viewport.min_depth;
-			vp.MaxDepth = viewport.max_depth;
-			vp.TopLeftX = viewport.position.x;
-			vp.TopLeftY = viewport.position.y;
-			gContext->cmdlist->RSSetViewports(1, &vp);
-
-			gContext->viewport_dirty = false;
-		}
-
-		if (gContext->scissor_dirty)
-		{
-			auto scissor = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
-
-			D3D12_RECT rect;
-			rect.left = static_cast<LONG>(scissor.position.x);
-			rect.top = static_cast<LONG>(scissor.position.y);
-			rect.right = static_cast<LONG>(scissor.position.x + scissor.size.x);
-			rect.bottom = static_cast<LONG>(scissor.position.y + scissor.size.y);
-			gContext->cmdlist->RSSetScissorRects(1, &rect);
-
-			gContext->scissor_dirty = false;
-		}
-	}
-
-	if (gContext->topology_dirty)
-	{
-		const static std::unordered_map<Topology, D3D_PRIMITIVE_TOPOLOGY> TopologyMap = {
-			{ Topology::PointList, D3D_PRIMITIVE_TOPOLOGY_POINTLIST },
-			{ Topology::LineList, D3D_PRIMITIVE_TOPOLOGY_LINELIST },
-			{ Topology::LineStrip, D3D_PRIMITIVE_TOPOLOGY_LINESTRIP },
-			{ Topology::TriangleList, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST },
-			{ Topology::TriangleStrip, D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP }
-		};
-
-		auto topology = TopologyMap.at(gContext->topology);
-		gContext->cmdlist->IASetPrimitiveTopology(topology);
-
-		gContext->topology_dirty = false;
-	}
-
-	if (gContext->index_buffer_dirty && draw_indexed)
-	{
-		D3D12_INDEX_BUFFER_VIEW buffer_view = {};
-		buffer_view.BufferLocation = gContext->index_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
-		buffer_view.SizeInBytes = (UINT)gContext->index_buffer->getSize();
-		buffer_view.Format = gContext->index_buffer->getStride() == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
-
-		gContext->cmdlist->IASetIndexBuffer(&buffer_view);
-
-		gContext->index_buffer_dirty = false;
-	}
-
-	if (gContext->vertex_buffer_dirty)
-	{
-		D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
-		buffer_view.BufferLocation = gContext->vertex_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
-		buffer_view.SizeInBytes = (UINT)gContext->vertex_buffer->getSize();
-		buffer_view.StrideInBytes = (UINT)gContext->vertex_buffer->getStride();
-
-		gContext->cmdlist->IASetVertexBuffers(0, 1, &buffer_view);
-
-		gContext->vertex_buffer_dirty = false;
-	}
+	EnsureVertexBuffer();
 }
 
 static void Begin()
@@ -940,12 +987,14 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 {
 	gContext = new ContextD3D12();
 
+#ifdef SKYGFX_D3D12_VALIDATION_ENABLED
 	ComPtr<ID3D12Debug5> debug;
 	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
 	debug->EnableDebugLayer();
 	debug->SetEnableAutoName(true);
 	debug->SetEnableGPUBasedValidation(true);
 	debug->SetEnableSynchronizedCommandQueueValidation(true);
+#endif
 
 	ComPtr<IDXGIFactory6> dxgi_factory;
 	CreateDXGIFactory1(IID_PPV_ARGS(dxgi_factory.GetAddressOf()));
@@ -956,6 +1005,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 
 	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gContext->device.GetAddressOf()));
 
+#ifdef SKYGFX_D3D12_VALIDATION_ENABLED
 	ComPtr<ID3D12InfoQueue> info_queue;
 	gContext->device.As(&info_queue);
 	info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
@@ -972,6 +1022,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 	filter.DenyList.NumIDs = (UINT)filtered_messages.size();
 	filter.DenyList.pIDList = filtered_messages.data();
 	info_queue->AddStorageFilterEntries(&filter);
+#endif
 
 	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
 	rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -1363,7 +1414,7 @@ void BackendD3D12::present()
 	gContext->frame_index = gContext->swapchain->GetCurrentBackBufferIndex();
 	WaitForGpu();
 	gContext->execute_after_present.flush();
-	gContext->staging_objects.clear();
+	ReleaseStaging();
 	Begin();
 }
 
