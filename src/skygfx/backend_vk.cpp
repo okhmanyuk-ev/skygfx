@@ -268,6 +268,11 @@ static void DestroyStaging(VulkanObject&& object)
 	gContext->getCurrentFrame().staging_objects.push_back(std::move(object));
 }
 
+static void ReleaseStaging()
+{
+	gContext->getCurrentFrame().staging_objects.clear();
+}
+
 static void BeginRenderPass();
 static void EndRenderPass();
 static void EnsureRenderPassActivated();
@@ -2005,7 +2010,7 @@ static void WaitForGpu()
 {
 	const auto& fence = gContext->getCurrentFrame().fence;
 	auto wait_result = gContext->device.waitForFences({ *fence }, true, UINT64_MAX);
-	gContext->getCurrentFrame().staging_objects.clear();
+	ReleaseStaging();
 }
 
 static void CreateSwapchain(uint32_t width, uint32_t height)
