@@ -671,7 +671,7 @@ static void DestroyMainRenderTarget()
 	gContext->main_render_target.depth_stencil_resource.Reset();
 }
 
-static void PrepareForDrawing(bool indexed)
+static void EnsureGraphicsState(bool draw_indexed)
 {
 	auto shader = gContext->pipeline_state.shader;
 	assert(shader);
@@ -889,7 +889,7 @@ static void PrepareForDrawing(bool indexed)
 		gContext->topology_dirty = false;
 	}
 
-	if (indexed && gContext->index_buffer_dirty)
+	if (gContext->index_buffer_dirty && draw_indexed)
 	{
 		D3D12_INDEX_BUFFER_VIEW buffer_view = {};
 		buffer_view.BufferLocation = gContext->index_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
@@ -1256,13 +1256,13 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 
 void BackendD3D12::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
-	PrepareForDrawing(false);
+	EnsureGraphicsState(false);
 	gContext->cmdlist->DrawInstanced((UINT)vertex_count, (UINT)instance_count, (UINT)vertex_offset, 0);
 }
 
 void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
-	PrepareForDrawing(true);
+	EnsureGraphicsState(true);
 	gContext->cmdlist->DrawIndexedInstanced((UINT)index_count, (UINT)instance_count, (UINT)index_offset, 0, 0);
 }
 
