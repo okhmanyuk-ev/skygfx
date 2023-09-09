@@ -116,13 +116,17 @@ void CheckErrors()
 		{ GL_INVALID_FRAMEBUFFER_OPERATION, "GL_INVALID_FRAMEBUFFER_OPERATION" }, // Set when reading or writing to a framebuffer that is not complete.
 	};
 
-	auto error = glGetError();
+	while(true)
+	{
+		auto error = glGetError();
 
-	if (error == GL_NO_ERROR)
-		return;
+		if (error == GL_NO_ERROR)
+			break;
 
-	std::cout << "BackendGL::CheckError: " << error << "(" << 
-		(ErrorMap.contains(error) ? ErrorMap.at(error) : "UNKNOWN") << ")" << std::endl;
+		auto name = ErrorMap.contains(error) ? ErrorMap.at(error) : "UNKNOWN";
+
+		std::cout << "BackendGL::CheckError: " << name << " (" << error << ")" << std::endl;
+	}
 }
 
 static const std::unordered_map<Format, GLint> SizeMap = {
@@ -531,18 +535,17 @@ public:
 		glGetIntegerv(GL_FRAMEBUFFER_BINDING, &last_fbo);
 		glGetIntegerv(GL_RENDERBUFFER_BINDING, &last_rbo);
 
-		glGenFramebuffers(1, &mFramebuffer);
 		glGenRenderbuffers(1, &mDepthStencilRenderbuffer);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer);
 		glBindRenderbuffer(GL_RENDERBUFFER, mDepthStencilRenderbuffer);
-
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture->getGLTexture(), 0);
-
 		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, mTexture->getWidth(), mTexture->getHeight());
+
+		glGenFramebuffers(1, &mFramebuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture->getGLTexture(), 0);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mDepthStencilRenderbuffer);
 
-		assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+		auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		assert(status == GL_FRAMEBUFFER_COMPLETE);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, last_fbo);
 		glBindRenderbuffer(GL_RENDERBUFFER, last_rbo);
@@ -696,7 +699,6 @@ struct ContextGL
 
 	RenderTargetGL* render_target = nullptr;
 
-	GLenum index_type;
 	GLuint pixel_buffer;
 
 	GLenum topology;
@@ -735,6 +737,153 @@ uint32_t ContextGL::getBackbufferHeight()
 Format ContextGL::getBackbufferFormat()
 {
 	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
+}
+
+static void EnsureGraphicsState(bool draw_indexed)
+{
+	assert(gContext->shader);
+	assert(gContext->vertex_buffer);
+
+	if (gContext->shader_dirty)
+	{
+		gContext->shader->apply();
+		gContext->vertex_buffer_dirty = true;
+		gContext->shader_dirty = false;
+	}
+
+	if (gContext->index_buffer_dirty && draw_indexed)
+	{
+		gContext->index_buffer_dirty = false;
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gContext->index_buffer->getGLBuffer());
+	}
+
+	if (gContext->vertex_buffer_dirty)
+	{
+		gContext->vertex_buffer_dirty = false;
+		glBindBuffer(GL_ARRAY_BUFFER, gContext->vertex_buffer->getGLBuffer());
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+		glBindVertexBuffer(0, gContext->vertex_buffer->getGLBuffer(), 0, (GLsizei)gContext->vertex_buffer->getStride());
+#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+		gContext->shader->applyLayout();
+#endif
+	}
+
+	for (auto binding : gContext->dirty_textures)
+	{
+		auto texture = gContext->textures.at(binding);
+
+		glActiveTexture(GL_TEXTURE0 + binding);
+		glBindTexture(GL_TEXTURE_2D, texture->getGLTexture());
+	}
+
+	gContext->dirty_textures.clear();
+
+	if (gContext->sampler_state_dirty)
+	{
+		gContext->sampler_state_dirty = false;
+
+		const auto& value = gContext->sampler_state;
+
+		if (!gContext->sampler_states.contains(value))
+		{
+			const static std::unordered_map<Sampler, std::unordered_map<ContextGL::SamplerType, GLint>> SamplerMap = {
+				{ Sampler::Nearest, {
+					{ ContextGL::SamplerType::Mipmap, GL_NEAREST_MIPMAP_NEAREST },
+					{ ContextGL::SamplerType::NoMipmap, GL_NEAREST },
+				} },
+				{ Sampler::Linear, {
+					{ ContextGL::SamplerType::Mipmap, GL_LINEAR_MIPMAP_LINEAR },
+					{ ContextGL::SamplerType::NoMipmap, GL_LINEAR },
+				} },
+			};
+
+			const static std::unordered_map<TextureAddress, GLint> TextureAddressMap = {
+				{ TextureAddress::Clamp, GL_CLAMP_TO_EDGE },
+				{ TextureAddress::Wrap, GL_REPEAT },
+				{ TextureAddress::MirrorWrap, GL_MIRRORED_REPEAT }
+			};
+
+			std::unordered_map<ContextGL::SamplerType, GLuint> sampler_state_map;
+
+			for (auto sampler_type : { ContextGL::SamplerType::Mipmap, ContextGL::SamplerType::NoMipmap })
+			{
+				GLuint sampler_object;
+				glGenSamplers(1, &sampler_object);
+
+				glSamplerParameteri(sampler_object, GL_TEXTURE_MIN_FILTER, SamplerMap.at(value.sampler).at(sampler_type));
+				glSamplerParameteri(sampler_object, GL_TEXTURE_MAG_FILTER, SamplerMap.at(value.sampler).at(ContextGL::SamplerType::NoMipmap));
+				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_S, TextureAddressMap.at(value.texture_address));
+				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_T, TextureAddressMap.at(value.texture_address));
+
+				sampler_state_map.insert({ sampler_type, sampler_object });
+			}
+
+			gContext->sampler_states.insert({ value, sampler_state_map });
+		}
+
+		for (auto [binding, texture_handle] : gContext->textures)
+		{
+			bool texture_has_mips = ((TextureGL*)texture_handle)->getMipCount() > 1;
+			auto sampler_type = texture_has_mips ? ContextGL::SamplerType::Mipmap : ContextGL::SamplerType::NoMipmap;
+			auto sampler = gContext->sampler_states.at(value).at(sampler_type);
+			glBindSampler(binding, sampler);
+		}
+	}
+
+	if (gContext->front_face_dirty)
+	{
+		gContext->front_face_dirty = false;
+
+		static const std::unordered_map<FrontFace, GLenum> FrontFaceMap = {
+			{ FrontFace::Clockwise, GL_CW },
+			{ FrontFace::CounterClockwise, GL_CCW }
+		};
+
+		glFrontFace(FrontFaceMap.at(gContext->front_face));
+	}
+
+	if (gContext->viewport_dirty)
+	{
+		gContext->viewport_dirty = false;
+
+		auto width = static_cast<float>(gContext->getBackbufferWidth());
+		auto height = static_cast<float>(gContext->getBackbufferHeight());
+
+		auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+
+		glViewport(
+			(GLint)viewport.position.x,
+			(GLint)viewport.position.y,
+			(GLint)viewport.size.x,
+			(GLint)viewport.size.y);
+
+#if defined(SKYGFX_PLATFORM_WINDOWS)
+		glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
+#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
+#endif
+	}
+
+	if (gContext->scissor_dirty)
+	{
+		gContext->scissor_dirty = false;
+
+		if (gContext->scissor.has_value())
+		{
+			auto value = gContext->scissor.value();
+
+			glEnable(GL_SCISSOR_TEST);
+			glScissor(
+				(GLint)glm::round(value.position.x),
+				(GLint)glm::round(gContext->height - value.position.y - value.size.y), // TODO: need different calculations when render target
+				(GLint)glm::round(value.size.x),
+				(GLint)glm::round(value.size.y));
+		}
+		else
+		{
+			glDisable(GL_SCISSOR_TEST);
+		}
+	}
 }
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adapter)
@@ -917,6 +1066,14 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	gEglContext = eglCreateContext(gEglDisplay, gEglConfig, NULL, context_attribs);
 	eglMakeCurrent(gEglDisplay, gEglSurface, gEglSurface, gEglContext);
 #endif
+    GLint num_extensions;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
+
+    for (GLint i = 0; i < num_extensions; i++)
+    {
+        auto extension = glGetStringi(GL_EXTENSIONS, i);
+	//	std::cout << extension << std::endl;
+    }
 
 	gContext = new ContextGL();
 
@@ -1241,7 +1398,7 @@ void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional
 
 void BackendGL::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
-	prepareForDrawing();
+	EnsureGraphicsState(false);
 	auto mode = gContext->topology;
 	auto first = (GLint)vertex_offset;
 	auto count = (GLsizei)vertex_count;
@@ -1251,15 +1408,14 @@ void BackendGL::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t ins
 
 void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
-	assert(gContext->index_buffer);
-	prepareForDrawing();
-	uint32_t index_size = gContext->index_type == GL_UNSIGNED_INT ? 4 : 2;
+	EnsureGraphicsState(true);
+	auto index_size = gContext->index_buffer->getStride();
+	auto index_type = index_size == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 	auto mode = gContext->topology;
 	auto count = (GLsizei)index_count;
-	auto type = gContext->index_type;
 	auto indices = (void*)(size_t)(index_offset * index_size);
 	auto primcount = (GLsizei)instance_count;
-	glDrawElementsInstanced(mode, count, type, indices, primcount);
+	glDrawElementsInstanced(mode, count, index_type, indices, primcount);
 }
 
 void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
@@ -1440,154 +1596,6 @@ void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, void* memo
 {
 	auto buffer = (UniformBufferGL*)handle;
 	buffer->write(memory, size);
-}
-
-void BackendGL::prepareForDrawing()
-{
-	assert(gContext->shader);
-	assert(gContext->vertex_buffer);
-
-	if (gContext->shader_dirty)
-	{
-		gContext->shader->apply();
-		gContext->vertex_buffer_dirty = true;
-		gContext->shader_dirty = false;
-	}
-
-	if (gContext->index_buffer_dirty)
-	{
-		gContext->index_buffer_dirty = false;
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gContext->index_buffer->getGLBuffer());
-		gContext->index_type = gContext->index_buffer->getStride() == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
-	}
-
-	if (gContext->vertex_buffer_dirty)
-	{
-		gContext->vertex_buffer_dirty = false;
-		glBindBuffer(GL_ARRAY_BUFFER, gContext->vertex_buffer->getGLBuffer());
-#if defined(SKYGFX_PLATFORM_WINDOWS)
-		glBindVertexBuffer(0, gContext->vertex_buffer->getGLBuffer(), 0, (GLsizei)gContext->vertex_buffer->getStride());
-#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-		gContext->shader->applyLayout();
-#endif
-	}
-
-	for (auto binding : gContext->dirty_textures)
-	{
-		auto texture = gContext->textures.at(binding);
-		
-		glActiveTexture(GL_TEXTURE0 + binding);
-		glBindTexture(GL_TEXTURE_2D, texture->getGLTexture());
-	}
-
-	gContext->dirty_textures.clear();
-
-	if (gContext->sampler_state_dirty)
-	{
-		gContext->sampler_state_dirty = false;
-
-		const auto& value = gContext->sampler_state;
-
-		if (!gContext->sampler_states.contains(value))
-		{
-			const static std::unordered_map<Sampler, std::unordered_map<ContextGL::SamplerType, GLint>> SamplerMap = {
-				{ Sampler::Nearest, {
-					{ ContextGL::SamplerType::Mipmap, GL_NEAREST_MIPMAP_NEAREST },
-					{ ContextGL::SamplerType::NoMipmap, GL_NEAREST },
-				} },
-				{ Sampler::Linear, {
-					{ ContextGL::SamplerType::Mipmap, GL_LINEAR_MIPMAP_LINEAR },
-					{ ContextGL::SamplerType::NoMipmap, GL_LINEAR },
-				} },
-			};
-
-			const static std::unordered_map<TextureAddress, GLint> TextureAddressMap = {
-				{ TextureAddress::Clamp, GL_CLAMP_TO_EDGE },
-				{ TextureAddress::Wrap, GL_REPEAT },
-				{ TextureAddress::MirrorWrap, GL_MIRRORED_REPEAT }
-			};
-
-			std::unordered_map<ContextGL::SamplerType, GLuint> sampler_state_map;
-
-			for (auto sampler_type : { ContextGL::SamplerType::Mipmap, ContextGL::SamplerType::NoMipmap })
-			{
-				GLuint sampler_object;
-				glGenSamplers(1, &sampler_object);
-
-				glSamplerParameteri(sampler_object, GL_TEXTURE_MIN_FILTER, SamplerMap.at(value.sampler).at(sampler_type));
-				glSamplerParameteri(sampler_object, GL_TEXTURE_MAG_FILTER, SamplerMap.at(value.sampler).at(ContextGL::SamplerType::NoMipmap));
-				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_S, TextureAddressMap.at(value.texture_address));
-				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_T, TextureAddressMap.at(value.texture_address));
-
-				sampler_state_map.insert({ sampler_type, sampler_object });
-			}
-
-			gContext->sampler_states.insert({ value, sampler_state_map });
-		}
-
-		for (auto [binding, texture_handle] : gContext->textures)
-		{
-			bool texture_has_mips = ((TextureGL*)texture_handle)->getMipCount() > 1;
-			auto sampler_type = texture_has_mips ? ContextGL::SamplerType::Mipmap : ContextGL::SamplerType::NoMipmap;
-			auto sampler = gContext->sampler_states.at(value).at(sampler_type);
-			glBindSampler(binding, sampler);
-		}
-	}
-
-	if (gContext->front_face_dirty)
-	{
-		gContext->front_face_dirty = false;
-
-		static const std::unordered_map<FrontFace, GLenum> FrontFaceMap = {
-			{ FrontFace::Clockwise, GL_CW },
-			{ FrontFace::CounterClockwise, GL_CCW }
-		};
-
-		glFrontFace(FrontFaceMap.at(gContext->front_face));
-	}
-
-	if (gContext->viewport_dirty)
-	{
-		gContext->viewport_dirty = false;
-
-		auto width = static_cast<float>(gContext->getBackbufferWidth());
-		auto height = static_cast<float>(gContext->getBackbufferHeight());
-
-		auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
-		
-		glViewport(
-			(GLint)viewport.position.x,
-			(GLint)viewport.position.y,
-			(GLint)viewport.size.x,
-			(GLint)viewport.size.y);
-
-#if defined(SKYGFX_PLATFORM_WINDOWS)
-		glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
-#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
-#endif
-	}
-	
-	if (gContext->scissor_dirty)
-	{
-		gContext->scissor_dirty = false;
-		
-		if (gContext->scissor.has_value())
-		{
-			auto value = gContext->scissor.value();
-			
-			glEnable(GL_SCISSOR_TEST);
-			glScissor(
-				(GLint)glm::round(value.position.x),
-				(GLint)glm::round(gContext->height - value.position.y - value.size.y), // TODO: need different calculations when render target
-				(GLint)glm::round(value.size.x),
-				(GLint)glm::round(value.size.y));
-		}
-		else
-		{
-			glDisable(GL_SCISSOR_TEST);
-		}
-	}
 }
 
 #endif
