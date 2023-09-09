@@ -88,9 +88,8 @@ struct ContextMTL
 	bool cull_mode_dirty = true;
 	bool viewport_dirty = true;
 	bool scissor_dirty = true;
-	bool sampler_state_dirty = true;
 	bool depth_stencil_state_dirty = true;
-	bool render_target_dirty = true;
+	bool vertex_buffer_dirty = true;
 
 	PipelineStateMetal pipeline_state;
 	CullMode cull_mode = CullMode::None;
@@ -107,7 +106,8 @@ struct ContextMTL
 	std::unordered_map<DepthStencilStateMetal, id<MTLDepthStencilState>> depth_stencil_states;
 	std::unordered_map<PipelineStateMetal, id<MTLRenderPipelineState>> pipeline_states;
 
-	std::vector<id<MTLBuffer>> staging_objects;
+	uint32_t getBackbufferWidth();
+	uint32_t getBackbufferHeight();
 };
 
 static ContextMTL* gContext = nullptr;
@@ -117,6 +117,10 @@ static void BeginRenderPass(const std::optional<glm::vec4>& color = std::nullopt
 static void EndRenderPass();
 static void BeginBlitPass();
 static void EndBlitPass();
+static void EnsureBlitPassDeactivated();
+static void EnsureRenderPassDeactivated();
+static void EnsureRenderPassActivated();
+static void EnsureBlitPassActivated();
 static void Begin();
 static void End();
 
@@ -251,6 +255,7 @@ public:
 		desc.storageMode = MTLStorageModeShared;
 #endif
 		mTexture = [gContext->device newTextureWithDescriptor:desc];
+
 		[desc release];
 	}
 
@@ -326,20 +331,6 @@ static id<MTLBuffer> CreateBuffer(size_t size)
 	return [gContext->device newBufferWithLength:size options:MTLResourceStorageModeShared];
 }
 
-static void DestroyStaging(id<MTLBuffer> buffer)
-{
-	gContext->staging_objects.push_back(buffer);
-}
-
-static void ReleaseStagingObjects()
-{
-	for (auto buffer : gContext->staging_objects)
-	{
-		[buffer release];
-	}
-	gContext->staging_objects.clear();
-}
-
 class BufferMetal
 {
 public:
@@ -367,8 +358,7 @@ public:
 		auto staging_buffer = CreateBuffer(size);
 		memcpy(staging_buffer.contents, memory, size);
 
-		EndRenderPass();
-		BeginBlitPass();
+		EnsureBlitPassActivated();
 
 		[gContext->blit_command_encoder
 			copyFromBuffer:staging_buffer
@@ -377,10 +367,7 @@ public:
 			destinationOffset:0
 			size:size];
 
-		EndBlitPass();
-		BeginRenderPass();
-
-		DestroyStaging(staging_buffer);
+		[staging_buffer release];
 	}
 };
 
@@ -404,6 +391,8 @@ static NSAutoreleasePool* gFrameAutoreleasePool = nullptr;
 static void BeginRenderPass(const std::optional<glm::vec4>& color,
 	const std::optional<float>& depth, const std::optional<uint8_t>& stencil)
 {
+	EnsureBlitPassDeactivated();
+
 	assert(gContext->render_command_encoder == nullptr);
 
 	auto color_texture = gContext->render_target ?
@@ -414,51 +403,59 @@ static void BeginRenderPass(const std::optional<glm::vec4>& color,
 		gContext->render_target->getMetalDepthStencilTexture() :
 		gContext->view.depthStencilTexture;
 
-	auto descriptor = [[MTLRenderPassDescriptor alloc] init];
+	auto desc = [[MTLRenderPassDescriptor alloc] init];
 
-	descriptor.colorAttachments[0].texture = color_texture;
-	descriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+	desc.colorAttachments[0].texture = color_texture;
+	desc.colorAttachments[0].storeAction = MTLStoreActionStore;
 	
-	descriptor.depthAttachment.texture = depth_stencil_texture;
-	descriptor.depthAttachment.storeAction = MTLStoreActionStore;
+	desc.depthAttachment.texture = depth_stencil_texture;
+	desc.depthAttachment.storeAction = MTLStoreActionStore;
 	
-	descriptor.stencilAttachment.texture = depth_stencil_texture;
-	descriptor.stencilAttachment.storeAction = MTLStoreActionStore;
+	desc.stencilAttachment.texture = depth_stencil_texture;
+	desc.stencilAttachment.storeAction = MTLStoreActionStore;
 	
 	if (color.has_value())
 	{
 		auto col = color.value();
 
-		descriptor.colorAttachments[0].clearColor = MTLClearColorMake(col.r, col.g, col.b, col.a);
-		descriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+		desc.colorAttachments[0].clearColor = MTLClearColorMake(col.r, col.g, col.b, col.a);
+		desc.colorAttachments[0].loadAction = MTLLoadActionClear;
 	}
 	else
 	{
-		descriptor.colorAttachments[0].loadAction = MTLLoadActionLoad;
+		desc.colorAttachments[0].loadAction = MTLLoadActionLoad;
 	}
 
 	if (depth.has_value())
 	{
-		descriptor.depthAttachment.clearDepth = depth.value();
-		descriptor.depthAttachment.loadAction = MTLLoadActionClear;
+		desc.depthAttachment.clearDepth = depth.value();
+		desc.depthAttachment.loadAction = MTLLoadActionClear;
 	}
 	else
 	{
-		descriptor.depthAttachment.loadAction = MTLLoadActionLoad;
+		desc.depthAttachment.loadAction = MTLLoadActionLoad;
 	}
 
 	if (stencil.has_value())
 	{
-		descriptor.stencilAttachment.clearStencil = stencil.value();
-		descriptor.stencilAttachment.loadAction = MTLLoadActionClear;
+		desc.stencilAttachment.clearStencil = stencil.value();
+		desc.stencilAttachment.loadAction = MTLLoadActionClear;
 	}
 	else
 	{
-		descriptor.stencilAttachment.loadAction = MTLLoadActionLoad;
+		desc.stencilAttachment.loadAction = MTLLoadActionLoad;
 	}
 
-	gContext->render_command_encoder = [gContext->command_buffer renderCommandEncoderWithDescriptor:descriptor];
+	gContext->render_command_encoder = [gContext->command_buffer renderCommandEncoderWithDescriptor:desc];
+
+	[desc release];
+
+	gContext->cull_mode_dirty = true;
+	gContext->viewport_dirty = true;
+	gContext->scissor_dirty = true;
+	gContext->depth_stencil_state_dirty = true;
 	gContext->pipeline_state_dirty = true;
+	gContext->vertex_buffer_dirty = true;
 }
 
 static void EndRenderPass()
@@ -470,6 +467,8 @@ static void EndRenderPass()
 
 static void BeginBlitPass()
 {
+	EnsureRenderPassDeactivated();
+
 	assert(gContext->blit_command_encoder == nullptr);
 	gContext->blit_command_encoder = [gContext->command_buffer blitCommandEncoder];
 }
@@ -481,41 +480,52 @@ static void EndBlitPass()
 	gContext->blit_command_encoder = nullptr;
 }
 
+static void EnsureBlitPassDeactivated()
+{
+	if (gContext->blit_command_encoder == nullptr)
+		return;
+
+	EndBlitPass();
+}
+
+static void EnsureRenderPassDeactivated()
+{
+	if (gContext->render_command_encoder == nullptr)
+		return;
+
+	EndRenderPass();
+}
+
+static void EnsureRenderPassActivated()
+{
+	if (gContext->render_command_encoder != nullptr)
+		return;
+
+	BeginRenderPass(std::nullopt, std::nullopt, std::nullopt);
+}
+
+static void EnsureBlitPassActivated()
+{
+	if (gContext->blit_command_encoder != nullptr)
+		return;
+
+	BeginBlitPass();
+}
+
 static void Begin()
 {
 	gFrameAutoreleasePool = [[NSAutoreleasePool alloc] init];
 
 	gContext->command_buffer = gContext->command_queue.commandBuffer;
 
-	BeginRenderPass();
-
-	gContext->cull_mode_dirty = true;
-	gContext->viewport_dirty = true;
-	gContext->scissor_dirty = true;
-	gContext->sampler_state_dirty = true;
-	gContext->depth_stencil_state_dirty = true;
-	gContext->pipeline_state_dirty = true;
-
-	auto width = (uint32_t)gContext->view.drawableSize.width;
-	auto height = (uint32_t)gContext->view.drawableSize.height;
-	
-	if (gContext->width != width || gContext->height != height)
-	{
-		gContext->width = width;
-		gContext->height = height;
-		
-		if (!gContext->viewport.has_value())
-			gContext->viewport_dirty = true;
-	
-		if (!gContext->scissor.has_value())
-			gContext->scissor_dirty = true;
-	}
+	gContext->width = (uint32_t)gContext->view.drawableSize.width;
+	gContext->height = (uint32_t)gContext->view.drawableSize.height;
 }
 
 static void End()
 {
-	EndRenderPass();
-	
+	EnsureRenderPassDeactivated();
+
 	[gContext->command_buffer presentDrawable:gContext->view.currentDrawable];
 	[gContext->command_buffer commit];
 	[gContext->command_buffer waitUntilCompleted];
@@ -523,72 +533,281 @@ static void End()
 	[gFrameAutoreleasePool release];
 }
 
-static void EnsureGraphicsState()
+uint32_t ContextMTL::getBackbufferWidth()
 {
-	if (gContext->render_target_dirty)
+	return render_target == nullptr ? width :
+		(uint32_t)render_target->getTexture()->getMetalTexture().width;
+}
+
+uint32_t ContextMTL::getBackbufferHeight()
+{
+	return render_target == nullptr ? height :
+		(uint32_t)render_target->getTexture()->getMetalTexture().height;
+}
+
+static id<MTLRenderPipelineState> CreateRenderPipelineState(const PipelineStateMetal& pipeline_state)
+{
+	auto desc = [[MTLRenderPipelineDescriptor alloc] init];
+	desc.vertexFunction = pipeline_state.shader->getMetalVertFunc();
+	desc.fragmentFunction = pipeline_state.shader->getMetalFragFunc();
+	desc.vertexDescriptor = pipeline_state.shader->getMetalVertexDescriptor();
+	desc.depthAttachmentPixelFormat = pipeline_state.depth_stencil_attachment_pixel_format;
+	desc.stencilAttachmentPixelFormat = pipeline_state.depth_stencil_attachment_pixel_format;
+
+	auto attachment_0 = desc.colorAttachments[0];
+	attachment_0.pixelFormat = pipeline_state.color_attachment_pixel_format;
+
+	const static std::unordered_map<Blend, MTLBlendFactor> BlendMap = {
+		{ Blend::One, MTLBlendFactorOne },
+		{ Blend::Zero, MTLBlendFactorZero },
+		{ Blend::SrcColor, MTLBlendFactorSourceColor },
+		{ Blend::InvSrcColor, MTLBlendFactorOneMinusSourceColor },
+		{ Blend::SrcAlpha, MTLBlendFactorSourceAlpha },
+		{ Blend::InvSrcAlpha, MTLBlendFactorOneMinusSourceAlpha },
+		{ Blend::DstColor, MTLBlendFactorDestinationColor },
+		{ Blend::InvDstColor, MTLBlendFactorOneMinusDestinationColor },
+		{ Blend::DstAlpha, MTLBlendFactorDestinationAlpha },
+		{ Blend::InvDstAlpha, MTLBlendFactorOneMinusDestinationAlpha }
+	};
+
+	const static std::unordered_map<BlendFunction, MTLBlendOperation> BlendOpMap = {
+		{ BlendFunction::Add, MTLBlendOperationAdd },
+		{ BlendFunction::Subtract, MTLBlendOperationSubtract },
+		{ BlendFunction::ReverseSubtract, MTLBlendOperationReverseSubtract },
+		{ BlendFunction::Min, MTLBlendOperationMin },
+		{ BlendFunction::Max, MTLBlendOperationMax },
+	};
+
+	attachment_0.blendingEnabled = pipeline_state.blend_mode.has_value();
+
+	if (pipeline_state.blend_mode.has_value())
 	{
-		gContext->render_target_dirty = false;
+		const auto& blend_mode = pipeline_state.blend_mode.value();
 
-		EndRenderPass();
-		BeginRenderPass();
+		attachment_0.sourceRGBBlendFactor = BlendMap.at(blend_mode.color_src);
+		attachment_0.sourceAlphaBlendFactor = BlendMap.at(blend_mode.alpha_src);
+		attachment_0.destinationRGBBlendFactor = BlendMap.at(blend_mode.color_dst);
+		attachment_0.destinationAlphaBlendFactor = BlendMap.at(blend_mode.alpha_dst);
 
-		auto color_attachment_pixel_format = gContext->render_target ?
-			gContext->render_target->getTexture()->getMetalTexture().pixelFormat :
-			gContext->view.colorPixelFormat;
+		attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_func);
+		attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_func);
 
-		if (gContext->pipeline_state.color_attachment_pixel_format != color_attachment_pixel_format)
-		{
-			gContext->pipeline_state.color_attachment_pixel_format = color_attachment_pixel_format;
-			gContext->pipeline_state_dirty = true;
-		}
+		attachment_0.writeMask = MTLColorWriteMaskNone;
 
-		auto depth_stencil_attachment_pixel_format = gContext->render_target ?
-			gContext->render_target->getMetalDepthStencilTexture().pixelFormat :
-			gContext->view.depthStencilPixelFormat;
+		if (blend_mode.color_mask.red)
+			attachment_0.writeMask |= MTLColorWriteMaskRed;
 
-		if (gContext->pipeline_state.depth_stencil_attachment_pixel_format != depth_stencil_attachment_pixel_format)
-		{
-			gContext->pipeline_state.depth_stencil_attachment_pixel_format = depth_stencil_attachment_pixel_format;
-			gContext->pipeline_state_dirty = true;
-		}
+		if (blend_mode.color_mask.green)
+			attachment_0.writeMask |= MTLColorWriteMaskGreen;
+
+		if (blend_mode.color_mask.blue)
+			attachment_0.writeMask |= MTLColorWriteMaskBlue;
+
+		if (blend_mode.color_mask.alpha)
+			attachment_0.writeMask |= MTLColorWriteMaskAlpha;
 	}
 
-	if (gContext->sampler_state_dirty)
+	NSError* error = nullptr;
+
+	auto result = [gContext->device newRenderPipelineStateWithDescriptor:desc error:&error];
+
+	[desc release];
+
+	if (!result)
 	{
-		gContext->sampler_state_dirty = false;
+		auto reason = error.localizedDescription.UTF8String;
+		throw std::runtime_error(reason);
+	}
 
-		if (!gContext->sampler_states.contains(gContext->sampler_state))
-		{
-			const static std::unordered_map<Sampler, MTLSamplerMinMagFilter> SamplerMinMagFilter = {
-				{ Sampler::Linear, MTLSamplerMinMagFilterLinear  },
-				{ Sampler::Nearest, MTLSamplerMinMagFilterNearest },
-			};
+	return result;
+}
 
-			const static std::unordered_map<Sampler, MTLSamplerMipFilter> SamplerMipFilter = {
-				{ Sampler::Linear, MTLSamplerMipFilterLinear  },
-				{ Sampler::Nearest, MTLSamplerMipFilterNearest },
-			};
+static id<MTLDepthStencilState> CreateDepthStencilState(const DepthStencilStateMetal& depth_stencil_state)
+{
+	const static std::unordered_map<ComparisonFunc, MTLCompareFunction> ComparisonFuncMap = {
+		{ ComparisonFunc::Always, MTLCompareFunctionAlways },
+		{ ComparisonFunc::Never, MTLCompareFunctionNever },
+		{ ComparisonFunc::Less, MTLCompareFunctionLess },
+		{ ComparisonFunc::Equal, MTLCompareFunctionEqual },
+		{ ComparisonFunc::NotEqual, MTLCompareFunctionNotEqual },
+		{ ComparisonFunc::LessEqual, MTLCompareFunctionLessEqual },
+		{ ComparisonFunc::Greater, MTLCompareFunctionGreater },
+		{ ComparisonFunc::GreaterEqual, MTLCompareFunctionGreaterEqual }
+	};
 
-			const static std::unordered_map<TextureAddress, MTLSamplerAddressMode> TextureAddressMap = {
-				{ TextureAddress::Clamp, MTLSamplerAddressModeClampToEdge },
-				{ TextureAddress::Wrap, MTLSamplerAddressModeRepeat },
-				{ TextureAddress::MirrorWrap, MTLSamplerAddressModeMirrorRepeat }
-			};
+	const static std::unordered_map<StencilOp, MTLStencilOperation> StencilOpMap = {
+		{ StencilOp::Keep, MTLStencilOperationKeep },
+		{ StencilOp::Zero, MTLStencilOperationZero },
+		{ StencilOp::Replace, MTLStencilOperationReplace },
+		{ StencilOp::IncrementSaturation, MTLStencilOperationIncrementClamp },
+		{ StencilOp::DecrementSaturation, MTLStencilOperationDecrementClamp },
+		{ StencilOp::Invert, MTLStencilOperationInvert },
+		{ StencilOp::Increment, MTLStencilOperationIncrementWrap },
+		{ StencilOp::Decrement, MTLStencilOperationDecrementWrap },
+	};
 
-			auto desc = [[MTLSamplerDescriptor alloc] init];
-			desc.magFilter = SamplerMinMagFilter.at(gContext->sampler_state.sampler);
-			desc.minFilter = SamplerMinMagFilter.at(gContext->sampler_state.sampler);
-			desc.mipFilter = SamplerMipFilter.at(gContext->sampler_state.sampler);
-			desc.rAddressMode = TextureAddressMap.at(gContext->sampler_state.texture_address);
-			desc.sAddressMode = TextureAddressMap.at(gContext->sampler_state.texture_address);
-			desc.tAddressMode = TextureAddressMap.at(gContext->sampler_state.texture_address);
+	auto depth_mode = depth_stencil_state.depth_mode.value_or(DepthMode());
+	auto stencil_mode = depth_stencil_state.stencil_mode.value_or(StencilMode());
 
-			auto sampler_state = [gContext->device newSamplerStateWithDescriptor:desc];
+	auto desc = [[MTLDepthStencilDescriptor alloc] init];
+	desc.depthWriteEnabled = depth_stencil_state.depth_mode.has_value();
+	desc.depthCompareFunction = ComparisonFuncMap.at(depth_mode.func);
 
-			gContext->sampler_states.insert({ gContext->sampler_state, sampler_state });
+	desc.backFaceStencil.depthFailureOperation = StencilOpMap.at(stencil_mode.depth_fail_op);
+	desc.backFaceStencil.stencilFailureOperation = StencilOpMap.at(stencil_mode.fail_op);
+	desc.backFaceStencil.stencilCompareFunction = ComparisonFuncMap.at(stencil_mode.func);
+	desc.backFaceStencil.depthStencilPassOperation = StencilOpMap.at(stencil_mode.pass_op);
+	desc.backFaceStencil.readMask = stencil_mode.read_mask;
+	desc.backFaceStencil.writeMask = stencil_mode.write_mask;
 
-			[desc release];
-		}
+	desc.frontFaceStencil = desc.backFaceStencil;
+
+	auto result = [gContext->device newDepthStencilStateWithDescriptor:desc];
+
+	[desc release];
+
+	return result;
+}
+
+static id<MTLSamplerState> CreateSamplerState(const SamplerStateMetal& sampler_state)
+{
+	const static std::unordered_map<Sampler, MTLSamplerMinMagFilter> SamplerMinMagFilter = {
+		{ Sampler::Linear, MTLSamplerMinMagFilterLinear  },
+		{ Sampler::Nearest, MTLSamplerMinMagFilterNearest },
+	};
+
+	const static std::unordered_map<Sampler, MTLSamplerMipFilter> SamplerMipFilter = {
+		{ Sampler::Linear, MTLSamplerMipFilterLinear  },
+		{ Sampler::Nearest, MTLSamplerMipFilterNearest },
+	};
+
+	const static std::unordered_map<TextureAddress, MTLSamplerAddressMode> TextureAddressMap = {
+		{ TextureAddress::Clamp, MTLSamplerAddressModeClampToEdge },
+		{ TextureAddress::Wrap, MTLSamplerAddressModeRepeat },
+		{ TextureAddress::MirrorWrap, MTLSamplerAddressModeMirrorRepeat }
+	};
+
+	auto desc = [[MTLSamplerDescriptor alloc] init];
+	desc.magFilter = SamplerMinMagFilter.at(sampler_state.sampler);
+	desc.minFilter = SamplerMinMagFilter.at(sampler_state.sampler);
+	desc.mipFilter = SamplerMipFilter.at(sampler_state.sampler);
+	desc.rAddressMode = TextureAddressMap.at(sampler_state.texture_address);
+	desc.sAddressMode = TextureAddressMap.at(sampler_state.texture_address);
+	desc.tAddressMode = TextureAddressMap.at(sampler_state.texture_address);
+
+	auto result = [gContext->device newSamplerStateWithDescriptor:desc];
+
+	[desc release];
+
+	return result;
+}
+
+static void EnsureCullMode()
+{
+	if (!gContext->cull_mode_dirty)
+		return;
+
+	gContext->cull_mode_dirty = false;
+
+	static const std::unordered_map<CullMode, MTLCullMode> CullModes = {
+		{ CullMode::None, MTLCullModeNone },
+		{ CullMode::Back, MTLCullModeBack },
+		{ CullMode::Front, MTLCullModeFront }
+	};
+
+	[gContext->render_command_encoder setCullMode:CullModes.at(gContext->cull_mode)];
+	[gContext->render_command_encoder setFrontFacingWinding:MTLWindingClockwise];
+}
+
+static void EnsureViewport()
+{
+	if (!gContext->viewport_dirty)
+		return;
+
+	gContext->viewport_dirty = false;
+
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
+
+	auto _viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+
+	MTLViewport viewport;
+	viewport.originX = _viewport.position.x;
+	viewport.originY = _viewport.position.y;
+	viewport.width = _viewport.size.x;
+	viewport.height = _viewport.size.y;
+	viewport.znear = _viewport.min_depth;
+	viewport.zfar = _viewport.max_depth;
+
+	[gContext->render_command_encoder setViewport:viewport];
+}
+
+static void EnsureScissor()
+{
+	if (!gContext->scissor_dirty)
+		return;
+
+	gContext->scissor_dirty = false;
+
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
+
+	auto _scissor = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
+
+	if (_scissor.position.x < 0.0f)
+	{
+		_scissor.size.x -= _scissor.position.x;
+		_scissor.position.x = 0.0f;
+	}
+
+	if (_scissor.position.y < 0.0f)
+	{
+		_scissor.size.y -= _scissor.position.y;
+		_scissor.position.y = 0.0f;
+	}
+
+	MTLScissorRect scissor;
+	scissor.x = _scissor.position.x;
+	scissor.y = _scissor.position.y;
+	scissor.width = _scissor.size.x;
+	scissor.height = _scissor.size.y;
+
+	scissor.x = glm::min((uint32_t)scissor.x, (uint32_t)width);
+	scissor.y = glm::min((uint32_t)scissor.y, (uint32_t)height);
+
+	if (scissor.x + scissor.width > width)
+		scissor.width = width - scissor.x;
+
+	if (scissor.y + scissor.height > height)
+		scissor.height = height - scissor.y;
+
+	[gContext->render_command_encoder setScissorRect:scissor];
+}
+
+static void EnsureGraphicsPipelineState()
+{
+	if (!gContext->pipeline_state_dirty)
+		return;
+
+	gContext->pipeline_state_dirty = false;
+
+	if (!gContext->pipeline_states.contains(gContext->pipeline_state))
+	{
+		auto pso = CreateRenderPipelineState(gContext->pipeline_state);
+		gContext->pipeline_states[gContext->pipeline_state] = pso;
+	}
+
+	auto pso = gContext->pipeline_states.at(gContext->pipeline_state);
+
+	[gContext->render_command_encoder setRenderPipelineState:pso];
+}
+
+static void EnsureGraphicsDescriptors()
+{
+	if (!gContext->sampler_states.contains(gContext->sampler_state))
+	{
+		auto sampler_state = CreateSamplerState(gContext->sampler_state);
+		gContext->sampler_states.insert({ gContext->sampler_state, sampler_state });
 	}
 
 	for (auto [binding, texture] : gContext->textures)
@@ -601,247 +820,59 @@ static void EnsureGraphicsState()
 			atIndex:binding];
 	}
 
-	[gContext->render_command_encoder
-		setVertexBuffer:gContext->vertex_buffer->getMetalBuffer()
-		offset:0
-		atIndex:ContextMTL::VertexBufferStageBinding];
-
-	if (gContext->depth_stencil_state_dirty)
-	{
-		gContext->depth_stencil_state_dirty = false;
-
-		if (!gContext->depth_stencil_states.contains(gContext->depth_stencil_state))
-		{
-			const static std::unordered_map<ComparisonFunc, MTLCompareFunction> ComparisonFuncMap = {
-				{ ComparisonFunc::Always, MTLCompareFunctionAlways },
-				{ ComparisonFunc::Never, MTLCompareFunctionNever },
-				{ ComparisonFunc::Less, MTLCompareFunctionLess },
-				{ ComparisonFunc::Equal, MTLCompareFunctionEqual },
-				{ ComparisonFunc::NotEqual, MTLCompareFunctionNotEqual },
-				{ ComparisonFunc::LessEqual, MTLCompareFunctionLessEqual },
-				{ ComparisonFunc::Greater, MTLCompareFunctionGreater },
-				{ ComparisonFunc::GreaterEqual, MTLCompareFunctionGreaterEqual }
-			};
-
-			const static std::unordered_map<StencilOp, MTLStencilOperation> StencilOpMap = {
-				{ StencilOp::Keep, MTLStencilOperationKeep },
-				{ StencilOp::Zero, MTLStencilOperationZero },
-				{ StencilOp::Replace, MTLStencilOperationReplace },
-				{ StencilOp::IncrementSaturation, MTLStencilOperationIncrementClamp },
-				{ StencilOp::DecrementSaturation, MTLStencilOperationDecrementClamp },
-				{ StencilOp::Invert, MTLStencilOperationInvert },
-				{ StencilOp::Increment, MTLStencilOperationIncrementWrap },
-				{ StencilOp::Decrement, MTLStencilOperationDecrementWrap },
-			};
-
-			auto depth_mode = gContext->depth_stencil_state.depth_mode.value_or(DepthMode());
-			auto stencil_mode = gContext->depth_stencil_state.stencil_mode.value_or(StencilMode());
-
-			auto desc = [[MTLDepthStencilDescriptor alloc] init];
-			desc.depthWriteEnabled = gContext->depth_stencil_state.depth_mode.has_value();
-			desc.depthCompareFunction = ComparisonFuncMap.at(depth_mode.func);
-
-			desc.backFaceStencil.depthFailureOperation = StencilOpMap.at(stencil_mode.depth_fail_op);
-			desc.backFaceStencil.stencilFailureOperation = StencilOpMap.at(stencil_mode.fail_op);
-			desc.backFaceStencil.stencilCompareFunction = ComparisonFuncMap.at(stencil_mode.func);
-			desc.backFaceStencil.depthStencilPassOperation = StencilOpMap.at(stencil_mode.pass_op);
-			desc.backFaceStencil.readMask = stencil_mode.read_mask;
-			desc.backFaceStencil.writeMask = stencil_mode.write_mask;
-
-			desc.frontFaceStencil = desc.backFaceStencil;
-
-			auto depth_stencil_state = [gContext->device newDepthStencilStateWithDescriptor:desc];
-
-			gContext->depth_stencil_states.insert({ gContext->depth_stencil_state, depth_stencil_state });
-
-			[desc release];
-		}
-
-		if (gContext->depth_stencil_state.stencil_mode.has_value())
-		{
-			auto reference = gContext->depth_stencil_state.stencil_mode.value().reference;
-			[gContext->render_command_encoder setStencilReferenceValue:reference];
-		}
-
-		[gContext->render_command_encoder
-			setDepthStencilState:gContext->depth_stencil_states.at(gContext->depth_stencil_state)];
-	}
-
-	if (gContext->pipeline_state_dirty)
-	{
-		gContext->pipeline_state_dirty = false;
-
-		if (!gContext->pipeline_states.contains(gContext->pipeline_state))
-		{
-			auto shader = gContext->pipeline_state.shader;
-
-			auto depth_stencil_pixel_format = gContext->pipeline_state.depth_stencil_attachment_pixel_format;
-
-			auto desc = [[MTLRenderPipelineDescriptor alloc] init];
-			desc.vertexFunction = shader->getMetalVertFunc();
-			desc.fragmentFunction = shader->getMetalFragFunc();
-			desc.vertexDescriptor = shader->getMetalVertexDescriptor();
-			desc.depthAttachmentPixelFormat = depth_stencil_pixel_format;
-			desc.stencilAttachmentPixelFormat = depth_stencil_pixel_format;
-
-			auto attachment_0 = desc.colorAttachments[0];
-			attachment_0.pixelFormat = gContext->pipeline_state.color_attachment_pixel_format;
-
-			const static std::unordered_map<Blend, MTLBlendFactor> BlendMap = {
-				{ Blend::One, MTLBlendFactorOne },
-				{ Blend::Zero, MTLBlendFactorZero },
-				{ Blend::SrcColor, MTLBlendFactorSourceColor },
-				{ Blend::InvSrcColor, MTLBlendFactorOneMinusSourceColor },
-				{ Blend::SrcAlpha, MTLBlendFactorSourceAlpha },
-				{ Blend::InvSrcAlpha, MTLBlendFactorOneMinusSourceAlpha },
-				{ Blend::DstColor, MTLBlendFactorDestinationColor },
-				{ Blend::InvDstColor, MTLBlendFactorOneMinusDestinationColor },
-				{ Blend::DstAlpha, MTLBlendFactorDestinationAlpha },
-				{ Blend::InvDstAlpha, MTLBlendFactorOneMinusDestinationAlpha }
-			};
-
-			const static std::unordered_map<BlendFunction, MTLBlendOperation> BlendOpMap = {
-				{ BlendFunction::Add, MTLBlendOperationAdd },
-				{ BlendFunction::Subtract, MTLBlendOperationSubtract },
-				{ BlendFunction::ReverseSubtract, MTLBlendOperationReverseSubtract },
-				{ BlendFunction::Min, MTLBlendOperationMin },
-				{ BlendFunction::Max, MTLBlendOperationMax },
-			};
-
-			attachment_0.blendingEnabled = gContext->pipeline_state.blend_mode.has_value();
-
-			if (gContext->pipeline_state.blend_mode.has_value())
-			{
-				const auto& blend_mode = gContext->pipeline_state.blend_mode.value();
-
-				attachment_0.sourceRGBBlendFactor = BlendMap.at(blend_mode.color_src);
-				attachment_0.sourceAlphaBlendFactor = BlendMap.at(blend_mode.alpha_src);
-				attachment_0.destinationRGBBlendFactor = BlendMap.at(blend_mode.color_dst);
-				attachment_0.destinationAlphaBlendFactor = BlendMap.at(blend_mode.alpha_dst);
-
-				attachment_0.rgbBlendOperation = BlendOpMap.at(blend_mode.color_func);
-				attachment_0.alphaBlendOperation = BlendOpMap.at(blend_mode.alpha_func);
-
-				attachment_0.writeMask = MTLColorWriteMaskNone;
-
-				if (blend_mode.color_mask.red)
-					attachment_0.writeMask |= MTLColorWriteMaskRed;
-
-				if (blend_mode.color_mask.green)
-					attachment_0.writeMask |= MTLColorWriteMaskGreen;
-
-				if (blend_mode.color_mask.blue)
-					attachment_0.writeMask |= MTLColorWriteMaskBlue;
-
-				if (blend_mode.color_mask.alpha)
-					attachment_0.writeMask |= MTLColorWriteMaskAlpha;
-			}
-
-			NSError* error = nullptr;
-
-			auto pso = [gContext->device newRenderPipelineStateWithDescriptor:desc error:&error];
-
-			if (!pso)
-			{
-				auto reason = error.localizedDescription.UTF8String;
-				throw std::runtime_error(reason);
-			}
-
-			gContext->pipeline_states[gContext->pipeline_state] = pso;
-		}
-
-		auto pso = gContext->pipeline_states.at(gContext->pipeline_state);
-
-		[gContext->render_command_encoder setRenderPipelineState:pso];
-	}
-
 	for (auto [binding, buffer] : gContext->uniform_buffers)
 	{
 		[gContext->render_command_encoder setVertexBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
 		[gContext->render_command_encoder setFragmentBuffer:buffer->getMetalBuffer() offset:0 atIndex:binding];
 	}
+}
 
-	if (gContext->cull_mode_dirty)
+static void EnsureDepthStencilState()
+{
+	if (!gContext->depth_stencil_state_dirty)
+		return;
+
+	gContext->depth_stencil_state_dirty = false;
+
+	if (!gContext->depth_stencil_states.contains(gContext->depth_stencil_state))
 	{
-		gContext->cull_mode_dirty = false;
-
-		static const std::unordered_map<CullMode, MTLCullMode> CullModes = {
-			{ CullMode::None, MTLCullModeNone },
-			{ CullMode::Back, MTLCullModeBack },
-			{ CullMode::Front, MTLCullModeFront }
-		};
-		[gContext->render_command_encoder setCullMode:CullModes.at(gContext->cull_mode)];
-		[gContext->render_command_encoder setFrontFacingWinding:MTLWindingClockwise];
+		auto depth_stencil_state = CreateDepthStencilState(gContext->depth_stencil_state);
+		gContext->depth_stencil_states.insert({ gContext->depth_stencil_state, depth_stencil_state });
 	}
 
-	float width;
-	float height;
-
-	if (gContext->render_target == nullptr)
+	if (gContext->depth_stencil_state.stencil_mode.has_value())
 	{
-		width = static_cast<float>(gContext->width);
-		height = static_cast<float>(gContext->height);
-	}
-	else
-	{
-		auto texture = gContext->render_target->getTexture()->getMetalTexture();
-
-		width = static_cast<float>(texture.width);
-		height = static_cast<float>(texture.height);
+		auto reference = gContext->depth_stencil_state.stencil_mode.value().reference;
+		[gContext->render_command_encoder setStencilReferenceValue:reference];
 	}
 
-	if (gContext->viewport_dirty)
-	{
-		gContext->viewport_dirty = false;
+	[gContext->render_command_encoder
+		setDepthStencilState:gContext->depth_stencil_states.at(gContext->depth_stencil_state)];
+}
 
-		auto _viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
+static void EnsureVertexBuffer()
+{
+	if (!gContext->vertex_buffer_dirty)
+		return;
 
-		MTLViewport viewport;
-		viewport.originX = _viewport.position.x;
-		viewport.originY = _viewport.position.y;
-		viewport.width = _viewport.size.x;
-		viewport.height = _viewport.size.y;
-		viewport.znear = _viewport.min_depth;
-		viewport.zfar = _viewport.max_depth;
+	gContext->vertex_buffer_dirty = false;
 
-		[gContext->render_command_encoder setViewport:viewport];
-	}
+	[gContext->render_command_encoder
+		setVertexBuffer:gContext->vertex_buffer->getMetalBuffer()
+		offset:0
+		atIndex:ContextMTL::VertexBufferStageBinding];
+}
 
-	if (gContext->scissor_dirty)
-	{
-		gContext->scissor_dirty = false;
-
-		auto _scissor = gContext->scissor.value_or(Scissor{ { 0.0f, 0.0f }, { width, height } });
-
-		if (_scissor.position.x < 0.0f)
-		{
-			_scissor.size.x -= _scissor.position.x;
-			_scissor.position.x = 0.0f;
-		}
-
-		if (_scissor.position.y < 0.0f)
-		{
-			_scissor.size.y -= _scissor.position.y;
-			_scissor.position.y = 0.0f;
-		}
-
-		MTLScissorRect scissor;
-		scissor.x = _scissor.position.x;
-		scissor.y = _scissor.position.y;
-		scissor.width = _scissor.size.x;
-		scissor.height = _scissor.size.y;
-
-		scissor.x = glm::min((uint32_t)scissor.x, (uint32_t)width);
-		scissor.y = glm::min((uint32_t)scissor.y, (uint32_t)height);
-
-		if (scissor.x + scissor.width > width)
-			scissor.width = width - scissor.x;
-
-		if (scissor.y + scissor.height > height)
-			scissor.height = height - scissor.y;
-
-		[gContext->render_command_encoder setScissorRect:scissor];
-	}
+static void EnsureGraphicsState()
+{
+	EnsureRenderPassActivated();
+	EnsureVertexBuffer();
+	EnsureDepthStencilState();
+	EnsureGraphicsPipelineState();
+	EnsureGraphicsDescriptors();
+	EnsureCullMode();
+	EnsureViewport();
+	EnsureScissor();
 }
 
 BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
@@ -850,7 +881,7 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 
 	gContext->autorelease_pool = [[NSAutoreleasePool alloc] init];
 	gContext->device = MTLCreateSystemDefaultDevice();
-	
+
 	gContext->view = [[MTKView alloc] init];
 	gContext->view.device = gContext->device;
 	gContext->view.colorPixelFormat = MTLPixelFormatRGBA8Unorm;
@@ -908,7 +939,6 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 BackendMetal::~BackendMetal()
 {
 	End();
-	ReleaseStagingObjects();
 
 	for (auto [_, sampler_state] : gContext->sampler_states)
 	{
@@ -970,7 +1000,6 @@ void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 		return;
 	
 	gContext->textures[binding] = texture;
-	gContext->sampler_state_dirty = true;
 }
 
 void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
@@ -980,8 +1009,17 @@ void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
 	if (gContext->render_target == render_target)
 		return;
 
+	gContext->pipeline_state_dirty = true;
+	gContext->pipeline_state.color_attachment_pixel_format = render_target->getTexture()->getMetalTexture().pixelFormat;
+	gContext->pipeline_state.depth_stencil_attachment_pixel_format = render_target->getMetalDepthStencilTexture().pixelFormat;
 	gContext->render_target = render_target;
-	gContext->render_target_dirty = true;
+	EnsureRenderPassDeactivated();
+
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
+
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendMetal::setRenderTarget(std::nullopt_t value)
@@ -989,17 +1027,26 @@ void BackendMetal::setRenderTarget(std::nullopt_t value)
 	if (gContext->render_target == nullptr)
 		return;
 
+	gContext->pipeline_state_dirty = true;
+	gContext->pipeline_state.color_attachment_pixel_format = gContext->view.colorPixelFormat;
+	gContext->pipeline_state.depth_stencil_attachment_pixel_format = gContext->view.depthStencilPixelFormat;
 	gContext->render_target = nullptr;
-	gContext->render_target_dirty = true;
+	EnsureRenderPassDeactivated();
+
+	if (!gContext->viewport.has_value())
+		gContext->viewport_dirty = true;
+
+	if (!gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendMetal::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderMetal*)handle;
-	
+
 	if (gContext->pipeline_state.shader == shader)
 		return;
-	
+
 	gContext->pipeline_state.shader = shader;
 	gContext->pipeline_state_dirty = true;
 }
@@ -1007,7 +1054,12 @@ void BackendMetal::setShader(ShaderHandle* handle)
 void BackendMetal::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (BufferMetal*)handle;
+
+	if (gContext->vertex_buffer == buffer)
+		return;
+
 	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendMetal::setIndexBuffer(IndexBufferHandle* handle)
@@ -1061,20 +1113,12 @@ void BackendMetal::setCullMode(CullMode cull_mode)
 
 void BackendMetal::setSampler(Sampler value)
 {
-	if (gContext->sampler_state.sampler == value)
-		return;
-		
 	gContext->sampler_state.sampler = value;
-	gContext->sampler_state_dirty = true;
 }
 
 void BackendMetal::setTextureAddress(TextureAddress value)
 {
-	if (gContext->sampler_state.texture_address == value)
-		return;
-		
 	gContext->sampler_state.texture_address = value;
-	gContext->sampler_state_dirty = true;
 }
 
 void BackendMetal::setFrontFace(FrontFace value)
@@ -1088,13 +1132,14 @@ void BackendMetal::setDepthBias(const std::optional<DepthBias> depth_bias)
 void BackendMetal::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	EndRenderPass();
+	EnsureRenderPassDeactivated();
 	BeginRenderPass(color, depth, stencil);
 }
 
 void BackendMetal::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
 	EnsureGraphicsState();
+
 	[gContext->render_command_encoder
 		drawPrimitives:gContext->primitive_type
 		vertexStart:vertex_offset
@@ -1175,8 +1220,7 @@ void BackendMetal::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		src_h = tex_h - src_y;
 	}
 
-	EndRenderPass();
-	BeginBlitPass();
+	EnsureBlitPassActivated();
 
 	[gContext->blit_command_encoder
 		copyFromTexture:src_texture
@@ -1188,16 +1232,12 @@ void BackendMetal::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 		destinationSlice:0
 		destinationLevel:0
 		destinationOrigin:MTLOriginMake((uint32_t)dst_x, (uint32_t)dst_y, 0)];
-
-	EndBlitPass();
-	BeginRenderPass();
 }
 
 void BackendMetal::present()
 {
 	End();
 	[gContext->view draw];
-	ReleaseStagingObjects();
 	Begin();
 }
 
