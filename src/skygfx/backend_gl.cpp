@@ -174,10 +174,19 @@ static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
 };
 
 static const std::unordered_map<Format, GLenum> TextureInternalFormatMap = {
+#if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+	// webgl and gles in ios devices cannot correctly handle 32-bit floating textures
+	// yes, we force webgl to use 16-bit floating textures for all platforms because of ios
+	{ Format::Float1, GL_R16F },
+	{ Format::Float2, GL_RG16F },
+	{ Format::Float3, GL_RGB16F },
+	{ Format::Float4, GL_RGBA16F },
+#else
 	{ Format::Float1, GL_R32F },
 	{ Format::Float2, GL_RG32F },
 	{ Format::Float3, GL_RGB32F },
 	{ Format::Float4, GL_RGBA32F },
+#endif
 	{ Format::Byte1, GL_R8 },
 	{ Format::Byte2, GL_RG8 },
 	{ Format::Byte3, GL_RGB8 },
