@@ -1315,34 +1315,31 @@ static void OneTimeSubmit(std::function<void(const vk::raii::CommandBuffer&)> fu
 	gContext->queue.waitIdle();
 }
 
-static void EnsureSamplerState()
+static vk::raii::Sampler CreateSamplerState(const SamplerStateVK& sampler_state)
 {
-	if (!gContext->sampler_states.contains(gContext->sampler_state))
-	{
-		static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
-			{ Sampler::Linear, vk::Filter::eLinear },
-			{ Sampler::Nearest, vk::Filter::eNearest },
-		};
+	static const std::unordered_map<Sampler, vk::Filter> FilterMap = {
+		{ Sampler::Linear, vk::Filter::eLinear },
+		{ Sampler::Nearest, vk::Filter::eNearest },
+	};
 
-		static const std::unordered_map<TextureAddress, vk::SamplerAddressMode> AddressModeMap = {
-			{ TextureAddress::Clamp, vk::SamplerAddressMode::eClampToEdge },
-			{ TextureAddress::Wrap, vk::SamplerAddressMode::eRepeat },
-			{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
-		};
+	static const std::unordered_map<TextureAddress, vk::SamplerAddressMode> AddressModeMap = {
+		{ TextureAddress::Clamp, vk::SamplerAddressMode::eClampToEdge },
+		{ TextureAddress::Wrap, vk::SamplerAddressMode::eRepeat },
+		{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
+	};
 
-		auto sampler_create_info = vk::SamplerCreateInfo()
-			.setMagFilter(FilterMap.at(gContext->sampler_state.sampler))
-			.setMinFilter(FilterMap.at(gContext->sampler_state.sampler))
-			.setMipmapMode(vk::SamplerMipmapMode::eLinear)
-			.setAddressModeU(AddressModeMap.at(gContext->sampler_state.texture_address))
-			.setAddressModeV(AddressModeMap.at(gContext->sampler_state.texture_address))
-			.setAddressModeW(AddressModeMap.at(gContext->sampler_state.texture_address))
-			.setMinLod(-1000)
-			.setMaxLod(1000)
-			.setMaxAnisotropy(1.0f);
+	auto sampler_create_info = vk::SamplerCreateInfo()
+		.setMagFilter(FilterMap.at(sampler_state.sampler))
+		.setMinFilter(FilterMap.at(sampler_state.sampler))
+		.setMipmapMode(vk::SamplerMipmapMode::eLinear)
+		.setAddressModeU(AddressModeMap.at(sampler_state.texture_address))
+		.setAddressModeV(AddressModeMap.at(sampler_state.texture_address))
+		.setAddressModeW(AddressModeMap.at(sampler_state.texture_address))
+		.setMinLod(-1000)
+		.setMaxLod(1000)
+		.setMaxAnisotropy(1.0f);
 
-		gContext->sampler_states.insert({ gContext->sampler_state, gContext->device.createSampler(sampler_create_info) });
-	}
+	return gContext->device.createSampler(sampler_create_info);
 }
 
 static void PushDescriptorBuffer(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
@@ -1366,7 +1363,11 @@ static void PushDescriptorBuffer(vk::raii::CommandBuffer& cmdlist, vk::PipelineB
 static void PushDescriptorTexture(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
-	EnsureSamplerState();
+	if (!gContext->sampler_states.contains(gContext->sampler_state))
+	{
+		auto sampler = CreateSamplerState(gContext->sampler_state);
+		gContext->sampler_states.insert({ gContext->sampler_state, std::move(sampler) });
+	}
 
 	auto texture = gContext->textures.at(binding);
 	texture->ensureState(cmdlist, vk::ImageLayout::eGeneral);
