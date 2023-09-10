@@ -1265,6 +1265,7 @@ void utils::MeshBuilder::reset()
 	mVertexCount = 0;
 	mMode.reset();
 	mTopology.reset();
+	mVertex = skygfx::utils::Mesh::Vertex{};
 }
 
 void utils::MeshBuilder::begin(Mode mode)
