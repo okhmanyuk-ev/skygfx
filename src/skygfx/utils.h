@@ -416,7 +416,7 @@ namespace skygfx::utils
 		static Topology ConvertModeToTopology(Mode mode);
 
 	public:
-		void reset();
+		void reset(bool reset_vertex = true);
 		void begin(Mode mode);
 		void vertex(const Vertex::PositionColorTextureNormal& vertex);
 		void vertex(const Vertex::PositionColorTexture& vertex);

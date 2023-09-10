@@ -1258,14 +1258,16 @@ Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
 	return TopologyMap.at(mode);
 }
 
-void utils::MeshBuilder::reset()
+void utils::MeshBuilder::reset(bool reset_vertex)
 {
 	assert(!mBegan);
 	mIndexCount = 0;
 	mVertexCount = 0;
 	mMode.reset();
 	mTopology.reset();
-	mVertex = skygfx::utils::Mesh::Vertex{};
+
+	if (reset_vertex)
+		mVertex = skygfx::utils::Mesh::Vertex{};
 }
 
 void utils::MeshBuilder::begin(Mode mode)
