@@ -531,6 +531,11 @@ utils::commands::SetDepthMode::SetDepthMode(std::optional<DepthMode> _depth_mode
 {
 }
 
+utils::commands::SetStencilMode::SetStencilMode(std::optional<StencilMode> _stencil_mode) :
+	stencil_mode(_stencil_mode)
+{
+}
+
 utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
 	mesh(_mesh)
 {
@@ -644,6 +649,9 @@ void utils::ExecuteCommands(const Commands& cmds)
 	std::optional<DepthMode> depth_mode;
 	bool depth_mode_dirty = true;
 
+	std::optional<StencilMode> stencil_mode;
+	bool stencil_mode_dirty = true;
+
 	const Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
 
@@ -672,58 +680,38 @@ void utils::ExecuteCommands(const Commands& cmds)
 	std::function<void(const Command&)> execute_command = [&](const Command& _cmd) {
 		std::visit(cases{
 			[&](const commands::SetViewport& cmd) {
-				if (viewport == cmd.viewport)
-					return;
-
 				viewport = cmd.viewport;
 				viewport_dirty = true;
 			},
 			[&](const commands::SetScissor& cmd) {
-				if (scissor == cmd.scissor)
-					return;
-
 				scissor = cmd.scissor;
 				scissor_dirty = true;
 			},
 			[&](const commands::SetBlendMode& cmd) {
-				if (blend_mode == cmd.blend_mode)
-					return;
-
 				blend_mode = cmd.blend_mode;
 				blend_mode_dirty = true;
 			},
 			[&](const commands::SetSampler& cmd) {
-				if (sampler == cmd.sampler)
-					return;
-
 				sampler = cmd.sampler;
 				sampler_dirty = true;
 			},
 			[&](const commands::SetCullMode& cmd) {
-				if (cull_mode == cmd.cull_mode)
-					return;
-
 				cull_mode = cmd.cull_mode;
 				cull_mode_dirty = true;
 			},
 			[&](const commands::SetTextureAddress& cmd) {
-				if (texture_address == cmd.texture_address)
-					return;
-
 				texture_address = cmd.texture_address;
 				texture_address_dirty = true;
 			},
 			[&](const commands::SetDepthMode& cmd) {
-				if (depth_mode == cmd.depth_mode)
-					return;
-
 				depth_mode = cmd.depth_mode;
 				depth_mode_dirty = true;
 			},
+			[&](const commands::SetStencilMode& cmd) {
+				stencil_mode = cmd.stencil_mode;
+				stencil_mode_dirty = true;
+			},
 			[&](const commands::SetMesh& cmd) {
-				if (mesh == cmd.mesh)
-					return;
-
 				mesh = cmd.mesh;
 				mesh_dirty = true;
 			},
@@ -738,16 +726,10 @@ void utils::ExecuteCommands(const Commands& cmds)
 				uniform_dirty = true;
 			},
 			[&](const commands::SetColorTexture& cmd) {
-				if (color_texture == cmd.color_texture)
-					return;
-
 				color_texture = cmd.color_texture;
 				textures_dirty = true;
 			},
 			[&](const commands::SetNormalTexture& cmd) {
-				if (normal_texture == cmd.normal_texture)
-					return;
-				
 				normal_texture = cmd.normal_texture;
 				textures_dirty = true;
 			},
@@ -845,6 +827,12 @@ void utils::ExecuteCommands(const Commands& cmds)
 				{
 					SetDepthMode(depth_mode);
 					depth_mode_dirty = false;
+				}
+
+				if (stencil_mode_dirty)
+				{
+					SetStencilMode(stencil_mode);
+					stencil_mode_dirty = false;
 				}
 
 				if (mesh == nullptr)

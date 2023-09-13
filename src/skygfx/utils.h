@@ -238,6 +238,12 @@ namespace skygfx::utils
 			std::optional<DepthMode> depth_mode;
 		};
 
+		struct SetStencilMode
+		{
+			SetStencilMode(std::optional<StencilMode> stencil_mode);
+			std::optional<StencilMode> stencil_mode;
+		};
+
 		struct SetMesh
 		{
 			SetMesh(const Mesh* mesh);
@@ -323,6 +329,7 @@ namespace skygfx::utils
 		commands::SetCullMode,
 		commands::SetTextureAddress,
 		commands::SetDepthMode,
+		commands::SetStencilMode,
 		commands::SetMesh,
 		commands::SetEffect,
 		commands::SetColorTexture,
