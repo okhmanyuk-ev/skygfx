@@ -16,6 +16,7 @@
 #include <d3dx12/d3d12generatemips.h>
 #include <d3dx12/DirectXHelpers.h>
 #include <d3dx12/PlatformHelpers.h>
+#include <D3D12MemAlloc.h>
 
 #pragma comment(lib, "d3d12")
 #pragma comment(lib, "d3dcompiler")
@@ -80,6 +81,7 @@ const static DXGI_FORMAT MainRenderTargetDepthStencilAttachmentFormat = DXGI_FOR
 struct ContextD3D12
 {
 	ComPtr<ID3D12Device> device;
+	ComPtr<D3D12MA::Allocator> allocator;
 	ComPtr<ID3D12CommandAllocator> cmd_alloc;
 	ComPtr<ID3D12CommandQueue> cmd_queue;
 	ComPtr<IDXGISwapChain3> swapchain;
@@ -349,6 +351,7 @@ public:
 class TextureD3D12
 {
 public:
+	//const auto& getAllocation() const { return mAllocation; }
 	const auto& getD3D12Texture() const { return mTexture; }
 	auto getGpuDescriptorHandle() const { return mGpuDescriptorHandle; }
 	auto getWidth() const { return mWidth; }
@@ -356,6 +359,7 @@ public:
 	auto getFormat() const { return mFormat; }
 
 private:
+	//ComPtr<D3D12MA::Allocation> mAllocation;
 	ComPtr<ID3D12Resource> mTexture;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mGpuDescriptorHandle;
 	D3D12_RESOURCE_STATES mCurrentState = D3D12_RESOURCE_STATE_COMMON;
@@ -371,6 +375,15 @@ public:
 		mMipCount(mip_count),
 		mFormat(format)
 	{
+		/*auto desc = CD3DX12_RESOURCE_DESC::Tex2D(FormatMap.at(mFormat), width, height, 1, (UINT16)mip_count, 1, 0,
+			D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+
+		D3D12MA::ALLOCATION_DESC alloc_desc = {};
+		alloc_desc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
+
+		ThrowIfFailed(gContext->allocator->CreateResource(&alloc_desc, &desc, D3D12_RESOURCE_STATE_COMMON, NULL,
+			mAllocation.GetAddressOf(), IID_PPV_ARGS(mTexture.GetAddressOf())));*/
+
 		auto prop = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 		auto desc = CD3DX12_RESOURCE_DESC::Tex2D(FormatMap.at(mFormat), width, height, 1, (UINT16)mip_count);
 
@@ -1040,6 +1053,13 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 	dxgi_factory->EnumAdapterByGpuPreference(0, gpu_preference, IID_PPV_ARGS(&adapter));
 
 	D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(gContext->device.GetAddressOf()));
+
+	D3D12MA::ALLOCATOR_DESC desc = {};
+	desc.Flags = D3D12MA::ALLOCATOR_FLAG_DEFAULT_POOLS_NOT_ZEROED;
+	desc.pDevice = gContext->device.Get();
+	desc.pAdapter = adapter;
+
+	D3D12MA::CreateAllocator(&desc, gContext->allocator.GetAddressOf());
 
 #ifdef SKYGFX_D3D12_VALIDATION_ENABLED
 	ComPtr<ID3D12InfoQueue> info_queue;

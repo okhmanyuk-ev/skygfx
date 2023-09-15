@@ -191,3 +191,16 @@ if(WIN32)
 	target_link_libraries(${PROJECT_NAME} d3dx12)
 	set_property(TARGET d3dx12 PROPERTY FOLDER ${LIBS_FOLDER})
 endif()
+
+# d3d12 memory allocator
+
+if(WIN32)
+	file(GLOB D3D12_MEMORY_ALLOCATOR_SRC
+		lib/D3D12MemoryAllocator/*.cpp
+		lib/D3D12MemoryAllocator/*.h
+	)
+	add_library(D3D12MemoryAllocator STATIC ${D3D12_MEMORY_ALLOCATOR_SRC})
+	target_include_directories(D3D12MemoryAllocator PUBLIC lib/D3D12MemoryAllocator)
+	target_link_libraries(${PROJECT_NAME} D3D12MemoryAllocator)
+	set_property(TARGET D3D12MemoryAllocator PROPERTY FOLDER ${LIBS_FOLDER})
+endif()
