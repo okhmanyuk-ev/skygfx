@@ -89,25 +89,22 @@ struct ContextD3D12
 	CD3DX12_GPU_DESCRIPTOR_HANDLE descriptor_heap_gpu_handle;
 	UINT descriptor_handle_increment_size = 0;
 
-	struct
+	struct Frame
 	{
-		struct Frame
-		{
-			D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor;
-			ComPtr<ID3D12Resource> resource;
-		};
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor;
+		TextureD3D12* backbuffer_texture;
+		RenderTargetD3D12* main_render_target;
+	};
+	ComPtr<ID3D12DescriptorHeap> frame_rtv_heap;
 
-		Frame frames[NUM_BACK_BUFFERS];
-
-		ComPtr<ID3D12DescriptorHeap> rtv_heap;
-		ComPtr<ID3D12DescriptorHeap> dsv_heap;
-		ComPtr<ID3D12Resource> depth_stencil_resource;
-	} main_render_target;
+	Frame frames[NUM_BACK_BUFFERS];
 
 	UINT frame_index = 0;
 	HANDLE fence_event = NULL;
 	ComPtr<ID3D12Fence> fence;
 	UINT64 fence_value;
+
+	Frame& getCurrentFrame() { return frames[frame_index]; }
 
 	std::unordered_map<uint32_t, TextureD3D12*> textures;
 	std::unordered_map<uint32_t, UniformBufferD3D12*> uniform_buffers;
@@ -115,8 +112,6 @@ struct ContextD3D12
 
 	PipelineStateD3D12 pipeline_state;
 	std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> pipeline_states;
-
-	ExecuteList execute_after_present;
 
 	Topology topology = Topology::TriangleList;
 	std::optional<Viewport> viewport;
@@ -152,6 +147,9 @@ static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
 	//	{ Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
 	{ Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
 };
+
+static void DestroyStaging(ComPtr<ID3D12DeviceChild> object);
+static void ReleaseStaging();
 
 void BeginCommandList(ID3D12CommandAllocator* cmd_alloc, ID3D12GraphicsCommandList* cmd_list)
 {
@@ -341,6 +339,11 @@ public:
 			CreateRootSignature(gContext->device.Get(), &desc.Desc_1_0, mRootSignature.GetAddressOf());
 		}
 	}
+
+	~ShaderD3D12()
+	{
+		DestroyStaging(mRootSignature);
+	}
 };
 
 class TextureD3D12
@@ -382,6 +385,19 @@ public:
 
 		gContext->descriptor_heap_cpu_handle.Offset(1, gContext->descriptor_handle_increment_size);
 		gContext->descriptor_heap_gpu_handle.Offset(1, gContext->descriptor_handle_increment_size);
+	}
+
+	TextureD3D12(uint32_t width, uint32_t height, Format format, ComPtr<ID3D12Resource> texture) :
+		mWidth(width),
+		mHeight(height),
+		mFormat(format),
+		mTexture(texture)
+	{
+	}
+
+	~TextureD3D12()
+	{
+		DestroyStaging(mTexture);
 	}
 
 	void write(uint32_t width, uint32_t height, Format format, void* memory,
@@ -494,6 +510,12 @@ private:
 	TextureD3D12* mTexture;
 
 public:
+	RenderTargetD3D12(uint32_t width, uint32_t height, TextureD3D12* texture,
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor) : mTexture(texture)
+	{
+		create(width, height, texture->getD3D12Texture(), rtv_descriptor);
+	}
+
 	RenderTargetD3D12(uint32_t width, uint32_t height, TextureD3D12* texture) : mTexture(texture)
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
@@ -501,8 +523,23 @@ public:
 		rtv_heap_desc.NumDescriptors = 1;
 		gContext->device->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(mRtvHeap.GetAddressOf()));
 
-		CreateRenderTargetView(gContext->device.Get(), texture->getD3D12Texture().Get(),
-			mRtvHeap->GetCPUDescriptorHandleForHeapStart());
+		auto rtv_descriptor = mRtvHeap->GetCPUDescriptorHandleForHeapStart();
+
+		create(width, height, texture->getD3D12Texture(), rtv_descriptor);
+	}
+
+	~RenderTargetD3D12()
+	{
+		DestroyStaging(mRtvHeap);
+		DestroyStaging(mDsvHeap);
+		DestroyStaging(mDepthStencilResource);
+	}
+
+private:
+	void create(uint32_t width, uint32_t height, ComPtr<ID3D12Resource> texture_resource,
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor)
+	{
+		CreateRenderTargetView(gContext->device.Get(), texture_resource.Get(), rtv_descriptor);
 
 		auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
 		auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(getDepthStencilFormat(),
@@ -576,6 +613,11 @@ public:
 		}
 	}
 
+	virtual ~BufferD3D12()
+	{
+		DestroyStaging(mBuffer);
+	}
+
 	void write(void* memory, size_t size)
 	{
 		auto staging_buffer = CreateBuffer(size);
@@ -639,32 +681,32 @@ static void WaitForGpu()
 	gContext->fence->SetEventOnCompletion(gContext->fence_value, gContext->fence_event);
 	WaitForSingleObject(gContext->fence_event, INFINITE);
 	gContext->fence_value++;
+	ReleaseStaging();
 }
 
 static void CreateMainRenderTarget(uint32_t width, uint32_t height)
 {
+	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
+	rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtv_heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
+	rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtv_heap_desc.NodeMask = 1;
+	gContext->device->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gContext->frame_rtv_heap.GetAddressOf()));
+
+	auto rtv_increment_size = gContext->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	auto rtv_heap_start = gContext->frame_rtv_heap->GetCPUDescriptorHandleForHeapStart();
+
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		gContext->swapchain->GetBuffer(i, IID_PPV_ARGS(gContext->main_render_target.frames[i].resource.GetAddressOf()));
-		CreateRenderTargetView(gContext->device.Get(), gContext->main_render_target.frames[i].resource.Get(),
-			gContext->main_render_target.frames[i].rtv_descriptor);
+		auto& frame = gContext->frames[i];
+
+		ComPtr<ID3D12Resource> backbuffer;
+		gContext->swapchain->GetBuffer(i, IID_PPV_ARGS(backbuffer.GetAddressOf()));
+
+		frame.backbuffer_texture = new TextureD3D12(width, height, skygfx::Format::Byte4, backbuffer);
+		frame.rtv_descriptor = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
+		frame.main_render_target = new RenderTargetD3D12(width, height, frame.backbuffer_texture, frame.rtv_descriptor);
 	}
-
-	auto depth_heap_props = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-	auto depth_desc = CD3DX12_RESOURCE_DESC::Tex2D(MainRenderTargetDepthStencilAttachmentFormat,
-		(UINT64)width, (UINT)height, 1, 1);
-
-	depth_desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-
-	gContext->device->CreateCommittedResource(&depth_heap_props, D3D12_HEAP_FLAG_NONE, &depth_desc,
-		D3D12_RESOURCE_STATE_DEPTH_WRITE, NULL, IID_PPV_ARGS(gContext->main_render_target.depth_stencil_resource.GetAddressOf()));
-
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsv_desc = {};
-	dsv_desc.Format = depth_desc.Format;
-	dsv_desc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	
-	gContext->device->CreateDepthStencilView(gContext->main_render_target.depth_stencil_resource.Get(), &dsv_desc,
-		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart());
 
 	gContext->width = width;
 	gContext->height = height;
@@ -676,10 +718,9 @@ static void DestroyMainRenderTarget()
 {
 	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
 	{
-		gContext->main_render_target.frames[i].resource.Reset();
+		delete gContext->frames[i].backbuffer_texture;
+		delete gContext->frames[i].main_render_target;
 	}
-
-	gContext->main_render_target.depth_stencil_resource.Reset();
 }
 
 static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineStateD3D12& pipeline_state)
@@ -908,19 +949,17 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 	auto rtv_cpu_descriptor = gContext->render_target ?
 		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->main_render_target.frames[gContext->frame_index].rtv_descriptor;
+		gContext->getCurrentFrame().rtv_descriptor;
 
-	auto dsv_cpu_descriptor = gContext->render_target ?
-		gContext->render_target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart();
+	auto target = gContext->render_target ?
+		gContext->render_target :
+		gContext->getCurrentFrame().main_render_target;
 
-	if (gContext->render_target)
-	{
-		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
-	}
+	target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 
+	auto dsv_cpu_descriptor = target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart();
 	gContext->cmdlist->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
-	
+
 	auto pipeline_state = gContext->pipeline_states.at(gContext->pipeline_state).Get();
 
 	gContext->cmdlist->SetPipelineState(pipeline_state);
@@ -929,7 +968,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
 	const auto& binding_to_root_index_map = shader->getBindingToRootIndexMap();
-	
+
 	for (const auto& [binding, descriptor] : required_descriptor_bindings)
 	{
 		auto root_index = binding_to_root_index_map.at(binding);
@@ -965,9 +1004,6 @@ static void Begin()
 {
 	BeginCommandList(gContext->cmd_alloc.Get(), gContext->cmdlist.Get());
 
-	TransitionResource(gContext->cmdlist.Get(), gContext->main_render_target.frames[gContext->frame_index].resource.Get(),
-		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-
 	gContext->topology_dirty = true;
 	gContext->viewport_dirty = true;
 	gContext->scissor_dirty = true;
@@ -977,8 +1013,8 @@ static void Begin()
 
 static void End()
 {
-	TransitionResource(gContext->cmdlist.Get(), gContext->main_render_target.frames[gContext->frame_index].resource.Get(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+	gContext->getCurrentFrame().backbuffer_texture->ensureState(gContext->cmdlist.Get(),
+		D3D12_RESOURCE_STATE_PRESENT);
 
 	EndCommandList(gContext->cmd_queue.Get(), gContext->cmdlist.Get(), false);
 }
@@ -1023,27 +1059,6 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 	filter.DenyList.pIDList = filtered_messages.data();
 	info_queue->AddStorageFilterEntries(&filter);
 #endif
-
-	D3D12_DESCRIPTOR_HEAP_DESC rtv_heap_desc = {};
-	rtv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	rtv_heap_desc.NumDescriptors = NUM_BACK_BUFFERS;
-	rtv_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	rtv_heap_desc.NodeMask = 1;
-	gContext->device->CreateDescriptorHeap(&rtv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.rtv_heap.GetAddressOf()));
-
-	D3D12_DESCRIPTOR_HEAP_DESC dsv_heap_desc = {};
-	dsv_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	dsv_heap_desc.NumDescriptors = 1;
-	gContext->device->CreateDescriptorHeap(&dsv_heap_desc, IID_PPV_ARGS(gContext->main_render_target.dsv_heap.GetAddressOf()));
-		
-	auto rtv_increment_size = gContext->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	auto rtv_heap_start = gContext->main_render_target.rtv_heap->GetCPUDescriptorHandleForHeapStart();
-
-	for (UINT i = 0; i < NUM_BACK_BUFFERS; i++)
-	{
-		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(rtv_heap_start, i, rtv_increment_size);
-		gContext->main_render_target.frames[i].rtv_descriptor = handle;
-	}
 
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
 	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -1107,9 +1122,8 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 BackendD3D12::~BackendD3D12()
 {
 	End();
-	WaitForGpu();
-	gContext->execute_after_present.flush();
 	DestroyMainRenderTarget();
+	WaitForGpu();
 
 	delete gContext;
 	gContext = nullptr;
@@ -1118,8 +1132,8 @@ BackendD3D12::~BackendD3D12()
 void BackendD3D12::resize(uint32_t width, uint32_t height)
 {
 	End();
-	WaitForGpu();
 	DestroyMainRenderTarget();
+	WaitForGpu();
 	gContext->swapchain->ResizeBuffers(NUM_BACK_BUFFERS, (UINT)width, (UINT)height, MainRenderTargetColorAttachmentFormat, 0);
 	CreateMainRenderTarget(width, height);
 	Begin();
@@ -1275,16 +1289,12 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 {
 	const auto& rtv = gContext->render_target ?
 		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->main_render_target.frames[gContext->frame_index].rtv_descriptor;
+		gContext->getCurrentFrame().rtv_descriptor;
 
-	const auto& dsv = gContext->render_target ?
-		gContext->render_target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->main_render_target.dsv_heap->GetCPUDescriptorHandleForHeapStart();
+	auto target = gContext->render_target ? gContext->render_target :
+		gContext->getCurrentFrame().main_render_target;
 
-	if (gContext->render_target)
-	{
-		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
-	}
+	target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
 
 	if (color.has_value())
 	{
@@ -1300,6 +1310,8 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 
 		if (stencil.has_value())
 			flags |= D3D12_CLEAR_FLAG_STENCIL;
+
+		auto dsv = target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart();
 
 		gContext->cmdlist->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
 	}
@@ -1329,11 +1341,11 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto rtv_resource = gContext->render_target ?
-		gContext->render_target->getTexture()->getD3D12Texture() :
-		gContext->main_render_target.frames[gContext->frame_index].resource;
+	auto src_texture = gContext->render_target ?
+		gContext->render_target->getTexture() :
+		gContext->getCurrentFrame().main_render_target->getTexture();
 
-	auto desc = rtv_resource->GetDesc();
+	auto desc = src_texture->getD3D12Texture()->GetDesc();
 
 	auto back_w = desc.Width;
 	auto back_h = desc.Height;
@@ -1382,28 +1394,13 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	box.front = 0;
 	box.back = 1;
 
-	if (gContext->render_target) // TODO: remove this if-else when main-render-target will be same class as render_target
-	{
-		gContext->render_target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
-	}
-	else
-	{
-		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET,
-			D3D12_RESOURCE_STATE_COPY_SOURCE);
-	}
-
+	src_texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
 	dst_texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
 
-	auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(rtv_resource.Get(), 0);
+	auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(src_texture->getD3D12Texture().Get(), 0);
 	auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
 
 	gContext->cmdlist->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
-
-	if (!gContext->render_target) // TODO: remove this barrier setup when main-render-target will be same class as render_target
-	{
-		TransitionResource(gContext->cmdlist.Get(), rtv_resource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-			D3D12_RESOURCE_STATE_RENDER_TARGET);
-	}
 }
 
 void BackendD3D12::present()
@@ -1413,8 +1410,6 @@ void BackendD3D12::present()
 	gContext->swapchain->Present(vsync ? 1 : 0, 0);
 	gContext->frame_index = gContext->swapchain->GetCurrentBackBufferIndex();
 	WaitForGpu();
-	gContext->execute_after_present.flush();
-	ReleaseStaging();
 	Begin();
 }
 
@@ -1447,10 +1442,8 @@ void BackendD3D12::generateMips(TextureHandle* handle)
 
 void BackendD3D12::destroyTexture(TextureHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto texture = (TextureD3D12*)handle;
-		delete texture;
-	});
+	auto texture = (TextureD3D12*)handle;
+	delete texture;
 }
 
 RenderTargetHandle* BackendD3D12::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
@@ -1462,10 +1455,8 @@ RenderTargetHandle* BackendD3D12::createRenderTarget(uint32_t width, uint32_t he
 
 void BackendD3D12::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto render_target = (RenderTargetD3D12*)handle;
-		delete render_target;
-	});
+	auto render_target = (RenderTargetD3D12*)handle;
+	delete render_target;
 }
 
 ShaderHandle* BackendD3D12::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code,
@@ -1477,10 +1468,8 @@ ShaderHandle* BackendD3D12::createShader(const VertexLayout& vertex_layout, cons
 
 void BackendD3D12::destroyShader(ShaderHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto shader = (ShaderD3D12*)handle;
-		delete shader;
-	});
+	auto shader = (ShaderD3D12*)handle;
+	delete shader;
 }
 
 VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
@@ -1491,10 +1480,8 @@ VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
 
 void BackendD3D12::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = (VertexBufferD3D12*)handle;
-		delete buffer;
-	});
+	auto buffer = (VertexBufferD3D12*)handle;
+	delete buffer;
 }
 
 void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
@@ -1525,10 +1512,8 @@ void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, void* memor
 
 void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = (IndexBufferD3D12*)handle;
-		delete buffer;
-	});
+	auto buffer = (IndexBufferD3D12*)handle;
+	delete buffer;
 }
 
 UniformBufferHandle* BackendD3D12::createUniformBuffer(size_t size)
@@ -1539,10 +1524,8 @@ UniformBufferHandle* BackendD3D12::createUniformBuffer(size_t size)
 
 void BackendD3D12::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = (UniformBufferD3D12*)handle;
-		delete buffer;
-	});
+	auto buffer = (UniformBufferD3D12*)handle;
+	delete buffer;
 }
 
 void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
