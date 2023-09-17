@@ -526,6 +526,11 @@ utils::commands::SetTextureAddress::SetTextureAddress(TextureAddress _texture_ad
 {
 }
 
+utils::commands::SetFrontFace::SetFrontFace(FrontFace _front_face) :
+	front_face(_front_face)
+{
+}
+
 utils::commands::SetDepthBias::SetDepthBias(std::optional<DepthBias> _depth_bias) :
 	depth_bias(_depth_bias)
 {
@@ -651,6 +656,9 @@ void utils::ExecuteCommands(const Commands& cmds)
 	auto texture_address = TextureAddress::Clamp;
 	bool texture_address_dirty = true;
 
+	auto front_face = FrontFace::Clockwise;
+	bool front_face_dirty = true;
+
 	std::optional<DepthBias> depth_bias;
 	bool depth_bias_dirty = true;
 
@@ -710,6 +718,10 @@ void utils::ExecuteCommands(const Commands& cmds)
 			[&](const commands::SetTextureAddress& cmd) {
 				texture_address = cmd.texture_address;
 				texture_address_dirty = true;
+			},
+			[&](const commands::SetFrontFace& cmd) {
+				front_face = cmd.front_face;
+				front_face_dirty = true;
 			},
 			[&](const commands::SetDepthBias& cmd) {
 				depth_bias = cmd.depth_bias;
@@ -833,6 +845,12 @@ void utils::ExecuteCommands(const Commands& cmds)
 				{
 					SetTextureAddress(texture_address);
 					texture_address_dirty = false;
+				}
+
+				if (front_face_dirty)
+				{
+					SetFrontFace(front_face);
+					front_face_dirty = false;
 				}
 
 				if (depth_bias_dirty)

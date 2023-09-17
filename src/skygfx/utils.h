@@ -232,6 +232,12 @@ namespace skygfx::utils
 			TextureAddress texture_address;
 		};
 
+		struct SetFrontFace
+		{
+			SetFrontFace(FrontFace front_face);
+			FrontFace front_face;
+		};
+
 		struct SetDepthBias
 		{
 			SetDepthBias(std::optional<DepthBias> depth_bias);
@@ -334,6 +340,7 @@ namespace skygfx::utils
 		commands::SetSampler,
 		commands::SetCullMode,
 		commands::SetTextureAddress,
+		commands::SetFrontFace,
 		commands::SetDepthBias,
 		commands::SetDepthMode,
 		commands::SetStencilMode,
