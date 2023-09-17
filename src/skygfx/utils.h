@@ -232,6 +232,12 @@ namespace skygfx::utils
 			TextureAddress texture_address;
 		};
 
+		struct SetDepthBias
+		{
+			SetDepthBias(std::optional<DepthBias> depth_bias);
+			std::optional<DepthBias> depth_bias;
+		};
+
 		struct SetDepthMode
 		{
 			SetDepthMode(std::optional<DepthMode> depth_mode);
@@ -328,6 +334,7 @@ namespace skygfx::utils
 		commands::SetSampler,
 		commands::SetCullMode,
 		commands::SetTextureAddress,
+		commands::SetDepthBias,
 		commands::SetDepthMode,
 		commands::SetStencilMode,
 		commands::SetMesh,

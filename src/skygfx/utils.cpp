@@ -526,6 +526,11 @@ utils::commands::SetTextureAddress::SetTextureAddress(TextureAddress _texture_ad
 {
 }
 
+utils::commands::SetDepthBias::SetDepthBias(std::optional<DepthBias> _depth_bias) :
+	depth_bias(_depth_bias)
+{
+}
+
 utils::commands::SetDepthMode::SetDepthMode(std::optional<DepthMode> _depth_mode) :
 	depth_mode(_depth_mode)
 {
@@ -646,6 +651,9 @@ void utils::ExecuteCommands(const Commands& cmds)
 	auto texture_address = TextureAddress::Clamp;
 	bool texture_address_dirty = true;
 
+	std::optional<DepthBias> depth_bias;
+	bool depth_bias_dirty = true;
+
 	std::optional<DepthMode> depth_mode;
 	bool depth_mode_dirty = true;
 
@@ -702,6 +710,10 @@ void utils::ExecuteCommands(const Commands& cmds)
 			[&](const commands::SetTextureAddress& cmd) {
 				texture_address = cmd.texture_address;
 				texture_address_dirty = true;
+			},
+			[&](const commands::SetDepthBias& cmd) {
+				depth_bias = cmd.depth_bias;
+				depth_bias_dirty = true;
 			},
 			[&](const commands::SetDepthMode& cmd) {
 				depth_mode = cmd.depth_mode;
@@ -821,6 +833,12 @@ void utils::ExecuteCommands(const Commands& cmds)
 				{
 					SetTextureAddress(texture_address);
 					texture_address_dirty = false;
+				}
+
+				if (depth_bias_dirty)
+				{
+					SetDepthBias(depth_bias);
+					depth_bias_dirty = false;
 				}
 
 				if (depth_mode_dirty)
