@@ -1105,7 +1105,8 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 	skygfx::ReleaseTemporaryRenderTarget(blur_dst);
 }
 
-void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights)
+void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights,
+	const DrawSceneOptions& options)
 {
 	assert(!models.empty());
 
@@ -1113,11 +1114,15 @@ void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, co
 
 	for (const auto& model : models)
 	{
+		if (options.normal_mapping)
+			AddCommands(model_cmds, { commands::SetNormalTexture(model.normal_texture) });
+
+		if (options.textures)
+			AddCommands(model_cmds, { commands::SetColorTexture(model.color_texture) });
+
 		AddCommands(model_cmds, {
 			commands::SetMesh(model.mesh),
 			commands::SetModelMatrix(model.matrix),
-			commands::SetColorTexture(model.color_texture),
-			commands::SetNormalTexture(model.normal_texture),
 			commands::SetCullMode(model.cull_mode),
 			commands::SetTextureAddress(model.texture_address),
 			commands::SetDepthMode(model.depth_mode),

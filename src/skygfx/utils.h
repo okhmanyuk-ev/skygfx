@@ -415,7 +415,14 @@ namespace skygfx::utils
 		DepthMode depth_mode;
 	};
 
-	void DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights = {});
+	struct DrawSceneOptions
+	{
+		bool textures = true;
+		bool normal_mapping = true;
+	};
+
+	void DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights = {},
+		const DrawSceneOptions& options = {});
 
 	class MeshBuilder
 	{
