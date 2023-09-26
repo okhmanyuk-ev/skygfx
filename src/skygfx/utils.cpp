@@ -97,7 +97,7 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 void effect(inout vec4 result)
 {
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
-	
+
 	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
 	vec3 light_dir = normalize(light.direction);
 
@@ -150,7 +150,6 @@ void effect(inout vec4 result)
 const std::string utils::effects::GaussianBlur::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _blur
 {
-	vec2 resolution;
 	vec2 direction;
 } blur;
 
@@ -158,8 +157,9 @@ void effect(inout vec4 result)
 {
 	result = vec4(0.0);
 
-	vec2 off1 = vec2(1.3846153846) * blur.direction / blur.resolution;
-	vec2 off2 = vec2(3.2307692308) * blur.direction / blur.resolution;
+	vec2 tex_size = textureSize(sColorTexture, 0);
+	vec2 off1 = vec2(1.3846153846) * blur.direction / tex_size;
+	vec2 off2 = vec2(3.2307692308) * blur.direction / tex_size;
 
 	result += texture(sColorTexture, In.tex_coord) * 0.2270270270;
 
@@ -173,7 +173,6 @@ void effect(inout vec4 result)
 const std::string utils::effects::BloomDownsample::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _downsample
 {
-	vec2 resolution;
 	uint step_number;
 } downsample;
 
@@ -194,10 +193,8 @@ float getKarisWeight(const vec3 box4x4)
 
 vec3 downsample13tap(sampler2D srcSampler, const vec2 centerUV)
 {
-	const vec2 pixelSize = vec2(1.0) / downsample.resolution;
-
-	const vec3 taps[] = 
-	{
+	const vec2 pixelSize = vec2(1.0) / textureSize(srcSampler, 0);
+	const vec3 taps[] = {
 		getSample(srcSampler, centerUV + vec2(-2,-2) * pixelSize),
 		getSample(srcSampler, centerUV + vec2( 0,-2) * pixelSize),
 		getSample(srcSampler, centerUV + vec2( 2,-2) * pixelSize),
@@ -257,12 +254,12 @@ void effect(inout vec4 result)
 const std::string utils::effects::BloomUpsample::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _upsample
 {
-	vec2 resolution;
+	int padding;
 } upsample;
 
 void effect(inout vec4 result)
 {
-	const vec2 pixelSize = vec2(1.0) / upsample.resolution;
+	const vec2 pixelSize = vec2(1.0) / textureSize(sColorTexture, 0);
 
 	const vec2 offsets[] = 
 	{
@@ -384,35 +381,13 @@ void utils::Mesh::setIndices(const Indices& value)
 	setIndices(value.data(), static_cast<uint32_t>(value.size()));
 }
 
-utils::effects::GaussianBlur::GaussianBlur(glm::vec2 _resolution, glm::vec2 _direction) :
-	resolution(std::move(_resolution)),
+utils::effects::GaussianBlur::GaussianBlur(glm::vec2 _direction) :
 	direction(std::move(_direction))
 {
 }
 
-utils::effects::GaussianBlur::GaussianBlur(const Texture& texture, glm::vec2 _direction) :
-	GaussianBlur({ static_cast<float>(texture.getWidth()), static_cast<float>(texture.getHeight()) }, std::move(_direction))
-{
-}
-
-utils::effects::BloomDownsample::BloomDownsample(glm::vec2 _resolution, uint32_t _step_number) :
-	resolution(std::move(_resolution)),
+utils::effects::BloomDownsample::BloomDownsample(uint32_t _step_number) :
 	step_number(_step_number)
-{
-}
-
-utils::effects::BloomDownsample::BloomDownsample(const Texture& texture, uint32_t _step_number) :
-	BloomDownsample({ static_cast<float>(texture.getWidth()), static_cast<float>(texture.getHeight()) }, _step_number)
-{
-}
-
-utils::effects::BloomUpsample::BloomUpsample(const glm::vec2& _resolution) :
-	resolution(_resolution)
-{
-}
-
-utils::effects::BloomUpsample::BloomUpsample(const Texture& texture) :
-	BloomUpsample({ static_cast<float>(texture.getWidth()), static_cast<float>(texture.getHeight()) })
 {
 }
 
@@ -989,8 +964,8 @@ void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear
 void utils::passes::GaussianBlur(const RenderTarget* src, const RenderTarget* dst)
 {
 	auto blur_target = skygfx::GetTemporaryRenderTarget(src->getWidth(), src->getHeight());
-	Blit(src, blur_target, effects::GaussianBlur(*src, { 1.0f, 0.0f }), true);
-	Blit(blur_target, dst, effects::GaussianBlur(*src, { 0.0f, 1.0f }));
+	Blit(src, blur_target, effects::GaussianBlur({ 1.0f, 0.0f }), true);
+	Blit(blur_target, dst, effects::GaussianBlur({ 0.0f, 1.0f }));
 	skygfx::ReleaseTemporaryRenderTarget(blur_target);
 }
 
@@ -1041,7 +1016,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (auto target : tex_chain)
 	{
-		Blit(downsample_src, target, effects::BloomDownsample(*downsample_src, step_number));
+		Blit(downsample_src, target, effects::BloomDownsample(step_number));
 		downsample_src = target;
 		step_number += 1;
 	}
@@ -1054,7 +1029,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 	{
 		if (prev_downsampled != nullptr)
 		{
-			Blit(prev_downsampled, *it, effects::BloomUpsample(*prev_downsampled), false, BlendStates::Additive);
+			Blit(prev_downsampled, *it, effects::BloomUpsample(), false, BlendStates::Additive);
 		}
 
 		prev_downsampled = *it;
@@ -1062,7 +1037,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	// apply
 
-	Blit(prev_downsampled, dst, effects::BloomUpsample(*prev_downsampled), false, BlendStates::Additive, glm::vec4(intensity));
+	Blit(prev_downsampled, dst, effects::BloomUpsample(), false, BlendStates::Additive, glm::vec4(intensity));
 
 	// release targets
 

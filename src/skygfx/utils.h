@@ -91,10 +91,8 @@ namespace skygfx::utils
 
 		struct alignas(16) GaussianBlur
 		{
-			GaussianBlur(glm::vec2 resolution, glm::vec2 direction);
-			GaussianBlur(const Texture& texture, glm::vec2 direction);
-
-			glm::vec2 resolution;
+			GaussianBlur(glm::vec2 direction);
+		
 			glm::vec2 direction;
 
 			static const std::string Shader;
@@ -102,8 +100,7 @@ namespace skygfx::utils
 
 		struct alignas(16) BloomDownsample
 		{
-			BloomDownsample(glm::vec2 resolution, uint32_t step_number);
-			BloomDownsample(const Texture& texture, uint32_t step_number);
+			BloomDownsample(uint32_t step_number);
 
 			glm::vec2 resolution;
 			uint32_t step_number;
@@ -113,11 +110,6 @@ namespace skygfx::utils
 
 		struct alignas(16) BloomUpsample
 		{
-			BloomUpsample(const glm::vec2& resolution);
-			BloomUpsample(const Texture& texture);
-
-			glm::vec2 resolution;
-
 			static const std::string Shader;
 		};
 
