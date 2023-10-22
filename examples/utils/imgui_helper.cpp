@@ -1,6 +1,7 @@
 #include "imgui_helper.h"
 #include <skygfx/utils.h>
 #include <imgui.h>
+#include <span>
 
 ImguiHelper::ImguiHelper()
 {
@@ -38,15 +39,16 @@ void ImguiHelper::draw()
 	auto draw_data = ImGui::GetDrawData();
 	draw_data->ScaleClipRects(display_scale);
 
+	auto cmdlists = std::span{ draw_data->CmdLists, static_cast<std::size_t>(draw_data->CmdListsCount) };
+
 	skygfx::utils::Mesh::Vertices vertices;
 	skygfx::utils::Mesh::Indices indices;
 
-	for (int i = 0; i < draw_data->CmdListsCount; i++)
+	for (auto cmdlist : cmdlists)
 	{
-		const auto& cmdlist = *draw_data->CmdLists[i];
 		auto base_vertex = vertices.size();
 
-		for (const auto& vertex : cmdlist.VtxBuffer)
+		for (const auto& vertex : cmdlist->VtxBuffer)
 		{
 			vertices.push_back(skygfx::utils::Mesh::Vertex{
 				.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
@@ -55,7 +57,7 @@ void ImguiHelper::draw()
 			});
 		}
 
-		for (auto index : cmdlist.IdxBuffer)
+		for (auto index : cmdlist->IdxBuffer)
 		{
 			indices.push_back(static_cast<skygfx::utils::Mesh::Index>(index + base_vertex));
 		}
@@ -74,15 +76,13 @@ void ImguiHelper::draw()
 
 	uint32_t index_offset = 0;
 
-	for (int i = 0; i < draw_data->CmdListsCount; i++)
+	for (auto cmdlist : cmdlists)
 	{
-		const auto& cmdlist = *draw_data->CmdLists[i];
-
-		for (const auto& cmd : cmdlist.CmdBuffer)
+		for (const auto& cmd : cmdlist->CmdBuffer)
 		{
 			if (cmd.UserCallback)
 			{
-				cmd.UserCallback(&cmdlist, &cmd);
+				cmd.UserCallback(cmdlist, &cmd);
 			}
 			else
 			{
