@@ -1,7 +1,9 @@
 #include <skygfx/skygfx.h>
 #include <skygfx/vertex.h>
-#include "../utils/utils.h"
 #include <format>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "../utils/utils.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>

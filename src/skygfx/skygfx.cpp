@@ -494,11 +494,11 @@ skygfx::DepthBias::DepthBias(float _factor, float _units) :
 {
 }
 
-// temporary render targets
+// transient render targets
 
-struct TemporaryRenderTargetDesc
+struct TransientRenderTargetDesc
 {
-	TemporaryRenderTargetDesc(uint32_t _width, uint32_t _height, Format _format) :
+	TransientRenderTargetDesc(uint32_t _width, uint32_t _height, Format _format) :
 		width(_width), height(_height), format(_format)
 	{
 	}
@@ -507,16 +507,16 @@ struct TemporaryRenderTargetDesc
 	uint32_t height;
 	Format format;
 
-	auto operator<=>(const TemporaryRenderTargetDesc& other) const = default;
+	bool operator==(const TransientRenderTargetDesc& other) const = default;
 };
 
-SKYGFX_MAKE_HASHABLE(TemporaryRenderTargetDesc,
+SKYGFX_MAKE_HASHABLE(TransientRenderTargetDesc,
 	t.width,
 	t.height,
 	t.format
 );
 
-class TemporaryRenderTarget : public RenderTarget
+class TransientRenderTarget : public RenderTarget
 {
 public:
 	enum class State
@@ -537,62 +537,62 @@ private:
 	State mState = State::Active;
 };
 
-static std::unordered_map<TemporaryRenderTargetDesc, std::unordered_set<std::shared_ptr<TemporaryRenderTarget>>> gTemporaryRenderTargets;
+static std::unordered_map<TransientRenderTargetDesc, std::unordered_set<std::shared_ptr<TransientRenderTarget>>> gTransientRenderTargets;
 
-RenderTarget* skygfx::GetTemporaryRenderTarget(uint32_t width, uint32_t height, Format format)
+RenderTarget* skygfx::AcquireTransientRenderTarget(uint32_t width, uint32_t height, Format format)
 {
-	auto desc = TemporaryRenderTargetDesc(width, height, format);
+	auto desc = TransientRenderTargetDesc(width, height, format);
 
-	for (auto& [_desc, temporary_rts] : gTemporaryRenderTargets)
+	for (auto& [_desc, transient_rts] : gTransientRenderTargets)
 	{
 		if (desc != _desc)
 			continue;
 
-		for (auto& temporary_rt : temporary_rts)
+		for (auto& transient_rt : transient_rts)
 		{
-			if (temporary_rt->getState() == TemporaryRenderTarget::State::Active)
+			if (transient_rt->getState() == TransientRenderTarget::State::Active)
 				continue;
 
-			temporary_rt->setState(TemporaryRenderTarget::State::Active);
-			return temporary_rt.get();
+			transient_rt->setState(TransientRenderTarget::State::Active);
+			return transient_rt.get();
 		}
 	}
 
-	auto temporary_rt = std::make_shared<TemporaryRenderTarget>(width, height, format);
-	gTemporaryRenderTargets[desc].insert(temporary_rt);
-	return temporary_rt.get();
+	auto transient_rt = std::make_shared<TransientRenderTarget>(width, height, format);
+	gTransientRenderTargets[desc].insert(transient_rt);
+	return transient_rt.get();
 }
 
-void skygfx::ReleaseTemporaryRenderTarget(RenderTarget* target)
+void skygfx::ReleaseTransientRenderTarget(RenderTarget* target)
 {
-	for (auto& [desc, temporary_rts] : gTemporaryRenderTargets)
+	for (auto& [desc, transient_rts] : gTransientRenderTargets)
 	{
-		for (auto& temporary_rt : temporary_rts)
+		for (auto& transient_rt : transient_rts)
 		{
-			if (temporary_rt.get() != target)
+			if (transient_rt.get() != target)
 				continue;
 
-			temporary_rt->setState(TemporaryRenderTarget::State::Inactive);
+			transient_rt->setState(TransientRenderTarget::State::Inactive);
 			return;
 		}
 	}
 }
 
-void DestroyTemporaryRenderTargets()
+static void DestroyTransientRenderTargets()
 {	
-	for (auto& [desc, temporary_rts] : gTemporaryRenderTargets)
+	for (auto& [desc, transient_rts] : gTransientRenderTargets)
 	{
-		std::erase_if(temporary_rts, [](const std::shared_ptr<TemporaryRenderTarget>& temporary_rt) {
-			return temporary_rt->getState() == TemporaryRenderTarget::State::Destroy;
+		std::erase_if(transient_rts, [](const std::shared_ptr<TransientRenderTarget>& transient_rt) {
+			return transient_rt->getState() == TransientRenderTarget::State::Destroy;
 		});
 
-		for (auto& temporary_rt : temporary_rts)
+		for (auto& transient_rt : transient_rts)
 		{
-			temporary_rt->setState(TemporaryRenderTarget::State::Destroy);
+			transient_rt->setState(TransientRenderTarget::State::Destroy);
 		}
 	}
 
-	std::erase_if(gTemporaryRenderTargets, [](const auto& pair) {
+	std::erase_if(gTransientRenderTargets, [](const auto& pair) {
 		return pair.second.empty();
 	});
 }
@@ -819,7 +819,7 @@ void skygfx::DispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 void skygfx::Present()
 {
 	gBackend->present();
-	DestroyTemporaryRenderTargets();
+	DestroyTransientRenderTargets();
 }
 
 void skygfx::SetVertexBuffer(void* memory, size_t size, size_t stride)

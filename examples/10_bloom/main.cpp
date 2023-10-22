@@ -124,7 +124,7 @@ int main()
 		ImGui::SliderAngle("Angle", &angle, 0.0f);
 		ImGui::End();
 
-		auto src_target = skygfx::GetTemporaryRenderTarget();
+		auto src_target = skygfx::AcquireTransientRenderTarget();
 
 		if (animated)
 			angle = glm::wrapAngle((float)glfwGetTime());

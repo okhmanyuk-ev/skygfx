@@ -39,7 +39,7 @@ namespace skygfx::utils
 	public:		
 		const auto& getVertexBuffer() const { return mVertexBuffer; }
 		const auto& getIndexBuffer() const { return mIndexBuffer; }
-		
+
 	private:
 		std::optional<VertexBuffer> mVertexBuffer;
 		std::optional<IndexBuffer> mIndexBuffer;
@@ -61,7 +61,7 @@ namespace skygfx::utils
 		DrawVerticesCommand,
 		DrawIndexedVerticesCommand
 	>;
-	
+
 	namespace effects
 	{
 		struct alignas(16) DirectionalLight
@@ -92,7 +92,7 @@ namespace skygfx::utils
 		struct alignas(16) GaussianBlur
 		{
 			GaussianBlur(glm::vec2 direction);
-		
+
 			glm::vec2 direction;
 
 			static const std::string Shader;
@@ -317,12 +317,13 @@ namespace skygfx::utils
 			std::function<void()> func;
 		};
 
-		struct Subcommands;
 		struct Draw
 		{
 			Draw(std::optional<DrawCommand> draw_command = std::nullopt);
 			std::optional<DrawCommand> draw_command;
 		};
+
+		struct Subcommands;
 	}
 
 	using Command = std::variant<
@@ -364,7 +365,7 @@ namespace skygfx::utils
 			std::variant<const Commands*, Commands, std::function<Commands()>> subcommands;
 		};
 	}
-	
+
 	void AddCommands(Commands& cmdlist, Commands&& cmds);
 	void ExecuteCommands(const Commands& cmds);
 

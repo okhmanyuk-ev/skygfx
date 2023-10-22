@@ -89,7 +89,7 @@ int main()
 
 	while (!glfwWindowShouldClose(window))
 	{
-		auto target = skygfx::GetTemporaryRenderTarget();
+		auto target = skygfx::AcquireTransientRenderTarget();
 
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(*target);

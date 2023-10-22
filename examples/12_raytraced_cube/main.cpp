@@ -208,7 +208,7 @@ int main()
 			.projInverse = glm::inverse(projection)
 		});
 
-		auto target = skygfx::GetTemporaryRenderTarget();
+		auto target = skygfx::AcquireTransientRenderTarget();
 
 		skygfx::SetStorageBuffer(4, (void*)indices.data(), indices.size() * sizeof(uint32_t));
 		skygfx::SetStorageBuffer(5, (void*)vertices.data(), vertices.size() * sizeof(skygfx::utils::Mesh::Vertex));
