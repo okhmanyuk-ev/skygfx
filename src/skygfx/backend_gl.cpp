@@ -2,6 +2,8 @@
 
 #ifdef SKYGFX_HAS_OPENGL
 
+//#define SKYGFX_OPENGL_DEBUG_ENABLED
+
 #include <unordered_map>
 #include <unordered_set>
 #include <stdexcept>
@@ -41,13 +43,10 @@ extern "C" {
 
 using namespace skygfx;
 
-#if defined(SKYGFX_PLATFORM_WINDOWS)
+#ifdef SKYGFX_OPENGL_DEBUG_ENABLED
 void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
 	const GLchar* message, const void* userParam)
 {
-	if (type == GL_DEBUG_TYPE_PERFORMANCE) // spamming in getPixels func
-		return;
-
 	static const std::unordered_map<GLenum, std::string> SourceMap = {
 		{ GL_DEBUG_SOURCE_API, "GL_DEBUG_SOURCE_API" },
 		{ GL_DEBUG_SOURCE_WINDOW_SYSTEM, "GL_DEBUG_SOURCE_WINDOW_SYSTEM" },
@@ -89,14 +88,11 @@ void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLen
 	if (SeverityMap.contains(severity))
 		severity_str = SeverityMap.at(severity);
 
-	if (type == GL_DEBUG_TYPE_OTHER)
-		return;
-
-	std::cout << "[OpenGL] source: " << source_str << 
+	std::cout << "[opengl debug] name: " << source_str << 
 		", type: " << type_str <<
 		", id: " << id <<
 		", severity: " << severity_str << 
-		", msg: " << message << std::endl;
+		", message: " << message << std::endl;
 }
 #endif
 
@@ -125,7 +121,7 @@ void CheckErrors()
 
 		auto name = ErrorMap.contains(error) ? ErrorMap.at(error) : "UNKNOWN";
 
-		std::cout << "BackendGL::CheckError: " << name << " (" << error << ")" << std::endl;
+		std::cout << "[opengl] error: " << name << " (" << error << ")" << std::endl;
 	}
 }
 
@@ -960,10 +956,6 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	wglDeleteContext(WglContext);
 	WglContext = wglCreateContextAttribsARB(gHDC, 0, attribs);
 	wglMakeCurrent(gHDC, WglContext);
-
-	glEnable(GL_DEBUG_OUTPUT);
-	glDebugMessageCallback(DebugMessageCallback, 0);
-
 #elif defined(SKYGFX_PLATFORM_IOS)
 	auto _window = (UIWindow*)window;
 	auto rootView = [[_window rootViewController] view];
@@ -1076,6 +1068,14 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	gEglContext = eglCreateContext(gEglDisplay, gEglConfig, NULL, context_attribs);
 	eglMakeCurrent(gEglDisplay, gEglSurface, gEglSurface, gEglContext);
 #endif
+
+#ifdef SKYGFX_OPENGL_DEBUG_ENABLED
+	glEnable(GL_DEBUG_OUTPUT);
+	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+	glDebugMessageCallback(DebugMessageCallback, nullptr);
+#endif
+
+
     GLint num_extensions;
     glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
 
