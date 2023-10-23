@@ -123,6 +123,11 @@ static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
 
 class ShaderD3D11
 {
+public:
+	const auto& getD3D11VertexShader() const { return mVertexShader; }
+	const auto& getD3D11PixelShader() const { return mPixelShader; }
+	const auto& getD3D11InputLayout() const { return mInputLayout; }
+
 private:
 	ComPtr<ID3D11VertexShader> mVertexShader;
 	ComPtr<ID3D11PixelShader> mPixelShader;
@@ -186,13 +191,6 @@ public:
 
 		gContext->device->CreateInputLayout(input.data(), static_cast<UINT>(input.size()),
 			vertex_shader_blob->GetBufferPointer(), vertex_shader_blob->GetBufferSize(), mInputLayout.GetAddressOf());
-	}
-
-	void apply()
-	{
-		gContext->context->IASetInputLayout(mInputLayout.Get());
-		gContext->context->VSSetShader(mVertexShader.Get(), NULL, 0);
-		gContext->context->PSSetShader(mPixelShader.Get(), NULL, 0);
 	}
 };
 
@@ -806,7 +804,9 @@ void BackendD3D11::setRenderTarget(std::nullopt_t value)
 void BackendD3D11::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderD3D11*)handle;
-	shader->apply();
+	gContext->context->IASetInputLayout(shader->getD3D11InputLayout().Get());
+	gContext->context->VSSetShader(shader->getD3D11VertexShader().Get(), NULL, 0);
+	gContext->context->PSSetShader(shader->getD3D11PixelShader().Get(), NULL, 0);
 }
 
 void BackendD3D11::setVertexBuffer(VertexBufferHandle* handle)
