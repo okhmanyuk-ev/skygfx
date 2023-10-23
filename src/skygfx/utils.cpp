@@ -983,7 +983,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	constexpr int ChainSize = 8;
 
-	// get targets
+	// acquire targets
 
 	auto bright = skygfx::AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
 
@@ -1021,23 +1021,16 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 		step_number += 1;
 	}
 
-	// upsample and blur
+	// upsample
 
-	Texture* prev_downsampled = nullptr;
-
-	for (auto it = tex_chain.rbegin(); it != tex_chain.rend(); ++it)
+	for (auto it = std::next(tex_chain.rbegin()); it != tex_chain.rend(); ++it)
 	{
-		if (prev_downsampled != nullptr)
-		{
-			Blit(prev_downsampled, *it, effects::BloomUpsample(), false, BlendStates::Additive);
-		}
-
-		prev_downsampled = *it;
+		Blit(*std::prev(it), *it, effects::BloomUpsample(), false, BlendStates::Additive);
 	}
 
-	// apply
+	// combine
 
-	Blit(prev_downsampled, dst, effects::BloomUpsample(), false, BlendStates::Additive, glm::vec4(intensity));
+	Blit(*tex_chain.begin(), dst, effects::BloomUpsample(), false, BlendStates::Additive, glm::vec4(intensity));
 
 	// release targets
 
