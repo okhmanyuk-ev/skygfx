@@ -151,10 +151,30 @@ Shader::Shader(const VertexLayout& vertex_layout, const std::string& vertex_code
 	mShaderHandle = gBackend->createShader(vertex_layout, vertex_code, fragment_code, defines);
 }
 
+Shader::Shader(Shader&& other) noexcept
+{
+	if (mShaderHandle)
+		gBackend->destroyShader(mShaderHandle);
+
+	mShaderHandle = std::exchange(other.mShaderHandle, nullptr);
+}
+
 Shader::~Shader()
 {
 	if (gBackend)
 		gBackend->destroyShader(mShaderHandle);
+}
+
+Shader& Shader::operator=(Shader&& other) noexcept
+{
+	if (this == &other)
+		return *this;
+
+	if (mShaderHandle)
+		gBackend->destroyShader(mShaderHandle);
+
+	mShaderHandle = std::exchange(other.mShaderHandle, nullptr);
+	return *this;
 }
 
 // raytracing shader
@@ -229,7 +249,6 @@ VertexBuffer& VertexBuffer::operator=(VertexBuffer&& other) noexcept
 		gBackend->destroyVertexBuffer(mVertexBufferHandle);
 
 	mVertexBufferHandle = std::exchange(other.mVertexBufferHandle, nullptr);
-
 	return *this;
 }
 
@@ -272,7 +291,6 @@ IndexBuffer& IndexBuffer::operator=(IndexBuffer&& other) noexcept
 		gBackend->destroyIndexBuffer(mIndexBufferHandle);
 
 	mIndexBufferHandle = std::exchange(other.mIndexBufferHandle, nullptr);
-
 	return *this;
 }
 
@@ -315,7 +333,6 @@ UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) noexcept
 		gBackend->destroyUniformBuffer(mUniformBufferHandle);
 
 	mUniformBufferHandle = std::exchange(other.mUniformBufferHandle, nullptr);
-
 	return *this;
 }
 
@@ -358,7 +375,6 @@ StorageBuffer& StorageBuffer::operator=(StorageBuffer&& other) noexcept
 		gRaytracingBackend->destroyStorageBuffer(mStorageBufferHandle);
 
 	mStorageBufferHandle = std::exchange(other.mStorageBufferHandle, nullptr);
-
 	return *this;
 }
 

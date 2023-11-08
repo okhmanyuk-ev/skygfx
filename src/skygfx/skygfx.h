@@ -146,9 +146,12 @@ namespace skygfx
 	public:
 		Shader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines = {});
+		Shader(Shader&& other) noexcept;
 		virtual ~Shader();
 
 		operator ShaderHandle* () { return mShaderHandle; }
+
+		Shader& operator=(Shader&& other) noexcept;
 
 	private:
 		ShaderHandle* mShaderHandle = nullptr;

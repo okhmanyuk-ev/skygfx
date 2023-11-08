@@ -2,6 +2,7 @@
 
 #include "skygfx.h"
 #include "vertex.h"
+#include <typeindex>
 
 namespace skygfx::utils
 {
@@ -165,8 +166,18 @@ namespace skygfx::utils
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
 
-	void EnsureDefaultShader();
-	const Shader& GetDefaultShader();
+	struct Context
+	{
+		Context();
+
+		skygfx::Shader default_shader;
+		std::unordered_map<std::type_index, Shader> shaders;
+		Mesh default_mesh;
+		Texture white_pixel_texture;
+	};
+
+	Context& GetContext();
+	void ClearContext();
 
 	namespace commands
 	{
@@ -178,8 +189,13 @@ namespace skygfx::utils
 			template<effects::Effect T>
 			SetEffect(T value)
 			{
-				static auto _shader = MakeEffectShader(T::Shader);
-				shader = &_shader;
+				auto type_index = std::type_index(typeid(T));
+				auto& context = GetContext();
+
+				if (!context.shaders.contains(type_index))
+					context.shaders.insert({ type_index, MakeEffectShader(T::Shader) });
+
+				shader = &context.shaders.at(type_index);
 				uniform_data.resize(sizeof(T));
 				std::memcpy(uniform_data.data(), &value, sizeof(T));
 			}

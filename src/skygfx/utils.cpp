@@ -322,7 +322,7 @@ void effect(inout vec4 result)
 		discard;
 })";
 
-static std::optional<skygfx::Shader> gDefaultShader;
+static std::optional<utils::Context> gContext;
 
 utils::Mesh::Mesh()
 {
@@ -440,22 +440,35 @@ Shader utils::MakeEffectShader(const std::string& effect_shader_func)
 	});
 }
 
-void utils::EnsureDefaultShader()
+void utils::ClearContext()
 {
-	if (gDefaultShader.has_value())
-		return;
+	gContext.reset();
+}
 
-	gDefaultShader.emplace(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, std::vector<std::string>{
+utils::Context& utils::GetContext()
+{
+	if (!gContext.has_value())
+		gContext.emplace();
+
+	return gContext.value();
+}
+
+static const uint32_t white_pixel = 0xFFFFFFFF;
+
+utils::Context::Context() :
+	default_shader(utils::Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, std::vector<std::string>{
 		"COLOR_TEXTURE_BINDING 0",
 		"NORMAL_TEXTURE_BINDING 1",
 		"SETTINGS_UNIFORM_BINDING 2"
-	});
-}
-
-const Shader& utils::GetDefaultShader()
+	}),
+	default_mesh({
+		{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
+		{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
+		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
+		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
+	}, { 0, 1, 2, 0, 2, 3 }),
+	white_pixel_texture(1, 1, skygfx::Format::Byte4, (void*)&white_pixel)
 {
-	EnsureDefaultShader();
-	return gDefaultShader.value();
 }
 
 // commands
@@ -606,13 +619,6 @@ void utils::AddCommands(Commands& cmdlist, Commands&& cmds)
 
 void utils::ExecuteCommands(const Commands& cmds)
 {
-	static const auto default_mesh = Mesh({
-		{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
-		{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
-		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
-		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
-	}, { 0, 1, 2, 0, 2, 3 });
-
 	std::optional<Viewport> viewport;
 	bool viewport_dirty = true;
 
@@ -847,7 +853,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 				}
 
 				if (mesh == nullptr)
-					mesh = &default_mesh;
+					mesh = &GetContext().default_mesh;
 
 				if (mesh_dirty)
 				{
@@ -868,7 +874,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 				if (shader_dirty)
 				{
-					SetShader(shader == nullptr ? GetDefaultShader() : *shader);
+					SetShader(shader == nullptr ? GetContext().default_shader : *shader);
 					shader_dirty = false;
 				}
 
@@ -883,11 +889,8 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 				if (textures_dirty)
 				{
-					uint32_t white_pixel = 0xFFFFFFFF;
-					static const auto white_pixel_texture = Texture(1, 1, skygfx::Format::Byte4, &white_pixel);
-
-					const auto& _color_texture = color_texture != nullptr ? *color_texture : white_pixel_texture;
-					const auto& _normal_texture = normal_texture != nullptr ? *normal_texture : white_pixel_texture;
+					const auto& _color_texture = color_texture != nullptr ? *color_texture : GetContext().white_pixel_texture;
+					const auto& _normal_texture = normal_texture != nullptr ? *normal_texture : GetContext().white_pixel_texture;
 
 					SetTexture(0, _color_texture);
 					SetTexture(1, _normal_texture);
