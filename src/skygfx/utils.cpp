@@ -320,6 +320,10 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _grayscale
 
 void effect(inout vec4 result)
 {
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
 	float gray = dot(result.rgb, vec3(0.299, 0.587, 0.114));
 	result.rgb = mix(result.rgb, vec3(gray), grayscale.intensity);
 })";
