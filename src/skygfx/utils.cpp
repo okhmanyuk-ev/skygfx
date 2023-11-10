@@ -1,7 +1,6 @@
 #include "utils.h"
 #include <ranges>
 #include <array>
-#include <format>
 
 using namespace skygfx;
 
@@ -1041,8 +1040,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (auto target : tex_chain)
 	{
-		Blit(std::format("downsample_{}", step_number), downsample_src, target,
-			effects::BloomDownsample(step_number));
+		Blit("downsample", downsample_src, target, effects::BloomDownsample(step_number));
 		downsample_src = target;
 		step_number += 1;
 	}
@@ -1051,8 +1049,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (auto it = std::next(tex_chain.rbegin()); it != tex_chain.rend(); ++it)
 	{
-		Blit(std::format("upsample_{}", std::distance(tex_chain.rbegin(), it)),
-			*std::prev(it), *it, effects::BloomUpsample(), false, BlendStates::Additive);
+		Blit("upsample", *std::prev(it), *it, effects::BloomUpsample(), false, BlendStates::Additive);
 	}
 
 	// combine
