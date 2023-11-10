@@ -77,11 +77,12 @@ void EFFECT_FUNC(inout vec4);
 
 void main()
 {
+#ifdef EFFECT_FUNC
+	EFFECT_FUNC(result);
+#else
 	result = In.color;
 	result *= settings.color;
 	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-#ifdef EFFECT_FUNC
-	EFFECT_FUNC(result);
 #endif
 })";
 
@@ -97,6 +98,10 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 
 void effect(inout vec4 result)
 {
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 
 	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
@@ -126,6 +131,10 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 
 void effect(inout vec4 result)
 {
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 
 	vec3 light_offset = light.position - In.frag_position;
@@ -294,6 +303,10 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _bright
 
 void effect(inout vec4 result)
 {
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
 	float luminance = dot(vec3(0.2125, 0.7154, 0.0721), result.xyz);
 	luminance = max(0.0, luminance - bright.threshold);
 	result *= sign(luminance);
@@ -319,6 +332,10 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _alphatest
 
 void effect(inout vec4 result)
 {
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
 	if (result.a <= alphatest.threshold)
 		discard;
 })";
