@@ -1,6 +1,7 @@
 #include "utils.h"
 #include <ranges>
 #include <array>
+#include <format>
 
 using namespace skygfx;
 
@@ -967,14 +968,14 @@ void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear
 void utils::passes::GaussianBlur(const RenderTarget* src, const RenderTarget* dst)
 {
 	auto blur_target = skygfx::AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
-	Blit(src, blur_target, effects::GaussianBlur({ 1.0f, 0.0f }), true);
-	Blit(blur_target, dst, effects::GaussianBlur({ 0.0f, 1.0f }));
+	Blit("gaussian horizontal", src, blur_target, effects::GaussianBlur({ 1.0f, 0.0f }), true);
+	Blit("gaussian vertical", blur_target, dst, effects::GaussianBlur({ 0.0f, 1.0f }));
 	skygfx::ReleaseTransientRenderTarget(blur_target);
 }
 
 void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst, float intensity)
 {
-	Blit(src, dst, effects::Grayscale{ intensity });
+	Blit("grayscale", src, dst, effects::Grayscale{ intensity });
 }
 
 void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, float bright_threshold, float intensity)
@@ -1009,7 +1010,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	if (bright_threshold > 0.0f)
 	{
-		Blit(src, bright, effects::BrightFilter(bright_threshold), true);
+		Blit("bright", src, bright, effects::BrightFilter(bright_threshold), true);
 		downsample_src = bright;
 	}
 
@@ -1019,7 +1020,8 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (auto target : tex_chain)
 	{
-		Blit(downsample_src, target, effects::BloomDownsample(step_number));
+		Blit(std::format("downsample_{}", step_number), downsample_src, target,
+			effects::BloomDownsample(step_number));
 		downsample_src = target;
 		step_number += 1;
 	}
@@ -1028,7 +1030,8 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (auto it = std::next(tex_chain.rbegin()); it != tex_chain.rend(); ++it)
 	{
-		Blit(*std::prev(it), *it, effects::BloomUpsample(), false, BlendStates::Additive);
+		Blit(std::format("upsample_{}", std::distance(tex_chain.rbegin(), it)),
+			*std::prev(it), *it, effects::BloomUpsample(), false, BlendStates::Additive);
 	}
 
 	// combine
@@ -1064,7 +1067,7 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 
 	if (bright_threshold > 0.0f)
 	{
-		Blit(src, bright, effects::BrightFilter(bright_threshold), true);
+		Blit("bright", src, bright, effects::BrightFilter(bright_threshold), true);
 		blur_src = bright;
 	}
 
@@ -1384,4 +1387,19 @@ bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
 
 	auto topology = ConvertModeToTopology(mode);
 	return topology == mTopology.value();
+}
+
+static utils::StageDebugger* gStageDebugger = nullptr;
+
+void utils::SetStageDebugger(StageDebugger* value)
+{
+	gStageDebugger = value;
+}
+
+void utils::DebugStage(const std::string& name, const Texture* texture)
+{
+	if (gStageDebugger == nullptr)
+		return;
+
+	gStageDebugger->stage(name, texture);
 }

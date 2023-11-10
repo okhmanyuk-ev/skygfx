@@ -16,3 +16,19 @@ private:
 	std::shared_ptr<skygfx::Texture> mFontTexture = nullptr;
 	skygfx::utils::Mesh mMesh;
 };
+
+class StageDebugger : public skygfx::utils::StageDebugger
+{
+private:
+	struct Stage
+	{
+		std::string name;
+		skygfx::RenderTarget* target;
+	};
+
+	std::vector<Stage> mStages;
+
+public:
+	void stage(const std::string& name, const skygfx::Texture* texture) override;
+	void show();
+};

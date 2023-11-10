@@ -105,3 +105,30 @@ void ImguiHelper::draw()
 
 	skygfx::utils::ExecuteCommands(draw_cmds);
 }
+
+void StageDebugger::stage(const std::string& name, const skygfx::Texture* texture)
+{
+	if (texture == nullptr)
+		return;
+
+	Stage stage;
+	stage.name = name;
+	stage.target = skygfx::AcquireTransientRenderTarget(texture->getWidth(), texture->getHeight());
+	skygfx::utils::passes::Blit(texture, stage.target, true);
+	mStages.push_back(stage);
+}
+
+void StageDebugger::show()
+{
+	ImGui::Begin("Stage Debugger");
+	auto max_size = ImGui::GetContentRegionAvail().x;
+	for (const auto& stage : mStages)
+	{
+		glm::vec2 size = { (float)stage.target->getWidth(), (float)stage.target->getHeight() };
+		size *= max_size / std::fmaxf(size.x, size.y);
+		ImGui::Text("%s", stage.name.c_str());
+		ImGui::Image((ImTextureID)stage.target, { size.x, size.y });
+	}
+	ImGui::End();
+	mStages.clear();
+}

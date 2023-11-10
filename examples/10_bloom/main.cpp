@@ -109,6 +109,9 @@ int main()
 		.cull_mode = skygfx::CullMode::Back
 	};
 
+	StageDebugger stage_debugger;
+	skygfx::utils::SetStageDebugger(&stage_debugger);
+
 	while (!glfwWindowShouldClose(window))
 	{
 		ImGui_ImplGlfw_NewFrame();
@@ -141,6 +144,7 @@ int main()
 		else
 			skygfx::utils::passes::Bloom(src_target, nullptr, threshold, intensity);
 
+		stage_debugger.show();
 		imgui.draw();
 
 		skygfx::Present();

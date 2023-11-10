@@ -492,4 +492,23 @@ namespace skygfx::utils
 		uint32_t mIndexCount = 0;
 		skygfx::utils::Mesh::Vertex mVertex;
 	};
+
+	class StageDebugger
+	{
+	public:
+		virtual void stage(const std::string& name, const Texture* texture) = 0;
+	};
+
+	void SetStageDebugger(StageDebugger* value);
+	void DebugStage(const std::string& name, const Texture* texture);
+
+	namespace passes
+	{
+		void Blit(const std::string& stage_name, const Texture* src, const RenderTarget* dst, effects::Effect auto effect, bool clear = false,
+			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f })
+		{
+			Blit(src, dst, effect, clear, blend_mode, color);
+			DebugStage(stage_name, dst);
+		}
+	}
 }
