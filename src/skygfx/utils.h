@@ -161,6 +161,8 @@ namespace skygfx::utils
 
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
+	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeOrthogonalCameraMatrices(const OrthogonalCamera& camera,
+		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(const Camera& camera, 
 		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
 
@@ -170,7 +172,7 @@ namespace skygfx::utils
 	{
 		Context();
 
-		skygfx::Shader default_shader;
+		Shader default_shader;
 		std::unordered_map<std::type_index, Shader> shaders;
 		Mesh default_mesh;
 		Texture white_pixel_texture;
@@ -455,11 +457,11 @@ namespace skygfx::utils
 	public:
 		void reset(bool reset_vertex = true);
 		void begin(Mode mode);
-		void vertex(const Vertex::PositionColorTextureNormal& vertex);
-		void vertex(const Vertex::PositionColorTexture& vertex);
-		void vertex(const Vertex::PositionColor& vertex);
-		void vertex(const glm::vec3& pos);
-		void vertex(const glm::vec2& pos);
+		void vertex(const Vertex::PositionColorTextureNormal& value);
+		void vertex(const Vertex::PositionColorTexture& value);
+		void vertex(const Vertex::PositionColor& value);
+		void vertex(const glm::vec3& value);
+		void vertex(const glm::vec2& value);
 		void color(const glm::vec4& value);
 		void color(const glm::vec3& value);
 		void normal(const glm::vec3& value);
@@ -485,12 +487,12 @@ namespace skygfx::utils
 		bool mBegan = false;
 		std::optional<Mode> mMode;
 		std::optional<Topology> mTopology;
-		skygfx::utils::Mesh::Vertices mVertices;
-		skygfx::utils::Mesh::Indices mIndices;
+		Mesh::Vertices mVertices;
+		Mesh::Indices mIndices;
 		uint32_t mVertexStart = 0;
 		uint32_t mVertexCount = 0;
 		uint32_t mIndexCount = 0;
-		skygfx::utils::Mesh::Vertex mVertex;
+		Mesh::Vertex mVertex;
 	};
 
 	class StageDebugger
@@ -511,4 +513,50 @@ namespace skygfx::utils
 			DebugStage(stage_name, dst);
 		}
 	}
+
+	class ScratchRasterizer
+	{
+	public:
+		struct State
+		{
+			Texture* texture = nullptr;
+			Sampler sampler = Sampler::Linear;
+			TextureAddress texaddr = TextureAddress::Clamp;
+			CullMode cull_mode = CullMode::None;
+			FrontFace front_face = FrontFace::Clockwise;
+
+			std::optional<Scissor> scissor;
+			std::optional<Viewport> viewport;
+			std::optional<BlendMode> blend_mode;
+			std::optional<DepthMode> depth_mode;
+			std::optional<StencilMode> stencil_mode;
+			std::optional<DepthBias> depth_bias;
+			std::optional<float> alpha_test_threshold;
+
+			glm::mat4 projection_matrix = glm::mat4(1.0f);
+			glm::mat4 view_matrix = glm::mat4(1.0f);
+			glm::mat4 model_matrix = glm::mat4(1.0f);
+
+			bool operator==(const State& other) const = default;
+		};
+
+	public:
+		void begin(MeshBuilder::Mode mode, const State& state);
+		void vertex(const Vertex::PositionColorTextureNormal& value);
+		void vertex(const Vertex::PositionColorTexture& value);
+		void vertex(const Vertex::PositionColor& value);
+		void vertex(const glm::vec3& value);
+		void vertex(const glm::vec2& value);
+		void color(const glm::vec4& value);
+		void color(const glm::vec3& value);
+		void normal(const glm::vec3& value);
+		void texcoord(const glm::vec2& value);
+		void end();
+		void flush();
+
+	private:
+		State mState;
+		Mesh mMesh;
+		MeshBuilder mMeshBuilder;
+	};	
 }

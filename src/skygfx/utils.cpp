@@ -417,17 +417,23 @@ utils::effects::BrightFilter::BrightFilter(float _threshold) :
 {
 }
 
-std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const Camera& camera,
+std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeOrthogonalCameraMatrices(const OrthogonalCamera& camera,
 	std::optional<uint32_t> _width, std::optional<uint32_t> _height)
 {
 	auto width = (float)_width.value_or(GetBackbufferWidth());
 	auto height = (float)_height.value_or(GetBackbufferHeight());
+	auto proj = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f);
+	auto view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
+		glm::vec3(0.0f, 1.0f, 0.0f));
+	return { proj, view };
+}
 
+std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const Camera& camera,
+	std::optional<uint32_t> _width, std::optional<uint32_t> _height)
+{
 	return std::visit(cases{
 		[&](const OrthogonalCamera& camera) {
-			auto proj = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f);
-			auto view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 
-				glm::vec3(0.0f, 1.0f, 0.0f));
+			auto [proj, view] = MakeOrthogonalCameraMatrices(camera, _width, _height);
 			auto eye_pos = glm::vec3{ 0.0f, 0.0f, 0.0f };
 			return std::make_tuple(proj, view, eye_pos);
 		},
@@ -441,6 +447,9 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::Ma
 			auto front = glm::normalize(glm::vec3(cos_yaw * cos_pitch, sin_pitch, sin_yaw * cos_pitch));
 			auto right = glm::normalize(glm::cross(front, camera.world_up));
 			auto up = glm::normalize(glm::cross(right, front));
+
+			auto width = (float)_width.value_or(GetBackbufferWidth());
+			auto height = (float)_height.value_or(GetBackbufferHeight());
 
 			auto proj = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane);
 			auto view = glm::lookAtRH(camera.position, camera.position + front, up);
@@ -1288,7 +1297,7 @@ void utils::MeshBuilder::reset(bool reset_vertex)
 	mTopology.reset();
 
 	if (reset_vertex)
-		mVertex = skygfx::utils::Mesh::Vertex{};
+		mVertex = Mesh::Vertex{};
 }
 
 void utils::MeshBuilder::begin(Mode mode)
@@ -1311,40 +1320,40 @@ void utils::MeshBuilder::begin(Mode mode)
 	mVertexStart = mVertexCount;
 }
 
-void utils::MeshBuilder::vertex(const Vertex::PositionColorTextureNormal& vertex)
+void utils::MeshBuilder::vertex(const Vertex::PositionColorTextureNormal& value)
 {
 	assert(mBegan);
-	AddItem(mVertices, mVertexCount, vertex);
+	AddItem(mVertices, mVertexCount, value);
 }
 
-void utils::MeshBuilder::vertex(const Vertex::PositionColorTexture& _vertex)
+void utils::MeshBuilder::vertex(const Vertex::PositionColorTexture& value)
 {
 	vertex(Vertex::PositionColorTextureNormal{
-		.pos = _vertex.pos,
-		.color = _vertex.color,
-		.texcoord = _vertex.texcoord,
+		.pos = value.pos,
+		.color = value.color,
+		.texcoord = value.texcoord,
 		.normal = { 0.0f, 0.0f, 0.0f }
 	});
 }
 
-void utils::MeshBuilder::vertex(const Vertex::PositionColor& _vertex)
+void utils::MeshBuilder::vertex(const Vertex::PositionColor& value)
 {
 	vertex(Vertex::PositionColorTexture{
-		.pos = _vertex.pos,
-		.color = _vertex.color,
+		.pos = value.pos,
+		.color = value.color,
 		.texcoord = { 0.0f, 0.0f }
 	});
 }
 
-void utils::MeshBuilder::vertex(const glm::vec3& pos)
+void utils::MeshBuilder::vertex(const glm::vec3& value)
 {
-	mVertex.pos = pos;
+	mVertex.pos = value;
 	vertex(mVertex);
 }
 
-void utils::MeshBuilder::vertex(const glm::vec2& pos)
+void utils::MeshBuilder::vertex(const glm::vec2& value)
 {
-	vertex({ pos.x, pos.y, 0.0f });
+	vertex({ value.x, value.y, 0.0f });
 }
 
 void utils::MeshBuilder::color(const glm::vec4& value)
@@ -1372,8 +1381,8 @@ void utils::MeshBuilder::end()
 	assert(mBegan);
 	mBegan = false;
 
-	using ExtractIndicesFunc = std::function<void(const skygfx::utils::Mesh::Vertices& vertices,
-		uint32_t vertex_start, uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)>;
+	using ExtractIndicesFunc = std::function<void(const Mesh::Vertices& vertices,
+		uint32_t vertex_start, uint32_t vertex_count, Mesh::Indices& indices, uint32_t& index_count)>;
 
 	static const std::unordered_map<Mode, ExtractIndicesFunc> ExtractIndicesFuncs = {
 		{ Mode::Points, ExtractOrderedIndexSequence },
@@ -1420,4 +1429,109 @@ void utils::DebugStage(const std::string& name, const Texture* texture)
 		return;
 
 	gStageDebugger->stage(name, texture);
+}
+
+void utils::ScratchRasterizer::begin(MeshBuilder::Mode mode, const State& state)
+{
+	if (!mMeshBuilder.isBeginAllowed(mode))
+		flush();
+
+	if (mState != state)
+		flush();
+
+	mState = state;
+	mMeshBuilder.begin(mode);
+}
+
+void utils::ScratchRasterizer::vertex(const Vertex::PositionColorTextureNormal& value)
+{
+	mMeshBuilder.vertex(value);
+}
+
+void utils::ScratchRasterizer::vertex(const Vertex::PositionColorTexture& value)
+{
+	mMeshBuilder.vertex(value);
+}
+
+void utils::ScratchRasterizer::vertex(const Vertex::PositionColor& value)
+{
+	mMeshBuilder.vertex(value);
+}
+
+void utils::ScratchRasterizer::vertex(const glm::vec3& value)
+{
+	mMeshBuilder.vertex(value);
+}
+
+void utils::ScratchRasterizer::vertex(const glm::vec2& value)
+{
+	mMeshBuilder.vertex(value);
+}
+
+void utils::ScratchRasterizer::color(const glm::vec4& value)
+{
+	mMeshBuilder.color(value);
+}
+
+void utils::ScratchRasterizer::color(const glm::vec3& value)
+{
+	mMeshBuilder.color(value);
+}
+
+void utils::ScratchRasterizer::normal(const glm::vec3& value)
+{
+	mMeshBuilder.normal(value);
+}
+
+void utils::ScratchRasterizer::texcoord(const glm::vec2& value)
+{
+	mMeshBuilder.texcoord(value);
+}
+
+void utils::ScratchRasterizer::end()
+{
+	mMeshBuilder.end();
+}
+
+void utils::ScratchRasterizer::flush()
+{
+	if (mMeshBuilder.getVertexCount() == 0)
+	{
+		mMeshBuilder.reset(false);
+		return;
+	}
+
+	mMeshBuilder.setToMesh(mMesh);
+
+	Commands cmds;
+
+	if (mState.alpha_test_threshold.has_value())
+	{
+		AddCommands(cmds, {
+			commands::SetEffect(effects::AlphaTest{ mState.alpha_test_threshold.value()})
+		});
+	}
+
+	AddCommands(cmds, {
+		commands::SetViewport(mState.viewport),
+		commands::SetScissor(mState.scissor),
+		commands::SetBlendMode(mState.blend_mode),
+		commands::SetDepthBias(mState.depth_bias),
+		commands::SetDepthMode(mState.depth_mode),
+		commands::SetStencilMode(mState.stencil_mode),
+		commands::SetCullMode(mState.cull_mode),
+		commands::SetFrontFace(mState.front_face),
+		commands::SetSampler(mState.sampler),
+		commands::SetTextureAddress(mState.texaddr),
+		commands::SetProjectionMatrix(mState.projection_matrix),
+		commands::SetViewMatrix(mState.view_matrix),
+		commands::SetModelMatrix(mState.model_matrix),
+		commands::SetMesh(&mMesh),
+		commands::SetColorTexture(mState.texture),
+		commands::Draw()
+	});
+
+	ExecuteCommands(cmds);
+
+	mMeshBuilder.reset(false);
 }

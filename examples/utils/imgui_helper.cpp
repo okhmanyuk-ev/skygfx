@@ -34,50 +34,21 @@ void ImguiHelper::draw()
 	ImGui::Render();
 
 	auto display_scale = ImGui::GetIO().DisplayFramebufferScale;
-	auto model = glm::scale(glm::mat4(1.0f), { display_scale.x, display_scale.y, 1.0f });
 
 	auto draw_data = ImGui::GetDrawData();
 	draw_data->ScaleClipRects(display_scale);
 
-	auto cmdlists = std::span{ draw_data->CmdLists, static_cast<std::size_t>(draw_data->CmdListsCount) };
+	skygfx::utils::ScratchRasterizer::State state;
+	state.sampler = skygfx::Sampler::Nearest;
+	state.blend_mode = skygfx::BlendStates::NonPremultiplied;
+	std::tie(state.projection_matrix, state.view_matrix) = skygfx::utils::MakeOrthogonalCameraMatrices(
+		skygfx::utils::OrthogonalCamera{});
+	state.model_matrix = glm::scale(glm::mat4(1.0f), { display_scale.x, display_scale.y, 1.0f });
 
-	skygfx::utils::Mesh::Vertices vertices;
-	skygfx::utils::Mesh::Indices indices;
-
-	for (auto cmdlist : cmdlists)
+	for (auto cmdlist : std::span{ draw_data->CmdLists, static_cast<std::size_t>(draw_data->CmdListsCount) })
 	{
-		auto base_vertex = vertices.size();
+		uint32_t index_offset = 0;
 
-		for (const auto& vertex : cmdlist->VtxBuffer)
-		{
-			vertices.push_back(skygfx::utils::Mesh::Vertex{
-				.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
-				.color = glm::unpackUnorm4x8(vertex.col),
-				.texcoord = { vertex.uv.x, vertex.uv.y }
-			});
-		}
-
-		for (auto index : cmdlist->IdxBuffer)
-		{
-			indices.push_back(static_cast<skygfx::utils::Mesh::Index>(index + base_vertex));
-		}
-	}
-
-	mMesh.setVertices(vertices);
-	mMesh.setIndices(indices);
-
-	skygfx::utils::Commands draw_cmds = {
-		skygfx::utils::commands::SetBlendMode(skygfx::BlendStates::NonPremultiplied),
-		skygfx::utils::commands::SetSampler(skygfx::Sampler::Nearest),
-		skygfx::utils::commands::SetMesh(&mMesh),
-		skygfx::utils::commands::SetCamera(skygfx::utils::OrthogonalCamera{}),
-		skygfx::utils::commands::SetModelMatrix(model)
-	};
-
-	uint32_t index_offset = 0;
-
-	for (auto cmdlist : cmdlists)
-	{
 		for (const auto& cmd : cmdlist->CmdBuffer)
 		{
 			if (cmd.UserCallback)
@@ -86,24 +57,31 @@ void ImguiHelper::draw()
 			}
 			else
 			{
-				skygfx::utils::AddCommands(draw_cmds, {
-					skygfx::utils::commands::SetScissor(skygfx::Scissor{
-						.position = { cmd.ClipRect.x, cmd.ClipRect.y },
-						.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
-					}),
-					skygfx::utils::commands::SetColorTexture((skygfx::Texture*)cmd.TextureId),
-					skygfx::utils::commands::Draw(skygfx::utils::DrawIndexedVerticesCommand{
-						.index_count = cmd.ElemCount,
-						.index_offset = index_offset
-					})
-				});
+				state.texture = (skygfx::Texture*)cmd.TextureId;
+				state.scissor = skygfx::Scissor{
+					.position = { cmd.ClipRect.x, cmd.ClipRect.y },
+					.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
+				};
+
+				mScratchRasterizer.begin(skygfx::utils::MeshBuilder::Mode::Triangles, state);
+
+				for (uint32_t i = 0; i < cmd.ElemCount; i++)
+				{
+					auto index = cmdlist->IdxBuffer[i + index_offset];
+					const auto& vertex = cmdlist->VtxBuffer[index];
+					mScratchRasterizer.texcoord({ vertex.uv.x, vertex.uv.y });
+					mScratchRasterizer.color(glm::unpackUnorm4x8(vertex.col));
+					mScratchRasterizer.vertex({ vertex.pos.x, vertex.pos.y });
+				}
+
+				mScratchRasterizer.end();
 			}
 
 			index_offset += cmd.ElemCount;
 		}
 	}
 
-	skygfx::utils::ExecuteCommands(draw_cmds);
+	mScratchRasterizer.flush();
 }
 
 void StageDebugger::stage(const std::string& name, const skygfx::Texture* texture)
