@@ -163,8 +163,9 @@ namespace skygfx::utils
 
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeOrthogonalCameraMatrices(const OrthogonalCamera& camera,
 		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
-	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(const Camera& camera, 
-		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
+	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakePerspectiveCameraMatrices(
+		const PerspectiveCamera& camera, std::optional<uint32_t> width = std::nullopt,
+		std::optional<uint32_t> height = std::nullopt);
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
 
