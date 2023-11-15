@@ -425,6 +425,7 @@ namespace skygfx::utils
 		CullMode cull_mode = CullMode::None;
 		TextureAddress texture_address = TextureAddress::Clamp;
 		DepthMode depth_mode;
+		Sampler sampler = Sampler::Linear;
 	};
 
 	struct DrawSceneOptions

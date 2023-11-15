@@ -1129,6 +1129,7 @@ void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, co
 			commands::SetTextureAddress(model.texture_address),
 			commands::SetDepthMode(model.depth_mode),
 			commands::SetColor(model.color),
+			commands::SetSampler(model.sampler),
 			commands::Draw(model.draw_command)
 		});
 	}
