@@ -115,7 +115,7 @@ Texture& Texture::operator=(Texture&& other) noexcept
 
 RenderTarget::RenderTarget(uint32_t width, uint32_t height, Format format) : Texture(width, height, format, 1)
 {
-	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
+	mRenderTargetHandle = gBackend->createRenderTarget(width, height, { *this });
 }
 
 RenderTarget::RenderTarget(RenderTarget&& other) noexcept : Texture(std::move(other))
@@ -142,6 +142,28 @@ RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept
 	mRenderTargetHandle = std::exchange(other.mRenderTargetHandle, nullptr);
 
 	return *this;
+}
+
+// multi render target
+
+MultiRenderTarget::MultiRenderTarget(uint32_t width, uint32_t height, std::vector<Format> formats) :
+	mWidth(width),
+	mHeight(height)
+{
+	std::vector<TextureHandle*> handles;
+	for (auto format : formats)
+	{
+		auto texture = Texture(width, height, format, 1);
+		handles.push_back(texture);
+		mTextures.push_back(std::move(texture));
+	}
+	mRenderTargetHandle = gBackend->createRenderTarget(width, height, handles);
+}
+
+MultiRenderTarget::~MultiRenderTarget()
+{
+	if (gBackend)
+		gBackend->destroyRenderTarget(mRenderTargetHandle);
 }
 
 // shader
@@ -722,6 +744,13 @@ void skygfx::SetRenderTarget(const RenderTarget& value)
 	gBackend->setRenderTarget(const_cast<RenderTarget&>(value));
 	gRenderTargetSize = { value.getWidth(), value.getHeight() };
 	gBackbufferFormat = value.getFormat();
+}
+
+void skygfx::SetRenderTarget(const MultiRenderTarget& value)
+{
+	gBackend->setRenderTarget(const_cast<MultiRenderTarget&>(value));
+	gRenderTargetSize = { value.getWidth(), value.getHeight() };
+	//gBackbufferFormat = ??? // TODO: ???
 }
 
 void skygfx::SetRenderTarget(std::nullopt_t value)

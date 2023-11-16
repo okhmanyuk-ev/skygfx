@@ -52,7 +52,8 @@ namespace skygfx
 		void generateMips(TextureHandle* handle) override;
 		void destroyTexture(TextureHandle* handle) override;
 
-		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) override;
+		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height,
+			const std::vector<TextureHandle*> textures) override;
 		void destroyRenderTarget(RenderTargetHandle* handle) override;
 
 		ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 

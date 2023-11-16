@@ -85,7 +85,7 @@ void main()
 #endif
 })";
 
-const std::string utils::effects::DirectionalLightForwardShading::Shader = R"(
+const std::string utils::effects::forward_shading::DirectionalLight::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
@@ -115,7 +115,7 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::PointLightForwardShading::Shader = R"(
+const std::string utils::effects::forward_shading::PointLight::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
@@ -156,7 +156,7 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::DirectionalLightDeferredShading::Shader = R"(
+const std::string utils::effects::deferred_shading::DirectionalLight::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
@@ -191,7 +191,7 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::PointLightDeferredShading::Shader = R"(
+const std::string utils::effects::deferred_shading::PointLight::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
@@ -235,6 +235,27 @@ void effect(inout vec4 result)
 	intensity *= attenuation;
 
 	result *= vec4(intensity, 1.0);
+})";
+
+const std::string utils::effects::deferred_shading::ExtractGeometryBuffer::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _effect_settings
+{
+	float unused;
+} effect_settings;
+
+//layout(location = 0) out vec4 result; // color_buffer
+layout(location = 1) out vec4 normal_buffer;
+layout(location = 2) out vec4 positions_buffer;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
+	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
+	normal_buffer = vec4(normal, 1.0);
+	positions_buffer = vec4(In.frag_position, 1.0);
 })";
 
 const std::string utils::effects::GaussianBlur::Shader = R"(
@@ -424,29 +445,6 @@ void effect(inout vec4 result)
 		discard;
 })";
 
-const std::string utils::effects::ExtractNormalBuffer::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _effect_settings
-{
-	float unused;
-} effect_settings;
-
-void effect(inout vec4 result)
-{
-	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
-	result = vec4(normal, 1.0);
-})";
-
-const std::string utils::effects::ExtractPositionsBuffer::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _effect_settings
-{
-	float unused;
-} effect_settings;
-
-void effect(inout vec4 result)
-{
-	result = vec4(In.frag_position, 1.0);
-})";
-
 static std::optional<utils::Context> gContext;
 
 utils::Mesh::Mesh()
@@ -506,7 +504,7 @@ void utils::Mesh::setIndices(const Indices& value)
 	setIndices(value.data(), static_cast<uint32_t>(value.size()));
 }
 
-utils::effects::DirectionalLightForwardShading::DirectionalLightForwardShading(const utils::DirectionalLight& light) :
+utils::effects::forward_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
 	direction(light.direction),
 	ambient(light.ambient),
 	diffuse(light.diffuse),
@@ -515,7 +513,7 @@ utils::effects::DirectionalLightForwardShading::DirectionalLightForwardShading(c
 {
 }
 
-utils::effects::PointLightForwardShading::PointLightForwardShading(const utils::PointLight& light) :
+utils::effects::forward_shading::PointLight::PointLight(const utils::PointLight& light) :
 	position(light.position),
 	ambient(light.ambient),
 	diffuse(light.diffuse),
@@ -527,7 +525,7 @@ utils::effects::PointLightForwardShading::PointLightForwardShading(const utils::
 {
 }
 
-utils::effects::DirectionalLightDeferredShading::DirectionalLightDeferredShading(const utils::DirectionalLight& light) :
+utils::effects::deferred_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
 	direction(light.direction),
 	ambient(light.ambient),
 	diffuse(light.diffuse),
@@ -536,7 +534,7 @@ utils::effects::DirectionalLightDeferredShading::DirectionalLightDeferredShading
 {
 }
 
-utils::effects::PointLightDeferredShading::PointLightDeferredShading(const utils::PointLight& light) :
+utils::effects::deferred_shading::PointLight::PointLight(const utils::PointLight& light) :
 	position(light.position),
 	ambient(light.ambient),
 	diffuse(light.diffuse),
@@ -1338,10 +1336,10 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 		cmds.insert(cmds.end(), {
 			std::visit(cases{
 				[](const DirectionalLight& light) {
-					return commands::SetEffect(effects::DirectionalLightForwardShading(light));
+					return commands::SetEffect(effects::forward_shading::DirectionalLight(light));
 				},
 				[](const PointLight& light) {
-					return commands::SetEffect(effects::PointLightForwardShading(light));
+					return commands::SetEffect(effects::forward_shading::PointLight(light));
 				}
 			}, light),
 			commands::Subcommands(&draw_models)
@@ -1374,33 +1372,35 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	}
 
 	// extract g-buffer
-	// TODO: use mrt
+	// TODO: use acquire transient for mrt
 
-	auto color_buffer = AcquireTransientRenderTarget();
-	auto normal_buffer = AcquireTransientRenderTarget();
-	auto positions_buffer = AcquireTransientRenderTarget();
+	auto gbuffer = MultiRenderTarget(GetBackbufferWidth(), GetBackbufferHeight(), {
+		Format::Float4,
+		Format::Float4, // TODO: Float3
+		Format::Float4 // TODO: Float3
+	});
 
-	ExecuteCommands("color_buffer", color_buffer, true, {
+	SetRenderTarget(gbuffer);
+	Clear();
+
+	ExecuteCommands({
 		commands::SetCamera(camera),
+		commands::SetEffect(effects::deferred_shading::ExtractGeometryBuffer{}),
 		commands::Subcommands(&draw_models)
 	});
-	ExecuteCommands("normal_buffer", normal_buffer, true, {
-		commands::SetCamera(camera),
-		commands::SetEffect(effects::ExtractNormalBuffer{}),
-		commands::Subcommands(&draw_models)
-	});
-	ExecuteCommands("positions_buffer", positions_buffer, true, {
-		commands::SetCamera(camera),
-		commands::SetEffect(effects::ExtractPositionsBuffer{}),
-		commands::Subcommands(&draw_models)
-	});
+
+	const auto& color_attachments = gbuffer.getTextures();
+
+	DebugStage("color_buffer", &color_attachments.at(0));
+	DebugStage("normal_buffer", &color_attachments.at(1));
+	DebugStage("positions_buffer", &color_attachments.at(2));
 
 	std::vector<Command> cmds = {
 		commands::SetEyePosition(camera.position),
 		commands::SetBlendMode(BlendStates::Additive),
-		commands::SetCustomTexture(5, color_buffer),
-		commands::SetCustomTexture(6, normal_buffer),
-		commands::SetCustomTexture(7, positions_buffer)
+		commands::SetCustomTexture(5, &color_attachments.at(0)),
+		commands::SetCustomTexture(6, &color_attachments.at(1)),
+		commands::SetCustomTexture(7, &color_attachments.at(2))
 	};
 
 	for (const auto& light : lights)
@@ -1408,10 +1408,10 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 		cmds.insert(cmds.end(), {
 			std::visit(cases{
 				[](const DirectionalLight& light) {
-					return commands::SetEffect(effects::DirectionalLightDeferredShading(light));
+					return commands::SetEffect(effects::deferred_shading::DirectionalLight(light));
 				},
 				[](const PointLight& light) {
-					return commands::SetEffect(effects::PointLightDeferredShading(light));
+					return commands::SetEffect(effects::deferred_shading::PointLight(light));
 				}
 			}, light),
 			commands::Draw()

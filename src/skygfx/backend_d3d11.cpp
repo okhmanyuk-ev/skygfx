@@ -292,23 +292,28 @@ public:
 class RenderTargetD3D11
 {
 public:
-	const auto& getD3D11RenderTargetView() const { return mRenderTargetView; }
+	const auto& getRenderTargetViews() const { return mRenderTargetViews; }
 	const auto& getD3D11DepthStencilView() const { return mDepthStencilView; }
-	auto getTexture() const { return mTexture; }
+	auto getColorAttachments() const { return mColorAttachments; }
 
 private:
 	ComPtr<ID3D11Texture2D> mDepthStencilTexture;
-	ComPtr<ID3D11RenderTargetView> mRenderTargetView;
+	std::vector<ComPtr<ID3D11RenderTargetView>> mRenderTargetViews;
 	ComPtr<ID3D11DepthStencilView> mDepthStencilView;
-	TextureD3D11* mTexture = nullptr;
+	std::vector<TextureD3D11*> mColorAttachments;
 
 public:
-	RenderTargetD3D11(uint32_t width, uint32_t height, TextureD3D11* texture) :
-		mTexture(texture)
+	RenderTargetD3D11(uint32_t width, uint32_t height, const std::vector<TextureD3D11*>& color_attachments) :
+		mColorAttachments(color_attachments)
 	{
-		auto format = FormatMap.at(texture->getFormat());
-		auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, format);
-		gContext->device->CreateRenderTargetView(texture->getD3D11Texture2D().Get(), &rtv_desc, mRenderTargetView.GetAddressOf());
+		for (auto color_attachment : color_attachments)
+		{
+			auto format = FormatMap.at(color_attachment->getFormat());
+			auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, format);
+			ComPtr<ID3D11RenderTargetView> rtv;
+			gContext->device->CreateRenderTargetView(color_attachment->getD3D11Texture2D().Get(), &rtv_desc, rtv.GetAddressOf());
+			mRenderTargetViews.push_back(rtv);
+		}
 
 		auto tex_desc = CD3D11_TEXTURE2D_DESC(DXGI_FORMAT_D24_UNORM_S8_UINT, width, height, 1, 1, D3D11_BIND_DEPTH_STENCIL);
 		gContext->device->CreateTexture2D(&tex_desc, NULL, mDepthStencilTexture.GetAddressOf());
@@ -391,17 +396,17 @@ public:
 
 uint32_t ContextD3D11::getBackbufferWidth()
 {
-	return render_target ? render_target->getTexture()->getWidth() : width;
+	return render_target ? render_target->getColorAttachments().at(0)->getWidth() : width;
 }
 
 uint32_t ContextD3D11::getBackbufferHeight()
 {
-	return render_target ? render_target->getTexture()->getHeight() : height;
+	return render_target ? render_target->getColorAttachments().at(0)->getHeight() : height;
 }
 
 Format ContextD3D11::getBackbufferFormat()
 {
-	return render_target ? render_target->getTexture()->getFormat() : Format::Byte4;
+	return render_target ? render_target->getColorAttachments().at(0)->getFormat() : Format::Byte4;
 }
 
 static void CreateMainRenderTarget(uint32_t width, uint32_t height)
@@ -410,7 +415,7 @@ static void CreateMainRenderTarget(uint32_t width, uint32_t height)
 	gContext->swapchain->GetBuffer(0, IID_PPV_ARGS(backbuffer.GetAddressOf()));
 
 	gContext->backbuffer_texture = new TextureD3D11(width, height, skygfx::Format::Byte4, backbuffer);
-	gContext->main_render_target = new RenderTargetD3D11(width, height, gContext->backbuffer_texture);
+	gContext->main_render_target = new RenderTargetD3D11(width, height, { gContext->backbuffer_texture });
 
 	gContext->width = width;
 	gContext->height = height;
@@ -773,15 +778,25 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 	ComPtr<ID3D11ShaderResourceView> prev_shader_resource_view;
 	gContext->context->PSGetShaderResources(0, 1, prev_shader_resource_view.GetAddressOf());
 
-	if (prev_shader_resource_view.Get() == render_target->getTexture()->getD3D11ShaderResourceView().Get())
+	for (auto color_attachment : render_target->getColorAttachments())
 	{
-		ID3D11ShaderResourceView* null[] = { NULL };
-		gContext->context->PSSetShaderResources(0, 1, null); // remove old shader view
-		// TODO: here we removing only binding 0, 
-		// we should remove every binding with this texture
+		if (prev_shader_resource_view.Get() == color_attachment->getD3D11ShaderResourceView().Get())
+		{
+			ID3D11ShaderResourceView* null[] = { NULL };
+			gContext->context->PSSetShaderResources(0, 1, null); // remove old shader view
+			// TODO: here we removing only binding 0, 
+			// we should remove every binding with this texture
+		}
 	}
 
-	gContext->context->OMSetRenderTargets(1, render_target->getD3D11RenderTargetView().GetAddressOf(),
+	std::vector<ID3D11RenderTargetView*> render_target_views;
+
+	for (auto render_target_view : render_target->getRenderTargetViews())
+	{
+		render_target_views.push_back(render_target_view.Get());
+	}
+
+	gContext->context->OMSetRenderTargets((UINT)render_target_views.size(), render_target_views.data(),
 		render_target->getD3D11DepthStencilView().Get());
 
 	gContext->render_target = render_target;
@@ -792,7 +807,14 @@ void BackendD3D11::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendD3D11::setRenderTarget(std::nullopt_t value)
 {
-	gContext->context->OMSetRenderTargets(1, gContext->main_render_target->getD3D11RenderTargetView().GetAddressOf(),
+	std::vector<ID3D11RenderTargetView*> render_target_views;
+
+	for (auto render_target_view : gContext->main_render_target->getRenderTargetViews())
+	{
+		render_target_views.push_back(render_target_view.Get());
+	}
+
+	gContext->context->OMSetRenderTargets((UINT)render_target_views.size(), render_target_views.data(),
 		gContext->main_render_target->getD3D11DepthStencilView().Get());
 	
 	gContext->render_target = nullptr;
@@ -895,7 +917,10 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 
 	if (color.has_value())
 	{
-		gContext->context->ClearRenderTargetView(target->getD3D11RenderTargetView().Get(), (float*)&color.value());
+		for (auto render_target_view : target->getRenderTargetViews())
+		{
+			gContext->context->ClearRenderTargetView(render_target_view.Get(), (float*)&color.value());
+		}
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -940,7 +965,7 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	auto target = gContext->render_target ? gContext->render_target : gContext->main_render_target;
 
 	ComPtr<ID3D11Resource> rtv_resource;
-	target->getD3D11RenderTargetView()->GetResource(rtv_resource.GetAddressOf());
+	target->getRenderTargetViews().at(0)/*TODO: mrt*/->GetResource(rtv_resource.GetAddressOf());
 
 	ComPtr<ID3D11Texture2D> rtv_texture;
 	rtv_resource.As(&rtv_texture);
@@ -1033,10 +1058,11 @@ void BackendD3D11::destroyTexture(TextureHandle* handle)
 	delete texture;
 }
 
-RenderTargetHandle* BackendD3D11::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
+RenderTargetHandle* BackendD3D11::createRenderTarget(uint32_t width, uint32_t height,
+	const std::vector<TextureHandle*> textures)
 {
-	auto texture = (TextureD3D11*)texture_handle;
-	auto render_target = new RenderTargetD3D11(width, height, texture);
+	auto _textures = (std::vector<TextureD3D11*>*)&textures;
+	auto render_target = new RenderTargetD3D11(width, height, *_textures);
 	return (RenderTargetHandle*)render_target;
 }
 

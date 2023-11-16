@@ -91,67 +91,80 @@ namespace skygfx::utils
 
 	namespace effects
 	{
-		struct alignas(16) DirectionalLightForwardShading
+		namespace forward_shading
 		{
-			DirectionalLightForwardShading() = default;
-			DirectionalLightForwardShading(const utils::DirectionalLight& light);
+			struct alignas(16) DirectionalLight
+			{
+				DirectionalLight() = default;
+				DirectionalLight(const utils::DirectionalLight& light);
 
-			alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-			float shininess = 32.0f;
+				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float shininess = 32.0f;
 
-			static const std::string Shader;
-		};
+				static const std::string Shader;
+			};
 
-		struct alignas(16) PointLightForwardShading
+			struct alignas(16) PointLight
+			{
+				PointLight() = default;
+				PointLight(const utils::PointLight& light);
+
+				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float constant_attenuation = 0.0f;
+				float linear_attenuation = 0.00128f;
+				float quadratic_attenuation = 0.0f;
+				float shininess = 32.0f;
+
+				static const std::string Shader;
+			};
+		}
+
+		namespace deferred_shading
 		{
-			PointLightForwardShading() = default;
-			PointLightForwardShading(const utils::PointLight& light);
+			struct alignas(16) DirectionalLight
+			{
+				DirectionalLight() = default;
+				DirectionalLight(const utils::DirectionalLight& light);
 
-			alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-			float constant_attenuation = 0.0f;
-			float linear_attenuation = 0.00128f;
-			float quadratic_attenuation = 0.0f;
-			float shininess = 32.0f;
+				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float shininess = 32.0f;
 
-			static const std::string Shader;
-		};
+				static const std::string Shader;
+			};
 
-		struct alignas(16) DirectionalLightDeferredShading
-		{
-			DirectionalLightDeferredShading() = default;
-			DirectionalLightDeferredShading(const utils::DirectionalLight& light);
+			struct alignas(16) PointLight
+			{
+				PointLight() = default;
+				PointLight(const utils::PointLight& light);
 
-			alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-			float shininess = 32.0f;
+				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float constant_attenuation = 0.0f;
+				float linear_attenuation = 0.00128f;
+				float quadratic_attenuation = 0.0f;
+				float shininess = 32.0f;
 
-			static const std::string Shader;
-		};
+				static const std::string Shader;
+			};
 
-		struct alignas(16) PointLightDeferredShading
-		{
-			PointLightDeferredShading() = default;
-			PointLightDeferredShading(const utils::PointLight& light);
+			struct alignas(16) ExtractGeometryBuffer
+			{
+				float unused; // TODO: add ability to do without this float
 
-			alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-			float constant_attenuation = 0.0f;
-			float linear_attenuation = 0.00128f;
-			float quadratic_attenuation = 0.0f;
-			float shininess = 32.0f;
-
-			static const std::string Shader;
-		};
+				static const std::string Shader;
+			};
+		}
 
 		struct alignas(16) GaussianBlur
 		{
@@ -196,20 +209,6 @@ namespace skygfx::utils
 		struct alignas(16) AlphaTest
 		{
 			float threshold = 0.0f;
-
-			static const std::string Shader;
-		};
-
-		struct alignas(16) ExtractNormalBuffer
-		{
-			float unused; // TODO: add ability to do without this float
-
-			static const std::string Shader;
-		};
-
-		struct alignas(16) ExtractPositionsBuffer
-		{
-			float unused; // TODO: add ability to do without this float
 
 			static const std::string Shader;
 		};
