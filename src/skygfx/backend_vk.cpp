@@ -25,17 +25,27 @@ class IndexBufferVK;
 struct PipelineStateVK
 {
 	ShaderVK* shader = nullptr;
-	vk::Format color_attachment_format = vk::Format::eUndefined;
-	vk::Format depth_stencil_format = vk::Format::eUndefined;
+	std::vector<vk::Format> color_attachment_formats;
+	std::optional<vk::Format> depth_stencil_format;
 
 	bool operator==(const PipelineStateVK& other) const = default;
 };
 
-SKYGFX_MAKE_HASHABLE(PipelineStateVK,
-	t.shader,
-	t.color_attachment_format,
-	t.depth_stencil_format
-);
+template<>
+struct std::hash<PipelineStateVK>
+{
+	std::size_t operator()(const PipelineStateVK& t) const
+	{
+		std::size_t ret = 0;
+		skygfx::hash_combine(ret, t.shader);
+		for (auto format : t.color_attachment_formats)
+		{
+			skygfx::hash_combine(ret, format);
+		}
+		skygfx::hash_combine(ret, t.depth_stencil_format);
+		return ret;
+	}
+};
 
 struct RaytracingPipelineStateVK
 {
@@ -126,7 +136,7 @@ struct ContextVK
 	SamplerStateVK sampler_state;
 	std::unordered_map<SamplerStateVK, vk::raii::Sampler> sampler_states;
 
-	RenderTargetVK* render_target = nullptr;
+	std::vector<RenderTargetVK*> render_targets;
 
 	PipelineStateVK pipeline_state;
 	std::optional<Scissor> scissor;
@@ -1040,17 +1050,18 @@ ContextVK::~ContextVK()
 
 uint32_t ContextVK::getBackbufferWidth()
 {
-	return render_target ? render_target->getTexture()->getWidth() : width;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getWidth() : width;
 }
 
 uint32_t ContextVK::getBackbufferHeight()
 {
-	return render_target ? render_target->getTexture()->getHeight() : height;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getHeight() : height;
 }
 
 vk::Format ContextVK::getBackbufferFormat()
 {
-	return render_target ? render_target->getTexture()->getFormat() : FormatMap.at(Format::Byte4); //gContext->surface_format.format;
+	// TODO: wtf when mrt
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : FormatMap.at(Format::Byte4); //gContext->surface_format.format;
 }
 
 static void BeginRenderPass()
@@ -1058,19 +1069,33 @@ static void BeginRenderPass()
 	assert(!gContext->render_pass_active);
 	gContext->render_pass_active = true;
 
-	auto target = gContext->render_target ? gContext->render_target : gContext->getCurrentFrame().swapchain_target.get();
+	std::vector<RenderTargetVK*> targets = gContext->render_targets;
 
-	auto color_attachment = vk::RenderingAttachmentInfo()
-		.setImageView(*target->getTexture()->getImageView())
-		.setImageLayout(vk::ImageLayout::eGeneral)
-		.setLoadOp(vk::AttachmentLoadOp::eLoad)
-		.setStoreOp(vk::AttachmentStoreOp::eStore);
+	if (targets.empty())
+		targets = { gContext->getCurrentFrame().swapchain_target.get() };
 
-	auto depth_stencil_attachment = vk::RenderingAttachmentInfo()
-		.setImageView(*target->getDepthStencilView())
-		.setImageLayout(vk::ImageLayout::eDepthAttachmentOptimal)
-		.setLoadOp(vk::AttachmentLoadOp::eLoad)
-		.setStoreOp(vk::AttachmentStoreOp::eStore);
+	std::vector<vk::RenderingAttachmentInfo> color_attachments;
+	std::optional<vk::RenderingAttachmentInfo> depth_stencil_attachment;
+
+	for (auto target : targets)
+	{
+		auto color_attachment = vk::RenderingAttachmentInfo()
+			.setImageView(*target->getTexture()->getImageView())
+			.setImageLayout(vk::ImageLayout::eGeneral)
+			.setLoadOp(vk::AttachmentLoadOp::eLoad)
+			.setStoreOp(vk::AttachmentStoreOp::eStore);
+
+		color_attachments.push_back(color_attachment);
+
+		if (!depth_stencil_attachment.has_value())
+		{
+			depth_stencil_attachment = vk::RenderingAttachmentInfo()
+				.setImageView(*target->getDepthStencilView())
+				.setImageLayout(vk::ImageLayout::eDepthStencilAttachmentOptimal)
+				.setLoadOp(vk::AttachmentLoadOp::eLoad)
+				.setStoreOp(vk::AttachmentStoreOp::eStore);
+		}
+	}
 
 	auto width = gContext->getBackbufferWidth();
 	auto height = gContext->getBackbufferHeight();
@@ -1078,9 +1103,13 @@ static void BeginRenderPass()
 	auto rendering_info = vk::RenderingInfo()
 		.setRenderArea({ { 0, 0 }, { width, height } })
 		.setLayerCount(1)
-		.setColorAttachments(color_attachment)
-		.setPDepthAttachment(&depth_stencil_attachment)
-		.setPStencilAttachment(&depth_stencil_attachment);
+		.setColorAttachments(color_attachments);
+
+	if (depth_stencil_attachment.has_value())
+	{
+		rendering_info.setPDepthAttachment(&depth_stencil_attachment.value());
+		rendering_info.setPStencilAttachment(&depth_stencil_attachment.value());
+	}
 
 	gContext->getCurrentFrame().command_buffer.beginRendering(rendering_info);
 }
@@ -1419,7 +1448,7 @@ static void PushDescriptorAccelerationStructure(vk::raii::CommandBuffer& cmdlist
 static void PushDescriptorStorageImage(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
-	auto texture = gContext->render_target->getTexture();
+	auto texture = gContext->render_targets.at(0)->getTexture();
 	texture->ensureState(cmdlist, vk::ImageLayout::eGeneral);
 
 	auto descriptor_image_info = vk::DescriptorImageInfo()
@@ -1601,7 +1630,8 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 
 	auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
 
-	auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo();
+	auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
+		.setAttachmentCount(pipeline_state.color_attachment_formats.size());
 
 	auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 		.setVertexBindingDescriptions(pipeline_state.shader->getVertexInputBindingDescription())
@@ -1620,22 +1650,17 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 		vk::DynamicState::eDepthWriteEnable,
 		vk::DynamicState::eColorWriteMaskEXT,
 		vk::DynamicState::eColorBlendEquationEXT,
-		vk::DynamicState::eColorBlendEnableEXT
+		vk::DynamicState::eColorBlendEnableEXT,
+		vk::DynamicState::eStencilTestEnable
 	};
 
 	auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
 		.setDynamicStates(dynamic_states);
 
-	auto color_attachment_formats = {
-		pipeline_state.color_attachment_format
-	};
-
-	auto depth_stencil_format = pipeline_state.depth_stencil_format;
-
 	auto pipeline_rendering_create_info = vk::PipelineRenderingCreateInfo()
-		.setColorAttachmentFormats(color_attachment_formats)
-		.setDepthAttachmentFormat(depth_stencil_format)
-		.setStencilAttachmentFormat(depth_stencil_format);
+		.setColorAttachmentFormats(pipeline_state.color_attachment_formats)
+		.setDepthAttachmentFormat(pipeline_state.depth_stencil_format.value())
+		.setStencilAttachmentFormat(pipeline_state.depth_stencil_format.value());
 
 	auto graphics_pipeline_create_info = vk::GraphicsPipelineCreateInfo()
 		.setLayout(*pipeline_state.shader->getPipelineLayout())
@@ -1647,7 +1672,7 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 		.setPRasterizationState(&pipeline_rasterization_state_create_info)
 		.setPMultisampleState(&pipeline_multisample_state_create_info)
 		.setPDepthStencilState(&pipeline_depth_stencil_state_create_info)
-		.setPColorBlendState(&pipeline_color_blend_state_create_info)
+		.setPColorBlendState(&pipeline_color_blend_state_create_info) // TODO: this can be nullptr https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkGraphicsPipelineCreateInfo.html
 		.setPDynamicState(&pipeline_dynamic_state_create_info)
 		.setRenderPass(nullptr)
 		.setPNext(&pipeline_rendering_create_info);
@@ -1898,9 +1923,29 @@ static void EnsureBlendMode(vk::raii::CommandBuffer& cmdlist)
 		.setDstAlphaBlendFactor(BlendFactorMap.at(blend_mode.alpha_dst))
 		.setAlphaBlendOp(BlendFuncMap.at(blend_mode.alpha_func));
 
-	cmdlist.setColorBlendEnableEXT(0, { gContext->blend_mode.has_value() });
-	cmdlist.setColorWriteMaskEXT(0, { color_mask });
-	cmdlist.setColorBlendEquationEXT(0, { color_blend_equation });
+	std::vector<uint32_t> blend_enable_array;
+	std::vector<vk::ColorComponentFlags> color_mask_array;
+	std::vector<vk::ColorBlendEquationEXT> color_blend_equation_array;
+
+	if (gContext->render_targets.empty())
+	{
+		blend_enable_array = { gContext->blend_mode.has_value() };
+		color_mask_array = { color_mask };
+		color_blend_equation_array = { color_blend_equation };
+	}
+	else
+	{
+		for (size_t i = 0; i < gContext->render_targets.size(); i++)
+		{
+			blend_enable_array.push_back(gContext->blend_mode.has_value());
+			color_mask_array.push_back(color_mask);
+			color_blend_equation_array.push_back(color_blend_equation);
+		}
+	}
+
+	cmdlist.setColorBlendEnableEXT(0, blend_enable_array);
+	cmdlist.setColorWriteMaskEXT(0, color_mask_array);
+	cmdlist.setColorBlendEquationEXT(0, color_blend_equation_array);
 }
 
 static void EnsureDepthMode(vk::raii::CommandBuffer& cmdlist)
@@ -2447,7 +2492,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 
 	gContext->command_pool = gContext->device.createCommandPool(command_pool_info);
 
-	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
+	gContext->pipeline_state.color_attachment_formats = { gContext->surface_format.format };
 	gContext->pipeline_state.depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
 
 	CreateSwapchain(width, height);
@@ -2517,17 +2562,32 @@ void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->graphics_pipeline_ignore_bindings.erase(binding);
 }
 
-void BackendVK::setRenderTarget(RenderTargetHandle* handle)
+void BackendVK::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 {
-	auto render_target = (RenderTargetVK*)handle;
+	std::vector<RenderTargetVK*> render_targets;
+	std::vector<vk::Format> color_attachment_formats;
+	std::optional<vk::Format> depth_stencil_format;
 
-	if (gContext->render_target == render_target)
+	for (auto handle : handles)
+	{
+		auto render_target = (RenderTargetVK*)handle;
+		render_targets.push_back(render_target);
+		color_attachment_formats.push_back(render_target->getTexture()->getFormat());
+
+		if (!depth_stencil_format.has_value())
+			depth_stencil_format = render_target->getDepthStencilFormat();
+	}
+
+	if (gContext->render_targets == render_targets)
 		return;
 
+	if (gContext->render_targets.size() != render_targets.size())
+		gContext->blend_mode_dirty = true;
+
 	gContext->pipeline_state_dirty = true;
-	gContext->pipeline_state.color_attachment_format = render_target->getTexture()->getFormat();
-	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
-	gContext->render_target = render_target;
+	gContext->pipeline_state.color_attachment_formats = color_attachment_formats;
+	gContext->pipeline_state.depth_stencil_format = depth_stencil_format;
+	gContext->render_targets = render_targets;
 	EnsureRenderPassDeactivated();
 
 	if (!gContext->viewport.has_value())
@@ -2539,13 +2599,13 @@ void BackendVK::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendVK::setRenderTarget(std::nullopt_t value)
 {
-	if (gContext->render_target == nullptr)
+	if (gContext->render_targets.empty())
 		return;
 
 	gContext->pipeline_state_dirty = true;
-	gContext->pipeline_state.color_attachment_format = gContext->surface_format.format;
+	gContext->pipeline_state.color_attachment_formats = { gContext->surface_format.format };
 	gContext->pipeline_state.depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
-	gContext->render_target = nullptr;
+	gContext->render_targets.clear();
 	EnsureRenderPassDeactivated();
 
 	if (!gContext->viewport.has_value())
@@ -2758,7 +2818,7 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	auto width = static_cast<uint32_t>(size.x);
 	auto height = static_cast<uint32_t>(size.y);
 
-	auto src_target = gContext->render_target ? gContext->render_target : gContext->getCurrentFrame().swapchain_target.get();
+	auto src_target = !gContext->render_targets.empty() ? gContext->render_targets.at(0) : gContext->getCurrentFrame().swapchain_target.get();
 	auto src_texture = src_target->getTexture();
 	auto src_image = src_texture->getImage();
 	auto dst_image = dst_texture->getImage();
@@ -2789,7 +2849,7 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
-	assert(gContext->render_target != nullptr);
+	assert(!gContext->render_targets.empty());
 
 	EnsureRaytracingState();
 

@@ -15,10 +15,10 @@ namespace skygfx
 	}
 }
 
-#define SKYGFX_MAKE_HASHABLE(type, ...) \
+#define SKYGFX_MAKE_HASHABLE(T, ...) \
 	namespace std {\
-		template<> struct hash<type> {\
-			std::size_t operator()(const type &t) const {\
+		template<> struct hash<T> {\
+			std::size_t operator()(const T& t) const {\
 				std::size_t ret = 0;\
 				skygfx::hash_combine(ret, __VA_ARGS__);\
 				return ret;\
