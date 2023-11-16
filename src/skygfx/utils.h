@@ -452,29 +452,30 @@ namespace skygfx::utils
 		commands::Draw
 	>;
 
-	using Commands = std::vector<Command>;
-
 	namespace commands
 	{
 		struct Subcommands
 		{
-			Subcommands(const Commands* subcommands);
-			Subcommands(Commands&& subcommands);
-			Subcommands(std::function<Commands()> subcommands);
-			std::variant<const Commands*, Commands, std::function<Commands()>> subcommands;
+			Subcommands(const std::vector<Command>* subcommands);
+			Subcommands(std::vector<Command>&& subcommands);
+			Subcommands(std::function<std::vector<Command>()> subcommands);
+			std::variant<
+				const std::vector<Command>*,
+				std::vector<Command>,
+				std::function<std::vector<Command>()>
+			> subcommands;
 		};
 	}
 
-	void AddCommands(Commands& cmdlist, Commands&& cmds);
-	void ExecuteCommands(const Commands& cmds);
-
-	void RenderPass(const RenderTarget* target, bool clear, const Commands& cmds);
-	void RenderPass(const std::string& name, const RenderTarget* target, bool clear, const Commands& cmds);
+	void ExecuteCommands(const std::vector<Command>& cmds);
+	void ExecuteCommands(const RenderTarget* target, bool clear, const std::vector<Command>& cmds);
+	void ExecuteCommands(const std::string& name, const RenderTarget* target, bool clear,
+		const std::vector<Command>& cmds);
 
 	namespace passes
 	{
 		void Blit(const Texture* src, const RenderTarget* dst, bool clear,
-			Commands&& commands);
+			std::vector<Command>&& commands);
 
 		void Blit(const Texture* src, const RenderTarget* dst = nullptr, bool clear = false,
 			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f });

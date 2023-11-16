@@ -762,17 +762,17 @@ utils::commands::Callback::Callback(std::function<void()> _func) :
 {
 }
 
-utils::commands::Subcommands::Subcommands(const Commands* _subcommands) :
+utils::commands::Subcommands::Subcommands(const std::vector<Command>* _subcommands) :
 	subcommands(_subcommands)
 {
 }
 
-utils::commands::Subcommands::Subcommands(Commands&& _subcommands) :
+utils::commands::Subcommands::Subcommands(std::vector<Command>&& _subcommands) :
 	subcommands(_subcommands)
 {
 }
 
-utils::commands::Subcommands::Subcommands(std::function<Commands()> _subcommands) :
+utils::commands::Subcommands::Subcommands(std::function<std::vector<Command>()> _subcommands) :
 	subcommands(_subcommands)
 {
 }
@@ -782,15 +782,7 @@ utils::commands::Draw::Draw(std::optional<DrawCommand> _draw_command) :
 {
 }
 
-void utils::AddCommands(Commands& cmdlist, Commands&& cmds)
-{
-	for (auto&& cmd : cmds)
-	{
-		cmdlist.push_back(std::move(cmd));
-	}
-}
-
-void utils::ExecuteCommands(const Commands& cmds)
+void utils::ExecuteCommands(const std::vector<Command>& cmds)
 {
 	std::optional<Viewport> viewport;
 	bool viewport_dirty = true;
@@ -961,19 +953,19 @@ void utils::ExecuteCommands(const Commands& cmds)
 			},
 			[&](const commands::Subcommands& cmd) {
 				std::visit(cases{
-					[&](const Commands* subcommands) {
+					[&](const std::vector<Command>* subcommands) {
 						for (const auto& subcommand : *subcommands)
 						{
 							execute_command(subcommand);
 						}
 					},
-					[&](const Commands& subcommands) {
+					[&](const std::vector<Command>& subcommands) {
 						for (const auto& subcommand : subcommands)
 						{
 							execute_command(subcommand);
 						}
 					},
-					[&](const std::function<Commands()>& subcommands) {
+					[&](const std::function<std::vector<Command>()>& subcommands) {
 						for (const auto& subcommand : subcommands())
 						{
 							execute_command(subcommand);
@@ -1137,7 +1129,7 @@ void utils::ExecuteCommands(const Commands& cmds)
 	}
 }
 
-void utils::RenderPass(const RenderTarget* target, bool clear, const Commands& cmds)
+void utils::ExecuteCommands(const RenderTarget* target, bool clear, const std::vector<Command>& cmds)
 {
 	if (target == nullptr)
 		SetRenderTarget(std::nullopt);
@@ -1150,19 +1142,20 @@ void utils::RenderPass(const RenderTarget* target, bool clear, const Commands& c
 	ExecuteCommands(cmds);
 }
 
-void utils::RenderPass(const std::string& name, const RenderTarget* target, bool clear, const Commands& cmds)
+void utils::ExecuteCommands(const std::string& name, const RenderTarget* target, bool clear,
+	const std::vector<Command>& cmds)
 {
-	RenderPass(target, clear, cmds);
+	ExecuteCommands(target, clear, cmds);
 	DebugStage(name, target);
 }
 
-void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear, Commands&& commands)
+void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear, std::vector<Command>&& commands)
 {
-	AddCommands(commands, {
+	commands.insert(commands.end(), {
 		commands::SetColorTexture(src),
 		commands::Draw()
 	});
-	RenderPass(dst, clear, commands);
+	ExecuteCommands(dst, clear, commands);
 }
 
 void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear,
@@ -1288,15 +1281,15 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 
 utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_color_texture, bool use_normal_texture)
 {
-	Commands cmds;
+	std::vector<Command> cmds;
 
 	if (use_color_texture)
-		AddCommands(cmds, { commands::SetColorTexture(model.color_texture) });
+		cmds.push_back(commands::SetColorTexture(model.color_texture));
 
 	if (use_normal_texture)
-		AddCommands(cmds, { commands::SetNormalTexture(model.normal_texture) });
+		cmds.push_back(commands::SetNormalTexture(model.normal_texture));
 
-	AddCommands(cmds, {
+	cmds.insert(cmds.end(), {
 		commands::SetMesh(model.mesh),
 		commands::SetModelMatrix(model.matrix),
 		commands::SetCullMode(model.cull_mode),
@@ -1319,23 +1312,22 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 	if (models.empty())
 		return;
 
-	Commands draw_models;
+	std::vector<Command> draw_models;
 
 	for (const auto& model : models)
 	{
-		AddCommands(draw_models, { Model::Draw(model, options.textures, options.normal_mapping) });
+		draw_models.push_back(Model::Draw(model, options.textures, options.normal_mapping));
 	}
 
-	Commands cmds = {
+	std::vector<Command> cmds = {
 		commands::SetCamera(camera),
 	};
 
 	if (lights.empty())
 	{
-		AddCommands(cmds, {
-			commands::Subcommands(&draw_models)
-		});
-		RenderPass(target, options.clear_target, cmds);
+		cmds.push_back(commands::Subcommands(&draw_models));
+		ExecuteCommands(cmds);
+		(target, options.clear_target, cmds);
 		return;
 	}
 
@@ -1343,7 +1335,7 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 
 	for (const auto& light : lights)
 	{
-		AddCommands(cmds, {
+		cmds.insert(cmds.end(), {
 			std::visit(cases{
 				[](const DirectionalLight& light) {
 					return commands::SetEffect(effects::DirectionalLightForwardShading(light));
@@ -1358,13 +1350,11 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 		if (!first_light_done)
 		{
 			first_light_done = true;
-			AddCommands(cmds, {
-				commands::SetBlendMode(skygfx::BlendStates::Additive)
-			});
+			cmds.push_back(commands::SetBlendMode(skygfx::BlendStates::Additive));
 		}
 	}
 
-	RenderPass(target, options.clear_target, cmds);
+	ExecuteCommands(target, options.clear_target, cmds);
 }
 
 static void DrawSceneDeferredShading(const RenderTarget* target, const utils::PerspectiveCamera& camera,
@@ -1376,11 +1366,11 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	if (models.empty())
 		return;
 
-	Commands draw_models;
+	std::vector<Command> draw_models;
 
 	for (const auto& model : models)
 	{
-		AddCommands(draw_models, { Model::Draw(model, options.textures, options.normal_mapping) });
+		draw_models.push_back(Model::Draw(model, options.textures, options.normal_mapping));
 	}
 
 	// extract g-buffer
@@ -1390,22 +1380,22 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	auto normal_buffer = AcquireTransientRenderTarget();
 	auto positions_buffer = AcquireTransientRenderTarget();
 
-	RenderPass("color_buffer", color_buffer, true, {
+	ExecuteCommands("color_buffer", color_buffer, true, {
 		commands::SetCamera(camera),
 		commands::Subcommands(&draw_models)
 	});
-	RenderPass("normal_buffer", normal_buffer, true, {
+	ExecuteCommands("normal_buffer", normal_buffer, true, {
 		commands::SetCamera(camera),
 		commands::SetEffect(effects::ExtractNormalBuffer{}),
 		commands::Subcommands(&draw_models)
 	});
-	RenderPass("positions_buffer", positions_buffer, true, {
+	ExecuteCommands("positions_buffer", positions_buffer, true, {
 		commands::SetCamera(camera),
 		commands::SetEffect(effects::ExtractPositionsBuffer{}),
 		commands::Subcommands(&draw_models)
 	});
 
-	Commands cmds = {
+	std::vector<Command> cmds = {
 		commands::SetEyePosition(camera.position),
 		commands::SetBlendMode(BlendStates::Additive),
 		commands::SetCustomTexture(5, color_buffer),
@@ -1415,7 +1405,7 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 
 	for (const auto& light : lights)
 	{
-		AddCommands(cmds, {
+		cmds.insert(cmds.end(), {
 			std::visit(cases{
 				[](const DirectionalLight& light) {
 					return commands::SetEffect(effects::DirectionalLightDeferredShading(light));
@@ -1428,7 +1418,7 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 		});
 	}
 
-	RenderPass(target, options.clear_target, cmds);
+	ExecuteCommands(target, options.clear_target, cmds);
 }
 
 void utils::DrawScene(DrawSceneTechnique technique, const RenderTarget* target, const PerspectiveCamera& camera,
@@ -1770,16 +1760,14 @@ void utils::ScratchRasterizer::flush()
 
 	mMeshBuilder.setToMesh(mMesh);
 
-	Commands cmds;
+	std::vector<Command> cmds;
 
 	if (mState.alpha_test_threshold.has_value())
 	{
-		AddCommands(cmds, {
-			commands::SetEffect(effects::AlphaTest{ mState.alpha_test_threshold.value()})
-		});
+		cmds.push_back(commands::SetEffect(effects::AlphaTest{ mState.alpha_test_threshold.value()}));
 	}
 
-	AddCommands(cmds, {
+	cmds.insert(cmds.end(), {
 		commands::SetViewport(mState.viewport),
 		commands::SetScissor(mState.scissor),
 		commands::SetBlendMode(mState.blend_mode),
