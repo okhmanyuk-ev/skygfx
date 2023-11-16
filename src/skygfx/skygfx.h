@@ -141,26 +141,6 @@ namespace skygfx
 		RenderTargetHandle* mRenderTargetHandle = nullptr;
 	};
 
-	class MultiRenderTarget : private noncopyable
-	{
-	public:
-		MultiRenderTarget(uint32_t width, uint32_t height, std::vector<Format> formats);
-		~MultiRenderTarget();
-
-		operator RenderTargetHandle* () { return mRenderTargetHandle; }
-
-		auto getWidth() const { return mWidth; }
-		auto getHeight() const { return mHeight; }
-
-		const auto& getTextures() const { return mTextures; }
-
-	private:
-		RenderTargetHandle* mRenderTargetHandle = nullptr;
-		std::vector<Texture> mTextures;
-		uint32_t mWidth = 0;
-		uint32_t mHeight = 0;
-	};
-
 	class Shader : private noncopyable
 	{
 	public:
@@ -577,7 +557,7 @@ namespace skygfx
 	void SetScissor(const std::optional<Scissor>& scissor);
 	void SetTexture(uint32_t binding, const Texture& texture);
 	void SetRenderTarget(const RenderTarget& value);
-	void SetRenderTarget(const MultiRenderTarget& value);
+	void SetRenderTarget(const std::vector<RenderTarget*>& value);
 	void SetRenderTarget(std::nullopt_t value);
 	void SetShader(const Shader& shader);
 	void SetShader(const RaytracingShader& shader);

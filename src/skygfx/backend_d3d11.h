@@ -19,7 +19,7 @@ namespace skygfx
 		void setViewport(std::optional<Viewport> viewport) override;
 		void setScissor(std::optional<Scissor> scissor) override;
 		void setTexture(uint32_t binding, TextureHandle* handle) override;
-		void setRenderTarget(RenderTargetHandle* handle) override;
+		void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) override;
 		void setRenderTarget(std::nullopt_t value) override;
 		void setShader(ShaderHandle* handle) override;
 		void setVertexBuffer(VertexBufferHandle* handle) override;
@@ -52,8 +52,7 @@ namespace skygfx
 		void generateMips(TextureHandle* handle) override;
 		void destroyTexture(TextureHandle* handle) override;
 
-		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height,
-			const std::vector<TextureHandle*> textures) override;
+		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) override;
 		void destroyRenderTarget(RenderTargetHandle* handle) override;
 
 		ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 

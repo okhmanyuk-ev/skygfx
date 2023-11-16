@@ -1374,33 +1374,28 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	// extract g-buffer
 	// TODO: use acquire transient for mrt
 
-	auto gbuffer = MultiRenderTarget(GetBackbufferWidth(), GetBackbufferHeight(), {
-		Format::Float4,
-		Format::Float4, // TODO: Float3
-		Format::Float4 // TODO: Float3
-	});
+	auto color_buffer = AcquireTransientRenderTarget();
+	auto normal_buffer = AcquireTransientRenderTarget();
+	auto positions_buffer = AcquireTransientRenderTarget();
 
-	SetRenderTarget(gbuffer);
+	SetRenderTarget({ color_buffer, normal_buffer, positions_buffer });
 	Clear();
-
 	ExecuteCommands({
 		commands::SetCamera(camera),
 		commands::SetEffect(effects::deferred_shading::ExtractGeometryBuffer{}),
 		commands::Subcommands(&draw_models)
 	});
 
-	const auto& color_attachments = gbuffer.getTextures();
-
-	DebugStage("color_buffer", &color_attachments.at(0));
-	DebugStage("normal_buffer", &color_attachments.at(1));
-	DebugStage("positions_buffer", &color_attachments.at(2));
+	DebugStage("color_buffer", color_buffer);
+	DebugStage("normal_buffer", normal_buffer);
+	DebugStage("positions_buffer", positions_buffer);
 
 	std::vector<Command> cmds = {
 		commands::SetEyePosition(camera.position),
 		commands::SetBlendMode(BlendStates::Additive),
-		commands::SetCustomTexture(5, &color_attachments.at(0)),
-		commands::SetCustomTexture(6, &color_attachments.at(1)),
-		commands::SetCustomTexture(7, &color_attachments.at(2))
+		commands::SetCustomTexture(5, color_buffer),
+		commands::SetCustomTexture(6, normal_buffer),
+		commands::SetCustomTexture(7, positions_buffer)
 	};
 
 	for (const auto& light : lights)
@@ -1419,6 +1414,10 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	}
 
 	ExecuteCommands(target, options.clear_target, cmds);
+
+	ReleaseTransientRenderTarget(color_buffer);
+	ReleaseTransientRenderTarget(normal_buffer);
+	ReleaseTransientRenderTarget(positions_buffer);
 }
 
 void utils::DrawScene(DrawSceneTechnique technique, const RenderTarget* target, const PerspectiveCamera& camera,

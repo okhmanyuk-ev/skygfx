@@ -16,7 +16,7 @@ namespace skygfx
 		virtual void setViewport(std::optional<Viewport> viewport) = 0;
 		virtual void setScissor(std::optional<Scissor> scissor) = 0;
 		virtual void setTexture(uint32_t binding, TextureHandle* handle) = 0;
-		virtual void setRenderTarget(RenderTargetHandle* handle) = 0;
+		virtual void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) = 0;
 		virtual void setRenderTarget(std::nullopt_t value) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
@@ -49,8 +49,7 @@ namespace skygfx
 		virtual void generateMips(TextureHandle* handle) = 0;
 		virtual void destroyTexture(TextureHandle* handle) = 0;
 
-		virtual RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height,
-			const std::vector<TextureHandle*> textures) = 0;
+		virtual RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) = 0;
 		virtual void destroyRenderTarget(RenderTargetHandle* handle) = 0;
 
 		virtual ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
