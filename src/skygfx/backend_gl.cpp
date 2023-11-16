@@ -546,7 +546,6 @@ public:
 
 		glGenFramebuffers(1, &mFramebuffer);
 		glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer);
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mTexture->getGLTexture(), 0);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mDepthStencilRenderbuffer);
 
 		auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -671,6 +670,14 @@ struct ContextGL
 	ContextGL()
 	{
 		glGenBuffers(1, &pixel_buffer);
+
+		int max_draw_buffers;
+		glGetIntegerv(GL_MAX_DRAW_BUFFERS, &max_draw_buffers);
+
+		for (int i = 0; i < max_draw_buffers; i++)
+		{
+			draw_buffers.push_back(GL_COLOR_ATTACHMENT0 + i);
+		}
 	}
 
 	~ContextGL()
@@ -685,6 +692,9 @@ struct ContextGL
 			}
 		}
 	}
+
+	std::vector<uint32_t> draw_buffers;
+
 	uint32_t width = 0;
 	uint32_t height = 0;
 
@@ -702,7 +712,7 @@ struct ContextGL
 	std::unordered_map<SamplerStateGL, std::unordered_map<SamplerType, GLuint>> sampler_states;
 	SamplerStateGL sampler_state;
 
-	RenderTargetGL* render_target = nullptr;
+	std::vector<RenderTargetGL*> render_targets;
 
 	GLuint pixel_buffer;
 
@@ -731,17 +741,17 @@ static ContextGL* gContext = nullptr;
 
 uint32_t ContextGL::getBackbufferWidth()
 {
-	return render_target ? render_target->getTexture()->getWidth() : width;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getWidth() : width;
 }
 
 uint32_t ContextGL::getBackbufferHeight()
 {
-	return render_target ? render_target->getTexture()->getHeight() : height;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getHeight() : height;
 }
 
 Format ContextGL::getBackbufferFormat()
 {
-	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : Format::Byte4;
 }
 
 static void EnsureGraphicsState(bool draw_indexed)
@@ -753,6 +763,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 	{
 		gContext->shader->apply();
 		gContext->vertex_buffer_dirty = true;
+		gContext->index_buffer_dirty = draw_indexed;
 		gContext->shader_dirty = false;
 	}
 
@@ -1072,6 +1083,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 #ifdef SKYGFX_OPENGL_DEBUG_ENABLED
 	glEnable(GL_DEBUG_OUTPUT);
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+	glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, NULL, GL_FALSE);
 	glDebugMessageCallback(DebugMessageCallback, nullptr);
 #endif
 
@@ -1162,15 +1174,29 @@ void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->sampler_state_dirty = true;
 }
 
-void BackendGL::setRenderTarget(RenderTargetHandle* handle)
+void BackendGL::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 {
-	auto render_target = (RenderTargetGL*)handle;
-	
-	if (gContext->render_target == render_target)
+	std::vector<RenderTargetGL*> render_targets;
+	for (auto handle : handles)
+	{
+		render_targets.push_back((RenderTargetGL*)handle);
+	}
+
+	if (gContext->render_targets == render_targets)
 		return;
-	
-	glBindFramebuffer(GL_FRAMEBUFFER, render_target->getGLFramebuffer());
-	gContext->render_target = render_target;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, render_targets.at(0)->getGLFramebuffer());
+	for (size_t i = 0; i < render_targets.size(); i++)
+	{
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D,
+			render_targets.at(i)->getTexture()->getGLTexture(), 0);
+	}
+	auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	assert(status == GL_FRAMEBUFFER_COMPLETE);
+
+	glDrawBuffers(render_targets.size(), gContext->draw_buffers.data());
+
+	gContext->render_targets = render_targets;
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
@@ -1178,7 +1204,7 @@ void BackendGL::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendGL::setRenderTarget(std::nullopt_t value)
 {
-	if (gContext->render_target == nullptr)
+	if (gContext->render_targets.empty())
 		return;
 
 #if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
@@ -1186,7 +1212,7 @@ void BackendGL::setRenderTarget(std::nullopt_t value)
 #elif defined(SKYGFX_PLATFORM_IOS)
 	[gGLKView bindDrawable];
 #endif
-	gContext->render_target = nullptr;
+	gContext->render_targets.clear();
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;

@@ -826,7 +826,6 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	bool textures_dirty = true;
 
 	std::unordered_map<uint32_t, const Texture*> custom_textures;
-	bool custom_textures_dirty = true;
 
 	struct alignas(16) Settings
 	{
@@ -898,7 +897,6 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			},
 			[&](const commands::SetCustomTexture& cmd) {
 				custom_textures[cmd.binding] = cmd.texture;
-				custom_textures_dirty = true;
 			},
 			[&](const commands::SetColorTexture& cmd) {
 				color_texture = cmd.color_texture;
@@ -1078,13 +1076,13 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 					textures_dirty = false;
 				}
 
-				if (custom_textures_dirty)
+				if (!custom_textures.empty())
 				{
 					for (auto [binding, texture] : custom_textures)
 					{
 						SetTexture(binding, *texture);
 					}
-					custom_textures_dirty = false;
+					custom_textures.clear();
 				}
 
 				if (settings_dirty)
