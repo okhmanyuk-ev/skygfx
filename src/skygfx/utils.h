@@ -63,10 +63,39 @@ namespace skygfx::utils
 		DrawIndexedVerticesCommand
 	>;
 
+	struct DirectionalLight
+	{
+		glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+		glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+		glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+		glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+		float shininess = 32.0f;
+	};
+
+	struct PointLight
+	{
+		glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+		glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+		glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+		glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+		float constant_attenuation = 0.0f;
+		float linear_attenuation = 0.00128f;
+		float quadratic_attenuation = 0.0f;
+		float shininess = 32.0f;
+	};
+
+	using Light = std::variant<
+		DirectionalLight,
+		PointLight
+	>;
+
 	namespace effects
 	{
-		struct alignas(16) DirectionalLight
+		struct alignas(16) DirectionalLightForwardShading
 		{
+			DirectionalLightForwardShading() = default;
+			DirectionalLightForwardShading(const utils::DirectionalLight& light);
+
 			alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
 			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
 			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
@@ -76,8 +105,42 @@ namespace skygfx::utils
 			static const std::string Shader;
 		};
 
-		struct alignas(16) PointLight
+		struct alignas(16) PointLightForwardShading
 		{
+			PointLightForwardShading() = default;
+			PointLightForwardShading(const utils::PointLight& light);
+
+			alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+			float constant_attenuation = 0.0f;
+			float linear_attenuation = 0.00128f;
+			float quadratic_attenuation = 0.0f;
+			float shininess = 32.0f;
+
+			static const std::string Shader;
+		};
+
+		struct alignas(16) DirectionalLightDeferredShading
+		{
+			DirectionalLightDeferredShading() = default;
+			DirectionalLightDeferredShading(const utils::DirectionalLight& light);
+
+			alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+			float shininess = 32.0f;
+
+			static const std::string Shader;
+		};
+
+		struct alignas(16) PointLightDeferredShading
+		{
+			PointLightDeferredShading() = default;
+			PointLightDeferredShading(const utils::PointLight& light);
+
 			alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
 			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
 			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
@@ -137,14 +200,23 @@ namespace skygfx::utils
 			static const std::string Shader;
 		};
 
+		struct alignas(16) ExtractNormalBuffer
+		{
+			float unused; // TODO: add ability to do without this float
+
+			static const std::string Shader;
+		};
+
+		struct alignas(16) ExtractPositionsBuffer
+		{
+			float unused; // TODO: add ability to do without this float
+
+			static const std::string Shader;
+		};
+
 		template <typename T>
 		concept Effect = requires { T::Shader; } && std::is_same<std::remove_const_t<decltype(T::Shader)>, std::string>::value;
 	}
-
-	using Light = std::variant<
-		effects::DirectionalLight,
-		effects::PointLight
-	>;
 
 	struct OrthogonalCamera {};
 
@@ -273,6 +345,13 @@ namespace skygfx::utils
 			const Mesh* mesh;
 		};
 
+		struct SetCustomTexture
+		{
+			SetCustomTexture(uint32_t binding, const Texture* texture);
+			uint32_t binding;
+			const Texture* texture;
+		};
+
 		struct SetColorTexture
 		{
 			SetColorTexture(const Texture* color_texture);
@@ -358,6 +437,7 @@ namespace skygfx::utils
 		commands::SetStencilMode,
 		commands::SetMesh,
 		commands::SetEffect,
+		commands::SetCustomTexture,
 		commands::SetColorTexture,
 		commands::SetNormalTexture,
 		commands::SetColor,
@@ -426,15 +506,26 @@ namespace skygfx::utils
 		TextureAddress texture_address = TextureAddress::Clamp;
 		DepthMode depth_mode;
 		Sampler sampler = Sampler::Linear;
+
+		static commands::Subcommands Draw(const Model& model, bool use_color_texture = true,
+			bool use_normal_texture = true);
 	};
 
 	struct DrawSceneOptions
 	{
 		bool textures = true;
 		bool normal_mapping = true;
+		bool clear_target = true;
 	};
 
-	void DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights = {},
+	enum class DrawSceneTechnique
+	{
+		ForwardShading,
+		DeferredShading
+	};
+
+	void DrawScene(DrawSceneTechnique technique, const RenderTarget* target, const PerspectiveCamera& camera,
+		const std::vector<Model>& models, const std::vector<Light>& lights = {},
 		const DrawSceneOptions& options = {});
 
 	class MeshBuilder

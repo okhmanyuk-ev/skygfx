@@ -85,7 +85,7 @@ void main()
 #endif
 })";
 
-const std::string utils::effects::DirectionalLight::Shader = R"(
+const std::string utils::effects::DirectionalLightForwardShading::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
@@ -115,7 +115,7 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::PointLight::Shader = R"(
+const std::string utils::effects::PointLightForwardShading::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
@@ -147,6 +147,87 @@ void effect(inout vec4 result)
 	float diff = max(dot(normal, light_dir), 0.0);
 	vec3 reflect_dir = reflect(-light_dir, normal);
 	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
+
+	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
+
+	intensity *= attenuation;
+
+	result *= vec4(intensity, 1.0);
+})";
+
+const std::string utils::effects::DirectionalLightDeferredShading::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
+{
+	vec3 direction;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	float shininess;
+} light;
+
+layout(binding = 5) uniform sampler2D sColorBufferTexture;
+layout(binding = 6) uniform sampler2D sNormalBufferTexture;
+layout(binding = 7) uniform sampler2D sPositionsBufferTexture;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorBufferTexture, In.tex_coord);
+
+	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord));
+	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
+
+	vec3 view_dir = normalize(settings.eye_position - pixel_position);
+	vec3 light_dir = normalize(light.direction);
+
+	float diff = max(dot(pixel_normal, -light_dir), 0.0);
+	vec3 reflect_dir = reflect(light_dir, pixel_normal);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
+
+	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
+
+	result *= vec4(intensity, 1.0);
+})";
+
+const std::string utils::effects::PointLightDeferredShading::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
+{
+	vec3 position;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	float constant_attenuation;
+	float linear_attenuation;
+	float quadratic_attenuation;
+	float shininess;
+} light;
+
+layout(binding = 5) uniform sampler2D sColorBufferTexture;
+layout(binding = 6) uniform sampler2D sNormalBufferTexture;
+layout(binding = 7) uniform sampler2D sPositionsBufferTexture;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorBufferTexture, In.tex_coord);
+
+	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord));
+	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
+
+	vec3 light_offset = light.position - pixel_position;
+
+	float distance = length(light_offset);
+	float linear_attn = light.linear_attenuation * distance;
+	float quadratic_attn = light.quadratic_attenuation * (distance * distance);
+	float attenuation = 1.0 / (light.constant_attenuation + linear_attn + quadratic_attn);
+
+	vec3 light_dir = normalize(light_offset);
+	float diff = max(dot(pixel_normal, light_dir), 0.0);
+	vec3 reflect_dir = reflect(-light_dir, pixel_normal);
+	vec3 view_dir = normalize(settings.eye_position - pixel_position);
 	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
 
 	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
@@ -343,6 +424,29 @@ void effect(inout vec4 result)
 		discard;
 })";
 
+const std::string utils::effects::ExtractNormalBuffer::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _effect_settings
+{
+	float unused;
+} effect_settings;
+
+void effect(inout vec4 result)
+{
+	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
+	result = vec4(normal, 1.0);
+})";
+
+const std::string utils::effects::ExtractPositionsBuffer::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _effect_settings
+{
+	float unused;
+} effect_settings;
+
+void effect(inout vec4 result)
+{
+	result = vec4(In.frag_position, 1.0);
+})";
+
 static std::optional<utils::Context> gContext;
 
 utils::Mesh::Mesh()
@@ -400,6 +504,48 @@ void utils::Mesh::setIndices(const Index* memory, uint32_t count)
 void utils::Mesh::setIndices(const Indices& value)
 {
 	setIndices(value.data(), static_cast<uint32_t>(value.size()));
+}
+
+utils::effects::DirectionalLightForwardShading::DirectionalLightForwardShading(const utils::DirectionalLight& light) :
+	direction(light.direction),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	shininess(light.shininess)
+{
+}
+
+utils::effects::PointLightForwardShading::PointLightForwardShading(const utils::PointLight& light) :
+	position(light.position),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	constant_attenuation(light.constant_attenuation),
+	linear_attenuation(light.linear_attenuation),
+	quadratic_attenuation(light.quadratic_attenuation),
+	shininess(light.shininess)
+{
+}
+
+utils::effects::DirectionalLightDeferredShading::DirectionalLightDeferredShading(const utils::DirectionalLight& light) :
+	direction(light.direction),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	shininess(light.shininess)
+{
+}
+
+utils::effects::PointLightDeferredShading::PointLightDeferredShading(const utils::PointLight& light) :
+	position(light.position),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	constant_attenuation(light.constant_attenuation),
+	linear_attenuation(light.linear_attenuation),
+	quadratic_attenuation(light.quadratic_attenuation),
+	shininess(light.shininess)
+{
 }
 
 utils::effects::GaussianBlur::GaussianBlur(glm::vec2 _direction) :
@@ -560,6 +706,12 @@ utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
 {
 }
 
+utils::commands::SetCustomTexture::SetCustomTexture(uint32_t _binding, const Texture* _texture) :
+	binding(_binding),
+	texture(_texture)
+{
+}
+
 utils::commands::SetColorTexture::SetColorTexture(const Texture* _color_texture) :
 	color_texture(_color_texture)
 {
@@ -683,6 +835,9 @@ void utils::ExecuteCommands(const Commands& cmds)
 	const Texture* normal_texture = nullptr;
 	bool textures_dirty = true;
 
+	std::unordered_map<uint32_t, const Texture*> custom_textures;
+	bool custom_textures_dirty = true;
+
 	struct alignas(16) Settings
 	{
 		glm::mat4 projection = glm::mat4(1.0f);
@@ -750,6 +905,10 @@ void utils::ExecuteCommands(const Commands& cmds)
 
 				shader_dirty = true;
 				uniform_dirty = true;
+			},
+			[&](const commands::SetCustomTexture& cmd) {
+				custom_textures[cmd.binding] = cmd.texture;
+				custom_textures_dirty = true;
 			},
 			[&](const commands::SetColorTexture& cmd) {
 				color_texture = cmd.color_texture;
@@ -927,6 +1086,15 @@ void utils::ExecuteCommands(const Commands& cmds)
 					SetTexture(1, _normal_texture);
 					
 					textures_dirty = false;
+				}
+
+				if (custom_textures_dirty)
+				{
+					for (auto [binding, texture] : custom_textures)
+					{
+						SetTexture(binding, *texture);
+					}
+					custom_textures_dirty = false;
 				}
 
 				if (settings_dirty)
@@ -1107,31 +1275,49 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 	skygfx::ReleaseTransientRenderTarget(blur_dst);
 }
 
-void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, const std::vector<Light>& lights,
-	const DrawSceneOptions& options)
+utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_color_texture, bool use_normal_texture)
 {
-	assert(!models.empty());
+	Commands cmds;
 
-	Commands model_cmds;
+	if (use_color_texture)
+		AddCommands(cmds, { commands::SetColorTexture(model.color_texture) });
+
+	if (use_normal_texture)
+		AddCommands(cmds, { commands::SetNormalTexture(model.normal_texture) });
+
+	AddCommands(cmds, {
+		commands::SetMesh(model.mesh),
+		commands::SetModelMatrix(model.matrix),
+		commands::SetCullMode(model.cull_mode),
+		commands::SetTextureAddress(model.texture_address),
+		commands::SetDepthMode(model.depth_mode),
+		commands::SetColor(model.color),
+		commands::SetSampler(model.sampler),
+		commands::Draw(model.draw_command)
+	});
+
+	return commands::Subcommands(std::move(cmds));
+}
+
+static void DrawSceneForwardShading(const RenderTarget* target, const utils::PerspectiveCamera& camera,
+	const std::vector<utils::Model>& models, const std::vector<utils::Light>& lights,
+	const utils::DrawSceneOptions& options)
+{
+	using namespace utils;
+
+	if (models.empty())
+		return;
+
+	SetRenderTarget(*target);
+
+	if (options.clear_target)
+		Clear();
+
+	Commands draw_models;
 
 	for (const auto& model : models)
 	{
-		if (options.normal_mapping)
-			AddCommands(model_cmds, { commands::SetNormalTexture(model.normal_texture) });
-
-		if (options.textures)
-			AddCommands(model_cmds, { commands::SetColorTexture(model.color_texture) });
-
-		AddCommands(model_cmds, {
-			commands::SetMesh(model.mesh),
-			commands::SetModelMatrix(model.matrix),
-			commands::SetCullMode(model.cull_mode),
-			commands::SetTextureAddress(model.texture_address),
-			commands::SetDepthMode(model.depth_mode),
-			commands::SetColor(model.color),
-			commands::SetSampler(model.sampler),
-			commands::Draw(model.draw_command)
-		});
+		AddCommands(draw_models, { Model::Draw(model, options.textures, options.normal_mapping) });
 	}
 
 	Commands cmds = {
@@ -1141,7 +1327,7 @@ void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, co
 	if (lights.empty())
 	{
 		AddCommands(cmds, {
-			commands::Subcommands(&model_cmds)
+			commands::Subcommands(&draw_models)
 		});
 		ExecuteCommands(cmds);
 		return;
@@ -1151,16 +1337,16 @@ void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, co
 
 	for (const auto& light : lights)
 	{
-		std::visit(cases{
-			[&](const auto& value) {
-				AddCommands(cmds, {
-					commands::SetEffect(value)
-				});
-			}
-		}, light);
-
 		AddCommands(cmds, {
-			commands::Subcommands(&model_cmds)
+			std::visit(cases{
+				[](const DirectionalLight& light) {
+					return commands::SetEffect(effects::DirectionalLightForwardShading(light));
+				},
+				[](const PointLight& light) {
+					return commands::SetEffect(effects::PointLightForwardShading(light));
+				}
+			}, light),
+			commands::Subcommands(&draw_models)
 		});
 
 		if (!first_light_done)
@@ -1173,6 +1359,95 @@ void utils::DrawScene(const Camera& camera, const std::vector<Model>& models, co
 	}
 
 	ExecuteCommands(cmds);
+}
+
+static void DrawSceneDeferredShading(const RenderTarget* target, const utils::PerspectiveCamera& camera,
+	const std::vector<utils::Model>& models, const std::vector<utils::Light>& lights,
+	const utils::DrawSceneOptions& options)
+{
+	using namespace utils;
+
+	if (models.empty())
+		return;
+
+	Commands draw_models;
+
+	for (const auto& model : models)
+	{
+		AddCommands(draw_models, { Model::Draw(model, options.textures, options.normal_mapping) });
+	}
+
+	// extract g-buffer
+	// TODO: use mrt
+
+	auto color_buffer = AcquireTransientRenderTarget();
+	auto normal_buffer = AcquireTransientRenderTarget();
+	auto positions_buffer = AcquireTransientRenderTarget();
+
+	SetRenderTarget(*color_buffer);
+	Clear();
+	ExecuteCommands({
+		commands::SetCamera(camera),
+		commands::Subcommands(&draw_models)
+	});
+	DebugStage("color_buffer", color_buffer);
+
+	SetRenderTarget(*normal_buffer);
+	Clear();
+	ExecuteCommands({
+		commands::SetCamera(camera),
+		commands::SetEffect(effects::ExtractNormalBuffer{}),
+		commands::Subcommands(&draw_models)
+	});
+	DebugStage("normal_buffer", normal_buffer);
+
+	SetRenderTarget(*positions_buffer);
+	Clear();
+	ExecuteCommands({
+		commands::SetCamera(camera),
+		commands::SetEffect(effects::ExtractPositionsBuffer{}),
+		commands::Subcommands(&draw_models)
+	});
+	DebugStage("positions_buffer", positions_buffer);
+
+	Commands cmds = {
+		commands::SetEyePosition(camera.position),
+		commands::SetBlendMode(BlendStates::Additive),
+		commands::SetCustomTexture(5, color_buffer),
+		commands::SetCustomTexture(6, normal_buffer),
+		commands::SetCustomTexture(7, positions_buffer)
+	};
+
+	for (const auto& light : lights)
+	{
+		AddCommands(cmds, {
+			std::visit(cases{
+				[](const DirectionalLight& light) {
+					return commands::SetEffect(effects::DirectionalLightDeferredShading(light));
+				},
+				[](const PointLight& light) {
+					return commands::SetEffect(effects::PointLightDeferredShading(light));
+				}
+			}, light),
+			commands::Draw()
+		});
+	}
+
+	SetRenderTarget(*target);
+
+	if (options.clear_target)
+		Clear();
+
+	ExecuteCommands(cmds);
+}
+
+void utils::DrawScene(DrawSceneTechnique technique, const RenderTarget* target, const PerspectiveCamera& camera,
+	const std::vector<Model>& models, const std::vector<Light>& lights, const DrawSceneOptions& options)
+{
+	if (technique == DrawSceneTechnique::ForwardShading)
+		DrawSceneForwardShading(target, camera, models, lights, options);
+	else if (technique == DrawSceneTechnique::DeferredShading)
+		DrawSceneDeferredShading(target, camera, models, lights, options);
 }
 
 // mesh builder
