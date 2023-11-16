@@ -468,6 +468,9 @@ namespace skygfx::utils
 	void AddCommands(Commands& cmdlist, Commands&& cmds);
 	void ExecuteCommands(const Commands& cmds);
 
+	void RenderPass(const RenderTarget* target, bool clear, const Commands& cmds);
+	void RenderPass(const std::string& name, const RenderTarget* target, bool clear, const Commands& cmds);
+
 	namespace passes
 	{
 		void Blit(const Texture* src, const RenderTarget* dst, bool clear,

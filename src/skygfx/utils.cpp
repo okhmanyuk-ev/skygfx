@@ -1137,21 +1137,32 @@ void utils::ExecuteCommands(const Commands& cmds)
 	}
 }
 
-void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear, Commands&& commands)
+void utils::RenderPass(const RenderTarget* target, bool clear, const Commands& cmds)
 {
-	if (dst == nullptr)
+	if (target == nullptr)
 		SetRenderTarget(std::nullopt);
 	else
-		SetRenderTarget(*dst);
+		SetRenderTarget(*target);
 
 	if (clear)
 		Clear();
 
+	ExecuteCommands(cmds);
+}
+
+void utils::RenderPass(const std::string& name, const RenderTarget* target, bool clear, const Commands& cmds)
+{
+	RenderPass(target, clear, cmds);
+	DebugStage(name, target);
+}
+
+void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear, Commands&& commands)
+{
 	AddCommands(commands, {
 		commands::SetColorTexture(src),
 		commands::Draw()
 	});
-	ExecuteCommands(commands);
+	RenderPass(dst, clear, commands);
 }
 
 void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear,
@@ -1308,11 +1319,6 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 	if (models.empty())
 		return;
 
-	SetRenderTarget(*target);
-
-	if (options.clear_target)
-		Clear();
-
 	Commands draw_models;
 
 	for (const auto& model : models)
@@ -1329,7 +1335,7 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 		AddCommands(cmds, {
 			commands::Subcommands(&draw_models)
 		});
-		ExecuteCommands(cmds);
+		RenderPass(target, options.clear_target, cmds);
 		return;
 	}
 
@@ -1358,7 +1364,7 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 		}
 	}
 
-	ExecuteCommands(cmds);
+	RenderPass(target, options.clear_target, cmds);
 }
 
 static void DrawSceneDeferredShading(const RenderTarget* target, const utils::PerspectiveCamera& camera,
@@ -1384,31 +1390,20 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	auto normal_buffer = AcquireTransientRenderTarget();
 	auto positions_buffer = AcquireTransientRenderTarget();
 
-	SetRenderTarget(*color_buffer);
-	Clear();
-	ExecuteCommands({
+	RenderPass("color_buffer", color_buffer, true, {
 		commands::SetCamera(camera),
 		commands::Subcommands(&draw_models)
 	});
-	DebugStage("color_buffer", color_buffer);
-
-	SetRenderTarget(*normal_buffer);
-	Clear();
-	ExecuteCommands({
+	RenderPass("normal_buffer", normal_buffer, true, {
 		commands::SetCamera(camera),
 		commands::SetEffect(effects::ExtractNormalBuffer{}),
 		commands::Subcommands(&draw_models)
 	});
-	DebugStage("normal_buffer", normal_buffer);
-
-	SetRenderTarget(*positions_buffer);
-	Clear();
-	ExecuteCommands({
+	RenderPass("positions_buffer", positions_buffer, true, {
 		commands::SetCamera(camera),
 		commands::SetEffect(effects::ExtractPositionsBuffer{}),
 		commands::Subcommands(&draw_models)
 	});
-	DebugStage("positions_buffer", positions_buffer);
 
 	Commands cmds = {
 		commands::SetEyePosition(camera.position),
@@ -1433,12 +1428,7 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 		});
 	}
 
-	SetRenderTarget(*target);
-
-	if (options.clear_target)
-		Clear();
-
-	ExecuteCommands(cmds);
+	RenderPass(target, options.clear_target, cmds);
 }
 
 void utils::DrawScene(DrawSceneTechnique technique, const RenderTarget* target, const PerspectiveCamera& camera,
