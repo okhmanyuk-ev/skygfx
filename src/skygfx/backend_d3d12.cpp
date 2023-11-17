@@ -56,21 +56,31 @@ struct PipelineStateD3D12
 	std::optional<DepthMode> depth_mode;
 	std::optional<BlendMode> blend_mode;
 	TopologyKind topology_kind = TopologyKind::Triangles;
-	DXGI_FORMAT color_attachment_format;
-	DXGI_FORMAT depth_stencil_format;
+	std::vector<DXGI_FORMAT> color_attachment_formats;
+	std::optional<DXGI_FORMAT> depth_stencil_format;
 
 	bool operator==(const PipelineStateD3D12& other) const = default;
 };
 
-SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
-	t.shader,
-	t.rasterizer_state,
-	t.depth_mode,
-	t.blend_mode,
-	t.topology_kind,
-	t.color_attachment_format,
-	t.depth_stencil_format
-);
+template<>
+struct std::hash<PipelineStateD3D12>
+{
+	std::size_t operator()(const PipelineStateD3D12& t) const // TODO: use SKYGFX_MAKE_HASHABLE
+	{
+		std::size_t ret = 0;
+		skygfx::hash_combine(ret, t.shader);
+		skygfx::hash_combine(ret, t.rasterizer_state);
+		skygfx::hash_combine(ret, t.depth_mode);
+		skygfx::hash_combine(ret, t.blend_mode);
+		skygfx::hash_combine(ret, t.topology_kind);
+		for (auto format : t.color_attachment_formats)
+		{
+			skygfx::hash_combine(ret, format);
+		}
+		skygfx::hash_combine(ret, t.depth_stencil_format);
+		return ret;
+	}
+};
 
 static int const NUM_BACK_BUFFERS = 2;
 
@@ -91,7 +101,7 @@ struct ContextD3D12
 
 	struct Frame
 	{
-		D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor;
+		D3D12_CPU_DESCRIPTOR_HANDLE rtv_descriptor; // TODO: move inside RenderTargetD3D12
 		TextureD3D12* backbuffer_texture;
 		RenderTargetD3D12* main_render_target;
 	};
@@ -108,7 +118,7 @@ struct ContextD3D12
 
 	std::unordered_map<uint32_t, TextureD3D12*> textures;
 	std::unordered_map<uint32_t, UniformBufferD3D12*> uniform_buffers;
-	RenderTargetD3D12* render_target = nullptr;
+	std::vector<RenderTargetD3D12*> render_targets;
 
 	PipelineStateD3D12 pipeline_state;
 	std::unordered_map<PipelineStateD3D12, ComPtr<ID3D12PipelineState>> pipeline_states;
@@ -566,17 +576,17 @@ private:
 
 uint32_t ContextD3D12::getBackbufferWidth()
 {
-	return render_target ? render_target->getTexture()->getWidth() : width;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getWidth() : width;
 }
 
 uint32_t ContextD3D12::getBackbufferHeight()
 {
-	return render_target ? render_target->getTexture()->getHeight() : height;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getHeight() : height;
 }
 
 Format ContextD3D12::getBackbufferFormat()
 {
-	return gContext->render_target ? gContext->render_target->getTexture()->getFormat() : Format::Byte4;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : Format::Byte4;
 }
 
 static void DestroyStaging(ComPtr<ID3D12DeviceChild> object)
@@ -830,9 +840,12 @@ static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineSta
 	pso_desc.PrimitiveTopologyType = topology_type;
 	pso_desc.pRootSignature = pipeline_state.shader->getRootSignature().Get();
 	pso_desc.SampleMask = UINT_MAX;
-	pso_desc.NumRenderTargets = 1;
-	pso_desc.RTVFormats[0] = pipeline_state.color_attachment_format;
-	pso_desc.DSVFormat = pipeline_state.depth_stencil_format;
+	pso_desc.NumRenderTargets = pipeline_state.color_attachment_formats.size();
+	for (size_t i = 0; i < pipeline_state.color_attachment_formats.size(); i++)
+	{
+		pso_desc.RTVFormats[i] = pipeline_state.color_attachment_formats.at(i);
+	}
+	pso_desc.DSVFormat = pipeline_state.depth_stencil_format.value();
 	pso_desc.SampleDesc.Count = 1;
 	pso_desc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 	pso_desc.RasterizerState = rasterizer_state;
@@ -947,18 +960,31 @@ static void EnsureGraphicsState(bool draw_indexed)
 		gContext->pipeline_states[gContext->pipeline_state] = pipeline_state;
 	}
 
-	auto rtv_cpu_descriptor = gContext->render_target ?
-		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->getCurrentFrame().rtv_descriptor;
+	auto targets = gContext->render_targets;
+	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtv_descriptors;
 
-	auto target = gContext->render_target ?
-		gContext->render_target :
-		gContext->getCurrentFrame().main_render_target;
+	if (targets.empty())
+	{
+		targets = { gContext->getCurrentFrame().main_render_target };
+		rtv_descriptors = { gContext->getCurrentFrame().rtv_descriptor };
+	}
+	else
+	{
+		for (auto target : targets)
+		{
+			rtv_descriptors.push_back(target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart());
+		}
+	}
 
-	target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	for (auto target : targets)
+	{
+		target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
 
-	auto dsv_cpu_descriptor = target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart();
-	gContext->cmdlist->OMSetRenderTargets(1, &rtv_cpu_descriptor, FALSE, &dsv_cpu_descriptor);
+	auto dsv_descriptor = targets.at(0)->getDsvHeap()->GetCPUDescriptorHandleForHeapStart();
+
+	gContext->cmdlist->OMSetRenderTargets(rtv_descriptors.size(), rtv_descriptors.data(),
+		FALSE, &dsv_descriptor);
 
 	auto pipeline_state = gContext->pipeline_states.at(gContext->pipeline_state).Get();
 
@@ -1024,12 +1050,13 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 	gContext = new ContextD3D12();
 
 #ifdef SKYGFX_D3D12_VALIDATION_ENABLED
-	ComPtr<ID3D12Debug5> debug;
+	ComPtr<ID3D12Debug6> debug;
 	D3D12GetDebugInterface(IID_PPV_ARGS(debug.GetAddressOf()));
 	debug->EnableDebugLayer();
 	debug->SetEnableAutoName(true);
 	debug->SetEnableGPUBasedValidation(true);
 	debug->SetEnableSynchronizedCommandQueueValidation(true);
+	debug->SetForceLegacyBarrierValidation(true);
 #endif
 
 	ComPtr<IDXGIFactory6> dxgi_factory;
@@ -1112,7 +1139,7 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 	gContext->fence_event = CreateEvent(NULL, FALSE, FALSE, NULL);
 	assert(gContext->fence_event != NULL);
 	
-	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gContext->pipeline_state.color_attachment_formats = { MainRenderTargetColorAttachmentFormat };
 	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
 
 	CreateMainRenderTarget(width, height);
@@ -1182,16 +1209,28 @@ void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->textures[binding] = texture;
 }
 
-void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
+void BackendD3D12::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 {
-	auto render_target = (RenderTargetD3D12*)handle;
-		
-	if (gContext->render_target == render_target)
+	std::vector<RenderTargetD3D12*> render_targets;
+	std::vector<DXGI_FORMAT> color_attachment_formats;
+	std::optional<DXGI_FORMAT> depth_stencil_format;
+
+	for (auto handle : handles)
+	{
+		auto render_target = (RenderTargetD3D12*)handle;
+		render_targets.push_back(render_target);
+		color_attachment_formats.push_back(FormatMap.at(render_target->getTexture()->getFormat()));
+
+		if (!depth_stencil_format.has_value())
+			depth_stencil_format = render_target->getDepthStencilFormat();
+	}
+
+	if (gContext->render_targets == render_targets)
 		return;
 
-	gContext->pipeline_state.color_attachment_format = FormatMap.at(render_target->getTexture()->getFormat());
-	gContext->pipeline_state.depth_stencil_format = render_target->getDepthStencilFormat();
-	gContext->render_target = render_target;
+	gContext->pipeline_state.color_attachment_formats = color_attachment_formats;
+	gContext->pipeline_state.depth_stencil_format = depth_stencil_format;
+	gContext->render_targets = render_targets;
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
@@ -1202,12 +1241,12 @@ void BackendD3D12::setRenderTarget(RenderTargetHandle* handle)
 
 void BackendD3D12::setRenderTarget(std::nullopt_t value)
 {
-	if (gContext->render_target == nullptr)
+	if (gContext->render_targets.empty())
 		return;
 
-	gContext->pipeline_state.color_attachment_format = MainRenderTargetColorAttachmentFormat;
+	gContext->pipeline_state.color_attachment_formats = { MainRenderTargetColorAttachmentFormat };
 	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
-	gContext->render_target = nullptr;
+	gContext->render_targets.clear();
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
@@ -1287,18 +1326,35 @@ void BackendD3D12::setDepthBias(const std::optional<DepthBias> depth_bias)
 void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	const auto& rtv = gContext->render_target ?
-		gContext->render_target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart() :
-		gContext->getCurrentFrame().rtv_descriptor;
+	auto targets = gContext->render_targets;
+	std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtv_descriptors;
 
-	auto target = gContext->render_target ? gContext->render_target :
-		gContext->getCurrentFrame().main_render_target;
+	if (targets.empty())
+	{
+		targets = { gContext->getCurrentFrame().main_render_target };
+		rtv_descriptors = { gContext->getCurrentFrame().rtv_descriptor };
+	}
+	else
+	{
+		for (auto target : targets)
+		{
+			rtv_descriptors.push_back(target->getRtvHeap()->GetCPUDescriptorHandleForHeapStart());
+		}
+	}
 
-	target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	for (auto target : targets)
+	{
+		target->getTexture()->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
+
+	auto dsv_descriptor = targets.at(0)->getDsvHeap()->GetCPUDescriptorHandleForHeapStart();
 
 	if (color.has_value())
 	{
-		gContext->cmdlist->ClearRenderTargetView(rtv, (float*)&color.value(), 0, NULL);
+		for (auto rtv_descriptor : rtv_descriptors)
+		{
+			gContext->cmdlist->ClearRenderTargetView(rtv_descriptor, (float*)&color.value(), 0, NULL);
+		}		
 	}
 
 	if (depth.has_value() || stencil.has_value())
@@ -1311,9 +1367,8 @@ void BackendD3D12::clear(const std::optional<glm::vec4>& color, const std::optio
 		if (stencil.has_value())
 			flags |= D3D12_CLEAR_FLAG_STENCIL;
 
-		auto dsv = target->getDsvHeap()->GetCPUDescriptorHandleForHeapStart();
-
-		gContext->cmdlist->ClearDepthStencilView(dsv, flags, depth.value_or(1.0f), stencil.value_or(0), 0, NULL);
+		gContext->cmdlist->ClearDepthStencilView(dsv_descriptor, flags, depth.value_or(1.0f),
+			stencil.value_or(0), 0, NULL);
 	}
 }
 
@@ -1341,8 +1396,8 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto src_texture = gContext->render_target ?
-		gContext->render_target->getTexture() :
+	auto src_texture = !gContext->render_targets.empty() ?
+		gContext->render_targets.at(0)->getTexture() :
 		gContext->getCurrentFrame().main_render_target->getTexture();
 
 	auto desc = src_texture->getD3D12Texture()->GetDesc();

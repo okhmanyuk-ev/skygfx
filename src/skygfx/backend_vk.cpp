@@ -34,7 +34,7 @@ struct PipelineStateVK
 template<>
 struct std::hash<PipelineStateVK>
 {
-	std::size_t operator()(const PipelineStateVK& t) const
+	std::size_t operator()(const PipelineStateVK& t) const // TODO: use SKYGFX_MAKE_HASHABLE
 	{
 		std::size_t ret = 0;
 		skygfx::hash_combine(ret, t.shader);
@@ -1069,7 +1069,7 @@ static void BeginRenderPass()
 	assert(!gContext->render_pass_active);
 	gContext->render_pass_active = true;
 
-	std::vector<RenderTargetVK*> targets = gContext->render_targets;
+	auto targets = gContext->render_targets;
 
 	if (targets.empty())
 		targets = { gContext->getCurrentFrame().swapchain_target.get() };
@@ -2755,7 +2755,7 @@ void BackendVK::clear(const std::optional<glm::vec4>& color, const std::optional
 		
 		auto attachment = vk::ClearAttachment()
 			.setAspectMask(vk::ImageAspectFlagBits::eColor)
-			.setColorAttachment(0)
+			.setColorAttachment(0) // TODO: clear all attachments
 			.setClearValue(clear_value);
 
 		gContext->getCurrentFrame().command_buffer.clearAttachments({ attachment }, { clear_rect });
