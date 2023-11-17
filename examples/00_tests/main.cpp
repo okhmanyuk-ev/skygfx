@@ -139,8 +139,9 @@ bool TriangleRenderTarget(skygfx::BackendType backend, SavePixelsFunc save_pixel
 		1.00000000f
 	};
 
-	skygfx::utils::passes::Blit(&target, nullptr, true, {
-		skygfx::utils::commands::SetSampler(skygfx::Sampler::Nearest)
+	skygfx::utils::passes::Blit(&target, nullptr, {
+		.clear = true,
+		.sampler = skygfx::Sampler::Nearest
 	});
 
 	skygfx::Present();

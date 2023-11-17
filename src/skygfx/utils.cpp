@@ -1138,42 +1138,45 @@ void utils::ExecuteCommands(const RenderTarget* target, bool clear, const std::v
 	ExecuteCommands(cmds);
 }
 
-void utils::ExecuteCommands(const std::string& name, const RenderTarget* target, bool clear,
-	const std::vector<Command>& cmds)
+void utils::passes::Blit(const Texture* src, const RenderTarget* dst, const BlitOptions& options)
 {
-	ExecuteCommands(target, clear, cmds);
-	ViewStage(name, target);
-}
+	std::vector<Command> cmds;
 
-void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear, std::vector<Command>&& commands)
-{
-	commands.insert(commands.end(), {
+	if (options.effect.has_value())
+		cmds.push_back(options.effect.value());
+
+	cmds.insert(cmds.end(), {
+		commands::SetSampler(options.sampler),
+		commands::SetColor(options.color),
+		commands::SetBlendMode(options.blend_mode),
 		commands::SetColorTexture(src),
 		commands::Draw()
 	});
-	ExecuteCommands(dst, clear, commands);
-}
 
-void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear,
-	const std::optional<BlendMode>& blend_mode, glm::vec4 color)
-{
-	Blit(src, dst, clear, {
-		commands::SetBlendMode(std::move(blend_mode)),
-		commands::SetColor(std::move(color))
-	});
+	ExecuteCommands(dst, options.clear, cmds);
 }
 
 void utils::passes::GaussianBlur(const RenderTarget* src, const RenderTarget* dst)
 {
 	auto blur_target = skygfx::AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
-	Blit("gaussian horizontal", src, blur_target, effects::GaussianBlur({ 1.0f, 0.0f }), true);
-	Blit("gaussian vertical", blur_target, dst, effects::GaussianBlur({ 0.0f, 1.0f }));
+	Blit(src, blur_target, {
+		.clear = true,
+		.effect = effects::GaussianBlur({ 1.0f, 0.0f })
+	});
+	ViewStage("gaussian horizontal", blur_target);
+	Blit(blur_target, dst, {
+		.effect = effects::GaussianBlur({ 0.0f, 1.0f })
+	});
+	ViewStage("gaussian vertical", dst);
 	skygfx::ReleaseTransientRenderTarget(blur_target);
 }
 
 void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst, float intensity)
 {
-	Blit("grayscale", src, dst, effects::Grayscale{ intensity });
+	Blit(src, dst, {
+		.effect = effects::Grayscale{ intensity }
+	});
+	ViewStage("grayscale", dst);
 }
 
 void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, float bright_threshold, float intensity)
@@ -1208,7 +1211,11 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	if (bright_threshold > 0.0f)
 	{
-		Blit("bright", src, bright, effects::BrightFilter(bright_threshold), true);
+		Blit(src, bright, {
+			.clear = true,
+			.effect = effects::BrightFilter(bright_threshold)
+		});
+		ViewStage("bright", bright);
 		downsample_src = bright;
 	}
 
@@ -1218,7 +1225,10 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (auto target : tex_chain)
 	{
-		Blit("downsample", downsample_src, target, effects::BloomDownsample(step_number));
+		Blit(downsample_src, target, {
+			.effect = effects::BloomDownsample(step_number)
+		});
+		ViewStage("downsample", target);
 		downsample_src = target;
 		step_number += 1;
 	}
@@ -1227,12 +1237,20 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 
 	for (auto it = std::next(tex_chain.rbegin()); it != tex_chain.rend(); ++it)
 	{
-		Blit("upsample", *std::prev(it), *it, effects::BloomUpsample(), false, BlendStates::Additive);
+		Blit(*std::prev(it), *it, {
+			.blend_mode = BlendStates::Additive,
+			.effect = effects::BloomUpsample()
+		});
+		ViewStage("upsample", *it);
 	}
 
 	// combine
 
-	Blit(*tex_chain.begin(), dst, effects::BloomUpsample(), false, BlendStates::Additive, glm::vec4(intensity));
+	Blit(*tex_chain.begin(), dst, {
+		.color = glm::vec4(intensity),
+		.blend_mode = BlendStates::Additive,
+		.effect = effects::BloomUpsample()
+	});
 
 	// release targets
 
@@ -1263,13 +1281,20 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 
 	if (bright_threshold > 0.0f)
 	{
-		Blit("bright", src, bright, effects::BrightFilter(bright_threshold), true);
+		Blit(src, bright, {
+			.clear = true,
+			.effect = effects::BrightFilter(bright_threshold)
+		});
+		ViewStage("bright", bright);
 		blur_src = bright;
 	}
 
 	GaussianBlur(blur_src, blur_dst);
 
-	Blit(blur_dst, dst, false, BlendStates::Additive, glm::vec4(intensity));
+	Blit(blur_dst, dst, {
+		.color = glm::vec4(intensity),
+		.blend_mode = BlendStates::Additive
+	});
 
 	skygfx::ReleaseTransientRenderTarget(bright);
 	skygfx::ReleaseTransientRenderTarget(blur_dst);

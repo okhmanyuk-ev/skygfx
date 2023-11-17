@@ -468,26 +468,19 @@ namespace skygfx::utils
 
 	void ExecuteCommands(const std::vector<Command>& cmds);
 	void ExecuteCommands(const RenderTarget* target, bool clear, const std::vector<Command>& cmds);
-	void ExecuteCommands(const std::string& name, const RenderTarget* target, bool clear,
-		const std::vector<Command>& cmds);
 
 	namespace passes
 	{
-		void Blit(const Texture* src, const RenderTarget* dst, bool clear,
-			std::vector<Command>&& commands);
-
-		void Blit(const Texture* src, const RenderTarget* dst = nullptr, bool clear = false,
-			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f });
-
-		void Blit(const Texture* src, const RenderTarget* dst, effects::Effect auto effect, bool clear = false,
-			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f })
+		struct BlitOptions
 		{
-			Blit(src, dst, clear, {
-				commands::SetEffect(std::move(effect)),
-				commands::SetBlendMode(std::move(blend_mode)),
-				commands::SetColor(std::move(color))
-			});
-		}
+			bool clear = false;
+			Sampler sampler = Sampler::Linear;
+			glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+			std::optional<BlendMode> blend_mode;
+			std::optional<commands::SetEffect> effect;
+		};
+
+		void Blit(const Texture* src, const RenderTarget* dst, const BlitOptions& options = {});
 
 		void GaussianBlur(const RenderTarget* src, const RenderTarget* dst = nullptr);
 		void Grayscale(const RenderTarget* src, const RenderTarget* dst = nullptr, float intensity = 1.0f);
@@ -600,16 +593,6 @@ namespace skygfx::utils
 
 	void SetStageViewer(StageViewer* value);
 	void ViewStage(const std::string& name, const Texture* texture);
-
-	namespace passes
-	{
-		void Blit(const std::string& stage_name, const Texture* src, const RenderTarget* dst, effects::Effect auto effect, bool clear = false,
-			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f })
-		{
-			Blit(src, dst, effect, clear, blend_mode, color);
-			ViewStage(stage_name, dst);
-		}
-	}
 
 	class ScratchRasterizer
 	{

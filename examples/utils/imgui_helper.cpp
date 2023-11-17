@@ -92,7 +92,9 @@ void StageViewer::stage(const std::string& name, const skygfx::Texture* texture)
 	Stage stage;
 	stage.name = name;
 	stage.target = skygfx::AcquireTransientRenderTarget(texture->getWidth(), texture->getHeight());
-	skygfx::utils::passes::Blit(texture, stage.target, true);
+	skygfx::utils::passes::Blit(texture, stage.target, {
+		.clear = true
+	});
 	mStages.push_back(stage);
 }
 
