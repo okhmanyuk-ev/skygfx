@@ -1,5 +1,5 @@
 #include <skygfx/skygfx.h>
-#include <skygfx/vertex.h>
+#include <skygfx/utils.h>
 #include <format>
 #include <chrono>
 
@@ -9,7 +9,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
-using PixelsFunc = std::function<void(uint32_t width, uint32_t height, const std::vector<uint8_t>&)>;
+using SavePixelsFunc = std::function<void(uint32_t width, uint32_t height, const std::vector<uint8_t>&)>;
 
 static void* gNativeWindow = nullptr;
 static uint32_t gWidth = 0;
@@ -37,7 +37,7 @@ glm::vec4 BlitPixelsToOne(const std::vector<uint8_t>& pixels)
 	return result;
 }
 
-bool Clear(skygfx::BackendType backend, PixelsFunc pixels_func)
+bool Clear(skygfx::BackendType backend, SavePixelsFunc save_pixels_func)
 {
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
@@ -46,7 +46,7 @@ bool Clear(skygfx::BackendType backend, PixelsFunc pixels_func)
 	skygfx::Clear(clear_color);
 			
 	auto pixels = skygfx::GetBackbufferPixels();
-	pixels_func(gWidth, gHeight, pixels);
+	save_pixels_func(gWidth, gHeight, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == clear_color;
@@ -57,7 +57,7 @@ bool Clear(skygfx::BackendType backend, PixelsFunc pixels_func)
 	return result;
 }
 
-bool ClearRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
+bool ClearRenderTarget(skygfx::BackendType backend, SavePixelsFunc save_pixels_func)
 {
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
@@ -69,7 +69,7 @@ bool ClearRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
 	skygfx::Clear(clear_color);
 
 	auto pixels = skygfx::GetBackbufferPixels();
-	pixels_func(target.getWidth(), target.getHeight(), pixels);
+	save_pixels_func(target.getWidth(), target.getHeight(), pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == clear_color;
@@ -80,58 +80,21 @@ bool ClearRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
 	return result;
 }
 
-bool Triangle(skygfx::BackendType backend, PixelsFunc pixels_func)
+bool Triangle(skygfx::BackendType backend, SavePixelsFunc save_pixels_func)
 {
-	const std::string vertex_shader_code = R"(
-#version 450 core
-
-layout(location = POSITION_LOCATION) in vec3 aPosition;
-layout(location = COLOR_LOCATION) in vec4 aColor;
-
-layout(location = 0) out struct { vec4 Color; } Out;
-out gl_PerVertex { vec4 gl_Position; };
-
-void main()
-{
-	Out.Color = aColor;
-	gl_Position = vec4(aPosition, 1.0);
-})";
-
-	const std::string fragment_shader_code = R"(
-#version 450 core
-
-layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec4 Color; } In;
-
-void main() 
-{ 
-	result = In.Color;
-})";
-
-	using Vertex = skygfx::Vertex::PositionColor;
-
-	const std::vector<Vertex> vertices = {
-		{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-	};
-
-	const std::vector<uint32_t> indices = { 0, 1, 2 };
-
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
-
-	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
-
-	skygfx::SetTopology(skygfx::Topology::TriangleList);
-	skygfx::SetShader(shader);
-	skygfx::SetIndexBuffer(indices);
-	skygfx::SetVertexBuffer(vertices);
-
 	skygfx::Clear();
-	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
+
+	auto scratch = skygfx::utils::ScratchRasterizer();
+	scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
+	scratch.vertex(skygfx::Vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
+	scratch.end();
+	scratch.flush();
 
 	auto pixels = skygfx::GetBackbufferPixels();
-	pixels_func(gWidth, gHeight, pixels);
+	save_pixels_func(gWidth, gHeight, pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == glm::vec4{
@@ -142,64 +105,31 @@ void main()
 	};
 
 	skygfx::Present();
+	skygfx::utils::ClearContext();
 	skygfx::Finalize();
 
 	return result;
 }
 
-bool TriangleRenderTarget(skygfx::BackendType backend, PixelsFunc pixels_func)
+bool TriangleRenderTarget(skygfx::BackendType backend, SavePixelsFunc save_pixels_func)
 {
-	const std::string vertex_shader_code = R"(
-#version 450 core
-
-layout(location = POSITION_LOCATION) in vec3 aPosition;
-layout(location = COLOR_LOCATION) in vec4 aColor;
-
-layout(location = 0) out struct { vec4 Color; } Out;
-out gl_PerVertex { vec4 gl_Position; };
-
-void main()
-{
-	Out.Color = aColor;
-	gl_Position = vec4(aPosition, 1.0);
-})";
-
-	const std::string fragment_shader_code = R"(
-#version 450 core
-
-layout(location = 0) out vec4 result;
-layout(location = 0) in struct { vec4 Color; } In;
-
-void main() 
-{ 
-	result = In.Color;
-})";
-
-	using Vertex = skygfx::Vertex::PositionColor;
-
-	const std::vector<Vertex> vertices = {
-		{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-		{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-	};
-
-	const std::vector<uint32_t> indices = { 0, 1, 2 };
-
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
-	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
 	auto target = skygfx::RenderTarget(16, 16, skygfx::Format::Byte4);
 
-	skygfx::SetTopology(skygfx::Topology::TriangleList);
-	skygfx::SetShader(shader);
-	skygfx::SetIndexBuffer(indices);
-	skygfx::SetVertexBuffer(vertices);
 	skygfx::SetRenderTarget(target);
 	skygfx::Clear();
-	skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
+
+	auto scratch = skygfx::utils::ScratchRasterizer();
+	scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
+	scratch.vertex(skygfx::Vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
+	scratch.end();
+	scratch.flush();
 
 	auto pixels = skygfx::GetBackbufferPixels();
-	pixels_func(target.getWidth(), target.getHeight(), pixels);
+	save_pixels_func(target.getWidth(), target.getHeight(), pixels);
 	auto pixel = BlitPixelsToOne(pixels);
 
 	auto result = pixel == glm::vec4{
@@ -209,7 +139,12 @@ void main()
 		1.00000000f
 	};
 
+	skygfx::utils::passes::Blit(&target, nullptr, true, {
+		skygfx::utils::commands::SetSampler(skygfx::Sampler::Nearest)
+	});
+
 	skygfx::Present();
+	skygfx::utils::ClearContext();
 	skygfx::Finalize();
 
 	return result;
@@ -217,9 +152,9 @@ void main()
 
 int main()
 {
-	#define PUSH(F) { #F, F }
-	
-	std::vector<std::pair<std::string, std::function<bool(skygfx::BackendType, PixelsFunc)>>> test_cases = {
+#define PUSH(F) { #F, F }
+
+	std::vector<std::pair<std::string, std::function<bool(skygfx::BackendType, SavePixelsFunc)>>> test_cases = {
 		PUSH(Clear),
 		PUSH(ClearRenderTarget),
 		PUSH(Triangle),
@@ -229,7 +164,7 @@ int main()
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "test");
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "tests");
 
 	gNativeWindow = native_window;
 	gWidth = width;
