@@ -791,7 +791,7 @@ void BackendD3D11::setRenderTarget(const std::vector<RenderTargetHandle*>& handl
 		gContext->render_targets.push_back(render_target);
 	}
 
-	gContext->context->OMSetRenderTargets(render_target_views.size(),
+	gContext->context->OMSetRenderTargets((UINT)render_target_views.size(),
 		render_target_views.data(), depth_stencil_view.value_or(nullptr));
 	
 	if (!gContext->viewport.has_value())

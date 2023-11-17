@@ -1188,13 +1188,13 @@ void BackendGL::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 	glBindFramebuffer(GL_FRAMEBUFFER, render_targets.at(0)->getGLFramebuffer());
 	for (size_t i = 0; i < render_targets.size(); i++)
 	{
-		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D,
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D,
 			render_targets.at(i)->getTexture()->getGLTexture(), 0);
 	}
 	auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	assert(status == GL_FRAMEBUFFER_COMPLETE);
 
-	glDrawBuffers(render_targets.size(), gContext->draw_buffers.data());
+	glDrawBuffers((GLsizei)render_targets.size(), gContext->draw_buffers.data());
 
 	gContext->render_targets = render_targets;
 

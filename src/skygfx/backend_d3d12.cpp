@@ -840,7 +840,7 @@ static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineSta
 	pso_desc.PrimitiveTopologyType = topology_type;
 	pso_desc.pRootSignature = pipeline_state.shader->getRootSignature().Get();
 	pso_desc.SampleMask = UINT_MAX;
-	pso_desc.NumRenderTargets = pipeline_state.color_attachment_formats.size();
+	pso_desc.NumRenderTargets = (UINT)pipeline_state.color_attachment_formats.size();
 	for (size_t i = 0; i < pipeline_state.color_attachment_formats.size(); i++)
 	{
 		pso_desc.RTVFormats[i] = pipeline_state.color_attachment_formats.at(i);
@@ -983,7 +983,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 	auto dsv_descriptor = targets.at(0)->getDsvHeap()->GetCPUDescriptorHandleForHeapStart();
 
-	gContext->cmdlist->OMSetRenderTargets(rtv_descriptors.size(), rtv_descriptors.data(),
+	gContext->cmdlist->OMSetRenderTargets((UINT)rtv_descriptors.size(), rtv_descriptors.data(),
 		FALSE, &dsv_descriptor);
 
 	auto pipeline_state = gContext->pipeline_states.at(gContext->pipeline_state).Get();

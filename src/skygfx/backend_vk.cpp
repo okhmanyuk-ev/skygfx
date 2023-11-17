@@ -1631,7 +1631,7 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 	auto pipeline_depth_stencil_state_create_info = vk::PipelineDepthStencilStateCreateInfo();
 
 	auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
-		.setAttachmentCount(pipeline_state.color_attachment_formats.size());
+		.setAttachmentCount((uint32_t)pipeline_state.color_attachment_formats.size());
 
 	auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
 		.setVertexBindingDescriptions(pipeline_state.shader->getVertexInputBindingDescription())
