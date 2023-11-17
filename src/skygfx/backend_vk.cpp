@@ -142,6 +142,7 @@ struct ContextVK
 	std::optional<Scissor> scissor;
 	std::optional<Viewport> viewport;
 	std::optional<DepthMode> depth_mode = DepthMode();
+	std::optional<StencilMode> stencil_mode;
 	CullMode cull_mode = CullMode::None;
 	FrontFace front_face = FrontFace::Clockwise;
 	Topology topology = Topology::TriangleList;
@@ -153,6 +154,7 @@ struct ContextVK
 	bool scissor_dirty = true;
 	bool viewport_dirty = true;
 	bool depth_mode_dirty = true;
+	bool stencil_mode_dirty = true;
 	bool cull_mode_dirty = true;
 	bool front_face_dirty = true;
 	bool topology_dirty = true;
@@ -626,7 +628,7 @@ public:
 		auto channel_size = GetFormatChannelSize(_format);
 		auto size = width * height * channels_count * channel_size;
 
-		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferSrc);
+		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferDst);
 
 		auto subresource = vk::ImageSubresourceLayers()
 			.setAspectMask(vk::ImageAspectFlagBits::eColor)
@@ -1967,6 +1969,16 @@ static void EnsureDepthMode(vk::raii::CommandBuffer& cmdlist)
 	}
 }
 
+static void EnsureStencilMode(vk::raii::CommandBuffer& cmdlist)
+{
+	if (!gContext->stencil_mode_dirty)
+		return;
+
+	gContext->stencil_mode_dirty = false;
+
+	cmdlist.setStencilTestEnable(gContext->stencil_mode.has_value());
+}
+
 static void EnsureGraphicsPipelineState(vk::raii::CommandBuffer& cmdlist)
 {
 	if (!gContext->pipeline_state_dirty)
@@ -2039,6 +2051,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 	EnsureFrontFace(cmdlist);
 	EnsureBlendMode(cmdlist);
 	EnsureDepthMode(cmdlist);
+	EnsureStencilMode(cmdlist);
 	EnsureRenderPassActivated();
 }
 
@@ -2165,6 +2178,7 @@ static void Begin()
 	gContext->index_buffer_dirty = true;
 	gContext->blend_mode_dirty = true;
 	gContext->depth_mode_dirty = true;
+	gContext->stencil_mode_dirty = true;
 
 	auto begin_info = vk::CommandBufferBeginInfo()
 		.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
@@ -2698,7 +2712,8 @@ void BackendVK::setDepthMode(const std::optional<DepthMode>& depth_mode)
 
 void BackendVK::setStencilMode(const std::optional<StencilMode>& stencil_mode)
 {
-	gContext->getCurrentFrame().command_buffer.setStencilTestEnable(stencil_mode.has_value());
+	gContext->stencil_mode_dirty = true;
+	gContext->stencil_mode = stencil_mode;
 }
 
 void BackendVK::setCullMode(CullMode cull_mode)
