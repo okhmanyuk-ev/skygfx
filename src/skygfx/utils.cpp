@@ -1600,28 +1600,28 @@ void utils::MeshBuilder::begin(Mode mode)
 	mVertexStart = mVertexCount;
 }
 
-void utils::MeshBuilder::vertex(const Vertex::PositionColorTextureNormal& value)
+void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormal& value)
 {
 	assert(mBegan);
 	AddItem(mVertices, mVertexCount, value);
 }
 
-void utils::MeshBuilder::vertex(const Vertex::PositionColorTexture& value)
+void utils::MeshBuilder::vertex(const vertex::PositionColorTexture& value)
 {
-	vertex(Vertex::PositionColorTextureNormal{
+	vertex(vertex::PositionColorTextureNormal{
 		.pos = value.pos,
 		.color = value.color,
 		.texcoord = value.texcoord,
-		.normal = { 0.0f, 0.0f, 0.0f }
+		.normal = vertex::defaults::Normal
 	});
 }
 
-void utils::MeshBuilder::vertex(const Vertex::PositionColor& value)
+void utils::MeshBuilder::vertex(const vertex::PositionColor& value)
 {
-	vertex(Vertex::PositionColorTexture{
+	vertex(vertex::PositionColorTexture{
 		.pos = value.pos,
 		.color = value.color,
-		.texcoord = { 0.0f, 0.0f }
+		.texcoord = vertex::defaults::TexCoord
 	});
 }
 
@@ -1723,17 +1723,17 @@ void utils::ScratchRasterizer::begin(MeshBuilder::Mode mode, const State& state)
 	mMeshBuilder.begin(mode);
 }
 
-void utils::ScratchRasterizer::vertex(const Vertex::PositionColorTextureNormal& value)
+void utils::ScratchRasterizer::vertex(const vertex::PositionColorTextureNormal& value)
 {
 	mMeshBuilder.vertex(value);
 }
 
-void utils::ScratchRasterizer::vertex(const Vertex::PositionColorTexture& value)
+void utils::ScratchRasterizer::vertex(const vertex::PositionColorTexture& value)
 {
 	mMeshBuilder.vertex(value);
 }
 
-void utils::ScratchRasterizer::vertex(const Vertex::PositionColor& value)
+void utils::ScratchRasterizer::vertex(const vertex::PositionColor& value)
 {
 	mMeshBuilder.vertex(value);
 }

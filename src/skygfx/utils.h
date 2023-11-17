@@ -9,7 +9,7 @@ namespace skygfx::utils
 	class Mesh
 	{
 	public:
-		using Vertex = Vertex::PositionColorTextureNormal;
+		using Vertex = vertex::PositionColorTextureNormal;
 		using Index = uint32_t;
 		using Vertices = std::vector<Vertex>;
 		using Indices = std::vector<Index>;
@@ -547,9 +547,9 @@ namespace skygfx::utils
 	public:
 		void reset(bool reset_vertex = true);
 		void begin(Mode mode);
-		void vertex(const Vertex::PositionColorTextureNormal& value);
-		void vertex(const Vertex::PositionColorTexture& value);
-		void vertex(const Vertex::PositionColor& value);
+		void vertex(const vertex::PositionColorTextureNormal& value);
+		void vertex(const vertex::PositionColorTexture& value);
+		void vertex(const vertex::PositionColor& value);
 		void vertex(const glm::vec3& value);
 		void vertex(const glm::vec2& value);
 		void color(const glm::vec4& value);
@@ -622,9 +622,9 @@ namespace skygfx::utils
 
 	public:
 		void begin(MeshBuilder::Mode mode, const State& state = State());
-		void vertex(const Vertex::PositionColorTextureNormal& value);
-		void vertex(const Vertex::PositionColorTexture& value);
-		void vertex(const Vertex::PositionColor& value);
+		void vertex(const vertex::PositionColorTextureNormal& value);
+		void vertex(const vertex::PositionColorTexture& value);
+		void vertex(const vertex::PositionColor& value);
 		void vertex(const glm::vec3& value);
 		void vertex(const glm::vec2& value);
 		void color(const glm::vec4& value);
