@@ -591,14 +591,14 @@ namespace skygfx::utils
 		Mesh::Vertex mVertex;
 	};
 
-	class StageDebugger
+	class StageViewer
 	{
 	public:
 		virtual void stage(const std::string& name, const Texture* texture) = 0;
 	};
 
-	void SetStageDebugger(StageDebugger* value);
-	void DebugStage(const std::string& name, const Texture* texture);
+	void SetStageViewer(StageViewer* value);
+	void ViewStage(const std::string& name, const Texture* texture);
 
 	namespace passes
 	{
@@ -606,7 +606,7 @@ namespace skygfx::utils
 			const std::optional<BlendMode>& blend_mode = std::nullopt, glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f })
 		{
 			Blit(src, dst, effect, clear, blend_mode, color);
-			DebugStage(stage_name, dst);
+			ViewStage(stage_name, dst);
 		}
 	}
 

@@ -84,7 +84,7 @@ void ImguiHelper::draw()
 	mScratchRasterizer.flush();
 }
 
-void StageDebugger::stage(const std::string& name, const skygfx::Texture* texture)
+void StageViewer::stage(const std::string& name, const skygfx::Texture* texture)
 {
 	if (texture == nullptr)
 		return;
@@ -96,9 +96,9 @@ void StageDebugger::stage(const std::string& name, const skygfx::Texture* textur
 	mStages.push_back(stage);
 }
 
-void StageDebugger::show()
+void StageViewer::show()
 {
-	ImGui::Begin("Stage Debugger");
+	ImGui::Begin("Stage Viewer");
 	auto max_size = ImGui::GetContentRegionAvail().x;
 	for (const auto& stage : mStages)
 	{

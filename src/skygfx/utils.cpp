@@ -1142,7 +1142,7 @@ void utils::ExecuteCommands(const std::string& name, const RenderTarget* target,
 	const std::vector<Command>& cmds)
 {
 	ExecuteCommands(target, clear, cmds);
-	DebugStage(name, target);
+	ViewStage(name, target);
 }
 
 void utils::passes::Blit(const Texture* src, const RenderTarget* dst, bool clear, std::vector<Command>&& commands)
@@ -1384,9 +1384,9 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 		commands::Subcommands(&draw_models)
 	});
 
-	DebugStage("color_buffer", color_buffer);
-	DebugStage("normal_buffer", normal_buffer);
-	DebugStage("positions_buffer", positions_buffer);
+	ViewStage("color_buffer", color_buffer);
+	ViewStage("normal_buffer", normal_buffer);
+	ViewStage("positions_buffer", positions_buffer);
 
 	std::vector<Command> cmds = {
 		commands::SetEyePosition(camera.position),
@@ -1670,19 +1670,19 @@ bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
 	return topology == mTopology.value();
 }
 
-static utils::StageDebugger* gStageDebugger = nullptr;
+static utils::StageViewer* gStageViewer = nullptr;
 
-void utils::SetStageDebugger(StageDebugger* value)
+void utils::SetStageViewer(StageViewer* value)
 {
-	gStageDebugger = value;
+	gStageViewer = value;
 }
 
-void utils::DebugStage(const std::string& name, const Texture* texture)
+void utils::ViewStage(const std::string& name, const Texture* texture)
 {
-	if (gStageDebugger == nullptr)
+	if (gStageViewer == nullptr)
 		return;
 
-	gStageDebugger->stage(name, texture);
+	gStageViewer->stage(name, texture);
 }
 
 void utils::ScratchRasterizer::begin(MeshBuilder::Mode mode, const State& state)

@@ -17,7 +17,7 @@ private:
 	skygfx::utils::ScratchRasterizer mScratchRasterizer;
 };
 
-class StageDebugger : public skygfx::utils::StageDebugger
+class StageViewer : public skygfx::utils::StageViewer
 {
 private:
 	struct Stage
