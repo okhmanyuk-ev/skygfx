@@ -1312,7 +1312,7 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 
 	for (const auto& model : models)
 	{
-		draw_models.push_back(Model::Draw(model, options.textures, options.normal_mapping));
+		draw_models.push_back(Model::Draw(model, options.use_color_textures, options.use_normal_textures));
 	}
 
 	std::vector<Command> cmds = {
@@ -1366,11 +1366,10 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 
 	for (const auto& model : models)
 	{
-		draw_models.push_back(Model::Draw(model, options.textures, options.normal_mapping));
+		draw_models.push_back(Model::Draw(model, options.use_color_textures, options.use_normal_textures));
 	}
 
 	// extract g-buffer
-	// TODO: use acquire transient for mrt
 
 	auto color_buffer = AcquireTransientRenderTarget();
 	auto normal_buffer = AcquireTransientRenderTarget();
@@ -1387,6 +1386,8 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	ViewStage("color_buffer", color_buffer);
 	ViewStage("normal_buffer", normal_buffer);
 	ViewStage("positions_buffer", positions_buffer);
+
+	// draw lights using g-buffer
 
 	std::vector<Command> cmds = {
 		commands::SetEyePosition(camera.position),
@@ -1418,12 +1419,12 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	ReleaseTransientRenderTarget(positions_buffer);
 }
 
-void utils::DrawScene(DrawSceneTechnique technique, const RenderTarget* target, const PerspectiveCamera& camera,
+void utils::DrawScene(const RenderTarget* target, const PerspectiveCamera& camera,
 	const std::vector<Model>& models, const std::vector<Light>& lights, const DrawSceneOptions& options)
 {
-	if (technique == DrawSceneTechnique::ForwardShading)
+	if (options.technique == DrawSceneOptions::Technique::ForwardShading)
 		DrawSceneForwardShading(target, camera, models, lights, options);
-	else if (technique == DrawSceneTechnique::DeferredShading)
+	else if (options.technique == DrawSceneOptions::Technique::DeferredShading)
 		DrawSceneDeferredShading(target, camera, models, lights, options);
 }
 

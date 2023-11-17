@@ -516,18 +516,19 @@ namespace skygfx::utils
 
 	struct DrawSceneOptions
 	{
-		bool textures = true;
-		bool normal_mapping = true;
+		enum class Technique
+		{
+			ForwardShading,
+			DeferredShading
+		};
+
+		Technique technique = Technique::DeferredShading;
+		bool use_color_textures = true;
+		bool use_normal_textures = true;
 		bool clear_target = true;
 	};
 
-	enum class DrawSceneTechnique
-	{
-		ForwardShading,
-		DeferredShading
-	};
-
-	void DrawScene(DrawSceneTechnique technique, const RenderTarget* target, const PerspectiveCamera& camera,
+	void DrawScene(const RenderTarget* target, const PerspectiveCamera& camera,
 		const std::vector<Model>& models, const std::vector<Light>& lights = {},
 		const DrawSceneOptions& options = {});
 

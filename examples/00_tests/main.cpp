@@ -1,6 +1,7 @@
 #include <skygfx/skygfx.h>
 #include <skygfx/vertex.h>
 #include <format>
+#include <chrono>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "../utils/utils.h"

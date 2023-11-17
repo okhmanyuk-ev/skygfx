@@ -80,7 +80,7 @@ int main()
 		.position = { -5.0f, 2.0f, 0.0f }
 	};
 
-	const auto light = skygfx::utils::effects::DirectionalLight{
+	const auto light = skygfx::utils::DirectionalLight{
 		.direction = { 1.0f, 0.5f, 0.5f },
 		.ambient = { 0.25f, 0.25f, 0.25f },
 		.diffuse = { 1.0f, 1.0f, 1.0f },
@@ -109,8 +109,8 @@ int main()
 		.cull_mode = skygfx::CullMode::Back
 	};
 
-	StageDebugger stage_debugger;
-	skygfx::utils::SetStageDebugger(&stage_debugger);
+	StageViewer stage_viewer;
+	skygfx::utils::SetStageViewer(&stage_viewer);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -134,17 +134,14 @@ int main()
 
 		model.matrix = glm::rotate(glm::mat4(1.0f), angle, { 0.0f, 1.0f, 0.0f });
 
-		skygfx::SetRenderTarget(*src_target);
-		skygfx::Clear();
-
-		skygfx::utils::DrawScene(camera, { model }, { light });
+		skygfx::utils::DrawScene(src_target, camera, { model }, { light });
 
 		if (gaussian)
 			skygfx::utils::passes::BloomGaussian(src_target, nullptr, threshold, intensity);
 		else
 			skygfx::utils::passes::Bloom(src_target, nullptr, threshold, intensity);
 
-		stage_debugger.show();
+		stage_viewer.show();
 		imgui.draw();
 
 		skygfx::Present();
