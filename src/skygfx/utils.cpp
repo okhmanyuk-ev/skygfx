@@ -1302,15 +1302,9 @@ void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* d
 
 utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_color_texture, bool use_normal_texture)
 {
-	std::vector<Command> cmds;
-
-	if (use_color_texture)
-		cmds.push_back(commands::SetColorTexture(model.color_texture));
-
-	if (use_normal_texture)
-		cmds.push_back(commands::SetNormalTexture(model.normal_texture));
-
-	cmds.insert(cmds.end(), {
+	return commands::Subcommands({
+		commands::SetColorTexture(use_color_texture ? model.color_texture : nullptr),
+		commands::SetNormalTexture(use_normal_texture ? model.normal_texture : nullptr),
 		commands::SetMesh(model.mesh),
 		commands::SetModelMatrix(model.matrix),
 		commands::SetCullMode(model.cull_mode),
@@ -1320,8 +1314,6 @@ utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_col
 		commands::SetSampler(model.sampler),
 		commands::Draw(model.draw_command)
 	});
-
-	return commands::Subcommands(std::move(cmds));
 }
 
 static void DrawSceneForwardShading(const RenderTarget* target, const utils::PerspectiveCamera& camera,
