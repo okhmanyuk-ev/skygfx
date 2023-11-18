@@ -24,7 +24,7 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 
 layout(location = 0) out struct
 {
-	vec3 frag_position;
+	vec3 world_position;
 	vec4 color;
 	vec2 tex_coord;
 	vec3 normal;
@@ -34,8 +34,8 @@ out gl_PerVertex { vec4 gl_Position; };
 
 void main()
 {
-	Out.frag_position = vec3(settings.model * vec4(aPosition, 1.0));
-	Out.normal = mat3(transpose(inverse(settings.model))) * aNormal;
+	Out.world_position = vec3(settings.model * vec4(aPosition, 1.0));
+	Out.normal = transpose(inverse(mat3(settings.model))) * aNormal;
 	Out.color = aColor;
 	Out.tex_coord = aTexCoord;
 #ifdef FLIP_TEXCOORD_Y
@@ -61,7 +61,7 @@ layout(location = 0) out vec4 result;
 
 layout(location = 0) in struct
 {
-	vec3 frag_position;
+	vec3 world_position;
 	vec4 color;
 	vec2 tex_coord;
 	vec3 normal;
@@ -103,7 +103,7 @@ void effect(inout vec4 result)
 
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 
-	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
+	vec3 view_dir = normalize(settings.eye_position - In.world_position);
 	vec3 light_dir = normalize(light.direction);
 
 	float diff = max(dot(normal, -light_dir), 0.0);
@@ -136,7 +136,7 @@ void effect(inout vec4 result)
 
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 
-	vec3 light_offset = light.position - In.frag_position;
+	vec3 light_offset = light.position - In.world_position;
 
 	float distance = length(light_offset);
 	float linear_attn = light.linear_attenuation * distance;
@@ -146,7 +146,7 @@ void effect(inout vec4 result)
 	vec3 light_dir = normalize(light_offset);
 	float diff = max(dot(normal, light_dir), 0.0);
 	vec3 reflect_dir = reflect(-light_dir, normal);
-	vec3 view_dir = normalize(settings.eye_position - In.frag_position);
+	vec3 view_dir = normalize(settings.eye_position - In.world_position);
 	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
 
 	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
@@ -255,7 +255,7 @@ void effect(inout vec4 result)
 
 	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
 	normal_buffer = vec4(normal, 1.0);
-	positions_buffer = vec4(In.frag_position, 1.0);
+	positions_buffer = vec4(In.world_position, 1.0);
 })";
 
 const std::string utils::effects::GaussianBlur::Shader = R"(
