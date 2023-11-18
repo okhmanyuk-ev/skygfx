@@ -1783,6 +1783,9 @@ void utils::DrawScene(const RenderTarget* target, const PerspectiveCamera& camer
 			},
 			[&](const DrawSceneOptions::GrayscalePosteffect& grayscale) {
 				passes::Grayscale(src, dst, grayscale.intensity);
+			},
+			[&](const DrawSceneOptions::GaussianBlurPosteffect& blur) {
+				passes::GaussianBlur(src, dst);
 			}
 		}, posteffect);
 

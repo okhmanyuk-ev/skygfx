@@ -621,9 +621,14 @@ namespace skygfx::utils
 			float intensity = 2.0f;
 		};
 
+		struct GaussianBlurPosteffect
+		{
+		};
+
 		using Posteffect = std::variant<
 			BloomPosteffect,
-			GrayscalePosteffect
+			GrayscalePosteffect,
+			GaussianBlurPosteffect
 		>;
 
 		Technique technique = Technique::DeferredShading;
