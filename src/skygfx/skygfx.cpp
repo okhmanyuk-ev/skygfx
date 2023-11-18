@@ -592,6 +592,7 @@ void skygfx::ReleaseTransientRenderTarget(RenderTarget* target)
 			return;
 		}
 	}
+	assert(false);
 }
 
 static void DestroyTransientRenderTargets()

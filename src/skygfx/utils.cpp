@@ -708,7 +708,7 @@ void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormal& value)
 		.texcoord = value.texcoord,
 		.normal = value.normal,
 		.tangent = vertex::defaults::Tangent
-		});
+	});
 }
 
 void utils::MeshBuilder::vertex(const vertex::PositionColorTexture& value)
@@ -718,7 +718,7 @@ void utils::MeshBuilder::vertex(const vertex::PositionColorTexture& value)
 		.color = value.color,
 		.texcoord = value.texcoord,
 		.normal = vertex::defaults::Normal
-		});
+	});
 }
 
 void utils::MeshBuilder::vertex(const vertex::PositionColor& value)
@@ -727,7 +727,7 @@ void utils::MeshBuilder::vertex(const vertex::PositionColor& value)
 		.pos = value.pos,
 		.color = value.color,
 		.texcoord = vertex::defaults::TexCoord
-		});
+	});
 }
 
 void utils::MeshBuilder::vertex(const glm::vec3& value)
@@ -1792,8 +1792,6 @@ void utils::DrawScene(const RenderTarget* target, const PerspectiveCamera& camer
 		ReleaseTransientRenderTarget(src);
 		src = dst;
 	}
-
-	ReleaseTransientRenderTarget(src);
 }
 
 static utils::StageViewer* gStageViewer = nullptr;
