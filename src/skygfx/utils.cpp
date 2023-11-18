@@ -1342,6 +1342,7 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 
 	std::vector<Command> cmds = {
 		commands::SetCamera(camera),
+		commands::SetMipmapBias(options.mipmap_bias)
 	};
 
 	if (lights.empty())

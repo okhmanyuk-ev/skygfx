@@ -519,6 +519,7 @@ namespace skygfx::utils
 		bool use_color_textures = true;
 		bool use_normal_textures = true;
 		bool clear_target = true;
+		float mipmap_bias = 0.0f;
 	};
 
 	void DrawScene(const RenderTarget* target, const PerspectiveCamera& camera,
