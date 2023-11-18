@@ -1742,10 +1742,55 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 void utils::DrawScene(const RenderTarget* target, const PerspectiveCamera& camera,
 	const std::vector<Model>& models, const std::vector<Light>& lights, const DrawSceneOptions& options)
 {
-	if (options.technique == DrawSceneOptions::Technique::ForwardShading)
-		DrawSceneForwardShading(target, camera, models, lights, options);
-	else if (options.technique == DrawSceneOptions::Technique::DeferredShading)
-		DrawSceneDeferredShading(target, camera, models, lights, options);
+	std::optional<RenderTarget*> scene_target;
+
+	auto get_same_transient_target = [](const RenderTarget* target) {
+		if (target != nullptr)
+			return AcquireTransientRenderTarget(target->getWidth(), target->getHeight());
+		else
+			return AcquireTransientRenderTarget();
+	};
+
+	if (!options.posteffects.empty())
+	{
+		scene_target = get_same_transient_target(target);
+	}
+
+	using DrawSceneFunc = std::function<void(const RenderTarget* target, const utils::PerspectiveCamera& camera,
+		const std::vector<utils::Model>& models, const std::vector<utils::Light>& lights,
+		const utils::DrawSceneOptions& options)>;
+
+	static const std::unordered_map<DrawSceneOptions::Technique, DrawSceneFunc> DrawSceneFuncs = {
+		{ DrawSceneOptions::Technique::ForwardShading, DrawSceneForwardShading },
+		{ DrawSceneOptions::Technique::DeferredShading, DrawSceneDeferredShading },
+	};
+
+	DrawSceneFuncs.at(options.technique)(scene_target.value_or((RenderTarget*)target), camera, models, lights, options);
+
+	if (options.posteffects.empty())
+		return;
+
+	auto src = scene_target.value();
+
+	for (size_t i = 0; i < options.posteffects.size(); i++)
+	{
+		const auto& posteffect = options.posteffects.at(i);
+		auto dst = i == options.posteffects.size() - 1 ? (RenderTarget*)target : get_same_transient_target(target);
+
+		std::visit(cases{
+			[&](const DrawSceneOptions::BloomPosteffect& bloom) {
+				passes::Bloom(src, dst, bloom.threshold, bloom.intensity);
+			},
+			[&](const DrawSceneOptions::GrayscalePosteffect& grayscale) {
+				passes::Grayscale(src, dst, grayscale.intensity);
+			}
+		}, posteffect);
+
+		ReleaseTransientRenderTarget(src);
+		src = dst;
+	}
+
+	ReleaseTransientRenderTarget(src);
 }
 
 static utils::StageViewer* gStageViewer = nullptr;

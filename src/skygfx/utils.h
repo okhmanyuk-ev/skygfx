@@ -610,11 +610,28 @@ namespace skygfx::utils
 			DeferredShading
 		};
 
+		struct GrayscalePosteffect
+		{
+			float intensity = 1.0f;
+		};
+
+		struct BloomPosteffect
+		{
+			float threshold = 1.0f;
+			float intensity = 2.0f;
+		};
+
+		using Posteffect = std::variant<
+			BloomPosteffect,
+			GrayscalePosteffect
+		>;
+
 		Technique technique = Technique::DeferredShading;
 		bool use_color_textures = true;
 		bool use_normal_textures = true;
 		bool clear_target = true;
 		float mipmap_bias = 0.0f;
+		std::vector<Posteffect> posteffects;
 	};
 
 	void DrawScene(const RenderTarget* target, const PerspectiveCamera& camera,
