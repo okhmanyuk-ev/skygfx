@@ -14,7 +14,6 @@ public:
 
 private:
 	std::shared_ptr<skygfx::Texture> mFontTexture = nullptr;
-	skygfx::utils::ScratchRasterizer mScratchRasterizer;
 };
 
 class StageViewer : public skygfx::utils::StageViewer

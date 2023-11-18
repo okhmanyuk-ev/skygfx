@@ -28,7 +28,7 @@ void main()
 	result = In.Color;
 })";
 
-using TriangleVertex = skygfx::Vertex::PositionColor;
+using TriangleVertex = skygfx::vertex::PositionColor;
 
 const std::vector<TriangleVertex> triangle_vertices = {
 	{ {  0.75f, -0.75f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
@@ -100,7 +100,7 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
-using CubeVertex = skygfx::Vertex::PositionTextureNormal;
+using CubeVertex = skygfx::vertex::PositionTextureNormal;
 
 const std::vector<CubeVertex> cube_vertices = {
 	/* front */

@@ -96,7 +96,9 @@ int main()
 		skygfx::SetAccelerationStructure(0, tlas);
 		skygfx::DispatchRays(target->getWidth(), target->getHeight(), 1);
 
-		skygfx::utils::passes::Blit(target, nullptr, true);
+		skygfx::utils::passes::Blit(target, nullptr, {
+			.clear = true
+		});
 
 		skygfx::Present();
 

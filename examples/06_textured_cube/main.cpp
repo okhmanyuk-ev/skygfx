@@ -40,7 +40,7 @@ void main()
 	result = texture(sTexture, In.TexCoord);
 })";
 
-using Vertex = skygfx::Vertex::PositionTexture;
+using Vertex = skygfx::vertex::PositionTexture;
 
 const std::vector<Vertex> vertices = {
 	/* front */

@@ -36,7 +36,7 @@ void main()
 	result = In.Color * texture(sTexture, In.TexCoord);
 })";
 
-using Vertex = skygfx::Vertex::PositionColorTexture;
+using Vertex = skygfx::vertex::PositionColorTexture;
 
 const std::vector<Vertex> vertices = {
 	{ {  0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } }, // bottom right

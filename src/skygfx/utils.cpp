@@ -549,6 +549,258 @@ void utils::Mesh::setIndices(const Indices& value)
 	setIndices(value.data(), static_cast<uint32_t>(value.size()));
 }
 
+template<typename T>
+static void AddItem(std::vector<T>& items, uint32_t& count, const T& item)
+{
+	count++;
+	if (items.size() < count)
+		items.push_back(item);
+	else
+		items[count - 1] = item;
+}
+
+static void ExtractOrderedIndexSequence(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractLineListIndicesFromLineLoop(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	if (vertex_count == vertex_start)
+		return;
+
+	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+	AddItem(indices, index_count, vertex_start + vertex_count - 1);
+	AddItem(indices, index_count, vertex_start);
+}
+
+static void ExtractLineListIndicesFromLineStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractTrianglesIndicesFromTriangleFan(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
+	{
+		AddItem(indices, index_count, vertex_start);
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractTrianglesIndicesFromPolygons(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	ExtractTrianglesIndicesFromTriangleFan(vertices, vertex_start, vertex_count, indices, index_count);
+}
+
+static void ExtractTrianglesIndicesFromQuads(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 3; i < vertex_count; i += 4) {
+		// first triangle
+		AddItem(indices, index_count, i - 3);
+		AddItem(indices, index_count, i - 2);
+		AddItem(indices, index_count, i - 1);
+		// second triangle
+		AddItem(indices, index_count, i - 3);
+		AddItem(indices, index_count, i - 1);
+		AddItem(indices, index_count, i);
+	}
+}
+
+static void ExtractTrianglesIndicesFromTriangleStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+{
+	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
+	{
+		if ((i - vertex_start) % 2 == 0)
+		{
+			AddItem(indices, index_count, i - 2);
+			AddItem(indices, index_count, i - 1);
+			AddItem(indices, index_count, i);
+		}
+		else
+		{
+			AddItem(indices, index_count, i - 1);
+			AddItem(indices, index_count, i - 2);
+			AddItem(indices, index_count, i);
+		}
+	}
+}
+
+Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
+{
+	static const std::unordered_map<Mode, Topology> TopologyMap = {
+		{ Mode::Points, Topology::PointList },
+		{ Mode::Lines, Topology::LineList },
+		{ Mode::LineLoop, Topology::LineList },
+		{ Mode::LineStrip, Topology::LineList },
+		{ Mode::Triangles, Topology::TriangleList },
+		{ Mode::TriangleStrip, Topology::TriangleList },
+		{ Mode::TriangleFan, Topology::TriangleList },
+		{ Mode::Quads, Topology::TriangleList },
+		{ Mode::Polygon, Topology::TriangleList }
+	};
+
+	return TopologyMap.at(mode);
+}
+
+void utils::MeshBuilder::reset(bool reset_vertex)
+{
+	assert(!mBegan);
+	mIndexCount = 0;
+	mVertexCount = 0;
+	mMode.reset();
+	mTopology.reset();
+
+	if (reset_vertex)
+		mVertex = Mesh::Vertex{};
+}
+
+void utils::MeshBuilder::begin(Mode mode)
+{
+	assert(!mBegan);
+	mBegan = true;
+
+	auto topology = ConvertModeToTopology(mode);
+
+	if (mTopology.has_value())
+	{
+		assert(topology == mTopology.value());
+	}
+	else
+	{
+		mTopology = topology;
+	}
+
+	mMode = mode;
+	mVertexStart = mVertexCount;
+}
+
+void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormalTangent& value)
+{
+	assert(mBegan);
+	AddItem(mVertices, mVertexCount, value);
+}
+
+void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormal& value)
+{
+	vertex(vertex::PositionColorTextureNormalTangent{
+		.pos = value.pos,
+		.color = value.color,
+		.texcoord = value.texcoord,
+		.normal = value.normal,
+		.tangent = vertex::defaults::Tangent
+		});
+}
+
+void utils::MeshBuilder::vertex(const vertex::PositionColorTexture& value)
+{
+	vertex(vertex::PositionColorTextureNormal{
+		.pos = value.pos,
+		.color = value.color,
+		.texcoord = value.texcoord,
+		.normal = vertex::defaults::Normal
+		});
+}
+
+void utils::MeshBuilder::vertex(const vertex::PositionColor& value)
+{
+	vertex(vertex::PositionColorTexture{
+		.pos = value.pos,
+		.color = value.color,
+		.texcoord = vertex::defaults::TexCoord
+		});
+}
+
+void utils::MeshBuilder::vertex(const glm::vec3& value)
+{
+	mVertex.pos = value;
+	vertex(mVertex);
+}
+
+void utils::MeshBuilder::vertex(const glm::vec2& value)
+{
+	vertex({ value.x, value.y, 0.0f });
+}
+
+void utils::MeshBuilder::color(const glm::vec4& value)
+{
+	mVertex.color = value;
+}
+
+void utils::MeshBuilder::color(const glm::vec3& value)
+{
+	color(glm::vec4{ value.r, value.g, value.b, mVertex.color.a });
+}
+
+void utils::MeshBuilder::normal(const glm::vec3& value)
+{
+	mVertex.normal = value;
+}
+
+void utils::MeshBuilder::texcoord(const glm::vec2& value)
+{
+	mVertex.texcoord = value;
+}
+
+void utils::MeshBuilder::end()
+{
+	assert(mBegan);
+	mBegan = false;
+
+	using ExtractIndicesFunc = std::function<void(const Mesh::Vertices& vertices,
+		uint32_t vertex_start, uint32_t vertex_count, Mesh::Indices& indices, uint32_t& index_count)>;
+
+	static const std::unordered_map<Mode, ExtractIndicesFunc> ExtractIndicesFuncs = {
+		{ Mode::Points, ExtractOrderedIndexSequence },
+		{ Mode::Lines, ExtractOrderedIndexSequence },
+		{ Mode::LineLoop, ExtractLineListIndicesFromLineLoop },
+		{ Mode::LineStrip, ExtractLineListIndicesFromLineStrip },
+		{ Mode::Polygon, ExtractTrianglesIndicesFromPolygons },
+		{ Mode::TriangleFan, ExtractTrianglesIndicesFromTriangleFan },
+		{ Mode::Quads, ExtractTrianglesIndicesFromQuads },
+		{ Mode::TriangleStrip, ExtractTrianglesIndicesFromTriangleStrip },
+		{ Mode::Triangles, ExtractOrderedIndexSequence }
+	};
+
+	ExtractIndicesFuncs.at(mMode.value())(mVertices, mVertexStart, mVertexCount, mIndices, mIndexCount);
+}
+
+void utils::MeshBuilder::setToMesh(Mesh& mesh)
+{
+	assert(!mBegan);
+	mesh.setTopology(mTopology.value());
+	mesh.setVertices(mVertices.data(), mVertexCount);
+	mesh.setIndices(mIndices.data(), mIndexCount);
+}
+
+bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
+{
+	if (!mTopology.has_value())
+		return true;
+
+	auto topology = ConvertModeToTopology(mode);
+	return topology == mTopology.value();
+}
+
 utils::effects::forward_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
 	direction(light.direction),
 	ambient(light.ambient),
@@ -1496,260 +1748,6 @@ void utils::DrawScene(const RenderTarget* target, const PerspectiveCamera& camer
 		DrawSceneDeferredShading(target, camera, models, lights, options);
 }
 
-// mesh builder
-
-template<typename T>
-static void AddItem(std::vector<T>& items, uint32_t& count, const T& item)
-{
-	count++;
-	if (items.size() < count)
-		items.push_back(item);
-	else
-		items[count - 1] = item;
-}
-
-static void ExtractOrderedIndexSequence(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractLineListIndicesFromLineLoop(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	if (vertex_count == vertex_start)
-		return;
-
-	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-	AddItem(indices, index_count, vertex_start + vertex_count - 1);
-	AddItem(indices, index_count, vertex_start);
-}
-
-static void ExtractLineListIndicesFromLineStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractTrianglesIndicesFromTriangleFan(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, vertex_start);
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractTrianglesIndicesFromPolygons(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	ExtractTrianglesIndicesFromTriangleFan(vertices, vertex_start, vertex_count, indices, index_count);
-}
-
-static void ExtractTrianglesIndicesFromQuads(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 3; i < vertex_count; i += 4) {
-		// first triangle
-		AddItem(indices, index_count, i - 3);
-		AddItem(indices, index_count, i - 2);
-		AddItem(indices, index_count, i - 1);
-		// second triangle
-		AddItem(indices, index_count, i - 3);
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractTrianglesIndicesFromTriangleStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
-	{
-		if ((i - vertex_start) % 2 == 0)
-		{
-			AddItem(indices, index_count, i - 2);
-			AddItem(indices, index_count, i - 1);
-			AddItem(indices, index_count, i);
-		}
-		else
-		{
-			AddItem(indices, index_count, i - 1);
-			AddItem(indices, index_count, i - 2);
-			AddItem(indices, index_count, i);
-		}
-	}
-}
-
-Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
-{
-	static const std::unordered_map<Mode, Topology> TopologyMap = {
-		{ Mode::Points, Topology::PointList },
-		{ Mode::Lines, Topology::LineList },
-		{ Mode::LineLoop, Topology::LineList },
-		{ Mode::LineStrip, Topology::LineList },
-		{ Mode::Triangles, Topology::TriangleList },
-		{ Mode::TriangleStrip, Topology::TriangleList },
-		{ Mode::TriangleFan, Topology::TriangleList },
-		{ Mode::Quads, Topology::TriangleList },
-		{ Mode::Polygon, Topology::TriangleList }
-	};
-
-	return TopologyMap.at(mode);
-}
-
-void utils::MeshBuilder::reset(bool reset_vertex)
-{
-	assert(!mBegan);
-	mIndexCount = 0;
-	mVertexCount = 0;
-	mMode.reset();
-	mTopology.reset();
-
-	if (reset_vertex)
-		mVertex = Mesh::Vertex{};
-}
-
-void utils::MeshBuilder::begin(Mode mode)
-{
-	assert(!mBegan);
-	mBegan = true;
-
-	auto topology = ConvertModeToTopology(mode);
-
-	if (mTopology.has_value())
-	{
-		assert(topology == mTopology.value());
-	}
-	else
-	{
-		mTopology = topology;
-	}
-
-	mMode = mode;
-	mVertexStart = mVertexCount;
-}
-
-void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormalTangent& value)
-{
-	assert(mBegan);
-	AddItem(mVertices, mVertexCount, value);
-}
-
-void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormal& value)
-{
-	vertex(vertex::PositionColorTextureNormalTangent{
-		.pos = value.pos,
-		.color = value.color,
-		.texcoord = value.texcoord,
-		.normal = value.normal,
-		.tangent = vertex::defaults::Tangent
-	});
-}
-
-void utils::MeshBuilder::vertex(const vertex::PositionColorTexture& value)
-{
-	vertex(vertex::PositionColorTextureNormal{
-		.pos = value.pos,
-		.color = value.color,
-		.texcoord = value.texcoord,
-		.normal = vertex::defaults::Normal
-	});
-}
-
-void utils::MeshBuilder::vertex(const vertex::PositionColor& value)
-{
-	vertex(vertex::PositionColorTexture{
-		.pos = value.pos,
-		.color = value.color,
-		.texcoord = vertex::defaults::TexCoord
-	});
-}
-
-void utils::MeshBuilder::vertex(const glm::vec3& value)
-{
-	mVertex.pos = value;
-	vertex(mVertex);
-}
-
-void utils::MeshBuilder::vertex(const glm::vec2& value)
-{
-	vertex({ value.x, value.y, 0.0f });
-}
-
-void utils::MeshBuilder::color(const glm::vec4& value)
-{
-	mVertex.color = value;
-}
-
-void utils::MeshBuilder::color(const glm::vec3& value)
-{
-	color(glm::vec4{ value.r, value.g, value.b, mVertex.color.a });
-}
-
-void utils::MeshBuilder::normal(const glm::vec3& value)
-{
-	mVertex.normal = value;
-}
-
-void utils::MeshBuilder::texcoord(const glm::vec2& value)
-{
-	mVertex.texcoord = value;
-}
-
-void utils::MeshBuilder::end()
-{
-	assert(mBegan);
-	mBegan = false;
-
-	using ExtractIndicesFunc = std::function<void(const Mesh::Vertices& vertices,
-		uint32_t vertex_start, uint32_t vertex_count, Mesh::Indices& indices, uint32_t& index_count)>;
-
-	static const std::unordered_map<Mode, ExtractIndicesFunc> ExtractIndicesFuncs = {
-		{ Mode::Points, ExtractOrderedIndexSequence },
-		{ Mode::Lines, ExtractOrderedIndexSequence },
-		{ Mode::LineLoop, ExtractLineListIndicesFromLineLoop },
-		{ Mode::LineStrip, ExtractLineListIndicesFromLineStrip },
-		{ Mode::Polygon, ExtractTrianglesIndicesFromPolygons },
-		{ Mode::TriangleFan, ExtractTrianglesIndicesFromTriangleFan },
-		{ Mode::Quads, ExtractTrianglesIndicesFromQuads },
-		{ Mode::TriangleStrip, ExtractTrianglesIndicesFromTriangleStrip },
-		{ Mode::Triangles, ExtractOrderedIndexSequence }
-	};
-
-	ExtractIndicesFuncs.at(mMode.value())(mVertices, mVertexStart, mVertexCount, mIndices, mIndexCount);
-}
-
-void utils::MeshBuilder::setToMesh(Mesh& mesh)
-{
-	assert(!mBegan);
-	mesh.setTopology(mTopology.value());
-	mesh.setVertices(mVertices.data(), mVertexCount);
-	mesh.setIndices(mIndices.data(), mIndexCount);
-}
-
-bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
-{
-	if (!mTopology.has_value())
-		return true;
-
-	auto topology = ConvertModeToTopology(mode);
-	return topology == mTopology.value();
-}
-
 static utils::StageViewer* gStageViewer = nullptr;
 
 void utils::SetStageViewer(StageViewer* value)
@@ -1765,105 +1763,109 @@ void utils::ViewStage(const std::string& name, const Texture* texture)
 	gStageViewer->stage(name, texture);
 }
 
-void utils::ScratchRasterizer::begin(MeshBuilder::Mode mode, const State& state)
+void utils::scratch::Begin(MeshBuilder::Mode mode, const State& state)
 {
-	if (!mMeshBuilder.isBeginAllowed(mode))
-		flush();
+	auto& context = GetContext();
 
-	if (mState != state)
-		flush();
+	if (!context.scratch.mesh_builder.isBeginAllowed(mode))
+		Flush();
 
-	mState = state;
-	mMeshBuilder.begin(mode);
+	if (context.scratch.state != state)
+		Flush();
+
+	context.scratch.state = state;
+	context.scratch.mesh_builder.begin(mode);
 }
 
-void utils::ScratchRasterizer::vertex(const vertex::PositionColorTextureNormal& value)
+void utils::scratch::Vertex(const vertex::PositionColorTextureNormal& value)
 {
-	mMeshBuilder.vertex(value);
+	GetContext().scratch.mesh_builder.vertex(value);
 }
 
-void utils::ScratchRasterizer::vertex(const vertex::PositionColorTexture& value)
+void utils::scratch::Vertex(const vertex::PositionColorTexture& value)
 {
-	mMeshBuilder.vertex(value);
+	GetContext().scratch.mesh_builder.vertex(value);
 }
 
-void utils::ScratchRasterizer::vertex(const vertex::PositionColor& value)
+void utils::scratch::Vertex(const vertex::PositionColor& value)
 {
-	mMeshBuilder.vertex(value);
+	GetContext().scratch.mesh_builder.vertex(value);
 }
 
-void utils::ScratchRasterizer::vertex(const glm::vec3& value)
+void utils::scratch::Vertex(const glm::vec3& value)
 {
-	mMeshBuilder.vertex(value);
+	GetContext().scratch.mesh_builder.vertex(value);
 }
 
-void utils::ScratchRasterizer::vertex(const glm::vec2& value)
+void utils::scratch::Vertex(const glm::vec2& value)
 {
-	mMeshBuilder.vertex(value);
+	GetContext().scratch.mesh_builder.vertex(value);
 }
 
-void utils::ScratchRasterizer::color(const glm::vec4& value)
+void utils::scratch::Color(const glm::vec4& value)
 {
-	mMeshBuilder.color(value);
+	GetContext().scratch.mesh_builder.color(value);
 }
 
-void utils::ScratchRasterizer::color(const glm::vec3& value)
+void utils::scratch::Color(const glm::vec3& value)
 {
-	mMeshBuilder.color(value);
+	GetContext().scratch.mesh_builder.color(value);
 }
 
-void utils::ScratchRasterizer::normal(const glm::vec3& value)
+void utils::scratch::Normal(const glm::vec3& value)
 {
-	mMeshBuilder.normal(value);
+	GetContext().scratch.mesh_builder.normal(value);
 }
 
-void utils::ScratchRasterizer::texcoord(const glm::vec2& value)
+void utils::scratch::TexCoord(const glm::vec2& value)
 {
-	mMeshBuilder.texcoord(value);
+	GetContext().scratch.mesh_builder.texcoord(value);
 }
 
-void utils::ScratchRasterizer::end()
+void utils::scratch::End()
 {
-	mMeshBuilder.end();
+	GetContext().scratch.mesh_builder.end();
 }
 
-void utils::ScratchRasterizer::flush()
+void utils::scratch::Flush()
 {
-	if (mMeshBuilder.getVertexCount() == 0)
+	auto& context = GetContext();
+
+	if (context.scratch.mesh_builder.getVertexCount() == 0)
 	{
-		mMeshBuilder.reset(false);
+		context.scratch.mesh_builder.reset(false);
 		return;
 	}
 
-	mMeshBuilder.setToMesh(mMesh);
+	context.scratch.mesh_builder.setToMesh(context.scratch.mesh);
 
 	std::vector<Command> cmds;
 
-	if (mState.alpha_test_threshold.has_value())
+	if (context.scratch.state.alpha_test_threshold.has_value())
 	{
-		cmds.push_back(commands::SetEffect(effects::AlphaTest{ mState.alpha_test_threshold.value()}));
+		cmds.push_back(commands::SetEffect(effects::AlphaTest{ context.scratch.state.alpha_test_threshold.value()}));
 	}
 
 	cmds.insert(cmds.end(), {
-		commands::SetViewport(mState.viewport),
-		commands::SetScissor(mState.scissor),
-		commands::SetBlendMode(mState.blend_mode),
-		commands::SetDepthBias(mState.depth_bias),
-		commands::SetDepthMode(mState.depth_mode),
-		commands::SetStencilMode(mState.stencil_mode),
-		commands::SetCullMode(mState.cull_mode),
-		commands::SetFrontFace(mState.front_face),
-		commands::SetSampler(mState.sampler),
-		commands::SetTextureAddress(mState.texaddr),
-		commands::SetProjectionMatrix(mState.projection_matrix),
-		commands::SetViewMatrix(mState.view_matrix),
-		commands::SetModelMatrix(mState.model_matrix),
-		commands::SetMesh(&mMesh),
-		commands::SetColorTexture(mState.texture),
+		commands::SetViewport(context.scratch.state.viewport),
+		commands::SetScissor(context.scratch.state.scissor),
+		commands::SetBlendMode(context.scratch.state.blend_mode),
+		commands::SetDepthBias(context.scratch.state.depth_bias),
+		commands::SetDepthMode(context.scratch.state.depth_mode),
+		commands::SetStencilMode(context.scratch.state.stencil_mode),
+		commands::SetCullMode(context.scratch.state.cull_mode),
+		commands::SetFrontFace(context.scratch.state.front_face),
+		commands::SetSampler(context.scratch.state.sampler),
+		commands::SetTextureAddress(context.scratch.state.texaddr),
+		commands::SetProjectionMatrix(context.scratch.state.projection_matrix),
+		commands::SetViewMatrix(context.scratch.state.view_matrix),
+		commands::SetModelMatrix(context.scratch.state.model_matrix),
+		commands::SetMesh(&context.scratch.mesh),
+		commands::SetColorTexture(context.scratch.state.texture),
 		commands::Draw()
 	});
 
 	ExecuteCommands(cmds);
 
-	mMeshBuilder.reset(false);
+	context.scratch.mesh_builder.reset(false);
 }

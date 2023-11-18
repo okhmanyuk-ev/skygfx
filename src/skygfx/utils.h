@@ -46,6 +46,67 @@ namespace skygfx::utils
 		std::optional<IndexBuffer> mIndexBuffer;
 	};
 
+	class MeshBuilder
+	{
+	public:
+		enum class Mode
+		{
+			Points,
+			Lines,
+			LineLoop,
+			LineStrip,
+			Triangles,
+			TriangleStrip,
+			TriangleFan,
+			Quads,
+			Polygon
+		};
+
+	public:
+		static Topology ConvertModeToTopology(Mode mode);
+
+	public:
+		void reset(bool reset_vertex = true);
+		void begin(Mode mode);
+		void vertex(const vertex::PositionColorTextureNormalTangent& value);
+		void vertex(const vertex::PositionColorTextureNormal& value);
+		void vertex(const vertex::PositionColorTexture& value);
+		void vertex(const vertex::PositionColor& value);
+		void vertex(const glm::vec3& value);
+		void vertex(const glm::vec2& value);
+		void color(const glm::vec4& value);
+		void color(const glm::vec3& value);
+		void normal(const glm::vec3& value);
+		void texcoord(const glm::vec2& value);
+		void end();
+
+		void setToMesh(Mesh& mesh);
+
+		bool isBeginAllowed(Mode mode) const;
+
+	public:
+		bool isBegan() const { return mBegan; }
+
+		const auto& getVertices() const { return mVertices; }
+		const auto& getIndices() const { return mIndices; }
+
+		auto getVertexCount() const { return mVertexCount; }
+		auto getIndexCount() const { return mIndexCount; }
+
+		const auto& getTopology() const { return mTopology; }
+
+	private:
+		bool mBegan = false;
+		std::optional<Mode> mMode;
+		std::optional<Topology> mTopology;
+		Mesh::Vertices mVertices;
+		Mesh::Indices mIndices;
+		uint32_t mVertexStart = 0;
+		uint32_t mVertexCount = 0;
+		uint32_t mIndexCount = 0;
+		Mesh::Vertex mVertex;
+	};
+
 	struct DrawVerticesCommand
 	{
 		std::optional<uint32_t> vertex_count = std::nullopt;
@@ -240,6 +301,34 @@ namespace skygfx::utils
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
 
+	class MeshBuilder;
+
+	namespace scratch
+	{
+		struct State
+		{
+			Texture* texture = nullptr;
+			Sampler sampler = Sampler::Linear;
+			TextureAddress texaddr = TextureAddress::Clamp;
+			CullMode cull_mode = CullMode::None;
+			FrontFace front_face = FrontFace::Clockwise;
+
+			std::optional<Scissor> scissor;
+			std::optional<Viewport> viewport;
+			std::optional<BlendMode> blend_mode;
+			std::optional<DepthMode> depth_mode;
+			std::optional<StencilMode> stencil_mode;
+			std::optional<DepthBias> depth_bias;
+			std::optional<float> alpha_test_threshold;
+
+			glm::mat4 projection_matrix = glm::mat4(1.0f);
+			glm::mat4 view_matrix = glm::mat4(1.0f);
+			glm::mat4 model_matrix = glm::mat4(1.0f);
+
+			bool operator==(const State& other) const = default;
+		};
+	}
+
 	struct Context
 	{
 		Context();
@@ -248,6 +337,12 @@ namespace skygfx::utils
 		std::unordered_map<std::type_index, Shader> shaders;
 		Mesh default_mesh;
 		Texture white_pixel_texture;
+
+		struct {
+			scratch::State state;
+			Mesh mesh;
+			MeshBuilder mesh_builder;
+		} scratch;
 	};
 
 	Context& GetContext();
@@ -526,67 +621,6 @@ namespace skygfx::utils
 		const std::vector<Model>& models, const std::vector<Light>& lights = {},
 		const DrawSceneOptions& options = {});
 
-	class MeshBuilder
-	{
-	public:
-		enum class Mode
-		{
-			Points,
-			Lines,
-			LineLoop,
-			LineStrip,
-			Triangles,
-			TriangleStrip,
-			TriangleFan,
-			Quads,
-			Polygon
-		};
-
-	public:
-		static Topology ConvertModeToTopology(Mode mode);
-
-	public:
-		void reset(bool reset_vertex = true);
-		void begin(Mode mode);
-		void vertex(const vertex::PositionColorTextureNormalTangent& value);
-		void vertex(const vertex::PositionColorTextureNormal& value);
-		void vertex(const vertex::PositionColorTexture& value);
-		void vertex(const vertex::PositionColor& value);
-		void vertex(const glm::vec3& value);
-		void vertex(const glm::vec2& value);
-		void color(const glm::vec4& value);
-		void color(const glm::vec3& value);
-		void normal(const glm::vec3& value);
-		void texcoord(const glm::vec2& value);
-		void end();
-
-		void setToMesh(Mesh& mesh);
-
-		bool isBeginAllowed(Mode mode) const;
-
-	public:
-		bool isBegan() const { return mBegan; }
-
-		const auto& getVertices() const { return mVertices; }
-		const auto& getIndices() const { return mIndices; }
-
-		auto getVertexCount() const { return mVertexCount; }
-		auto getIndexCount() const { return mIndexCount; }
-
-		const auto& getTopology() const { return mTopology; }
-
-	private:
-		bool mBegan = false;
-		std::optional<Mode> mMode;
-		std::optional<Topology> mTopology;
-		Mesh::Vertices mVertices;
-		Mesh::Indices mIndices;
-		uint32_t mVertexStart = 0;
-		uint32_t mVertexCount = 0;
-		uint32_t mIndexCount = 0;
-		Mesh::Vertex mVertex;
-	};
-
 	class StageViewer
 	{
 	public:
@@ -596,49 +630,19 @@ namespace skygfx::utils
 	void SetStageViewer(StageViewer* value);
 	void ViewStage(const std::string& name, const Texture* texture);
 
-	class ScratchRasterizer
+	namespace scratch
 	{
-	public:
-		struct State
-		{
-			Texture* texture = nullptr;
-			Sampler sampler = Sampler::Linear;
-			TextureAddress texaddr = TextureAddress::Clamp;
-			CullMode cull_mode = CullMode::None;
-			FrontFace front_face = FrontFace::Clockwise;
-
-			std::optional<Scissor> scissor;
-			std::optional<Viewport> viewport;
-			std::optional<BlendMode> blend_mode;
-			std::optional<DepthMode> depth_mode;
-			std::optional<StencilMode> stencil_mode;
-			std::optional<DepthBias> depth_bias;
-			std::optional<float> alpha_test_threshold;
-
-			glm::mat4 projection_matrix = glm::mat4(1.0f);
-			glm::mat4 view_matrix = glm::mat4(1.0f);
-			glm::mat4 model_matrix = glm::mat4(1.0f);
-
-			bool operator==(const State& other) const = default;
-		};
-
-	public:
-		void begin(MeshBuilder::Mode mode, const State& state = State());
-		void vertex(const vertex::PositionColorTextureNormal& value);
-		void vertex(const vertex::PositionColorTexture& value);
-		void vertex(const vertex::PositionColor& value);
-		void vertex(const glm::vec3& value);
-		void vertex(const glm::vec2& value);
-		void color(const glm::vec4& value);
-		void color(const glm::vec3& value);
-		void normal(const glm::vec3& value);
-		void texcoord(const glm::vec2& value);
-		void end();
-		void flush();
-
-	private:
-		State mState;
-		Mesh mMesh;
-		MeshBuilder mMeshBuilder;
-	};	
+		void Begin(MeshBuilder::Mode mode, const State& state = {});
+		void Vertex(const vertex::PositionColorTextureNormal& value);
+		void Vertex(const vertex::PositionColorTexture& value);
+		void Vertex(const vertex::PositionColor& value);
+		void Vertex(const glm::vec3& value);
+		void Vertex(const glm::vec2& value);
+		void Color(const glm::vec4& value);
+		void Color(const glm::vec3& value);
+		void Normal(const glm::vec3& value);
+		void TexCoord(const glm::vec2& value);
+		void End();
+		void Flush();
+	}
 }

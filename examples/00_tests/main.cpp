@@ -85,13 +85,12 @@ bool Triangle(skygfx::BackendType backend, SavePixelsFunc save_pixels_func)
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 	skygfx::Clear();
 
-	auto scratch = skygfx::utils::ScratchRasterizer();
-	scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
-	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
-	scratch.vertex(skygfx::Vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
-	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
-	scratch.end();
-	scratch.flush();
+	skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+	skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
+	skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+	skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
+	skygfx::utils::scratch::End();
+	skygfx::utils::scratch::Flush();
 
 	auto pixels = skygfx::GetBackbufferPixels();
 	save_pixels_func(gWidth, gHeight, pixels);
@@ -120,13 +119,12 @@ bool TriangleRenderTarget(skygfx::BackendType backend, SavePixelsFunc save_pixel
 	skygfx::SetRenderTarget(target);
 	skygfx::Clear();
 
-	auto scratch = skygfx::utils::ScratchRasterizer();
-	scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
-	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
-	scratch.vertex(skygfx::Vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
-	scratch.vertex(skygfx::Vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
-	scratch.end();
-	scratch.flush();
+	skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+	skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
+	skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+	skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
+	skygfx::utils::scratch::End();
+	skygfx::utils::scratch::Flush();
 
 	auto pixels = skygfx::GetBackbufferPixels();
 	save_pixels_func(target.getWidth(), target.getHeight(), pixels);

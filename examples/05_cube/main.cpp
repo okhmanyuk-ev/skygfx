@@ -35,7 +35,7 @@ void main()
 	result = In.Color;
 })";
 
-using Vertex = skygfx::Vertex::PositionColor;
+using Vertex = skygfx::vertex::PositionColor;
 
 const glm::vec4 Red = { 1.0f, 0.0f, 0.0f, 1.0f };
 const glm::vec4 Green = { 0.0f, 1.0f, 0.0f, 1.0f };

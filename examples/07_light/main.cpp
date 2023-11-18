@@ -65,7 +65,7 @@ void main()
 	result *= vec4(intensity, 1.0);
 })";
 
-using Vertex = skygfx::Vertex::PositionTextureNormal;
+using Vertex = skygfx::vertex::PositionTextureNormal;
 
 const std::vector<Vertex> vertices = {
 	/* front */

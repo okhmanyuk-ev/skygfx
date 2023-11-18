@@ -17,24 +17,16 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
-	skygfx::utils::MeshBuilder mesh_builder;
-	mesh_builder.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
-	mesh_builder.vertex(skygfx::Vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
-	mesh_builder.vertex(skygfx::Vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
-	mesh_builder.vertex(skygfx::Vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
-	mesh_builder.end();
-
-	skygfx::utils::Mesh mesh;
-	mesh_builder.setToMesh(mesh);
-
 	while (!glfwWindowShouldClose(window))
 	{
 		skygfx::Clear();
 
-		skygfx::utils::ExecuteCommands({
-			skygfx::utils::commands::SetMesh(&mesh),
-			skygfx::utils::commands::Draw()
-		});
+		skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+		skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
+		skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
+		skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
+		skygfx::utils::scratch::End();
+		skygfx::utils::scratch::Flush();
 
 		skygfx::Present();
 
