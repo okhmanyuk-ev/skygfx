@@ -1404,6 +1404,7 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	SetRenderTarget({ color_buffer, normal_buffer, positions_buffer });
 	Clear();
 	ExecuteCommands({
+		commands::SetMipmapBias(options.mipmap_bias),
 		commands::SetCamera(camera),
 		commands::SetEffect(effects::deferred_shading::ExtractGeometryBuffer{}),
 		commands::Subcommands(&draw_models)
