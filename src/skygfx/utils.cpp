@@ -11,6 +11,7 @@ layout(location = POSITION_LOCATION) in vec3 aPosition;
 layout(location = COLOR_LOCATION) in vec4 aColor;
 layout(location = TEXCOORD_LOCATION) in vec2 aTexCoord;
 layout(location = NORMAL_LOCATION) in vec3 aNormal;
+layout(location = TANGENT_LOCATION) in vec3 aTangent;
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 {
@@ -20,6 +21,7 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 	vec3 eye_position;
 	float mipmap_bias;
 	vec4 color;
+	uint has_normal_texture;
 } settings;
 
 layout(location = 0) out struct
@@ -28,14 +30,18 @@ layout(location = 0) out struct
 	vec4 color;
 	vec2 tex_coord;
 	vec3 normal;
+	vec3 tangent;
+	vec3 bitangent;
 } Out;
 
 out gl_PerVertex { vec4 gl_Position; };
 
 void main()
 {
-	Out.world_position = vec3(settings.model * vec4(aPosition, 1.0));
+	Out.world_position = mat3(settings.model) * aPosition;
 	Out.normal = transpose(inverse(mat3(settings.model))) * aNormal;
+	Out.tangent = transpose(inverse(mat3(settings.model))) * aTangent;
+	Out.bitangent = cross(Out.normal, Out.tangent);
 	Out.color = aColor;
 	Out.tex_coord = aTexCoord;
 #ifdef FLIP_TEXCOORD_Y
@@ -55,6 +61,7 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 	vec3 eye_position;
 	float mipmap_bias;
 	vec4 color;
+	uint has_normal_texture;
 } settings;
 
 layout(location = 0) out vec4 result;
@@ -65,6 +72,8 @@ layout(location = 0) in struct
 	vec4 color;
 	vec2 tex_coord;
 	vec3 normal;
+	vec3 tangent;
+	vec3 bitangent;
 } In;
 
 layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
@@ -101,7 +110,19 @@ void effect(inout vec4 result)
 	result *= settings.color;
 	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 
-	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
+	vec3 normal;
+
+	if (settings.has_normal_texture != 0)
+	{
+		normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
+		normal = normal * 2.0 - 1.0;
+		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
+		normal = normalize(normal);
+	}
+	else
+	{
+		normal = normalize(In.normal);
+	}
 
 	vec3 view_dir = normalize(settings.eye_position - In.world_position);
 	vec3 light_dir = normalize(light.direction);
@@ -134,7 +155,19 @@ void effect(inout vec4 result)
 	result *= settings.color;
 	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 
-	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
+	vec3 normal;
+
+	if (settings.has_normal_texture != 0)
+	{
+		normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
+		normal = normal * 2.0 - 1.0;
+		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
+		normal = normalize(normal);
+	}
+	else
+	{
+		normal = normalize(In.normal);
+	}
 
 	vec3 light_offset = light.position - In.world_position;
 
@@ -176,7 +209,7 @@ void effect(inout vec4 result)
 	result *= settings.color;
 	result *= texture(sColorBufferTexture, In.tex_coord);
 
-	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord));
+	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord)) * 2.0 - 1.0;
 	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
 
 	vec3 view_dir = normalize(settings.eye_position - pixel_position);
@@ -214,7 +247,7 @@ void effect(inout vec4 result)
 	result *= settings.color;
 	result *= texture(sColorBufferTexture, In.tex_coord);
 
-	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord));
+	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord)) * 2.0 - 1.0;
 	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
 
 	vec3 light_offset = light.position - pixel_position;
@@ -253,8 +286,20 @@ void effect(inout vec4 result)
 	result *= settings.color;
 	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
 
-	vec3 normal = normalize(In.normal * vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias)));
-	normal_buffer = vec4(normal, 1.0);
+	if (settings.has_normal_texture != 0)
+	{
+		vec3 normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
+		normal = normal * 2.0 - 1.0;
+		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
+		normal = normalize(normal);
+		normal_buffer = vec4(normal * 0.5 + 0.5, 1.0);
+	}
+	else
+	{
+		vec3 normal = normalize(In.normal);
+		normal_buffer = vec4(normal * 0.5 + 0.5, 1.0);
+	}
+
 	positions_buffer = vec4(In.world_position, 1.0);
 })";
 
@@ -835,6 +880,7 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 		alignas(16) glm::vec3 eye_position = { 0.0f, 0.0f, 0.0f };
 		float mipmap_bias = 0.0f;
 		alignas(16) glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		uint32_t has_normal_texture = 0;
 	} settings;
 
 	bool settings_dirty = true;
@@ -905,6 +951,8 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			[&](const commands::SetNormalTexture& cmd) {
 				normal_texture = cmd.normal_texture;
 				textures_dirty = true;
+				settings.has_normal_texture = normal_texture != nullptr;
+				settings_dirty = true;
 			},
 			[&](const commands::SetColor& cmd) {
 				settings.color = cmd.color;
@@ -1068,11 +1116,12 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				if (textures_dirty)
 				{
 					const auto& _color_texture = color_texture != nullptr ? *color_texture : GetContext().white_pixel_texture;
+					// TODO: we dont need use white normal_texture since we improve normalmapping, just do nothing
 					const auto& _normal_texture = normal_texture != nullptr ? *normal_texture : GetContext().white_pixel_texture;
 
 					SetTexture(0, _color_texture);
 					SetTexture(1, _normal_texture);
-					
+
 					textures_dirty = false;
 				}
 
@@ -1594,10 +1643,21 @@ void utils::MeshBuilder::begin(Mode mode)
 	mVertexStart = mVertexCount;
 }
 
-void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormal& value)
+void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormalTangent& value)
 {
 	assert(mBegan);
 	AddItem(mVertices, mVertexCount, value);
+}
+
+void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormal& value)
+{
+	vertex(vertex::PositionColorTextureNormalTangent{
+		.pos = value.pos,
+		.color = value.color,
+		.texcoord = value.texcoord,
+		.normal = value.normal,
+		.tangent = vertex::defaults::Tangent
+	});
 }
 
 void utils::MeshBuilder::vertex(const vertex::PositionColorTexture& value)

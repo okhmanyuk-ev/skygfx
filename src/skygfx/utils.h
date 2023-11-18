@@ -9,7 +9,7 @@ namespace skygfx::utils
 	class Mesh
 	{
 	public:
-		using Vertex = vertex::PositionColorTextureNormal;
+		using Vertex = vertex::PositionColorTextureNormalTangent;
 		using Index = uint32_t;
 		using Vertices = std::vector<Vertex>;
 		using Indices = std::vector<Index>;
@@ -548,6 +548,7 @@ namespace skygfx::utils
 	public:
 		void reset(bool reset_vertex = true);
 		void begin(Mode mode);
+		void vertex(const vertex::PositionColorTextureNormalTangent& value);
 		void vertex(const vertex::PositionColorTextureNormal& value);
 		void vertex(const vertex::PositionColorTexture& value);
 		void vertex(const vertex::PositionColor& value);
