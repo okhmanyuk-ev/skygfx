@@ -858,19 +858,17 @@ utils::effects::BrightFilter::BrightFilter(float _threshold) :
 {
 }
 
-std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeOrthogonalCameraMatrices(const OrthogonalCamera& camera,
-	std::optional<uint32_t> _width, std::optional<uint32_t> _height)
+std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const OrthogonalCamera& camera)
 {
-	auto width = (float)_width.value_or(GetBackbufferWidth());
-	auto height = (float)_height.value_or(GetBackbufferHeight());
+	auto width = (float)camera.width.value_or(GetBackbufferWidth());
+	auto height = (float)camera.height.value_or(GetBackbufferHeight());
 	auto proj = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f);
 	auto view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
 		glm::vec3(0.0f, 1.0f, 0.0f));
 	return { proj, view };
 }
 
-std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakePerspectiveCameraMatrices(
-	const PerspectiveCamera& camera, std::optional<uint32_t> _width, std::optional<uint32_t> _height)
+std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const PerspectiveCamera& camera)
 {
 	auto sin_yaw = glm::sin(camera.yaw);
 	auto sin_pitch = glm::sin(camera.pitch);
@@ -882,8 +880,8 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::Ma
 	auto right = glm::normalize(glm::cross(front, camera.world_up));
 	auto up = glm::normalize(glm::cross(right, front));
 
-	auto width = (float)_width.value_or(GetBackbufferWidth());
-	auto height = (float)_height.value_or(GetBackbufferHeight());
+	auto width = (float)camera.width.value_or(GetBackbufferWidth());
+	auto height = (float)camera.height.value_or(GetBackbufferHeight());
 
 	auto proj = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane);
 	auto view = glm::lookAtRH(camera.position, camera.position + front, up);
@@ -1037,8 +1035,8 @@ utils::commands::SetModelMatrix::SetModelMatrix(glm::mat4 _model_matrix) :
 {
 }
 
-utils::commands::SetCamera::SetCamera(Camera _camera, std::optional<uint32_t> _width, std::optional<uint32_t> _height) :
-	camera(std::move(_camera)), width(_width), height(_height)
+utils::commands::SetCamera::SetCamera(Camera _camera) :
+	camera(std::move(_camera))
 {
 }
 
@@ -1225,13 +1223,12 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			[&](const commands::SetCamera& cmd) {
 				std::visit(cases{
 					[&](const OrthogonalCamera& camera) {
-						std::tie(settings.projection, settings.view) = MakeOrthogonalCameraMatrices(
-							camera, cmd.height, cmd.width);
+						std::tie(settings.projection, settings.view) = MakeCameraMatrices(camera);
 						settings.eye_position = { 0.0f, 0.0f, 0.0f };
 					},
 					[&](const PerspectiveCamera& camera) {
-						std::tie(settings.projection, settings.view, settings.eye_position) = 
-							MakePerspectiveCameraMatrices(camera, cmd.height, cmd.width);
+						std::tie(settings.projection, settings.view, settings.eye_position) =
+							MakeCameraMatrices(camera);
 					},
 				}, cmd.camera);
 				settings_dirty = true;
@@ -1641,8 +1638,7 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 	if (lights.empty())
 	{
 		cmds.push_back(commands::Subcommands(&draw_models));
-		ExecuteCommands(cmds);
-		(target, options.clear_target, cmds);
+		ExecuteCommands(target, options.clear_target, cmds);
 		return;
 	}
 
@@ -1889,7 +1885,7 @@ void utils::scratch::Flush()
 
 	if (context.scratch.state.alpha_test_threshold.has_value())
 	{
-		cmds.push_back(commands::SetEffect(effects::AlphaTest{ context.scratch.state.alpha_test_threshold.value()}));
+		cmds.push_back(commands::SetEffect(effects::AlphaTest{ context.scratch.state.alpha_test_threshold.value() }));
 	}
 
 	cmds.insert(cmds.end(), {

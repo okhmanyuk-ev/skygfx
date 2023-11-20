@@ -38,11 +38,13 @@ void ImguiHelper::draw()
 	auto draw_data = ImGui::GetDrawData();
 	draw_data->ScaleClipRects(display_scale);
 
+	auto [view, proj] = skygfx::utils::MakeCameraMatrices(skygfx::utils::OrthogonalCamera{});
+
 	skygfx::utils::scratch::State state;
 	state.sampler = skygfx::Sampler::Nearest;
 	state.blend_mode = skygfx::BlendStates::NonPremultiplied;
-	std::tie(state.projection_matrix, state.view_matrix) = skygfx::utils::MakeOrthogonalCameraMatrices(
-		skygfx::utils::OrthogonalCamera{});
+	state.view_matrix = view;
+	state.projection_matrix = proj;
 	state.model_matrix = glm::scale(glm::mat4(1.0f), { display_scale.x, display_scale.y, 1.0f });
 
 	for (auto cmdlist : std::span{ draw_data->CmdLists, static_cast<std::size_t>(draw_data->CmdListsCount) })

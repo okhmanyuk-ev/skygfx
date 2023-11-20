@@ -278,10 +278,17 @@ namespace skygfx::utils
 		concept Effect = requires { T::Shader; } && std::is_same<std::remove_const_t<decltype(T::Shader)>, std::string>::value;
 	}
 
-	struct OrthogonalCamera {};
+	struct OrthogonalCamera
+	{
+		std::optional<uint32_t> width = std::nullopt;
+		std::optional<uint32_t> height = std::nullopt;
+	};
 
 	struct PerspectiveCamera
 	{
+		std::optional<uint32_t> width = std::nullopt;
+		std::optional<uint32_t> height = std::nullopt;
+
 		float yaw = 0.0f;
 		float pitch = 0.0f;
 		glm::vec3 position = { 0.0f, 0.0f, 0.0f };
@@ -293,11 +300,9 @@ namespace skygfx::utils
 
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
-	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeOrthogonalCameraMatrices(const OrthogonalCamera& camera,
-		std::optional<uint32_t> width = std::nullopt, std::optional<uint32_t> height = std::nullopt);
-	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakePerspectiveCameraMatrices(
-		const PerspectiveCamera& camera, std::optional<uint32_t> width = std::nullopt,
-		std::optional<uint32_t> height = std::nullopt);
+	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeCameraMatrices(const OrthogonalCamera& camera);
+	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(
+		const PerspectiveCamera& camera);
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
 
@@ -484,11 +489,8 @@ namespace skygfx::utils
 
 		struct SetCamera
 		{
-			SetCamera(Camera camera, std::optional<uint32_t> width = std::nullopt,
-				std::optional<uint32_t> height = std::nullopt);
+			SetCamera(Camera camera);
 			Camera camera;
-			std::optional<uint32_t> width;
-			std::optional<uint32_t> height;
 		};
 
 		struct SetEyePosition
