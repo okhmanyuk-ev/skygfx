@@ -564,7 +564,20 @@ namespace skygfx::utils
 	}
 
 	void ExecuteCommands(const std::vector<Command>& cmds);
-	void ExecuteCommands(const RenderTarget* target, bool clear, const std::vector<Command>& cmds);
+
+	struct RenderPass
+	{
+		std::vector<RenderTarget*> targets;
+		bool clear = false;
+		struct {
+			std::optional<glm::vec4> color = glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
+			std::optional<float> depth = 1.0f;
+			std::optional<uint8_t> stencil = 0;
+		} clear_value;
+		std::vector<Command> commands;
+	};
+
+	void ExecuteRenderPass(const RenderPass& render_pass);
 
 	namespace passes
 	{
@@ -577,13 +590,13 @@ namespace skygfx::utils
 			std::optional<commands::SetEffect> effect;
 		};
 
-		void Blit(const Texture* src, const RenderTarget* dst, const BlitOptions& options = {});
+		void Blit(Texture* src, RenderTarget* dst, const BlitOptions& options = {});
 
-		void GaussianBlur(const RenderTarget* src, const RenderTarget* dst = nullptr);
-		void Grayscale(const RenderTarget* src, const RenderTarget* dst = nullptr, float intensity = 1.0f);
-		void Bloom(const RenderTarget* src, const RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
+		void GaussianBlur(RenderTarget* src, RenderTarget* dst = nullptr);
+		void Grayscale(RenderTarget* src, RenderTarget* dst = nullptr, float intensity = 1.0f);
+		void Bloom(RenderTarget* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
-		void BloomGaussian(const RenderTarget* src, const RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
+		void BloomGaussian(RenderTarget* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
 	}
 
@@ -641,18 +654,18 @@ namespace skygfx::utils
 		std::vector<Posteffect> posteffects;
 	};
 
-	void DrawScene(const RenderTarget* target, const PerspectiveCamera& camera,
+	void DrawScene(RenderTarget* target, const PerspectiveCamera& camera,
 		const std::vector<Model>& models, const std::vector<Light>& lights = {},
 		const DrawSceneOptions& options = {});
 
 	class StageViewer
 	{
 	public:
-		virtual void stage(const std::string& name, const Texture* texture) = 0;
+		virtual void stage(const std::string& name, Texture* texture) = 0;
 	};
 
 	void SetStageViewer(StageViewer* value);
-	void ViewStage(const std::string& name, const Texture* texture);
+	void ViewStage(const std::string& name, Texture* texture);
 
 	namespace scratch
 	{

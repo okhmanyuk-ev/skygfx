@@ -28,6 +28,6 @@ private:
 	std::vector<Stage> mStages;
 
 public:
-	void stage(const std::string& name, const skygfx::Texture* texture) override;
+	void stage(const std::string& name, skygfx::Texture* texture) override;
 	void show();
 };

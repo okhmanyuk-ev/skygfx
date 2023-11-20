@@ -86,7 +86,7 @@ void ImguiHelper::draw()
 	skygfx::utils::scratch::Flush();
 }
 
-void StageViewer::stage(const std::string& name, const skygfx::Texture* texture)
+void StageViewer::stage(const std::string& name, skygfx::Texture* texture)
 {
 	if (texture == nullptr)
 		return;

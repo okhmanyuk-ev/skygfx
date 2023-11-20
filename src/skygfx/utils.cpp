@@ -1423,20 +1423,20 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	}
 }
 
-void utils::ExecuteCommands(const RenderTarget* target, bool clear, const std::vector<Command>& cmds)
+void utils::ExecuteRenderPass(const RenderPass& render_pass)
 {
-	if (target == nullptr)
+	if (render_pass.targets.empty() || render_pass.targets == std::vector<RenderTarget*>{ nullptr })
 		SetRenderTarget(std::nullopt);
 	else
-		SetRenderTarget(*target);
+		SetRenderTarget(render_pass.targets);
 
-	if (clear)
-		Clear();
+	if (render_pass.clear)
+		Clear(render_pass.clear_value.color, render_pass.clear_value.depth, render_pass.clear_value.stencil);
 
-	ExecuteCommands(cmds);
+	ExecuteCommands(render_pass.commands);
 }
 
-void utils::passes::Blit(const Texture* src, const RenderTarget* dst, const BlitOptions& options)
+void utils::passes::Blit(Texture* src, RenderTarget* dst, const BlitOptions& options)
 {
 	std::vector<Command> cmds;
 
@@ -1451,10 +1451,14 @@ void utils::passes::Blit(const Texture* src, const RenderTarget* dst, const Blit
 		commands::Draw()
 	});
 
-	ExecuteCommands(dst, options.clear, cmds);
+	ExecuteRenderPass({
+		.targets = { dst },
+		.clear = options.clear,
+		.commands = std::move(cmds)
+	});
 }
 
-void utils::passes::GaussianBlur(const RenderTarget* src, const RenderTarget* dst)
+void utils::passes::GaussianBlur(RenderTarget* src, RenderTarget* dst)
 {
 	auto blur_target = skygfx::AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
 	Blit(src, blur_target, {
@@ -1469,7 +1473,7 @@ void utils::passes::GaussianBlur(const RenderTarget* src, const RenderTarget* ds
 	skygfx::ReleaseTransientRenderTarget(blur_target);
 }
 
-void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst, float intensity)
+void utils::passes::Grayscale(RenderTarget* src, RenderTarget* dst, float intensity)
 {
 	Blit(src, dst, {
 		.effect = effects::Grayscale{ intensity }
@@ -1477,7 +1481,7 @@ void utils::passes::Grayscale(const RenderTarget* src, const RenderTarget* dst, 
 	ViewStage("grayscale", dst);
 }
 
-void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, float bright_threshold, float intensity)
+void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_threshold, float intensity)
 {
 	Blit(src, dst);
 
@@ -1560,7 +1564,7 @@ void utils::passes::Bloom(const RenderTarget* src, const RenderTarget* dst, floa
 	}
 }
 
-void utils::passes::BloomGaussian(const RenderTarget* src, const RenderTarget* dst, float bright_threshold,
+void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float bright_threshold,
 	float intensity)
 {
 	Blit(src, dst);
@@ -1614,7 +1618,7 @@ utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_col
 	});
 }
 
-static void DrawSceneForwardShading(const RenderTarget* target, const utils::PerspectiveCamera& camera,
+static void DrawSceneForwardShading(RenderTarget* target, const utils::PerspectiveCamera& camera,
 	const std::vector<utils::Model>& models, const std::vector<utils::Light>& lights,
 	const utils::DrawSceneOptions& options)
 {
@@ -1638,7 +1642,11 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 	if (lights.empty())
 	{
 		cmds.push_back(commands::Subcommands(&draw_models));
-		ExecuteCommands(target, options.clear_target, cmds);
+		ExecuteRenderPass({
+			.targets = { target },
+			.clear = options.clear_target,
+			.commands = std::move(cmds)
+		});
 		return;
 	}
 
@@ -1665,10 +1673,14 @@ static void DrawSceneForwardShading(const RenderTarget* target, const utils::Per
 		}
 	}
 
-	ExecuteCommands(target, options.clear_target, cmds);
+	ExecuteRenderPass({
+		.targets = { target },
+		.clear = options.clear_target,
+		.commands = std::move(cmds)
+	});
 }
 
-static void DrawSceneDeferredShading(const RenderTarget* target, const utils::PerspectiveCamera& camera,
+static void DrawSceneDeferredShading(RenderTarget* target, const utils::PerspectiveCamera& camera,
 	const std::vector<utils::Model>& models, const std::vector<utils::Light>& lights,
 	const utils::DrawSceneOptions& options)
 {
@@ -1690,13 +1702,15 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 	auto normal_buffer = AcquireTransientRenderTarget();
 	auto positions_buffer = AcquireTransientRenderTarget();
 
-	SetRenderTarget({ color_buffer, normal_buffer, positions_buffer });
-	Clear();
-	ExecuteCommands({
-		commands::SetMipmapBias(options.mipmap_bias),
-		commands::SetCamera(camera),
-		commands::SetEffect(effects::deferred_shading::ExtractGeometryBuffer{}),
-		commands::Subcommands(&draw_models)
+	ExecuteRenderPass({
+		.targets = { color_buffer, normal_buffer, positions_buffer },
+		.clear = true,
+		.commands = {
+			commands::SetMipmapBias(options.mipmap_bias),
+			commands::SetCamera(camera),
+			commands::SetEffect(effects::deferred_shading::ExtractGeometryBuffer{}),
+			commands::Subcommands(&draw_models)
+		}
 	});
 
 	ViewStage("color_buffer", color_buffer);
@@ -1728,14 +1742,18 @@ static void DrawSceneDeferredShading(const RenderTarget* target, const utils::Pe
 		});
 	}
 
-	ExecuteCommands(target, options.clear_target, cmds);
+	ExecuteRenderPass({
+		.targets = { target },
+		.clear = options.clear_target,
+		.commands = std::move(cmds)
+	});
 
 	ReleaseTransientRenderTarget(color_buffer);
 	ReleaseTransientRenderTarget(normal_buffer);
 	ReleaseTransientRenderTarget(positions_buffer);
 }
 
-void utils::DrawScene(const RenderTarget* target, const PerspectiveCamera& camera,
+void utils::DrawScene(RenderTarget* target, const PerspectiveCamera& camera,
 	const std::vector<Model>& models, const std::vector<Light>& lights, const DrawSceneOptions& options)
 {
 	std::optional<RenderTarget*> scene_target;
@@ -1752,7 +1770,7 @@ void utils::DrawScene(const RenderTarget* target, const PerspectiveCamera& camer
 		scene_target = get_same_transient_target(target);
 	}
 
-	using DrawSceneFunc = std::function<void(const RenderTarget* target, const utils::PerspectiveCamera& camera,
+	using DrawSceneFunc = std::function<void(RenderTarget* target, const utils::PerspectiveCamera& camera,
 		const std::vector<utils::Model>& models, const std::vector<utils::Light>& lights,
 		const utils::DrawSceneOptions& options)>;
 
@@ -1797,7 +1815,7 @@ void utils::SetStageViewer(StageViewer* value)
 	gStageViewer = value;
 }
 
-void utils::ViewStage(const std::string& name, const Texture* texture)
+void utils::ViewStage(const std::string& name, Texture* texture)
 {
 	if (gStageViewer == nullptr)
 		return;
