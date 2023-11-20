@@ -504,12 +504,6 @@ namespace skygfx::utils
 			float mipmap_bias;
 		};
 
-		struct Callback
-		{
-			Callback(std::function<void()> func);
-			std::function<void()> func;
-		};
-
 		struct Draw
 		{
 			Draw(std::optional<DrawCommand> draw_command = std::nullopt);
@@ -542,7 +536,6 @@ namespace skygfx::utils
 		commands::SetCamera,
 		commands::SetEyePosition,
 		commands::SetMipmapBias,
-		commands::Callback,
 		commands::Subcommands,
 		commands::Draw
 	>;

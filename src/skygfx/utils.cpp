@@ -1050,11 +1050,6 @@ utils::commands::SetMipmapBias::SetMipmapBias(float _mipmap_bias) :
 {
 }
 
-utils::commands::Callback::Callback(std::function<void()> _func) :
-	func(_func)
-{
-}
-
 utils::commands::Subcommands::Subcommands(const std::vector<Command>* _subcommands) :
 	subcommands(_subcommands)
 {
@@ -1238,9 +1233,6 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			[&](const commands::SetMipmapBias& cmd) {
 				settings.mipmap_bias = cmd.mipmap_bias;
 				settings_dirty = true;
-			},
-			[&](const commands::Callback& cmd) {
-				cmd.func();
 			},
 			[&](const commands::Subcommands& cmd) {
 				std::visit(cases{
