@@ -301,8 +301,7 @@ namespace skygfx::utils
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeCameraMatrices(const OrthogonalCamera& camera);
-	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> MakeCameraMatrices(
-		const PerspectiveCamera& camera);
+	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeCameraMatrices(const PerspectiveCamera& camera);
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
 

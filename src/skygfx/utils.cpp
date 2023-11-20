@@ -559,8 +559,8 @@ static void AddItem(std::vector<T>& items, uint32_t& count, const T& item)
 		items[count - 1] = item;
 }
 
-static void ExtractOrderedIndexSequence(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+static void ExtractOrderedIndexSequence(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
 {
 	for (uint32_t i = vertex_start; i < vertex_count; i++)
 	{
@@ -568,8 +568,8 @@ static void ExtractOrderedIndexSequence(const skygfx::utils::Mesh::Vertices& ver
 	}
 }
 
-static void ExtractLineListIndicesFromLineLoop(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+static void ExtractLineListIndicesFromLineLoop(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
 {
 	if (vertex_count == vertex_start)
 		return;
@@ -583,8 +583,8 @@ static void ExtractLineListIndicesFromLineLoop(const skygfx::utils::Mesh::Vertic
 	AddItem(indices, index_count, vertex_start);
 }
 
-static void ExtractLineListIndicesFromLineStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+static void ExtractLineListIndicesFromLineStrip(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
 {
 	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
 	{
@@ -593,8 +593,8 @@ static void ExtractLineListIndicesFromLineStrip(const skygfx::utils::Mesh::Verti
 	}
 }
 
-static void ExtractTrianglesIndicesFromTriangleFan(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+static void ExtractTrianglesIndicesFromTriangleFan(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
 {
 	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
 	{
@@ -604,14 +604,14 @@ static void ExtractTrianglesIndicesFromTriangleFan(const skygfx::utils::Mesh::Ve
 	}
 }
 
-static void ExtractTrianglesIndicesFromPolygons(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+static void ExtractTrianglesIndicesFromPolygons(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
 {
 	ExtractTrianglesIndicesFromTriangleFan(vertices, vertex_start, vertex_count, indices, index_count);
 }
 
-static void ExtractTrianglesIndicesFromQuads(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+static void ExtractTrianglesIndicesFromQuads(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
 {
 	for (uint32_t i = vertex_start + 3; i < vertex_count; i += 4) {
 		// first triangle
@@ -625,8 +625,8 @@ static void ExtractTrianglesIndicesFromQuads(const skygfx::utils::Mesh::Vertices
 	}
 }
 
-static void ExtractTrianglesIndicesFromTriangleStrip(const skygfx::utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, skygfx::utils::Mesh::Indices& indices, uint32_t& index_count)
+static void ExtractTrianglesIndicesFromTriangleStrip(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
+	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
 {
 	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
 	{
@@ -868,7 +868,7 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const
 	return { proj, view };
 }
 
-std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::MakeCameraMatrices(const PerspectiveCamera& camera)
+std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const PerspectiveCamera& camera)
 {
 	auto sin_yaw = glm::sin(camera.yaw);
 	auto sin_pitch = glm::sin(camera.pitch);
@@ -886,7 +886,7 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/, glm::vec3/*eye_pos*/> utils::Ma
 	auto proj = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane);
 	auto view = glm::lookAtRH(camera.position, camera.position + front, up);
 
-	return { proj, view, camera.position };
+	return { proj, view };
 }
 
 Shader utils::MakeEffectShader(const std::string& effect_shader_func)
@@ -927,7 +927,7 @@ utils::Context::Context() :
 		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
 		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
 	}, { 0, 1, 2, 0, 2, 3 }),
-	white_pixel_texture(1, 1, skygfx::Format::Byte4, (void*)&white_pixel)
+	white_pixel_texture(1, 1, Format::Byte4, (void*)&white_pixel)
 {
 }
 
@@ -1221,14 +1221,12 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				settings_dirty = true;
 			},
 			[&](const commands::SetCamera& cmd) {
-				std::visit(cases{
+				std::tie(settings.projection, settings.view, settings.eye_position) = std::visit(cases{
 					[&](const OrthogonalCamera& camera) {
-						std::tie(settings.projection, settings.view) = MakeCameraMatrices(camera);
-						settings.eye_position = { 0.0f, 0.0f, 0.0f };
+						return std::tuple_cat(MakeCameraMatrices(camera), std::make_tuple(glm::vec3{ 0.0f, 0.0f, 0.0f }));
 					},
 					[&](const PerspectiveCamera& camera) {
-						std::tie(settings.projection, settings.view, settings.eye_position) =
-							MakeCameraMatrices(camera);
+						return std::tuple_cat(MakeCameraMatrices(camera), std::make_tuple(camera.position));
 					},
 				}, cmd.camera);
 				settings_dirty = true;
@@ -1460,7 +1458,7 @@ void utils::passes::Blit(Texture* src, RenderTarget* dst, const BlitOptions& opt
 
 void utils::passes::GaussianBlur(RenderTarget* src, RenderTarget* dst)
 {
-	auto blur_target = skygfx::AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
+	auto blur_target = AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
 	Blit(src, blur_target, {
 		.clear = true,
 		.effect = effects::GaussianBlur({ 1.0f, 0.0f })
@@ -1470,7 +1468,7 @@ void utils::passes::GaussianBlur(RenderTarget* src, RenderTarget* dst)
 		.effect = effects::GaussianBlur({ 0.0f, 1.0f })
 	});
 	ViewStage("gaussian vertical", dst);
-	skygfx::ReleaseTransientRenderTarget(blur_target);
+	ReleaseTransientRenderTarget(blur_target);
 }
 
 void utils::passes::Grayscale(RenderTarget* src, RenderTarget* dst, float intensity)
@@ -1492,7 +1490,7 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 
 	// acquire targets
 
-	auto bright = skygfx::AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
+	auto bright = AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
 
 	std::array<RenderTarget*, ChainSize> tex_chain;
 
@@ -1504,7 +1502,7 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 		w = glm::max(w, 1u);
 		h = glm::max(h, 1u);
 
-		tex_chain[i] = skygfx::AcquireTransientRenderTarget(w, h);
+		tex_chain[i] = AcquireTransientRenderTarget(w, h);
 	}
 
 	// extract bright
@@ -1556,11 +1554,11 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 
 	// release targets
 
-	skygfx::ReleaseTransientRenderTarget(bright);
+	ReleaseTransientRenderTarget(bright);
 
 	for (auto target : tex_chain)
 	{
-		skygfx::ReleaseTransientRenderTarget(target);
+		ReleaseTransientRenderTarget(target);
 	}
 }
 
@@ -1577,8 +1575,8 @@ void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float br
 	auto width = static_cast<uint32_t>(glm::floor(static_cast<float>(src->getWidth()) / static_cast<float>(DownsampleCount)));
 	auto height = static_cast<uint32_t>(glm::floor(static_cast<float>(src->getHeight()) / static_cast<float>(DownsampleCount)));
 
-	auto bright = skygfx::AcquireTransientRenderTarget(width, height);
-	auto blur_dst = skygfx::AcquireTransientRenderTarget(width, height);
+	auto bright = AcquireTransientRenderTarget(width, height);
+	auto blur_dst = AcquireTransientRenderTarget(width, height);
 	auto blur_src = src;
 
 	if (bright_threshold > 0.0f)
@@ -1598,8 +1596,8 @@ void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float br
 		.blend_mode = BlendStates::Additive
 	});
 
-	skygfx::ReleaseTransientRenderTarget(bright);
-	skygfx::ReleaseTransientRenderTarget(blur_dst);
+	ReleaseTransientRenderTarget(bright);
+	ReleaseTransientRenderTarget(blur_dst);
 }
 
 utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_color_texture, bool use_normal_texture)
@@ -1669,7 +1667,7 @@ static void DrawSceneForwardShading(RenderTarget* target, const utils::Perspecti
 		if (!first_light_done)
 		{
 			first_light_done = true;
-			cmds.push_back(commands::SetBlendMode(skygfx::BlendStates::Additive));
+			cmds.push_back(commands::SetBlendMode(BlendStates::Additive));
 		}
 	}
 
@@ -1770,9 +1768,9 @@ void utils::DrawScene(RenderTarget* target, const PerspectiveCamera& camera,
 		scene_target = get_same_transient_target(target);
 	}
 
-	using DrawSceneFunc = std::function<void(RenderTarget* target, const utils::PerspectiveCamera& camera,
-		const std::vector<utils::Model>& models, const std::vector<utils::Light>& lights,
-		const utils::DrawSceneOptions& options)>;
+	using DrawSceneFunc = std::function<void(RenderTarget* target, const PerspectiveCamera& camera,
+		const std::vector<Model>& models, const std::vector<Light>& lights,
+		const DrawSceneOptions& options)>;
 
 	static const std::unordered_map<DrawSceneOptions::Technique, DrawSceneFunc> DrawSceneFuncs = {
 		{ DrawSceneOptions::Technique::ForwardShading, DrawSceneForwardShading },
