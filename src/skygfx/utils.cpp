@@ -1055,16 +1055,6 @@ utils::commands::Subcommands::Subcommands(const std::vector<Command>* _subcomman
 {
 }
 
-utils::commands::Subcommands::Subcommands(std::vector<Command>&& _subcommands) :
-	subcommands(_subcommands)
-{
-}
-
-utils::commands::Subcommands::Subcommands(std::function<std::vector<Command>()> _subcommands) :
-	subcommands(_subcommands)
-{
-}
-
 utils::commands::Draw::Draw(std::optional<DrawCommand> _draw_command) :
 	draw_command(std::move(_draw_command))
 {
@@ -1072,35 +1062,18 @@ utils::commands::Draw::Draw(std::optional<DrawCommand> _draw_command) :
 
 void utils::ExecuteCommands(const std::vector<Command>& cmds)
 {
-	std::optional<Viewport> viewport;
-	bool viewport_dirty = true;
+	SetViewport(std::nullopt);
+	SetScissor(std::nullopt);
+	SetBlendMode(std::nullopt);
+	SetSampler(Sampler::Linear);
+	SetCullMode(CullMode::None);
+	SetTextureAddress(TextureAddress::Clamp);
+	SetFrontFace(FrontFace::Clockwise);
+	SetDepthBias(std::nullopt);
+	SetDepthMode(std::nullopt);
+	SetStencilMode(std::nullopt);
 
-	std::optional<Scissor> scissor;
-	bool scissor_dirty = true;
-
-	std::optional<BlendMode> blend_mode;
-	bool blend_mode_dirty = true;
-
-	auto sampler = Sampler::Linear;
-	bool sampler_dirty = true;
-
-	auto cull_mode = CullMode::None;
-	bool cull_mode_dirty = true;
-
-	auto texture_address = TextureAddress::Clamp;
-	bool texture_address_dirty = true;
-
-	auto front_face = FrontFace::Clockwise;
-	bool front_face_dirty = true;
-
-	std::optional<DepthBias> depth_bias;
-	bool depth_bias_dirty = true;
-
-	std::optional<DepthMode> depth_mode;
-	bool depth_mode_dirty = true;
-
-	std::optional<StencilMode> stencil_mode;
-	bool stencil_mode_dirty = true;
+	auto& context = GetContext();
 
 	const Mesh* mesh = nullptr;
 	bool mesh_dirty = true;
@@ -1108,14 +1081,16 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	Shader* shader = nullptr;
 	bool shader_dirty = true;
 
-	const std::vector<uint8_t>* uniform_data = nullptr;
-	bool uniform_dirty = true;
+	std::unordered_map<uint32_t, const Texture*> textures;
+	std::unordered_map<uint32_t, std::tuple<void*, size_t>> uniforms;
 
-	const Texture* color_texture = nullptr;
-	const Texture* normal_texture = nullptr;
-	bool textures_dirty = true;
+	constexpr uint32_t ColorTextureBinding = 0;
+	constexpr uint32_t NormalTextureBinding = 1;
+	constexpr uint32_t SettingsUniformBinding = 2;
+	constexpr uint32_t EffectUniformBinding = 3;
 
-	std::unordered_map<uint32_t, const Texture*> custom_textures;
+	textures[ColorTextureBinding] = &context.white_pixel_texture;
+	textures[NormalTextureBinding] = &context.white_pixel_texture;
 
 	struct alignas(16) Settings
 	{
@@ -1130,47 +1105,46 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 
 	bool settings_dirty = true;
 
-	std::function<void(const Command&)> execute_command = [&](const Command& _cmd) {
+	std::function<void(const Command&)> execute_command;
+
+	auto execute_commands = [&](const std::vector<Command>& _cmds) {
+		for (const auto& cmd : _cmds)
+		{
+			execute_command(cmd);
+		}
+	};
+
+	execute_command = [&](const Command& _cmd) {
 		std::visit(cases{
 			[&](const commands::SetViewport& cmd) {
-				viewport = cmd.viewport;
-				viewport_dirty = true;
+				SetViewport(cmd.viewport);
 			},
 			[&](const commands::SetScissor& cmd) {
-				scissor = cmd.scissor;
-				scissor_dirty = true;
+				SetScissor(cmd.scissor);
 			},
 			[&](const commands::SetBlendMode& cmd) {
-				blend_mode = cmd.blend_mode;
-				blend_mode_dirty = true;
+				SetBlendMode(cmd.blend_mode);
 			},
 			[&](const commands::SetSampler& cmd) {
-				sampler = cmd.sampler;
-				sampler_dirty = true;
+				SetSampler(cmd.sampler);
 			},
 			[&](const commands::SetCullMode& cmd) {
-				cull_mode = cmd.cull_mode;
-				cull_mode_dirty = true;
+				SetCullMode(cmd.cull_mode);
 			},
 			[&](const commands::SetTextureAddress& cmd) {
-				texture_address = cmd.texture_address;
-				texture_address_dirty = true;
+				SetTextureAddress(cmd.texture_address);
 			},
 			[&](const commands::SetFrontFace& cmd) {
-				front_face = cmd.front_face;
-				front_face_dirty = true;
+				SetFrontFace(cmd.front_face);
 			},
 			[&](const commands::SetDepthBias& cmd) {
-				depth_bias = cmd.depth_bias;
-				depth_bias_dirty = true;
+				SetDepthBias(cmd.depth_bias);
 			},
 			[&](const commands::SetDepthMode& cmd) {
-				depth_mode = cmd.depth_mode;
-				depth_mode_dirty = true;
+				SetDepthMode(cmd.depth_mode);
 			},
 			[&](const commands::SetStencilMode& cmd) {
-				stencil_mode = cmd.stencil_mode;
-				stencil_mode_dirty = true;
+				SetStencilMode(cmd.stencil_mode);
 			},
 			[&](const commands::SetMesh& cmd) {
 				mesh = cmd.mesh;
@@ -1179,24 +1153,19 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			[&](const commands::SetEffect& cmd) {
 				shader = cmd.shader;
 				if (shader)
-					uniform_data = &cmd.uniform_data;
-				else
-					uniform_data = nullptr;
+					uniforms[EffectUniformBinding] = { (void*)cmd.uniform_data.data(), cmd.uniform_data.size() };
 
 				shader_dirty = true;
-				uniform_dirty = true;
 			},
 			[&](const commands::SetCustomTexture& cmd) {
-				custom_textures[cmd.binding] = cmd.texture;
+				textures[cmd.binding] = cmd.texture;
 			},
 			[&](const commands::SetColorTexture& cmd) {
-				color_texture = cmd.color_texture;
-				textures_dirty = true;
+				textures[ColorTextureBinding] = cmd.color_texture ? cmd.color_texture : &context.white_pixel_texture;
 			},
 			[&](const commands::SetNormalTexture& cmd) {
-				normal_texture = cmd.normal_texture;
-				textures_dirty = true;
-				settings.has_normal_texture = normal_texture != nullptr;
+				textures[NormalTextureBinding] = cmd.normal_texture ? cmd.normal_texture : &context.white_pixel_texture;
+				settings.has_normal_texture = cmd.normal_texture != nullptr;
 				settings_dirty = true;
 			},
 			[&](const commands::SetColor& cmd) {
@@ -1235,90 +1204,11 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				settings_dirty = true;
 			},
 			[&](const commands::Subcommands& cmd) {
-				std::visit(cases{
-					[&](const std::vector<Command>* subcommands) {
-						for (const auto& subcommand : *subcommands)
-						{
-							execute_command(subcommand);
-						}
-					},
-					[&](const std::vector<Command>& subcommands) {
-						for (const auto& subcommand : subcommands)
-						{
-							execute_command(subcommand);
-						}
-					},
-					[&](const std::function<std::vector<Command>()>& subcommands) {
-						for (const auto& subcommand : subcommands())
-						{
-							execute_command(subcommand);
-						}
-					}
-				}, cmd.subcommands);
+				execute_commands(*cmd.subcommands);
 			},
 			[&](const commands::Draw& cmd) {
-				if (viewport_dirty)
-				{
-					SetViewport(viewport);
-					viewport_dirty = false;
-				}
-
-				if (scissor_dirty)
-				{
-					SetScissor(scissor);
-					scissor_dirty = false;
-				}
-
-				if (blend_mode_dirty)
-				{
-					SetBlendMode(blend_mode);
-					blend_mode_dirty = false;
-				}
-
-				if (sampler_dirty)
-				{
-					SetSampler(sampler);
-					sampler_dirty = false;
-				}
-
-				if (cull_mode_dirty)
-				{
-					SetCullMode(cull_mode);
-					cull_mode_dirty = false;
-				}
-
-				if (texture_address_dirty)
-				{
-					SetTextureAddress(texture_address);
-					texture_address_dirty = false;
-				}
-
-				if (front_face_dirty)
-				{
-					SetFrontFace(front_face);
-					front_face_dirty = false;
-				}
-
-				if (depth_bias_dirty)
-				{
-					SetDepthBias(depth_bias);
-					depth_bias_dirty = false;
-				}
-
-				if (depth_mode_dirty)
-				{
-					SetDepthMode(depth_mode);
-					depth_mode_dirty = false;
-				}
-
-				if (stencil_mode_dirty)
-				{
-					SetStencilMode(stencil_mode);
-					stencil_mode_dirty = false;
-				}
-
 				if (mesh == nullptr)
-					mesh = &GetContext().default_mesh;
+					mesh = &context.default_mesh;
 
 				if (mesh_dirty)
 				{
@@ -1339,48 +1229,37 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 
 				if (shader_dirty)
 				{
-					SetShader(shader == nullptr ? GetContext().default_shader : *shader);
+					SetShader(shader == nullptr ? context.default_shader : *shader);
 					shader_dirty = false;
-				}
-
-				if (uniform_dirty)
-				{
-					if (uniform_data != nullptr)
-					{
-						SetUniformBuffer(3, (void*)uniform_data->data(), uniform_data->size());
-					}
-					uniform_dirty = false;
-				}
-
-				if (textures_dirty)
-				{
-					const auto& _color_texture = color_texture != nullptr ? *color_texture : GetContext().white_pixel_texture;
-					// TODO: we dont need use white normal_texture since we improve normalmapping, just do nothing
-					const auto& _normal_texture = normal_texture != nullptr ? *normal_texture : GetContext().white_pixel_texture;
-
-					SetTexture(0, _color_texture);
-					SetTexture(1, _normal_texture);
-
-					textures_dirty = false;
-				}
-
-				if (!custom_textures.empty())
-				{
-					for (auto [binding, texture] : custom_textures)
-					{
-						SetTexture(binding, *texture);
-					}
-					custom_textures.clear();
 				}
 
 				if (settings_dirty)
 				{
-					SetUniformBuffer(2, settings);
+					uniforms[SettingsUniformBinding] = { &settings, sizeof(settings) };
 					settings_dirty = false;
 				}
 
+				if (!uniforms.empty())
+				{
+					for (const auto& [binding, data] : uniforms)
+					{
+						auto [memory, size] = data;
+						SetUniformBuffer(binding, memory, size);
+					}
+					uniforms.clear();
+				}
+
+				if (!textures.empty())
+				{
+					for (auto [binding, texture] : textures)
+					{
+						SetTexture(binding, *texture);
+					}
+					textures.clear();
+				}
+
 				auto draw_command = cmd.draw_command;
-			
+
 				if (!draw_command.has_value())
 				{
 					if (mesh->getIndexCount() == 0)
@@ -1393,24 +1272,19 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 					[&](const DrawVerticesCommand& draw) {
 						auto vertex_count = draw.vertex_count.value_or(mesh->getVertexCount());
 						auto vertex_offset = draw.vertex_offset;
-
-						::Draw(vertex_count, vertex_offset);
+						Draw(vertex_count, vertex_offset);
 					},
 					[&](const DrawIndexedVerticesCommand& draw) {
 						auto index_count = draw.index_count.value_or(mesh->getIndexCount());
 						auto index_offset = draw.index_offset;
-
 						DrawIndexed(index_count, index_offset);
 					}
 				}, draw_command.value());
 			}
 		}, _cmd);
 	};
-	
-	for (const auto& cmd : cmds)
-	{
-		execute_command(cmd);
-	}
+
+	execute_commands(cmds);
 }
 
 void utils::ExecuteRenderPass(const RenderPass& render_pass)
@@ -1428,12 +1302,15 @@ void utils::ExecuteRenderPass(const RenderPass& render_pass)
 
 void utils::passes::Blit(Texture* src, RenderTarget* dst, const BlitOptions& options)
 {
-	std::vector<Command> cmds;
+	auto render_pass = RenderPass{
+		.targets = { dst },
+		.clear = options.clear
+	};
 
 	if (options.effect.has_value())
-		cmds.push_back(options.effect.value());
+		render_pass.commands.push_back(options.effect.value());
 
-	cmds.insert(cmds.end(), {
+	render_pass.commands.insert(render_pass.commands.end(), {
 		commands::SetSampler(options.sampler),
 		commands::SetColor(options.color),
 		commands::SetBlendMode(options.blend_mode),
@@ -1441,11 +1318,7 @@ void utils::passes::Blit(Texture* src, RenderTarget* dst, const BlitOptions& opt
 		commands::Draw()
 	});
 
-	ExecuteRenderPass({
-		.targets = { dst },
-		.clear = options.clear,
-		.commands = std::move(cmds)
-	});
+	ExecuteRenderPass(render_pass);
 }
 
 void utils::passes::GaussianBlur(RenderTarget* src, RenderTarget* dst)
@@ -1592,9 +1465,9 @@ void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float br
 	ReleaseTransientRenderTarget(blur_dst);
 }
 
-utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_color_texture, bool use_normal_texture)
+std::vector<utils::Command> utils::Model::Draw(const Model& model, bool use_color_texture, bool use_normal_texture)
 {
-	return commands::Subcommands({
+	return {
 		commands::SetColorTexture(use_color_texture ? model.color_texture : nullptr),
 		commands::SetNormalTexture(use_normal_texture ? model.normal_texture : nullptr),
 		commands::SetMesh(model.mesh),
@@ -1605,7 +1478,7 @@ utils::commands::Subcommands utils::Model::Draw(const Model& model, bool use_col
 		commands::SetColor(model.color),
 		commands::SetSampler(model.sampler),
 		commands::Draw(model.draw_command)
-	});
+	};
 }
 
 static void DrawSceneForwardShading(RenderTarget* target, const utils::PerspectiveCamera& camera,
@@ -1617,34 +1490,31 @@ static void DrawSceneForwardShading(RenderTarget* target, const utils::Perspecti
 	if (models.empty())
 		return;
 
+	if (lights.empty())
+		return;
+
+	auto render_pass = RenderPass{
+		.targets = { target },
+		.clear = options.clear_target,
+		.commands = {
+			commands::SetCamera(camera),
+			commands::SetMipmapBias(options.mipmap_bias)
+		}
+	};
+
 	std::vector<Command> draw_models;
 
 	for (const auto& model : models)
 	{
-		draw_models.push_back(Model::Draw(model, options.use_color_textures, options.use_normal_textures));
-	}
-
-	std::vector<Command> cmds = {
-		commands::SetCamera(camera),
-		commands::SetMipmapBias(options.mipmap_bias)
-	};
-
-	if (lights.empty())
-	{
-		cmds.push_back(commands::Subcommands(&draw_models));
-		ExecuteRenderPass({
-			.targets = { target },
-			.clear = options.clear_target,
-			.commands = std::move(cmds)
-		});
-		return;
+		auto cmds = Model::Draw(model, options.use_color_textures, options.use_normal_textures);
+		std::ranges::move(cmds, std::back_inserter(draw_models));
 	}
 
 	bool first_light_done = false;
 
 	for (const auto& light : lights)
 	{
-		cmds.insert(cmds.end(), {
+		render_pass.commands.insert(render_pass.commands.end(), {
 			std::visit(cases{
 				[](const DirectionalLight& light) {
 					return commands::SetEffect(effects::forward_shading::DirectionalLight(light));
@@ -1659,15 +1529,11 @@ static void DrawSceneForwardShading(RenderTarget* target, const utils::Perspecti
 		if (!first_light_done)
 		{
 			first_light_done = true;
-			cmds.push_back(commands::SetBlendMode(BlendStates::Additive));
+			render_pass.commands.push_back(commands::SetBlendMode(BlendStates::Additive));
 		}
 	}
 
-	ExecuteRenderPass({
-		.targets = { target },
-		.clear = options.clear_target,
-		.commands = std::move(cmds)
-	});
+	ExecuteRenderPass(render_pass);
 }
 
 static void DrawSceneDeferredShading(RenderTarget* target, const utils::PerspectiveCamera& camera,
@@ -1679,47 +1545,48 @@ static void DrawSceneDeferredShading(RenderTarget* target, const utils::Perspect
 	if (models.empty())
 		return;
 
-	std::vector<Command> draw_models;
+	if (lights.empty())
+		return;
 
-	for (const auto& model : models)
-	{
-		draw_models.push_back(Model::Draw(model, options.use_color_textures, options.use_normal_textures));
-	}
-
-	// extract g-buffer
+	// g-buffer pass
 
 	auto color_buffer = AcquireTransientRenderTarget();
 	auto normal_buffer = AcquireTransientRenderTarget();
 	auto positions_buffer = AcquireTransientRenderTarget();
 
-	ExecuteRenderPass({
+	auto gbuffer_pass = RenderPass{
 		.targets = { color_buffer, normal_buffer, positions_buffer },
 		.clear = true,
 		.commands = {
 			commands::SetMipmapBias(options.mipmap_bias),
 			commands::SetCamera(camera),
 			commands::SetEffect(effects::deferred_shading::ExtractGeometryBuffer{}),
-			commands::Subcommands(&draw_models)
 		}
-	});
+	};
 
-	ViewStage("color_buffer", color_buffer);
-	ViewStage("normal_buffer", normal_buffer);
-	ViewStage("positions_buffer", positions_buffer);
+	for (const auto& model : models)
+	{
+		auto cmds = Model::Draw(model, options.use_color_textures, options.use_normal_textures);
+		std::ranges::move(cmds, std::back_inserter(gbuffer_pass.commands));
+	}
 
-	// draw lights using g-buffer
+	// light pass
 
-	std::vector<Command> cmds = {
-		commands::SetEyePosition(camera.position),
-		commands::SetBlendMode(BlendStates::Additive),
-		commands::SetCustomTexture(5, color_buffer),
-		commands::SetCustomTexture(6, normal_buffer),
-		commands::SetCustomTexture(7, positions_buffer)
+	auto light_pass = RenderPass{
+		.targets = { target },
+		.clear = options.clear_target,
+		.commands = {
+			commands::SetEyePosition(camera.position),
+			commands::SetBlendMode(BlendStates::Additive),
+			commands::SetCustomTexture(5, color_buffer),
+			commands::SetCustomTexture(6, normal_buffer),
+			commands::SetCustomTexture(7, positions_buffer)
+		}
 	};
 
 	for (const auto& light : lights)
 	{
-		cmds.insert(cmds.end(), {
+		light_pass.commands.insert(light_pass.commands.end(), {
 			std::visit(cases{
 				[](const DirectionalLight& light) {
 					return commands::SetEffect(effects::deferred_shading::DirectionalLight(light));
@@ -1732,11 +1599,12 @@ static void DrawSceneDeferredShading(RenderTarget* target, const utils::Perspect
 		});
 	}
 
-	ExecuteRenderPass({
-		.targets = { target },
-		.clear = options.clear_target,
-		.commands = std::move(cmds)
-	});
+	ExecuteRenderPass(gbuffer_pass);
+	ExecuteRenderPass(light_pass);
+
+	ViewStage("color_buffer", color_buffer);
+	ViewStage("normal_buffer", normal_buffer);
+	ViewStage("positions_buffer", positions_buffer);
 
 	ReleaseTransientRenderTarget(color_buffer);
 	ReleaseTransientRenderTarget(normal_buffer);

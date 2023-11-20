@@ -545,13 +545,7 @@ namespace skygfx::utils
 		struct Subcommands
 		{
 			Subcommands(const std::vector<Command>* subcommands);
-			Subcommands(std::vector<Command>&& subcommands);
-			Subcommands(std::function<std::vector<Command>()> subcommands);
-			std::variant<
-				const std::vector<Command>*,
-				std::vector<Command>,
-				std::function<std::vector<Command>()>
-			> subcommands;
+			const std::vector<Command>* subcommands;
 		};
 	}
 
@@ -605,7 +599,7 @@ namespace skygfx::utils
 		DepthMode depth_mode;
 		Sampler sampler = Sampler::Linear;
 
-		static commands::Subcommands Draw(const Model& model, bool use_color_texture = true,
+		static std::vector<Command> Draw(const Model& model, bool use_color_texture = true,
 			bool use_normal_texture = true);
 	};
 
