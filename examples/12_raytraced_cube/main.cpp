@@ -112,7 +112,7 @@ void main()
 
 const auto WhiteColor = glm::vec4{ 1.0f, 1.0f, 1.0f, 1.0f };
 
-const skygfx::utils::Mesh::Vertices vertices = {
+const std::vector<skygfx::vertex::PositionColorTextureNormal> vertices = {
 	/* front */
 	/* 0  */ { { -1.0f,  1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
 	/* 1  */ { {  1.0f,  1.0f,  1.0f }, WhiteColor, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
@@ -150,7 +150,7 @@ const skygfx::utils::Mesh::Vertices vertices = {
 	/* 23 */ { { 1.0f,  1.0f,  1.0f }, WhiteColor, { 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
 };
 
-const skygfx::utils::Mesh::Indices indices = {
+const std::vector<uint32_t> indices = {
 	0, 1, 2, 1, 3, 2, // front
 	4, 5, 6, 5, 7, 6, // top
 	8, 9, 10, 9, 11, 10, // left
@@ -211,7 +211,7 @@ int main()
 		auto target = skygfx::AcquireTransientRenderTarget();
 
 		skygfx::SetStorageBuffer(4, (void*)indices.data(), indices.size() * sizeof(uint32_t));
-		skygfx::SetStorageBuffer(5, (void*)vertices.data(), vertices.size() * sizeof(skygfx::utils::Mesh::Vertex));
+		skygfx::SetStorageBuffer(5, (void*)vertices.data(), vertices.size() * sizeof(skygfx::vertex::PositionColorTextureNormal));
 		skygfx::SetTexture(3, texture);
 		skygfx::SetShader(shader);
 		skygfx::SetRenderTarget(*target);
