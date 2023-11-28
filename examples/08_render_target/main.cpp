@@ -181,8 +181,8 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 	
-	auto cube_shader = skygfx::Shader(CubeVertex::Layout, cube_vertex_shader_code, cube_fragment_shader_code);
-	auto triangle_shader = skygfx::Shader(TriangleVertex::Layout, triangle_vertex_shader_code, triangle_fragment_shader_code);
+	auto cube_shader = skygfx::Shader(cube_vertex_shader_code, cube_fragment_shader_code, CubeVertex::Defines);
+	auto triangle_shader = skygfx::Shader(triangle_vertex_shader_code, triangle_fragment_shader_code, TriangleVertex::Defines);
 
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
@@ -205,6 +205,7 @@ int main()
 	skygfx::SetVertexBuffer(triangle_vertices);
 	skygfx::SetIndexBuffer(triangle_indices);
 	skygfx::SetShader(triangle_shader);
+	skygfx::SetInputLayout(TriangleVertex::Layout);
 	skygfx::Clear(glm::vec4{ 0.25f, 0.25f, 0.25f, 1.0f });
 	skygfx::DrawIndexed(static_cast<uint32_t>(triangle_indices.size()));
 
@@ -218,6 +219,7 @@ int main()
 	skygfx::SetUniformBuffer(2, light);
 	skygfx::SetTexture(0, target); // render targets can be pushed as textures
 	skygfx::SetShader(cube_shader);
+	skygfx::SetInputLayout(CubeVertex::Layout);
 
 	while (!glfwWindowShouldClose(window))
 	{

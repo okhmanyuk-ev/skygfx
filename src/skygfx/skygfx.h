@@ -59,19 +59,6 @@ namespace skygfx
 		ClosestHit
 	};
 
-	struct VertexAttribute
-	{
-		std::optional<std::string> location_define;
-		Format format;
-		size_t offset;
-	};
-
-	struct VertexLayout
-	{
-		size_t stride;
-		std::vector<VertexAttribute> attributes;
-	};
-
 	using TextureHandle = struct TextureHandle;
 	using RenderTargetHandle = struct RenderTargetHandle;
 	using ShaderHandle = struct ShaderHandle;
@@ -144,8 +131,8 @@ namespace skygfx
 	class Shader : private noncopyable
 	{
 	public:
-		Shader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
-			const std::string& fragment_code, const std::vector<std::string>& defines = {});
+		Shader(const std::string& vertex_code, const std::string& fragment_code,
+			const std::vector<std::string>& defines = {});
 		Shader(Shader&& other) noexcept;
 		virtual ~Shader();
 
@@ -387,6 +374,22 @@ namespace skygfx
 		bool operator==(const Viewport& other) const = default;
 	};
 
+	struct InputLayout
+	{
+		struct Attribute
+		{
+			Format format;
+			size_t offset;
+
+			bool operator==(const Attribute& other) const = default;
+		};
+
+		size_t stride;
+		std::vector<Attribute> attributes;
+
+		bool operator==(const InputLayout& other) const = default;
+	};
+
 	enum class Blend
 	{
 		One, // Each component of the color is multiplied by {1, 1, 1, 1}.
@@ -561,6 +564,7 @@ namespace skygfx
 	void SetRenderTarget(std::nullopt_t value);
 	void SetShader(const Shader& shader);
 	void SetShader(const RaytracingShader& shader);
+	void SetInputLayout(const InputLayout& value);
 	void SetVertexBuffer(const VertexBuffer& value);
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
@@ -640,6 +644,30 @@ namespace skygfx
 		Format format = Format::Float4);
 	void ReleaseTransientRenderTarget(RenderTarget* target);
 }
+
+SKYGFX_MAKE_HASHABLE(skygfx::InputLayout::Attribute,
+	t.format,
+	t.offset
+);
+
+namespace std
+{
+	template<>
+	struct hash<skygfx::InputLayout>
+	{
+		std::size_t operator()(const skygfx::InputLayout& t) const // TODO: use SKYGFX_MAKE_HASHABLE
+		{
+			std::size_t ret = 0;
+			skygfx::hash_combine(ret, t.stride);
+			for (const auto& attribute : t.attributes)
+			{
+				skygfx::hash_combine(ret, attribute);
+			}
+			return ret;
+		}
+	};
+}
+
 
 SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,
 	t.red,

@@ -891,13 +891,15 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const
 
 Shader utils::MakeEffectShader(const std::string& effect_shader_func)
 {
-	return Shader(Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code + effect_shader_func, {
+	auto defines = utils::Mesh::Vertex::Defines;
+	defines.insert(defines.end(), {
 		"COLOR_TEXTURE_BINDING 0",
 		"NORMAL_TEXTURE_BINDING 1",
 		"SETTINGS_UNIFORM_BINDING 2",
 		"EFFECT_UNIFORM_BINDING 3",
 		"EFFECT_FUNC effect"
 	});
+	return Shader(vertex_shader_code, fragment_shader_code + effect_shader_func, defines);
 }
 
 void utils::ClearContext()
@@ -915,12 +917,19 @@ utils::Context& utils::GetContext()
 
 static const uint32_t white_pixel = 0xFFFFFFFF;
 
-utils::Context::Context() :
-	default_shader(utils::Mesh::Vertex::Layout, vertex_shader_code, fragment_shader_code, std::vector<std::string>{
+static std::vector<std::string> MakeDefaultShaderDefines()
+{
+	auto result = utils::Mesh::Vertex::Defines;
+	result.insert(result.end(), {
 		"COLOR_TEXTURE_BINDING 0",
 		"NORMAL_TEXTURE_BINDING 1",
 		"SETTINGS_UNIFORM_BINDING 2"
-	}),
+	});
+	return result;
+}
+
+utils::Context::Context() :
+	default_shader(vertex_shader_code, fragment_shader_code, MakeDefaultShaderDefines()),
 	default_mesh({
 		{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
 		{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
@@ -1072,6 +1081,7 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	SetDepthBias(std::nullopt);
 	SetDepthMode(std::nullopt);
 	SetStencilMode(std::nullopt);
+	SetInputLayout(Mesh::Vertex::Layout);
 
 	auto& context = GetContext();
 

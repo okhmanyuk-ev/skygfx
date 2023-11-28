@@ -67,12 +67,13 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
-	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
+	auto shader = skygfx::Shader(vertex_shader_code, fragment_shader_code, Vertex::Defines);
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);
 	skygfx::SetVertexBuffer(vertices);
 	skygfx::SetIndexBuffer(indices);
+	skygfx::SetInputLayout(Vertex::Layout);
 
 	while (!glfwWindowShouldClose(window))
 	{

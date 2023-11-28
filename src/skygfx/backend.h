@@ -19,6 +19,7 @@ namespace skygfx
 		virtual void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) = 0;
 		virtual void setRenderTarget(std::nullopt_t value) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
+		virtual void setInputLayout(const InputLayout& value) = 0;
 		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
@@ -52,7 +53,7 @@ namespace skygfx
 		virtual RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) = 0;
 		virtual void destroyRenderTarget(RenderTargetHandle* handle) = 0;
 
-		virtual ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
+		virtual ShaderHandle* createShader(const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) = 0;
 		virtual void destroyShader(ShaderHandle* handle) = 0;
 

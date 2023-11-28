@@ -111,7 +111,7 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
-	auto shader = skygfx::Shader(Vertex::Layout, vertex_shader_code, fragment_shader_code);
+	auto shader = skygfx::Shader(vertex_shader_code, fragment_shader_code, Vertex::Defines);
 
 	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
 
@@ -127,6 +127,7 @@ int main()
 	skygfx::SetIndexBuffer(indices);
 	skygfx::SetCullMode(skygfx::CullMode::Back);
 	skygfx::SetTexture(0, texture);
+	skygfx::SetInputLayout(Vertex::Layout);
 
 	while (!glfwWindowShouldClose(window))
 	{

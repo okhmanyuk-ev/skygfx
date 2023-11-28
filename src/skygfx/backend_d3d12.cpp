@@ -58,6 +58,7 @@ struct PipelineStateD3D12
 	TopologyKind topology_kind = TopologyKind::Triangles;
 	std::vector<DXGI_FORMAT> color_attachment_formats;
 	std::optional<DXGI_FORMAT> depth_stencil_format;
+	InputLayout input_layout; // TODO: std optional
 
 	bool operator==(const PipelineStateD3D12& other) const = default;
 };
@@ -78,6 +79,7 @@ struct std::hash<PipelineStateD3D12>
 			skygfx::hash_combine(ret, format);
 		}
 		skygfx::hash_combine(ret, t.depth_stencil_format);
+		skygfx::hash_combine(ret, t.input_layout);
 		return ret;
 	}
 };
@@ -232,7 +234,6 @@ public:
 	const auto& getBindingToRootIndexMap() const { return mBindingToRootIndexMap; }
 	const auto& getVertexShaderBlob() const { return mVertexShaderBlob; }
 	const auto& getPixelShaderBlob() const { return mPixelShaderBlob; }
-	const auto& getInput() const { return mInput; }
 
 private:
 	ComPtr<ID3D12RootSignature> mRootSignature;
@@ -241,14 +242,11 @@ private:
 	std::unordered_map<uint32_t, uint32_t> mBindingToRootIndexMap;
 	ComPtr<ID3DBlob> mVertexShaderBlob;
 	ComPtr<ID3DBlob> mPixelShaderBlob;
-	std::vector<D3D12_INPUT_ELEMENT_DESC> mInput;
 
 public:
-	ShaderD3D12(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderD3D12(const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		AddShaderLocationDefines(vertex_layout, defines);
-
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
@@ -283,15 +281,6 @@ public:
 
 		if (mPixelShaderBlob == NULL)
 			throw std::runtime_error(pixel_shader_error_string);
-
-		UINT i = 0;
-
-		for (auto& attrib : vertex_layout.attributes)
-		{
-			mInput.push_back({ "TEXCOORD", i, FormatMap.at(attrib.format), 0,
-				static_cast<UINT>(attrib.offset), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 });
-			i++;
-		}
 
 		auto vertex_shader_reflection = MakeSpirvReflection(vertex_shader_spirv);
 		auto fragment_shader_reflection = MakeSpirvReflection(fragment_shader_spirv);
@@ -829,13 +818,27 @@ static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineSta
 
 	auto topology_type = TopologyTypeMap.at(pipeline_state.topology_kind);
 
+	std::vector<D3D12_INPUT_ELEMENT_DESC> input_elements;
+
+	for (size_t i = 0; i < pipeline_state.input_layout.attributes.size(); i++)
+	{
+		const auto& attribute = pipeline_state.input_layout.attributes.at(i);
+
+		input_elements.push_back(D3D12_INPUT_ELEMENT_DESC{
+			.SemanticName = "TEXCOORD",
+			.SemanticIndex = (UINT)i,
+			.Format = FormatMap.at(attribute.format),
+			.InputSlot = 0,
+			.AlignedByteOffset = (UINT)attribute.offset,
+			.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+			.InstanceDataStepRate = 0
+		});
+	}
+
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
 	pso_desc.VS = CD3DX12_SHADER_BYTECODE(pipeline_state.shader->getVertexShaderBlob().Get());
 	pso_desc.PS = CD3DX12_SHADER_BYTECODE(pipeline_state.shader->getPixelShaderBlob().Get());
-	pso_desc.InputLayout = {
-		pipeline_state.shader->getInput().data(),
-		(UINT)pipeline_state.shader->getInput().size()
-	};
+	pso_desc.InputLayout = { input_elements.data(), (UINT)input_elements.size() };
 	pso_desc.NodeMask = 1;
 	pso_desc.PrimitiveTopologyType = topology_type;
 	pso_desc.pRootSignature = pipeline_state.shader->getRootSignature().Get();
@@ -1260,6 +1263,11 @@ void BackendD3D12::setShader(ShaderHandle* handle)
 	gContext->pipeline_state.shader = (ShaderD3D12*)handle;
 }
 
+void BackendD3D12::setInputLayout(const InputLayout& value)
+{
+	gContext->pipeline_state.input_layout = value;
+}
+
 void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferD3D12*)handle;
@@ -1514,10 +1522,10 @@ void BackendD3D12::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendD3D12::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code,
+ShaderHandle* BackendD3D12::createShader(const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderD3D12(vertex_layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderD3D12(vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

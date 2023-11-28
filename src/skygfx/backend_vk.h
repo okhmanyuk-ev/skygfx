@@ -22,6 +22,7 @@ namespace skygfx
 		void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) override;
 		void setRenderTarget(std::nullopt_t value) override;
 		void setShader(ShaderHandle* handle) override;
+		void setInputLayout(const InputLayout& value) override;
 		void setRaytracingShader(RaytracingShaderHandle* handle) override;
 		void setVertexBuffer(VertexBufferHandle* handle) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
@@ -60,7 +61,7 @@ namespace skygfx
 		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) override;
 		void destroyRenderTarget(RenderTargetHandle* handle) override;
 
-		ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
+		ShaderHandle* createShader(const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
 

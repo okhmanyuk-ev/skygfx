@@ -243,19 +243,6 @@ std::string skygfx::CompileSpirvToMsl(const std::vector<uint32_t>& spirv)
 	return compiler.compile();
 }
 
-void skygfx::AddShaderLocationDefines(const VertexLayout& vertex_layout, std::vector<std::string>& defines)
-{
-	for (int i = 0; i < vertex_layout.attributes.size(); i++)
-	{
-		const auto& attrib = vertex_layout.attributes.at(i);
-		
-		if (!attrib.location_define.has_value())
-			continue;
-			
-		defines.push_back(attrib.location_define.value() + " " + std::to_string(i));
-	}
-}
-
 ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 {
 	static const std::unordered_map<SpvReflectDescriptorType, ShaderReflection::Descriptor::Type> DescriptorTypeMap = {

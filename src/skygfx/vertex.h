@@ -28,13 +28,17 @@ namespace skygfx::vertex
 		constexpr glm::vec3 Bitangent = { 0.0f, 1.0f, 0.0f };
 	}
 
-	// predefined vertex types:
+	std::vector<std::string> MakeSequentialLocationDefines(const std::vector<std::string>& locations);
 
 	struct Position
 	{
 		glm::vec3 pos = defaults::Position;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position
+		});
 	};
 
 	struct PositionColor
@@ -42,7 +46,12 @@ namespace skygfx::vertex
 		glm::vec3 pos = defaults::Position;
 		glm::vec4 color = defaults::Color;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::Color
+		});
 	};
 
 	struct PositionTexture 
@@ -50,7 +59,12 @@ namespace skygfx::vertex
 		glm::vec3 pos = defaults::Position;
 		glm::vec2 texcoord = defaults::TexCoord;
 	
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::TexCoord
+		});
 	};
 
 	struct PositionNormal
@@ -58,7 +72,12 @@ namespace skygfx::vertex
 		glm::vec3 pos = defaults::Position;
 		glm::vec3 normal = defaults::Normal;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::Normal
+		});
 	};
 
 	struct PositionColorNormal
@@ -67,7 +86,13 @@ namespace skygfx::vertex
 		glm::vec4 color = defaults::Color;
 		glm::vec3 normal = defaults::Normal;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::Color,
+			location::Normal
+		});
 	};
 
 	struct PositionColorTexture
@@ -76,7 +101,13 @@ namespace skygfx::vertex
 		glm::vec4 color = defaults::Color;
 		glm::vec2 texcoord = defaults::TexCoord;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::Color,
+			location::TexCoord
+		});
 	};
 
 	struct PositionTextureNormal
@@ -85,7 +116,13 @@ namespace skygfx::vertex
 		glm::vec2 texcoord = defaults::TexCoord;
 		glm::vec3 normal = defaults::Normal;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::TexCoord,
+			location::Normal
+		});
 	};
 
 	struct PositionColorTextureNormal
@@ -95,7 +132,14 @@ namespace skygfx::vertex
 		glm::vec2 texcoord = defaults::TexCoord;
 		glm::vec3 normal = defaults::Normal;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::Color,
+			location::TexCoord,
+			location::Normal
+		});
 	};
 
 	struct PositionColorTextureNormalTangent
@@ -106,7 +150,15 @@ namespace skygfx::vertex
 		glm::vec3 normal = defaults::Normal;
 		glm::vec3 tangent = defaults::Tangent;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::Color,
+			location::TexCoord,
+			location::Normal,
+			location::Tangent
+		});
 	};
 
 	struct PositionColorTextureNormalTangentBitangent
@@ -118,6 +170,15 @@ namespace skygfx::vertex
 		glm::vec3 tangent = defaults::Tangent;
 		glm::vec3 bitangent = defaults::Bitangent;
 
-		static const VertexLayout Layout;
+		static const InputLayout Layout;
+
+		static inline const auto Defines = MakeSequentialLocationDefines({
+			location::Position,
+			location::Color,
+			location::TexCoord,
+			location::Normal,
+			location::Tangent,
+			location::Bitangent
+		});
 	};
 }

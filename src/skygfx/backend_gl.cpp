@@ -203,9 +203,8 @@ static const std::unordered_map<Format, GLenum> TextureFormatMap = {
 class ShaderGL
 {
 private:
-	VertexLayout mVertexLayout;
 	GLuint mProgram;
-	GLuint mVao;
+	//GLuint mVao;
 	ShaderReflection mVertRefl;
 	ShaderReflection mFragRefl;
 	
@@ -217,10 +216,9 @@ private:
 	} options;
 
 public:
-	ShaderGL(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
-		std::vector<std::string> defines) : mVertexLayout(vertex_layout)
+	ShaderGL(const std::string& vertex_code, const std::string& fragment_code,
+		std::vector<std::string> defines)
 	{
-		AddShaderLocationDefines(vertex_layout, defines);
 		defines.push_back("FLIP_TEXCOORD_Y");
 
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
@@ -289,12 +287,12 @@ public:
 			glGetShaderInfoLog(fragmentShader, maxLength, &maxLength, &errorLog[0]);
 			throw std::runtime_error(errorLog);
 		}
-		
+
 		mProgram = glCreateProgram();
 		glAttachShader(mProgram, vertexShader);
 		glAttachShader(mProgram, fragmentShader);
 		glLinkProgram(mProgram);
-		
+
 		GLint link_status = 0;
 		glGetProgramiv(mProgram, GL_LINK_STATUS, &link_status);
 		if (link_status == GL_FALSE)
@@ -306,19 +304,9 @@ public:
 			glGetProgramInfoLog(mProgram, maxLength, &maxLength, &errorLog[0]);
 			throw std::runtime_error(errorLog);
 		}
-		
+
 		glDeleteShader(vertexShader);
 		glDeleteShader(fragmentShader);
-
-		glGenVertexArrays(1, &mVao);
-		glBindVertexArray(mVao);
-
-		for (int i = 0; i < vertex_layout.attributes.size(); i++)
-		{
-			const auto& attrib = vertex_layout.attributes.at(i);
-
-			glEnableVertexAttribArray(i);
-		}
 		
 		mVertRefl = MakeSpirvReflection(vertex_shader_spirv);
 		mFragRefl = MakeSpirvReflection(fragment_shader_spirv);
@@ -329,7 +317,8 @@ public:
 
 		if (need_fix_uniform_bindings)
 		{
-			auto fix_bindings = [&](const ShaderReflection& reflection) {
+			for (const auto& reflection : { mVertRefl, mFragRefl })
+			{
 				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
 				{
 					if (descriptor.type != ShaderReflection::Descriptor::Type::UniformBuffer)
@@ -339,21 +328,17 @@ public:
 					glUniformBlockBinding(mProgram, block_index, binding);
 				}
 			};
-			fix_bindings(mVertRefl);
-			fix_bindings(mFragRefl);
 		}
 	}
 
 	~ShaderGL()
 	{
-		glDeleteVertexArrays(1, &mVao);
 		glDeleteProgram(mProgram);
 	}
 
 	void apply()
 	{
 		glUseProgram(mProgram);
-		glBindVertexArray(mVao);
 		
 		bool need_fix_texture_bindings =
 			(options.es && options.version <= 300) ||
@@ -361,7 +346,8 @@ public:
 			
 		if (need_fix_texture_bindings)
 		{
-			auto fix_bindings = [&](const ShaderReflection& reflection) {
+			for (const auto& reflection : { mVertRefl, mFragRefl }) 
+			{
 				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
 				{
 					if (descriptor.type != ShaderReflection::Descriptor::Type::CombinedImageSampler)
@@ -371,20 +357,6 @@ public:
 					glUniform1i(location, binding);
 				}
 			};
-			fix_bindings(mVertRefl);
-			fix_bindings(mFragRefl);
-		}
-	}
-
-	void applyLayout()
-	{
-		for (int i = 0; i < mVertexLayout.attributes.size(); i++)
-		{
-			const auto& attrib = mVertexLayout.attributes.at(i);
-
-			glVertexAttribPointer(i, SizeMap.at(attrib.format),
-				FormatTypeMap.at(attrib.format), NormalizeMap.at(attrib.format),
-				(GLsizei)mVertexLayout.stride, (void*)attrib.offset);
 		}
 	}
 };
@@ -662,6 +634,9 @@ struct ContextGL
 {
 	ContextGL()
 	{
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
 		glGenBuffers(1, &pixel_buffer);
 
 		int max_draw_buffers;
@@ -675,6 +650,7 @@ struct ContextGL
 
 	~ContextGL()
 	{
+		glDeleteVertexArrays(1, &vao);
 		glDeleteBuffers(1, &pixel_buffer);
 
 		for (const auto& [state, objects_map] : sampler_states)
@@ -708,6 +684,7 @@ struct ContextGL
 	std::vector<RenderTargetGL*> render_targets;
 
 	GLuint pixel_buffer;
+	GLuint vao;
 
 	GLenum topology;
 	ShaderGL* shader = nullptr;
@@ -716,6 +693,7 @@ struct ContextGL
 	std::optional<Viewport> viewport;
 	std::optional<Scissor> scissor;
 	FrontFace front_face = FrontFace::Clockwise;
+	std::optional<InputLayout> input_layout;
 
 	bool shader_dirty = false;
 	bool vertex_buffer_dirty = false;
@@ -724,6 +702,7 @@ struct ContextGL
 	bool scissor_dirty = true;
 	bool sampler_state_dirty = true;
 	bool front_face_dirty = true;
+	bool input_layout_dirty = true;
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
@@ -770,7 +749,37 @@ static void EnsureGraphicsState(bool draw_indexed)
 	{
 		gContext->vertex_buffer_dirty = false;
 		glBindBuffer(GL_ARRAY_BUFFER, gContext->vertex_buffer->getGLBuffer());
-		gContext->shader->applyLayout();
+		gContext->input_layout_dirty = true;
+	}
+
+	if (gContext->input_layout_dirty)
+	{
+		gContext->input_layout_dirty = false;
+
+		const auto& input_layout_nn = gContext->input_layout.value();
+		auto stride = (GLsizei)input_layout_nn.stride;
+
+		for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
+		{
+			const auto& attrib = input_layout_nn.attributes.at(i);
+			auto index = (GLuint)i;
+			auto size = (GLint)SizeMap.at(attrib.format);
+			auto type = (GLenum)FormatTypeMap.at(attrib.format);
+			auto normalized = (GLboolean)NormalizeMap.at(attrib.format);
+			auto pointer = (void*)attrib.offset;
+			glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+		}
+
+		int max_attribs;
+		glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_attribs);
+
+		for (int i = 0; i < max_attribs; i++)
+		{
+			if (i < input_layout_nn.attributes.size())
+				glEnableVertexAttribArray(i);
+			else
+				glDisableVertexAttribArray(i);
+		}
 	}
 
 	for (auto binding : gContext->dirty_textures)
@@ -1218,6 +1227,12 @@ void BackendGL::setShader(ShaderHandle* handle)
 	gContext->shader_dirty = true;
 }
 
+void BackendGL::setInputLayout(const InputLayout& value)
+{
+	gContext->input_layout = value;
+	gContext->input_layout_dirty = true;
+}
+
 void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 {
 	auto buffer = (VertexBufferGL*)handle;
@@ -1540,10 +1555,10 @@ void BackendGL::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendGL::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
+ShaderHandle* BackendGL::createShader(const std::string& vertex_code, 
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderGL(vertex_layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderGL(vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

@@ -66,6 +66,7 @@ SKYGFX_MAKE_HASHABLE(SamplerStateD3D11,
 	t.texture_address
 );
 
+class ShaderD3D11;
 class TextureD3D11;
 class RenderTargetD3D11;
 
@@ -77,6 +78,8 @@ struct ContextD3D11
 	TextureD3D11* backbuffer_texture = nullptr;
 	RenderTargetD3D11* main_render_target = nullptr;
 	std::vector<RenderTargetD3D11*> render_targets;
+	ShaderD3D11* shader = nullptr;
+	std::optional<InputLayout> input_layout;
 	
 	std::unordered_map<DepthStencilStateD3D11, ComPtr<ID3D11DepthStencilState>> depth_stencil_states;
 	DepthStencilStateD3D11 depth_stencil_state;
@@ -92,6 +95,8 @@ struct ContextD3D11
 
 	std::optional<Viewport> viewport;
 
+	bool shader_dirty = true;
+	bool input_layout_dirty = true;
 	bool depth_stencil_state_dirty = true;
 	bool rasterizer_state_dirty = true;
 	bool sampler_state_dirty = true;
@@ -124,25 +129,24 @@ class ShaderD3D11
 public:
 	const auto& getD3D11VertexShader() const { return mVertexShader; }
 	const auto& getD3D11PixelShader() const { return mPixelShader; }
-	const auto& getD3D11InputLayout() const { return mInputLayout; }
+	auto& getInputLayoutCache() { return mInputLayoutCache; }
+	const auto& getVertexShaderBlob() const { return mVertexShaderBlob; }
 
 private:
 	ComPtr<ID3D11VertexShader> mVertexShader;
 	ComPtr<ID3D11PixelShader> mPixelShader;
-	ComPtr<ID3D11InputLayout> mInputLayout;
+	std::unordered_map<InputLayout, ComPtr<ID3D11InputLayout>> mInputLayoutCache;
+	ComPtr<ID3DBlob> mVertexShaderBlob; // for input layout
 
 public:
-	ShaderD3D11(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderD3D11(const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		ComPtr<ID3DBlob> vertex_shader_blob;
 		ComPtr<ID3DBlob> pixel_shader_blob;
 
 		ComPtr<ID3DBlob> vertex_shader_error;
 		ComPtr<ID3DBlob> pixel_shader_error;
 		
-		AddShaderLocationDefines(vertex_layout, defines);
-
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
@@ -150,7 +154,7 @@ public:
 		auto hlsl_frag = CompileSpirvToHlsl(fragment_shader_spirv, 40);
 
 		D3DCompile(hlsl_vert.c_str(), hlsl_vert.size(), NULL, NULL, NULL, "main", "vs_4_0", 0, 0, 
-			vertex_shader_blob.GetAddressOf(), vertex_shader_error.GetAddressOf());
+			mVertexShaderBlob.GetAddressOf(), vertex_shader_error.GetAddressOf());
 		
 		D3DCompile(hlsl_frag.c_str(), hlsl_frag.size(), NULL, NULL, NULL, "main", "ps_4_0", 0, 0, 
 			pixel_shader_blob.GetAddressOf(), pixel_shader_error.GetAddressOf());
@@ -164,31 +168,17 @@ public:
 		if (pixel_shader_error != NULL)
 			pixel_shader_error_string = std::string((char*)pixel_shader_error->GetBufferPointer(), pixel_shader_error->GetBufferSize());
 
-		if (vertex_shader_blob == NULL)
+		if (mVertexShaderBlob == NULL)
 			throw std::runtime_error(vertex_shader_error_string);
 
 		if (pixel_shader_blob == NULL)
 			throw std::runtime_error(pixel_shader_error_string);
 
-		gContext->device->CreateVertexShader(vertex_shader_blob->GetBufferPointer(), vertex_shader_blob->GetBufferSize(), 
+		gContext->device->CreateVertexShader(mVertexShaderBlob->GetBufferPointer(), mVertexShaderBlob->GetBufferSize(),
 			NULL, mVertexShader.GetAddressOf());
 		
 		gContext->device->CreatePixelShader(pixel_shader_blob->GetBufferPointer(), pixel_shader_blob->GetBufferSize(),
 			NULL, mPixelShader.GetAddressOf());
-
-		std::vector<D3D11_INPUT_ELEMENT_DESC> input;
-
-		UINT i = 0;
-
-		for (auto& attrib : vertex_layout.attributes)
-		{
-			input.push_back({ "TEXCOORD", i, FormatMap.at(attrib.format), 0,
-				static_cast<UINT>(attrib.offset), D3D11_INPUT_PER_VERTEX_DATA, 0 });
-			i++;
-		}
-
-		gContext->device->CreateInputLayout(input.data(), static_cast<UINT>(input.size()),
-			vertex_shader_blob->GetBufferPointer(), vertex_shader_blob->GetBufferSize(), mInputLayout.GetAddressOf());
 	}
 };
 
@@ -419,232 +409,301 @@ static void DestroyMainRenderTarget()
 	gContext->main_render_target = nullptr;
 }
 
-static void PrepareForDrawing()
+static void EnsureShader()
 {
-	if (gContext->depth_stencil_state_dirty)
+	if (!gContext->shader_dirty)
+		return;
+
+	gContext->shader_dirty = false;
+
+	gContext->context->VSSetShader(gContext->shader->getD3D11VertexShader().Get(), NULL, 0);
+	gContext->context->PSSetShader(gContext->shader->getD3D11PixelShader().Get(), NULL, 0);
+}
+
+static void EnsureInputLayout()
+{
+	if (!gContext->input_layout_dirty)
+		return;
+
+	gContext->input_layout_dirty = false;
+	auto& cache = gContext->shader->getInputLayoutCache();
+	const auto& input_layout_nn = gContext->input_layout.value();
+	if (!cache.contains(input_layout_nn))
 	{
-		gContext->depth_stencil_state_dirty = false;
+		std::vector<D3D11_INPUT_ELEMENT_DESC> input_elements;
 
-		const auto& depth_stencil_state = gContext->depth_stencil_state;
-
-		auto depth_mode = depth_stencil_state.depth_mode.value_or(DepthMode());
-		auto stencil_mode = depth_stencil_state.stencil_mode.value_or(StencilMode());
-
-		if (!gContext->depth_stencil_states.contains(depth_stencil_state))
+		for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
 		{
-			const static std::unordered_map<ComparisonFunc, D3D11_COMPARISON_FUNC> ComparisonFuncMap = {
-				{ ComparisonFunc::Always, D3D11_COMPARISON_ALWAYS },
-				{ ComparisonFunc::Never, D3D11_COMPARISON_NEVER },
-				{ ComparisonFunc::Less, D3D11_COMPARISON_LESS },
-				{ ComparisonFunc::Equal, D3D11_COMPARISON_EQUAL },
-				{ ComparisonFunc::NotEqual, D3D11_COMPARISON_NOT_EQUAL },
-				{ ComparisonFunc::LessEqual, D3D11_COMPARISON_LESS_EQUAL },
-				{ ComparisonFunc::Greater, D3D11_COMPARISON_GREATER },
-				{ ComparisonFunc::GreaterEqual, D3D11_COMPARISON_GREATER_EQUAL }
-			};
+			const auto& attribute = input_layout_nn.attributes.at(i);
 
-			const static std::unordered_map<StencilOp, D3D11_STENCIL_OP> StencilOpMap = {
-				{ StencilOp::Keep, D3D11_STENCIL_OP_KEEP },
-				{ StencilOp::Zero, D3D11_STENCIL_OP_ZERO },
-				{ StencilOp::Replace, D3D11_STENCIL_OP_REPLACE },
-				{ StencilOp::IncrementSaturation, D3D11_STENCIL_OP_INCR_SAT },
-				{ StencilOp::DecrementSaturation, D3D11_STENCIL_OP_DECR_SAT },
-				{ StencilOp::Invert, D3D11_STENCIL_OP_INVERT },
-				{ StencilOp::Increment, D3D11_STENCIL_OP_INCR },
-				{ StencilOp::Decrement, D3D11_STENCIL_OP_DECR },
-			};
-
-			auto desc = CD3D11_DEPTH_STENCIL_DESC(D3D11_DEFAULT);
-			desc.DepthEnable = depth_stencil_state.depth_mode.has_value();
-			desc.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
-			desc.DepthWriteMask = depth_mode.write_mask ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
-
-			desc.StencilEnable = depth_stencil_state.stencil_mode.has_value();
-			desc.StencilReadMask = stencil_mode.read_mask;
-			desc.StencilWriteMask = stencil_mode.write_mask;
-
-			desc.FrontFace.StencilDepthFailOp = StencilOpMap.at(stencil_mode.depth_fail_op);
-			desc.FrontFace.StencilFailOp = StencilOpMap.at(stencil_mode.fail_op);
-			desc.FrontFace.StencilFunc = ComparisonFuncMap.at(stencil_mode.func);
-			desc.FrontFace.StencilPassOp = StencilOpMap.at(stencil_mode.pass_op);
-
-			desc.BackFace = desc.FrontFace;
-
-			gContext->device->CreateDepthStencilState(&desc, gContext->depth_stencil_states[depth_stencil_state].GetAddressOf());
+			input_elements.push_back(D3D11_INPUT_ELEMENT_DESC{
+				.SemanticName = "TEXCOORD",
+				.SemanticIndex = (UINT)i,
+				.Format = FormatMap.at(attribute.format),
+				.InputSlot = 0,
+				.AlignedByteOffset = (UINT)attribute.offset,
+				.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA,
+				.InstanceDataStepRate = 0
+				});
 		}
 
-		gContext->context->OMSetDepthStencilState(gContext->depth_stencil_states.at(depth_stencil_state).Get(), stencil_mode.reference);
+		gContext->device->CreateInputLayout(input_elements.data(), (UINT)input_elements.size(),
+			gContext->shader->getVertexShaderBlob()->GetBufferPointer(),
+			gContext->shader->getVertexShaderBlob()->GetBufferSize(), cache[input_layout_nn].GetAddressOf());
 	}
 
-	if (gContext->rasterizer_state_dirty)
+	gContext->context->IASetInputLayout(cache.at(input_layout_nn).Get());
+}
+
+static void EnsureDepthStencilState()
+{
+	if (!gContext->depth_stencil_state_dirty)
+		return;
+
+	gContext->depth_stencil_state_dirty = false;
+
+	const auto& depth_stencil_state = gContext->depth_stencil_state;
+
+	auto depth_mode = depth_stencil_state.depth_mode.value_or(DepthMode());
+	auto stencil_mode = depth_stencil_state.stencil_mode.value_or(StencilMode());
+
+	if (!gContext->depth_stencil_states.contains(depth_stencil_state))
 	{
-		gContext->rasterizer_state_dirty = false;
+		const static std::unordered_map<ComparisonFunc, D3D11_COMPARISON_FUNC> ComparisonFuncMap = {
+			{ ComparisonFunc::Always, D3D11_COMPARISON_ALWAYS },
+			{ ComparisonFunc::Never, D3D11_COMPARISON_NEVER },
+			{ ComparisonFunc::Less, D3D11_COMPARISON_LESS },
+			{ ComparisonFunc::Equal, D3D11_COMPARISON_EQUAL },
+			{ ComparisonFunc::NotEqual, D3D11_COMPARISON_NOT_EQUAL },
+			{ ComparisonFunc::LessEqual, D3D11_COMPARISON_LESS_EQUAL },
+			{ ComparisonFunc::Greater, D3D11_COMPARISON_GREATER },
+			{ ComparisonFunc::GreaterEqual, D3D11_COMPARISON_GREATER_EQUAL }
+		};
 
-		const auto& value = gContext->rasterizer_state;
+		const static std::unordered_map<StencilOp, D3D11_STENCIL_OP> StencilOpMap = {
+			{ StencilOp::Keep, D3D11_STENCIL_OP_KEEP },
+			{ StencilOp::Zero, D3D11_STENCIL_OP_ZERO },
+			{ StencilOp::Replace, D3D11_STENCIL_OP_REPLACE },
+			{ StencilOp::IncrementSaturation, D3D11_STENCIL_OP_INCR_SAT },
+			{ StencilOp::DecrementSaturation, D3D11_STENCIL_OP_DECR_SAT },
+			{ StencilOp::Invert, D3D11_STENCIL_OP_INVERT },
+			{ StencilOp::Increment, D3D11_STENCIL_OP_INCR },
+			{ StencilOp::Decrement, D3D11_STENCIL_OP_DECR },
+		};
 
-		if (!gContext->rasterizer_states.contains(value))
+		auto desc = CD3D11_DEPTH_STENCIL_DESC(D3D11_DEFAULT);
+		desc.DepthEnable = depth_stencil_state.depth_mode.has_value();
+		desc.DepthFunc = ComparisonFuncMap.at(depth_mode.func);
+		desc.DepthWriteMask = depth_mode.write_mask ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+
+		desc.StencilEnable = depth_stencil_state.stencil_mode.has_value();
+		desc.StencilReadMask = stencil_mode.read_mask;
+		desc.StencilWriteMask = stencil_mode.write_mask;
+
+		desc.FrontFace.StencilDepthFailOp = StencilOpMap.at(stencil_mode.depth_fail_op);
+		desc.FrontFace.StencilFailOp = StencilOpMap.at(stencil_mode.fail_op);
+		desc.FrontFace.StencilFunc = ComparisonFuncMap.at(stencil_mode.func);
+		desc.FrontFace.StencilPassOp = StencilOpMap.at(stencil_mode.pass_op);
+
+		desc.BackFace = desc.FrontFace;
+
+		gContext->device->CreateDepthStencilState(&desc, gContext->depth_stencil_states[depth_stencil_state].GetAddressOf());
+	}
+
+	gContext->context->OMSetDepthStencilState(gContext->depth_stencil_states.at(depth_stencil_state).Get(), stencil_mode.reference);
+}
+
+static void EnsureRasterizerState()
+{
+	if (!gContext->rasterizer_state_dirty)
+		return;
+
+	gContext->rasterizer_state_dirty = false;
+
+	const auto& value = gContext->rasterizer_state;
+
+	if (!gContext->rasterizer_states.contains(value))
+	{
+		const static std::unordered_map<CullMode, D3D11_CULL_MODE> CullMap = {
+			{ CullMode::None, D3D11_CULL_NONE },
+			{ CullMode::Front, D3D11_CULL_FRONT },
+			{ CullMode::Back, D3D11_CULL_BACK }
+		};
+
+		auto desc = CD3D11_RASTERIZER_DESC(D3D11_DEFAULT);
+		desc.CullMode = CullMap.at(value.cull_mode);
+		desc.ScissorEnable = value.scissor_enabled;
+		desc.FrontCounterClockwise = value.front_face == FrontFace::CounterClockwise;
+		if (value.depth_bias.has_value())
 		{
-			const static std::unordered_map<CullMode, D3D11_CULL_MODE> CullMap = {
-				{ CullMode::None, D3D11_CULL_NONE },
-				{ CullMode::Front, D3D11_CULL_FRONT },
-				{ CullMode::Back, D3D11_CULL_BACK }
-			};
+			desc.SlopeScaledDepthBias = value.depth_bias->factor;
+			desc.DepthBias = (INT)value.depth_bias->units;
+		}
+		else
+		{
+			desc.DepthBias = D3D11_DEFAULT_DEPTH_BIAS;
+			desc.SlopeScaledDepthBias = D3D11_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+		}
+		gContext->device->CreateRasterizerState(&desc, gContext->rasterizer_states[value].GetAddressOf());
+	}
 
-			auto desc = CD3D11_RASTERIZER_DESC(D3D11_DEFAULT);
-			desc.CullMode = CullMap.at(value.cull_mode);
-			desc.ScissorEnable = value.scissor_enabled;
-			desc.FrontCounterClockwise = value.front_face == FrontFace::CounterClockwise;
-			if (value.depth_bias.has_value())
-			{
-				desc.SlopeScaledDepthBias = value.depth_bias->factor;
-				desc.DepthBias = (INT)value.depth_bias->units;
-			}
-			else
-			{
-				desc.DepthBias = D3D11_DEFAULT_DEPTH_BIAS;
-				desc.SlopeScaledDepthBias = D3D11_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
-			}
-			gContext->device->CreateRasterizerState(&desc, gContext->rasterizer_states[value].GetAddressOf());
+	gContext->context->RSSetState(gContext->rasterizer_states.at(value).Get());
+}
+
+static void EnsureSamplerState()
+{
+	if (!gContext->sampler_state_dirty)
+		return;
+
+	gContext->sampler_state_dirty = false;
+
+	const auto& value = gContext->sampler_state;
+
+	if (!gContext->sampler_states.contains(value))
+	{
+		// TODO: see D3D11_ENCODE_BASIC_FILTER
+
+		const static std::unordered_map<Sampler, D3D11_FILTER> SamplerMap = {
+			{ Sampler::Linear, D3D11_FILTER_MIN_MAG_MIP_LINEAR },
+			{ Sampler::Nearest, D3D11_FILTER_MIN_MAG_MIP_POINT },
+		};
+
+		const static std::unordered_map<TextureAddress, D3D11_TEXTURE_ADDRESS_MODE> TextureAddressMap = {
+			{ TextureAddress::Clamp, D3D11_TEXTURE_ADDRESS_CLAMP },
+			{ TextureAddress::Wrap, D3D11_TEXTURE_ADDRESS_WRAP },
+			{ TextureAddress::MirrorWrap, D3D11_TEXTURE_ADDRESS_MIRROR }
+		};
+
+		auto desc = CD3D11_SAMPLER_DESC(D3D11_DEFAULT);
+		desc.Filter = SamplerMap.at(value.sampler);
+		desc.AddressU = TextureAddressMap.at(value.texture_address);
+		desc.AddressV = TextureAddressMap.at(value.texture_address);
+		desc.AddressW = TextureAddressMap.at(value.texture_address);
+		gContext->device->CreateSamplerState(&desc, gContext->sampler_states[value].GetAddressOf());
+	}
+
+	for (auto [binding, _] : gContext->textures)
+	{
+		gContext->context->PSSetSamplers(binding, 1, gContext->sampler_states.at(value).GetAddressOf());
+	}	
+}
+
+static void EnsureBlendMode()
+{
+	if (!gContext->blend_mode_dirty)
+		return;
+
+	gContext->blend_mode_dirty = false;
+
+	const auto& blend_mode = gContext->blend_mode;
+
+	if (!gContext->blend_modes.contains(blend_mode))
+	{
+		const static std::unordered_map<Blend, D3D11_BLEND> ColorBlendMap = {
+			{ Blend::One, D3D11_BLEND_ONE },
+			{ Blend::Zero, D3D11_BLEND_ZERO },
+			{ Blend::SrcColor, D3D11_BLEND_SRC_COLOR },
+			{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_COLOR },
+			{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
+			{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
+			{ Blend::DstColor, D3D11_BLEND_DEST_COLOR },
+			{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_COLOR },
+			{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
+			{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
+		};
+
+		const static std::unordered_map<Blend, D3D11_BLEND> AlphaBlendMap = {
+			{ Blend::One, D3D11_BLEND_ONE },
+			{ Blend::Zero, D3D11_BLEND_ZERO },
+			{ Blend::SrcColor, D3D11_BLEND_SRC_ALPHA },
+			{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_ALPHA },
+			{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
+			{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
+			{ Blend::DstColor, D3D11_BLEND_DEST_ALPHA },
+			{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_ALPHA },
+			{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
+			{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
+		};
+
+		const static std::unordered_map<BlendFunction, D3D11_BLEND_OP> BlendOpMap = {
+			{ BlendFunction::Add, D3D11_BLEND_OP_ADD },
+			{ BlendFunction::Subtract, D3D11_BLEND_OP_SUBTRACT },
+			{ BlendFunction::ReverseSubtract, D3D11_BLEND_OP_REV_SUBTRACT },
+			{ BlendFunction::Min, D3D11_BLEND_OP_MIN },
+			{ BlendFunction::Max, D3D11_BLEND_OP_MAX },
+		};
+
+		auto desc = CD3D11_BLEND_DESC(D3D11_DEFAULT);
+
+		for (int i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
+		{
+			auto& blend = desc.RenderTarget[i];
+
+			blend.BlendEnable = blend_mode.has_value();
+
+			if (!blend.BlendEnable)
+				continue;
+
+			const auto& blend_mode_nn = blend_mode.value();
+
+			if (blend_mode_nn.color_mask.red)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
+
+			if (blend_mode_nn.color_mask.green)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
+
+			if (blend_mode_nn.color_mask.blue)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
+
+			if (blend_mode_nn.color_mask.alpha)
+				blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+
+			blend.SrcBlend = ColorBlendMap.at(blend_mode_nn.color_src);
+			blend.DestBlend = ColorBlendMap.at(blend_mode_nn.color_dst);
+			blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_func);
+
+			blend.SrcBlendAlpha = AlphaBlendMap.at(blend_mode_nn.alpha_src);
+			blend.DestBlendAlpha = AlphaBlendMap.at(blend_mode_nn.alpha_dst);
+			blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_func);
 		}
 
-		gContext->context->RSSetState(gContext->rasterizer_states.at(value).Get());
+		gContext->device->CreateBlendState(&desc, gContext->blend_modes[blend_mode].GetAddressOf());
 	}
 
-	if (gContext->sampler_state_dirty)
-	{
-		gContext->sampler_state_dirty = false;
+	gContext->context->OMSetBlendState(gContext->blend_modes.at(blend_mode).Get(), nullptr, 0xFFFFFFFF);
+}
 
-		const auto& value = gContext->sampler_state;
+static void EnsureViewport()
+{
+	if (!gContext->viewport_dirty)
+		return;
 
-		if (!gContext->sampler_states.contains(value))
-		{
-			// TODO: see D3D11_ENCODE_BASIC_FILTER
+	gContext->viewport_dirty = false;
 
-			const static std::unordered_map<Sampler, D3D11_FILTER> SamplerMap = {
-				{ Sampler::Linear, D3D11_FILTER_MIN_MAG_MIP_LINEAR },
-				{ Sampler::Nearest, D3D11_FILTER_MIN_MAG_MIP_POINT },
-			};
+	auto width = static_cast<float>(gContext->getBackbufferWidth());
+	auto height = static_cast<float>(gContext->getBackbufferHeight());
 
-			const static std::unordered_map<TextureAddress, D3D11_TEXTURE_ADDRESS_MODE> TextureAddressMap = {
-				{ TextureAddress::Clamp, D3D11_TEXTURE_ADDRESS_CLAMP },
-				{ TextureAddress::Wrap, D3D11_TEXTURE_ADDRESS_WRAP },
-				{ TextureAddress::MirrorWrap, D3D11_TEXTURE_ADDRESS_MIRROR }
-			};
+	auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
 
-			auto desc = CD3D11_SAMPLER_DESC(D3D11_DEFAULT);
-			desc.Filter = SamplerMap.at(value.sampler);
-			desc.AddressU = TextureAddressMap.at(value.texture_address);
-			desc.AddressV = TextureAddressMap.at(value.texture_address);
-			desc.AddressW = TextureAddressMap.at(value.texture_address);
-			gContext->device->CreateSamplerState(&desc, gContext->sampler_states[value].GetAddressOf());
-		}
+	D3D11_VIEWPORT vp;
+	vp.Width = viewport.size.x;
+	vp.Height = viewport.size.y;
+	vp.MinDepth = viewport.min_depth;
+	vp.MaxDepth = viewport.max_depth;
+	vp.TopLeftX = viewport.position.x;
+	vp.TopLeftY = viewport.position.y;
+	gContext->context->RSSetViewports(1, &vp);
+}
 
-		for (auto [binding, _] : gContext->textures)
-		{
-			gContext->context->PSSetSamplers(binding, 1, gContext->sampler_states.at(value).GetAddressOf());
-		}
-	}
-
-	if (gContext->blend_mode_dirty)
-	{
-		gContext->blend_mode_dirty = false;
-
-		const auto& blend_mode = gContext->blend_mode;
-
-		if (!gContext->blend_modes.contains(blend_mode))
-		{
-			const static std::unordered_map<Blend, D3D11_BLEND> ColorBlendMap = {
-				{ Blend::One, D3D11_BLEND_ONE },
-				{ Blend::Zero, D3D11_BLEND_ZERO },
-				{ Blend::SrcColor, D3D11_BLEND_SRC_COLOR },
-				{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_COLOR },
-				{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
-				{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
-				{ Blend::DstColor, D3D11_BLEND_DEST_COLOR },
-				{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_COLOR },
-				{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
-				{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
-			};
-
-			const static std::unordered_map<Blend, D3D11_BLEND> AlphaBlendMap = {
-				{ Blend::One, D3D11_BLEND_ONE },
-				{ Blend::Zero, D3D11_BLEND_ZERO },
-				{ Blend::SrcColor, D3D11_BLEND_SRC_ALPHA },
-				{ Blend::InvSrcColor, D3D11_BLEND_INV_SRC_ALPHA },
-				{ Blend::SrcAlpha, D3D11_BLEND_SRC_ALPHA },
-				{ Blend::InvSrcAlpha, D3D11_BLEND_INV_SRC_ALPHA },
-				{ Blend::DstColor, D3D11_BLEND_DEST_ALPHA },
-				{ Blend::InvDstColor, D3D11_BLEND_INV_DEST_ALPHA },
-				{ Blend::DstAlpha, D3D11_BLEND_DEST_ALPHA },
-				{ Blend::InvDstAlpha, D3D11_BLEND_INV_DEST_ALPHA }
-			};
-
-			const static std::unordered_map<BlendFunction, D3D11_BLEND_OP> BlendOpMap = {
-				{ BlendFunction::Add, D3D11_BLEND_OP_ADD },
-				{ BlendFunction::Subtract, D3D11_BLEND_OP_SUBTRACT },
-				{ BlendFunction::ReverseSubtract, D3D11_BLEND_OP_REV_SUBTRACT },
-				{ BlendFunction::Min, D3D11_BLEND_OP_MIN },
-				{ BlendFunction::Max, D3D11_BLEND_OP_MAX },
-			};
-
-			auto desc = CD3D11_BLEND_DESC(D3D11_DEFAULT);
-
-			for (int i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
-			{
-				auto& blend = desc.RenderTarget[i];
-
-				blend.BlendEnable = blend_mode.has_value();
-
-				if (!blend.BlendEnable)
-					continue;
-
-				const auto& blend_mode_nn = blend_mode.value();
-
-				if (blend_mode_nn.color_mask.red)
-					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
-
-				if (blend_mode_nn.color_mask.green)
-					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
-
-				if (blend_mode_nn.color_mask.blue)
-					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
-
-				if (blend_mode_nn.color_mask.alpha)
-					blend.RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
-
-				blend.SrcBlend = ColorBlendMap.at(blend_mode_nn.color_src);
-				blend.DestBlend = ColorBlendMap.at(blend_mode_nn.color_dst);
-				blend.BlendOp = BlendOpMap.at(blend_mode_nn.color_func);
-
-				blend.SrcBlendAlpha = AlphaBlendMap.at(blend_mode_nn.alpha_src);
-				blend.DestBlendAlpha = AlphaBlendMap.at(blend_mode_nn.alpha_dst);
-				blend.BlendOpAlpha = BlendOpMap.at(blend_mode_nn.alpha_func);
-			}
-
-			gContext->device->CreateBlendState(&desc, gContext->blend_modes[blend_mode].GetAddressOf());
-		}
-
-		gContext->context->OMSetBlendState(gContext->blend_modes.at(blend_mode).Get(), nullptr, 0xFFFFFFFF);
-	}
-
-	if (gContext->viewport_dirty)
-	{
-		auto width = static_cast<float>(gContext->getBackbufferWidth());
-		auto height = static_cast<float>(gContext->getBackbufferHeight());
-
-		auto viewport = gContext->viewport.value_or(Viewport{ { 0.0f, 0.0f }, { width, height } });
-
-		D3D11_VIEWPORT vp;
-		vp.Width = viewport.size.x;
-		vp.Height = viewport.size.y;
-		vp.MinDepth = viewport.min_depth;
-		vp.MaxDepth = viewport.max_depth;
-		vp.TopLeftX = viewport.position.x;
-		vp.TopLeftY = viewport.position.y;
-		gContext->context->RSSetViewports(1, &vp);
-
-		gContext->viewport_dirty = false;
-	}
+static void EnsureGraphicsState(bool draw_indexed)
+{
+	EnsureShader();
+	EnsureInputLayout();
+	EnsureDepthStencilState();
+	EnsureRasterizerState();
+	EnsureSamplerState();
+	EnsureBlendMode();
+	EnsureViewport();
 }
 
 BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height, Adapter _adapter)
@@ -761,6 +820,12 @@ void BackendD3D11::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->textures[binding] = texture;
 }
 
+void BackendD3D11::setInputLayout(const InputLayout& value)
+{
+	gContext->input_layout = value;
+	gContext->input_layout_dirty = true;
+}
+
 void BackendD3D11::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 {
 	ComPtr<ID3D11ShaderResourceView> prev_shader_resource_view;
@@ -811,10 +876,9 @@ void BackendD3D11::setRenderTarget(std::nullopt_t value)
 
 void BackendD3D11::setShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderD3D11*)handle;
-	gContext->context->IASetInputLayout(shader->getD3D11InputLayout().Get());
-	gContext->context->VSSetShader(shader->getD3D11VertexShader().Get(), NULL, 0);
-	gContext->context->PSSetShader(shader->getD3D11PixelShader().Get(), NULL, 0);
+	gContext->shader = (ShaderD3D11*)handle;
+	gContext->shader_dirty = true;
+	gContext->input_layout_dirty = true;
 }
 
 void BackendD3D11::setVertexBuffer(VertexBufferHandle* handle)
@@ -924,13 +988,13 @@ void BackendD3D11::clear(const std::optional<glm::vec4>& color, const std::optio
 
 void BackendD3D11::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
-	PrepareForDrawing();
+	EnsureGraphicsState(false);
 	gContext->context->DrawInstanced((UINT)vertex_count, (UINT)instance_count, (UINT)vertex_offset, 0);
 }
 
 void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
-	PrepareForDrawing();
+	EnsureGraphicsState(true);
 	gContext->context->DrawIndexedInstanced((UINT)index_count, (UINT)instance_count, (UINT)index_offset, 0, 0);
 }
 
@@ -1055,10 +1119,10 @@ void BackendD3D11::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendD3D11::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
+ShaderHandle* BackendD3D11::createShader(const std::string& vertex_code, 
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderD3D11(vertex_layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderD3D11(vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 

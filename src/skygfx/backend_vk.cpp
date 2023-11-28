@@ -27,6 +27,7 @@ struct PipelineStateVK
 	ShaderVK* shader = nullptr;
 	std::vector<vk::Format> color_attachment_formats;
 	std::optional<vk::Format> depth_stencil_format;
+	InputLayout input_layout; // TODO: std optional
 
 	bool operator==(const PipelineStateVK& other) const = default;
 };
@@ -43,6 +44,7 @@ struct std::hash<PipelineStateVK>
 			skygfx::hash_combine(ret, format);
 		}
 		skygfx::hash_combine(ret, t.depth_stencil_format);
+		skygfx::hash_combine(ret, t.input_layout);
 		return ret;
 	}
 };
@@ -413,8 +415,6 @@ public:
 	const auto& getPipelineLayout() const { return mPipelineLayout; }
 	const auto& getVertexShaderModule() const { return mVertexShaderModule; }
 	const auto& getFragmentShaderModule() const { return mFragmentShaderModule; }
-	const auto& getVertexInputBindingDescription() const { return mVertexInputBindingDescription; }
-	const auto& getVertexInputAttributeDescriptions() const { return mVertexInputAttributeDescriptions; }
 	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
 
 private:
@@ -422,16 +422,12 @@ private:
 	vk::raii::PipelineLayout mPipelineLayout = nullptr;
 	vk::raii::ShaderModule mVertexShaderModule = nullptr;
 	vk::raii::ShaderModule mFragmentShaderModule = nullptr;
-	vk::VertexInputBindingDescription mVertexInputBindingDescription;
-	std::vector<vk::VertexInputAttributeDescription> mVertexInputAttributeDescriptions;
 	std::vector<vk::DescriptorSetLayoutBinding> mRequiredDescriptorBindings;
 
 public:
-	ShaderVK(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderVK(const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		AddShaderLocationDefines(vertex_layout, defines);
-
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
@@ -446,24 +442,6 @@ public:
 
 		mVertexShaderModule = gContext->device.createShaderModule(vertex_shader_module_create_info);
 		mFragmentShaderModule = gContext->device.createShaderModule(fragment_shader_module_create_info);
-
-		mVertexInputBindingDescription = vk::VertexInputBindingDescription()
-			.setStride(static_cast<uint32_t>(vertex_layout.stride))
-			.setInputRate(vk::VertexInputRate::eVertex)
-			.setBinding(0);
-
-		for (int i = 0; i < vertex_layout.attributes.size(); i++)
-		{
-			const auto& attrib = vertex_layout.attributes.at(i);
-
-			auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
-				.setBinding(0)
-				.setLocation(i)
-				.setFormat(FormatMap.at(attrib.format))
-				.setOffset(static_cast<uint32_t>(attrib.offset));
-
-			mVertexInputAttributeDescriptions.push_back(vertex_input_attribute_description);
-		}
 	}
 };
 
@@ -1635,9 +1613,29 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 	auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
 		.setAttachmentCount((uint32_t)pipeline_state.color_attachment_formats.size());
 
+	auto vertex_input_binding_description = vk::VertexInputBindingDescription()
+		.setStride(static_cast<uint32_t>(pipeline_state.input_layout.stride))
+		.setInputRate(vk::VertexInputRate::eVertex)
+		.setBinding(0);
+
+	std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
+
+	for (size_t i = 0; i < pipeline_state.input_layout.attributes.size(); i++)
+	{
+		const auto& attribute = pipeline_state.input_layout.attributes.at(i);
+
+		auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
+			.setBinding(0)
+			.setLocation((uint32_t)i)
+			.setFormat(FormatMap.at(attribute.format))
+			.setOffset(static_cast<uint32_t>(attribute.offset));
+
+		vertex_input_attribute_descriptions.push_back(vertex_input_attribute_description);
+	}
+
 	auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
-		.setVertexBindingDescriptions(pipeline_state.shader->getVertexInputBindingDescription())
-		.setVertexAttributeDescriptions(pipeline_state.shader->getVertexInputAttributeDescriptions());
+		.setVertexBindingDescriptions(vertex_input_binding_description)
+		.setVertexAttributeDescriptions(vertex_input_attribute_descriptions);
 
 	auto dynamic_states = {
 		vk::DynamicState::eViewport,
@@ -1966,6 +1964,8 @@ static void EnsureDepthMode(vk::raii::CommandBuffer& cmdlist)
 	else
 	{
 		cmdlist.setDepthTestEnable(false);
+		cmdlist.setDepthWriteEnable(false);
+		cmdlist.setDepthCompareOp(vk::CompareOp::eAlways);
 	}
 }
 
@@ -2640,6 +2640,12 @@ void BackendVK::setShader(ShaderHandle* handle)
 	gContext->pipeline_state_dirty = true;
 }
 
+void BackendVK::setInputLayout(const InputLayout& value)
+{
+	gContext->pipeline_state.input_layout = value;
+	gContext->pipeline_state_dirty = true;
+}
+
 void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
 {
 	auto shader = (RaytracingShaderVK*)handle;
@@ -2694,7 +2700,7 @@ void BackendVK::setAccelerationStructure(uint32_t binding, TopLevelAccelerationS
 
 void BackendVK::setBlendMode(const std::optional<BlendMode>& value)
 {
-	if (gContext->blend_mode == value)
+	if (gContext->blend_mode == value) // TODO: remove comparisons like this in all setters in all backends
 		return;
 
 	gContext->blend_mode = value;
@@ -2951,10 +2957,10 @@ void BackendVK::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendVK::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code,
-	const std::string& fragment_code, const std::vector<std::string>& defines)
+ShaderHandle* BackendVK::createShader(const std::string& vertex_code, const std::string& fragment_code,
+	const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderVK(vertex_layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderVK(vertex_code, fragment_code, defines);
 	gContext->objects.insert(shader);
 	return (ShaderHandle*)shader;
 }

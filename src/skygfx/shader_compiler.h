@@ -16,8 +16,6 @@ namespace skygfx
 		bool force_flattened_io_blocks = false);
 	std::string CompileSpirvToMsl(const std::vector<uint32_t>& spirv);
 
-	void AddShaderLocationDefines(const VertexLayout& vertex_layout, std::vector<std::string>& defines);
-
 	struct ShaderReflection
 	{
 		struct Descriptor

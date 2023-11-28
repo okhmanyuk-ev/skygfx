@@ -146,9 +146,9 @@ RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept
 
 // shader
 
-Shader::Shader(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines)
+Shader::Shader(const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	mShaderHandle = gBackend->createShader(vertex_layout, vertex_code, fragment_code, defines);
+	mShaderHandle = gBackend->createShader(vertex_code, fragment_code, defines);
 }
 
 Shader::Shader(Shader&& other) noexcept
@@ -752,6 +752,11 @@ void skygfx::SetShader(const RaytracingShader& shader)
 	gRaytracingBackend->setRaytracingShader(const_cast<RaytracingShader&>(shader));
 }
 
+void skygfx::SetInputLayout(const InputLayout& value)
+{
+	gBackend->setInputLayout(value);
+}
+
 void skygfx::SetVertexBuffer(const VertexBuffer& value)
 {
 	gBackend->setVertexBuffer(const_cast<VertexBuffer&>(value));
@@ -852,7 +857,7 @@ void skygfx::Present()
 void skygfx::SetVertexBuffer(void* memory, size_t size, size_t stride)
 {
 	assert(size > 0);
-	
+
 	size_t vertex_buffer_size = 0;
 
 	if (gVertexBuffer.has_value())
