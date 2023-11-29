@@ -318,11 +318,6 @@ public:
 			const auto& attrib = vertex_layout.attributes.at(i);
 
 			glEnableVertexAttribArray(i);
-#if defined(SKYGFX_PLATFORM_WINDOWS)
-			glVertexAttribFormat(i, SizeMap.at(attrib.format), FormatTypeMap.at(attrib.format),
-				NormalizeMap.at(attrib.format), (GLuint)attrib.offset);
-			glVertexAttribBinding(i, 0);
-#endif
 		}
 		
 		mVertRefl = MakeSpirvReflection(vertex_shader_spirv);
@@ -380,8 +375,7 @@ public:
 			fix_bindings(mFragRefl);
 		}
 	}
-	
-#if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+
 	void applyLayout()
 	{
 		for (int i = 0; i < mVertexLayout.attributes.size(); i++)
@@ -393,7 +387,6 @@ public:
 				(GLsizei)mVertexLayout.stride, (void*)attrib.offset);
 		}
 	}
-#endif
 };
 
 class TextureGL
@@ -777,11 +770,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 	{
 		gContext->vertex_buffer_dirty = false;
 		glBindBuffer(GL_ARRAY_BUFFER, gContext->vertex_buffer->getGLBuffer());
-#if defined(SKYGFX_PLATFORM_WINDOWS)
-		glBindVertexBuffer(0, gContext->vertex_buffer->getGLBuffer(), 0, (GLsizei)gContext->vertex_buffer->getStride());
-#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 		gContext->shader->applyLayout();
-#endif
 	}
 
 	for (auto binding : gContext->dirty_textures)
