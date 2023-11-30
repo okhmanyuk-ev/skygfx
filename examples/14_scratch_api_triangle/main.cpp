@@ -9,7 +9,7 @@ int main()
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Mesh Api Triangle");
+	auto [window, native_window, width, height] = utils::SpawnWindow(800, 600, "Scratch Api Triangle");
 
 	skygfx::Initialize(native_window, width, height, backend_type);
 
