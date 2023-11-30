@@ -1144,30 +1144,19 @@ void BackendGL::setTopology(Topology topology)
 
 void BackendGL::setViewport(std::optional<Viewport> viewport)
 {
-	if (gContext->viewport == viewport)
-		return;
-		
 	gContext->viewport = viewport;
 	gContext->viewport_dirty = true;
 }
 
 void BackendGL::setScissor(std::optional<Scissor> scissor)
-{
-	if (gContext->scissor == scissor)
-		return;
-		
+{		
 	gContext->scissor = scissor;
 	gContext->scissor_dirty = true;
 }
 
 void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	auto texture = (TextureGL*)handle;
-	
-	if (gContext->textures[binding] == texture)
-		return;
-		
-	gContext->textures[binding] = texture;
+	gContext->textures[binding] = (TextureGL*)handle;
 	gContext->dirty_textures.insert(binding);
 	gContext->sampler_state_dirty = true;
 }
@@ -1175,20 +1164,20 @@ void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 void BackendGL::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 {
 	std::vector<RenderTargetGL*> render_targets;
+
 	for (auto handle : handles)
 	{
 		render_targets.push_back((RenderTargetGL*)handle);
 	}
 
-	if (gContext->render_targets == render_targets)
-		return;
-
 	glBindFramebuffer(GL_FRAMEBUFFER, render_targets.at(0)->getGLFramebuffer());
+
 	for (size_t i = 0; i < render_targets.size(); i++)
 	{
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, GL_TEXTURE_2D,
 			render_targets.at(i)->getTexture()->getGLTexture(), 0);
 	}
+
 	auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	assert(status == GL_FRAMEBUFFER_COMPLETE);
 
@@ -1202,9 +1191,6 @@ void BackendGL::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 
 void BackendGL::setRenderTarget(std::nullopt_t value)
 {
-	if (gContext->render_targets.empty())
-		return;
-
 #if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #elif defined(SKYGFX_PLATFORM_IOS)
@@ -1218,12 +1204,7 @@ void BackendGL::setRenderTarget(std::nullopt_t value)
 
 void BackendGL::setShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderGL*)handle;
-
-	if (gContext->shader == shader)
-		return;
-	
-	gContext->shader = shader;
+	gContext->shader = (ShaderGL*)handle;
 	gContext->shader_dirty = true;
 }
 
@@ -1235,23 +1216,13 @@ void BackendGL::setInputLayout(const InputLayout& value)
 
 void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferGL*)handle;
-
-	//if (gVertexBuffer == buffer) // TODO: gl emit errors when this code uncommented
-	//	return;
-
-	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer = (VertexBufferGL*)handle;
 	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferGL*)handle;
-	
-	//if (gIndexBuffer == buffer) // TODO: gl emit errors when this code uncommented
-	//	return;
-	
-	gContext->index_buffer = buffer;
+	gContext->index_buffer = (IndexBufferGL*)handle;
 	gContext->index_buffer_dirty = true;
 }
 
@@ -1360,27 +1331,18 @@ void BackendGL::setCullMode(CullMode cull_mode)
 
 void BackendGL::setSampler(Sampler value)
 {
-	if (gContext->sampler_state.sampler == value)
-		return;
-
 	gContext->sampler_state.sampler = value;
 	gContext->sampler_state_dirty = true;
 }
 
 void BackendGL::setTextureAddress(TextureAddress value)
 {
-	if (gContext->sampler_state.texture_address == value)
-		return;
-		
 	gContext->sampler_state.texture_address = value;
 	gContext->sampler_state_dirty = true;
 }
 
 void BackendGL::setFrontFace(FrontFace value)
 {
-	if (gContext->front_face == value)
-		return;
-
 	gContext->front_face = value;
 	gContext->front_face_dirty = true;
 }

@@ -58,31 +58,21 @@ struct PipelineStateD3D12
 	TopologyKind topology_kind = TopologyKind::Triangles;
 	std::vector<DXGI_FORMAT> color_attachment_formats;
 	std::optional<DXGI_FORMAT> depth_stencil_format;
-	InputLayout input_layout; // TODO: std optional
+	std::optional<InputLayout> input_layout;
 
 	bool operator==(const PipelineStateD3D12& other) const = default;
 };
 
-template<>
-struct std::hash<PipelineStateD3D12>
-{
-	std::size_t operator()(const PipelineStateD3D12& t) const // TODO: use SKYGFX_MAKE_HASHABLE
-	{
-		std::size_t ret = 0;
-		skygfx::hash_combine(ret, t.shader);
-		skygfx::hash_combine(ret, t.rasterizer_state);
-		skygfx::hash_combine(ret, t.depth_mode);
-		skygfx::hash_combine(ret, t.blend_mode);
-		skygfx::hash_combine(ret, t.topology_kind);
-		for (auto format : t.color_attachment_formats)
-		{
-			skygfx::hash_combine(ret, format);
-		}
-		skygfx::hash_combine(ret, t.depth_stencil_format);
-		skygfx::hash_combine(ret, t.input_layout);
-		return ret;
-	}
-};
+SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
+	t.shader,
+	t.rasterizer_state,
+	t.depth_mode,
+	t.blend_mode,
+	t.topology_kind,
+	t.color_attachment_formats,
+	t.depth_stencil_format,
+	t.input_layout
+);
 
 static int const NUM_BACK_BUFFERS = 2;
 
@@ -820,9 +810,11 @@ static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineSta
 
 	std::vector<D3D12_INPUT_ELEMENT_DESC> input_elements;
 
-	for (size_t i = 0; i < pipeline_state.input_layout.attributes.size(); i++)
+	const auto& input_layout_nn = pipeline_state.input_layout.value();
+
+	for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
 	{
-		const auto& attribute = pipeline_state.input_layout.attributes.at(i);
+		const auto& attribute = input_layout_nn.attributes.at(i);
 
 		input_elements.push_back(D3D12_INPUT_ELEMENT_DESC{
 			.SemanticName = "TEXCOORD",
@@ -908,7 +900,7 @@ static void EnsureTopology()
 	if (!gContext->topology_dirty)
 		return;
 
-		gContext->topology_dirty = false;
+	gContext->topology_dirty = false;
 	
 	const static std::unordered_map<Topology, D3D_PRIMITIVE_TOPOLOGY> TopologyMap = {
 		{ Topology::PointList, D3D_PRIMITIVE_TOPOLOGY_POINTLIST },
@@ -1182,9 +1174,6 @@ void BackendD3D12::setVsync(bool value)
 
 void BackendD3D12::setTopology(Topology topology)
 {
-	if (gContext->topology == topology)
-		return;
-
 	gContext->topology = topology;
 	gContext->topology_dirty = true;
 	gContext->pipeline_state.topology_kind = GetTopologyKind(topology);
@@ -1192,24 +1181,19 @@ void BackendD3D12::setTopology(Topology topology)
 
 void BackendD3D12::setViewport(std::optional<Viewport> viewport)
 {
-	if (gContext->viewport != viewport)
-		gContext->viewport_dirty = true;
-
 	gContext->viewport = viewport;
+	gContext->viewport_dirty = true;
 }
 
 void BackendD3D12::setScissor(std::optional<Scissor> scissor)
 {
-	if (gContext->scissor != scissor)
-		gContext->scissor_dirty = true;
-
 	gContext->scissor = scissor;
+	gContext->scissor_dirty = true;
 }
 
 void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	auto texture = (TextureD3D12*)handle;
-	gContext->textures[binding] = texture;
+	gContext->textures[binding] = (TextureD3D12*)handle;
 }
 
 void BackendD3D12::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
@@ -1228,9 +1212,6 @@ void BackendD3D12::setRenderTarget(const std::vector<RenderTargetHandle*>& handl
 			depth_stencil_format = render_target->getDepthStencilFormat();
 	}
 
-	if (gContext->render_targets == render_targets)
-		return;
-
 	gContext->pipeline_state.color_attachment_formats = color_attachment_formats;
 	gContext->pipeline_state.depth_stencil_format = depth_stencil_format;
 	gContext->render_targets = render_targets;
@@ -1244,9 +1225,6 @@ void BackendD3D12::setRenderTarget(const std::vector<RenderTargetHandle*>& handl
 
 void BackendD3D12::setRenderTarget(std::nullopt_t value)
 {
-	if (gContext->render_targets.empty())
-		return;
-
 	gContext->pipeline_state.color_attachment_formats = { MainRenderTargetColorAttachmentFormat };
 	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
 	gContext->render_targets.clear();
@@ -1270,30 +1248,19 @@ void BackendD3D12::setInputLayout(const InputLayout& value)
 
 void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferD3D12*)handle;
-	
-	if (gContext->vertex_buffer == buffer)
-		return;
-	
-	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer = (VertexBufferD3D12*)handle;
 	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferD3D12*)handle;
-
-	if (gContext->index_buffer == buffer)
-		return;
-
-	gContext->index_buffer = buffer;
+	gContext->index_buffer = (IndexBufferD3D12*)handle;
 	gContext->index_buffer_dirty = true;
 }
 
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferD3D12*)handle;
-	gContext->uniform_buffers[binding] = buffer;
+	gContext->uniform_buffers[binding] = (UniformBufferD3D12*)handle;
 }
 
 void BackendD3D12::setBlendMode(const std::optional<BlendMode>& blend_mode)

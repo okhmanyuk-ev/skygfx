@@ -363,7 +363,7 @@ namespace skygfx
 	uint32_t GetMipCount(uint32_t width, uint32_t height);
 	uint32_t GetMipWidth(uint32_t base_width, uint32_t mip_level);
 	uint32_t GetMipHeight(uint32_t base_height, uint32_t mip_level);
-	
+
 	struct Viewport
 	{
 		glm::vec2 position = { 0.0f, 0.0f };
@@ -650,24 +650,10 @@ SKYGFX_MAKE_HASHABLE(skygfx::InputLayout::Attribute,
 	t.offset
 );
 
-namespace std
-{
-	template<>
-	struct hash<skygfx::InputLayout>
-	{
-		std::size_t operator()(const skygfx::InputLayout& t) const // TODO: use SKYGFX_MAKE_HASHABLE
-		{
-			std::size_t ret = 0;
-			skygfx::hash_combine(ret, t.stride);
-			for (const auto& attribute : t.attributes)
-			{
-				skygfx::hash_combine(ret, attribute);
-			}
-			return ret;
-		}
-	};
-}
-
+SKYGFX_MAKE_HASHABLE(skygfx::InputLayout,
+	t.stride,
+	t.attributes
+);
 
 SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,
 	t.red,

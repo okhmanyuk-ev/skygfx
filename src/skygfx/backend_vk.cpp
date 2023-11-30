@@ -27,27 +27,17 @@ struct PipelineStateVK
 	ShaderVK* shader = nullptr;
 	std::vector<vk::Format> color_attachment_formats;
 	std::optional<vk::Format> depth_stencil_format;
-	InputLayout input_layout; // TODO: std optional
+	std::optional<InputLayout> input_layout;
 
 	bool operator==(const PipelineStateVK& other) const = default;
 };
 
-template<>
-struct std::hash<PipelineStateVK>
-{
-	std::size_t operator()(const PipelineStateVK& t) const // TODO: use SKYGFX_MAKE_HASHABLE
-	{
-		std::size_t ret = 0;
-		skygfx::hash_combine(ret, t.shader);
-		for (auto format : t.color_attachment_formats)
-		{
-			skygfx::hash_combine(ret, format);
-		}
-		skygfx::hash_combine(ret, t.depth_stencil_format);
-		skygfx::hash_combine(ret, t.input_layout);
-		return ret;
-	}
-};
+SKYGFX_MAKE_HASHABLE(PipelineStateVK,
+	t.shader,
+	t.color_attachment_formats,
+	t.depth_stencil_format,
+	t.input_layout
+);
 
 struct RaytracingPipelineStateVK
 {
@@ -1613,16 +1603,18 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 	auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
 		.setAttachmentCount((uint32_t)pipeline_state.color_attachment_formats.size());
 
+	const auto& input_layout_nn = pipeline_state.input_layout.value();
+
 	auto vertex_input_binding_description = vk::VertexInputBindingDescription()
-		.setStride(static_cast<uint32_t>(pipeline_state.input_layout.stride))
+		.setStride(static_cast<uint32_t>(input_layout_nn.stride))
 		.setInputRate(vk::VertexInputRate::eVertex)
 		.setBinding(0);
 
 	std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
 
-	for (size_t i = 0; i < pipeline_state.input_layout.attributes.size(); i++)
+	for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
 	{
-		const auto& attribute = pipeline_state.input_layout.attributes.at(i);
+		const auto& attribute = input_layout_nn.attributes.at(i);
 
 		auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
 			.setBinding(0)
@@ -2539,40 +2531,25 @@ void BackendVK::setVsync(bool value)
 
 void BackendVK::setTopology(Topology topology)
 {
-	if (gContext->topology == topology)
-		return;
-
 	gContext->topology = topology;
 	gContext->topology_dirty = true;
 }
 
 void BackendVK::setViewport(std::optional<Viewport> viewport)
 {
-	if (gContext->viewport == viewport)
-		return;
-
 	gContext->viewport = viewport;
 	gContext->viewport_dirty = true;
 }
 
 void BackendVK::setScissor(std::optional<Scissor> scissor)
 {
-	if (gContext->scissor == scissor)
-		return;
-
 	gContext->scissor = scissor;
 	gContext->scissor_dirty = true;
 }
 
 void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	auto texture = (TextureVK*)handle;
-	auto& dst_texture = gContext->textures[binding];
-
-	if (texture == dst_texture)
-		return;
-
-	dst_texture = texture;
+	gContext->textures[binding] = (TextureVK*)handle;
 	gContext->graphics_pipeline_ignore_bindings.erase(binding);
 }
 
@@ -2592,9 +2569,6 @@ void BackendVK::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 			depth_stencil_format = render_target->getDepthStencilFormat();
 	}
 
-	if (gContext->render_targets == render_targets)
-		return;
-
 	if (gContext->render_targets.size() != render_targets.size())
 		gContext->blend_mode_dirty = true;
 
@@ -2613,9 +2587,6 @@ void BackendVK::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 
 void BackendVK::setRenderTarget(std::nullopt_t value)
 {
-	if (gContext->render_targets.empty())
-		return;
-
 	gContext->pipeline_state_dirty = true;
 	gContext->pipeline_state.color_attachment_formats = { gContext->surface_format.format };
 	gContext->pipeline_state.depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
@@ -2631,12 +2602,7 @@ void BackendVK::setRenderTarget(std::nullopt_t value)
 
 void BackendVK::setShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderVK*)handle;
-
-	if (gContext->pipeline_state.shader == shader)
-		return;
-
-	gContext->pipeline_state.shader = shader;
+	gContext->pipeline_state.shader = (ShaderVK*)handle;
 	gContext->pipeline_state_dirty = true;
 }
 
@@ -2654,64 +2620,40 @@ void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
 
 void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferVK*)handle;
-
-	if (buffer == gContext->vertex_buffer)
-		return;
-
-	gContext->vertex_buffer = buffer;
+	gContext->vertex_buffer = (VertexBufferVK*)handle;
 	gContext->vertex_buffer_dirty = true;
 }
 
 void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferVK*)handle;
-
-	if (buffer == gContext->index_buffer)
-		return;
-
-	gContext->index_buffer = buffer;
+	gContext->index_buffer = (IndexBufferVK*)handle;
 	gContext->index_buffer_dirty = true;
 }
 
 void BackendVK::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferVK*)handle;
-	auto& dst_buffer = gContext->uniform_buffers[binding];
-
-	if (buffer == dst_buffer)
-		return;
-
-	dst_buffer = buffer;
+	gContext->uniform_buffers[binding] = (UniformBufferVK*)handle;
 	gContext->graphics_pipeline_ignore_bindings.erase(binding);
 }
 
 void BackendVK::setStorageBuffer(uint32_t binding, StorageBufferHandle* handle)
 {
-	auto buffer = (StorageBufferVK*)handle;
-	gContext->storage_buffers[binding] = buffer;
+	gContext->storage_buffers[binding] = (StorageBufferVK*)handle;
 }
 
 void BackendVK::setAccelerationStructure(uint32_t binding, TopLevelAccelerationStructureHandle* handle)
 {
-	auto top_level_acceleration_structure = (TopLevelAccelerationStructureVK*)handle;
-	gContext->top_level_acceleration_structures[binding] = top_level_acceleration_structure;
+	gContext->top_level_acceleration_structures[binding] = (TopLevelAccelerationStructureVK*)handle;
 }
 
 void BackendVK::setBlendMode(const std::optional<BlendMode>& value)
 {
-	if (gContext->blend_mode == value) // TODO: remove comparisons like this in all setters in all backends
-		return;
-
 	gContext->blend_mode = value;
 	gContext->blend_mode_dirty = true;
 }
 
 void BackendVK::setDepthMode(const std::optional<DepthMode>& depth_mode)
 {
-	if (gContext->depth_mode == depth_mode)
-		return;
-
 	gContext->depth_mode = depth_mode;
 	gContext->depth_mode_dirty = true;
 }
@@ -2724,9 +2666,6 @@ void BackendVK::setStencilMode(const std::optional<StencilMode>& stencil_mode)
 
 void BackendVK::setCullMode(CullMode cull_mode)
 {	
-	if (gContext->cull_mode == cull_mode)
-		return;
-
 	gContext->cull_mode = cull_mode;
 	gContext->cull_mode_dirty = true;
 }

@@ -426,8 +426,10 @@ static void EnsureInputLayout()
 		return;
 
 	gContext->input_layout_dirty = false;
+
 	auto& cache = gContext->shader->getInputLayoutCache();
 	const auto& input_layout_nn = gContext->input_layout.value();
+
 	if (!cache.contains(input_layout_nn))
 	{
 		std::vector<D3D11_INPUT_ELEMENT_DESC> input_elements;
@@ -444,7 +446,7 @@ static void EnsureInputLayout()
 				.AlignedByteOffset = (UINT)attribute.offset,
 				.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA,
 				.InstanceDataStepRate = 0
-				});
+			});
 		}
 
 		gContext->device->CreateInputLayout(input_elements.data(), (UINT)input_elements.size(),
@@ -783,10 +785,8 @@ void BackendD3D11::setTopology(Topology topology)
 
 void BackendD3D11::setViewport(std::optional<Viewport> viewport)
 {
-	if (gContext->viewport != viewport)
-		gContext->viewport_dirty = true;
-
 	gContext->viewport = viewport;
+	gContext->viewport_dirty = true;
 }
 
 void BackendD3D11::setScissor(std::optional<Scissor> scissor)
@@ -795,22 +795,16 @@ void BackendD3D11::setScissor(std::optional<Scissor> scissor)
 	{
 		auto value = scissor.value();
 
-		gContext->rasterizer_state.scissor_enabled = true;
-
 		D3D11_RECT rect;
 		rect.left = static_cast<LONG>(value.position.x);
 		rect.top = static_cast<LONG>(value.position.y);
 		rect.right = static_cast<LONG>(value.position.x + value.size.x);
 		rect.bottom = static_cast<LONG>(value.position.y + value.size.y);
 		gContext->context->RSSetScissorRects(1, &rect);
+	}
 
-		gContext->rasterizer_state_dirty = true;
-	}
-	else
-	{
-		gContext->rasterizer_state.scissor_enabled = false;
-		gContext->rasterizer_state_dirty = true;
-	}
+	gContext->rasterizer_state.scissor_enabled = scissor.has_value();
+	gContext->rasterizer_state_dirty = true;
 }
 
 void BackendD3D11::setTexture(uint32_t binding, TextureHandle* handle)
@@ -905,9 +899,6 @@ void BackendD3D11::setUniformBuffer(uint32_t binding, UniformBufferHandle* handl
 
 void BackendD3D11::setBlendMode(const std::optional<BlendMode>& blend_mode)
 {
-	if (gContext->blend_mode == blend_mode)
-		return;
-
 	gContext->blend_mode = blend_mode;
 	gContext->blend_mode_dirty = true;
 }
@@ -944,18 +935,12 @@ void BackendD3D11::setTextureAddress(TextureAddress value)
 
 void BackendD3D11::setFrontFace(FrontFace value)
 {
-	if (gContext->rasterizer_state.front_face == value)
-		return;
-
 	gContext->rasterizer_state.front_face = value;
 	gContext->rasterizer_state_dirty = true;
 }
 
 void BackendD3D11::setDepthBias(const std::optional<DepthBias> depth_bias)
 {
-	if (gContext->rasterizer_state.depth_bias == depth_bias)
-		return;
-
 	gContext->rasterizer_state.depth_bias = depth_bias;
 	gContext->rasterizer_state_dirty = true;
 }
