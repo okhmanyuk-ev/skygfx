@@ -22,9 +22,9 @@ namespace skygfx
 		void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) override;
 		void setRenderTarget(std::nullopt_t value) override;
 		void setShader(ShaderHandle* handle) override;
-		void setInputLayout(const InputLayout& value) override;
+		void setInputLayout(const std::vector<InputLayout>& value) override;
 		void setRaytracingShader(RaytracingShaderHandle* handle) override;
-		void setVertexBuffer(VertexBufferHandle* handle) override;
+		void setVertexBuffer(const std::vector<VertexBufferHandle*>& handles) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
 		void setStorageBuffer(uint32_t binding, StorageBufferHandle* handle) override;

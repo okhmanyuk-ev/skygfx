@@ -139,3 +139,8 @@ set_target_properties(13_raytraced_shadows PROPERTIES RESOURCE ${RESOURCES})
 
 add_executable(14_scratch_api_triangle 14_scratch_api_triangle/main.cpp)
 target_link_libraries(14_scratch_api_triangle glfw skygfx)
+
+# 15 - multiple vertex buffers
+
+add_executable(15_multiple_vertex_buffers 15_multiple_vertex_buffers/main.cpp)
+target_link_libraries(15_multiple_vertex_buffers glfw skygfx)

@@ -494,18 +494,18 @@ uint32_t skygfx::GetMipHeight(uint32_t base_height, uint32_t mip_level)
 
 // blend mode
 
-skygfx::BlendMode::BlendMode(Blend _color_src, Blend _color_dst, Blend _alpha_src, Blend _alpha_dst) :
+BlendMode::BlendMode(Blend _color_src, Blend _color_dst, Blend _alpha_src, Blend _alpha_dst) :
 	color_src(_color_src), color_dst(_color_dst), alpha_src(_alpha_src), alpha_dst(_alpha_dst)
 {
 }
 
-skygfx::BlendMode::BlendMode(Blend src, Blend dst) : BlendMode(src, dst, src, dst)
+BlendMode::BlendMode(Blend src, Blend dst) : BlendMode(src, dst, src, dst)
 {
 }
 
 // depth bias
 
-skygfx::DepthBias::DepthBias(float _factor, float _units) :
+DepthBias::DepthBias(float _factor, float _units) :
 	factor(_factor), units(_units)
 {
 }
@@ -754,12 +754,27 @@ void skygfx::SetShader(const RaytracingShader& shader)
 
 void skygfx::SetInputLayout(const InputLayout& value)
 {
+	gBackend->setInputLayout({ value });
+}
+
+void skygfx::SetInputLayout(const std::vector<InputLayout>& value)
+{
 	gBackend->setInputLayout(value);
 }
 
 void skygfx::SetVertexBuffer(const VertexBuffer& value)
 {
-	gBackend->setVertexBuffer(const_cast<VertexBuffer&>(value));
+	SetVertexBuffer({ (VertexBuffer*)&value });
+}
+
+void skygfx::SetVertexBuffer(const std::vector<VertexBuffer*>& value)
+{
+	std::vector<VertexBufferHandle*> handles;
+	for (auto target : value)
+	{
+		handles.push_back(*target);
+	}
+	gBackend->setVertexBuffer(handles);
 }
 
 void skygfx::SetIndexBuffer(const IndexBuffer& value)

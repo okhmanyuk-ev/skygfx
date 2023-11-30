@@ -79,7 +79,7 @@ struct ContextD3D11
 	RenderTargetD3D11* main_render_target = nullptr;
 	std::vector<RenderTargetD3D11*> render_targets;
 	ShaderD3D11* shader = nullptr;
-	std::optional<InputLayout> input_layout;
+	std::vector<InputLayout> input_layouts;
 	
 	std::unordered_map<DepthStencilStateD3D11, ComPtr<ID3D11DepthStencilState>> depth_stencil_states;
 	DepthStencilStateD3D11 depth_stencil_state;
@@ -96,7 +96,7 @@ struct ContextD3D11
 	std::optional<Viewport> viewport;
 
 	bool shader_dirty = true;
-	bool input_layout_dirty = true;
+	bool input_layouts_dirty = true;
 	bool depth_stencil_state_dirty = true;
 	bool rasterizer_state_dirty = true;
 	bool sampler_state_dirty = true;
@@ -124,6 +124,10 @@ static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
 	{ Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
 };
 
+SKYGFX_MAKE_HASHABLE(std::vector<InputLayout>,
+	t
+);
+
 class ShaderD3D11
 {
 public:
@@ -135,7 +139,7 @@ public:
 private:
 	ComPtr<ID3D11VertexShader> mVertexShader;
 	ComPtr<ID3D11PixelShader> mPixelShader;
-	std::unordered_map<InputLayout, ComPtr<ID3D11InputLayout>> mInputLayoutCache;
+	std::unordered_map<std::vector<InputLayout>, ComPtr<ID3D11InputLayout>> mInputLayoutCache;
 	ComPtr<ID3DBlob> mVertexShaderBlob; // for input layout
 
 public:
@@ -422,39 +426,46 @@ static void EnsureShader()
 
 static void EnsureInputLayout()
 {
-	if (!gContext->input_layout_dirty)
+	if (!gContext->input_layouts_dirty)
 		return;
 
-	gContext->input_layout_dirty = false;
+	gContext->input_layouts_dirty = false;
 
 	auto& cache = gContext->shader->getInputLayoutCache();
-	const auto& input_layout_nn = gContext->input_layout.value();
 
-	if (!cache.contains(input_layout_nn))
+	if (!cache.contains(gContext->input_layouts))
 	{
 		std::vector<D3D11_INPUT_ELEMENT_DESC> input_elements;
 
-		for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
+		for (size_t i = 0; i < gContext->input_layouts.size(); i++)
 		{
-			const auto& attribute = input_layout_nn.attributes.at(i);
+			const auto& input_layout = gContext->input_layouts.at(i);
 
-			input_elements.push_back(D3D11_INPUT_ELEMENT_DESC{
-				.SemanticName = "TEXCOORD",
-				.SemanticIndex = (UINT)i,
-				.Format = FormatMap.at(attribute.format),
-				.InputSlot = 0,
-				.AlignedByteOffset = (UINT)attribute.offset,
-				.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA,
-				.InstanceDataStepRate = 0
-			});
+			for (const auto& [location, attribute] : input_layout.attributes)
+			{
+				static const std::unordered_map<InputLayout::Rate, D3D11_INPUT_CLASSIFICATION> InputRateMap = {
+					{ InputLayout::Rate::Vertex, D3D11_INPUT_PER_VERTEX_DATA },
+					{ InputLayout::Rate::Instance, D3D11_INPUT_PER_INSTANCE_DATA },
+				};
+
+				input_elements.push_back(D3D11_INPUT_ELEMENT_DESC{
+					.SemanticName = "TEXCOORD",
+					.SemanticIndex = (UINT)location,
+					.Format = FormatMap.at(attribute.format),
+					.InputSlot = (UINT)i,
+					.AlignedByteOffset = (UINT)attribute.offset,
+					.InputSlotClass = InputRateMap.at(input_layout.rate),
+					.InstanceDataStepRate = 0
+				});
+			}
 		}
 
 		gContext->device->CreateInputLayout(input_elements.data(), (UINT)input_elements.size(),
 			gContext->shader->getVertexShaderBlob()->GetBufferPointer(),
-			gContext->shader->getVertexShaderBlob()->GetBufferSize(), cache[input_layout_nn].GetAddressOf());
+			gContext->shader->getVertexShaderBlob()->GetBufferSize(), cache[gContext->input_layouts].GetAddressOf());
 	}
 
-	gContext->context->IASetInputLayout(cache.at(input_layout_nn).Get());
+	gContext->context->IASetInputLayout(cache.at(gContext->input_layouts).Get());
 }
 
 static void EnsureDepthStencilState()
@@ -814,10 +825,10 @@ void BackendD3D11::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->textures[binding] = texture;
 }
 
-void BackendD3D11::setInputLayout(const InputLayout& value)
+void BackendD3D11::setInputLayout(const std::vector<InputLayout>& value)
 {
-	gContext->input_layout = value;
-	gContext->input_layout_dirty = true;
+	gContext->input_layouts = value;
+	gContext->input_layouts_dirty = true;
 }
 
 void BackendD3D11::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
@@ -872,15 +883,25 @@ void BackendD3D11::setShader(ShaderHandle* handle)
 {
 	gContext->shader = (ShaderD3D11*)handle;
 	gContext->shader_dirty = true;
-	gContext->input_layout_dirty = true;
+	gContext->input_layouts_dirty = true;
 }
 
-void BackendD3D11::setVertexBuffer(VertexBufferHandle* handle)
+void BackendD3D11::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
 {
-	auto buffer = (VertexBufferD3D11*)handle;
-	auto stride = (UINT)buffer->getStride();
-	auto offset = (UINT)0;
-	gContext->context->IASetVertexBuffers(0, 1, buffer->getD3D11Buffer().GetAddressOf(), &stride, &offset);
+	std::vector<ID3D11Buffer*> buffers;
+	std::vector<UINT> strides;
+	std::vector<UINT> offsets;
+
+	for (auto handle : handles)
+	{
+		auto buffer = (VertexBufferD3D11*)handle;
+
+		buffers.push_back(buffer->getD3D11Buffer().Get());
+		strides.push_back((UINT)buffer->getStride());
+		offsets.push_back(0);
+	}
+
+	gContext->context->IASetVertexBuffers(0, (UINT)handles.size(), buffers.data(), strides.data(), offsets.data());
 }
 
 void BackendD3D11::setIndexBuffer(IndexBufferHandle* handle)

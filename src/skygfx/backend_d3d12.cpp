@@ -58,7 +58,7 @@ struct PipelineStateD3D12
 	TopologyKind topology_kind = TopologyKind::Triangles;
 	std::vector<DXGI_FORMAT> color_attachment_formats;
 	std::optional<DXGI_FORMAT> depth_stencil_format;
-	std::optional<InputLayout> input_layout;
+	std::vector<InputLayout> input_layouts;
 
 	bool operator==(const PipelineStateD3D12& other) const = default;
 };
@@ -71,7 +71,7 @@ SKYGFX_MAKE_HASHABLE(PipelineStateD3D12,
 	t.topology_kind,
 	t.color_attachment_formats,
 	t.depth_stencil_format,
-	t.input_layout
+	t.input_layouts
 );
 
 static int const NUM_BACK_BUFFERS = 2;
@@ -118,13 +118,13 @@ struct ContextD3D12
 	Topology topology = Topology::TriangleList;
 	std::optional<Viewport> viewport;
 	std::optional<Scissor> scissor;
-	VertexBufferD3D12* vertex_buffer = nullptr;
+	std::vector<VertexBufferD3D12*> vertex_buffers;
 	IndexBufferD3D12* index_buffer = nullptr;
 
 	bool topology_dirty = true;
 	bool viewport_dirty = true;
 	bool scissor_dirty = true;
-	bool vertex_buffer_dirty = true;
+	bool vertex_buffers_dirty = true;
 	bool index_buffer_dirty = true;
 
 	uint32_t width = 0;
@@ -810,21 +810,27 @@ static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineSta
 
 	std::vector<D3D12_INPUT_ELEMENT_DESC> input_elements;
 
-	const auto& input_layout_nn = pipeline_state.input_layout.value();
-
-	for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
+	for (size_t i = 0; i < pipeline_state.input_layouts.size(); i++)
 	{
-		const auto& attribute = input_layout_nn.attributes.at(i);
+		const auto& input_layout = pipeline_state.input_layouts.at(i);
 
-		input_elements.push_back(D3D12_INPUT_ELEMENT_DESC{
-			.SemanticName = "TEXCOORD",
-			.SemanticIndex = (UINT)i,
-			.Format = FormatMap.at(attribute.format),
-			.InputSlot = 0,
-			.AlignedByteOffset = (UINT)attribute.offset,
-			.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-			.InstanceDataStepRate = 0
-		});
+		for (const auto& [location, attribute] : input_layout.attributes)
+		{
+			static const std::unordered_map<InputLayout::Rate, D3D12_INPUT_CLASSIFICATION> InputRateMap = {
+				{ InputLayout::Rate::Vertex, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA },
+				{ InputLayout::Rate::Instance, D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA },
+			};
+
+			input_elements.push_back(D3D12_INPUT_ELEMENT_DESC{
+				.SemanticName = "TEXCOORD",
+				.SemanticIndex = (UINT)location,
+				.Format = FormatMap.at(attribute.format),
+				.InputSlot = (UINT)i,
+				.AlignedByteOffset = (UINT)attribute.offset,
+				.InputSlotClass = InputRateMap.at(input_layout.rate),
+				.InstanceDataStepRate = 0
+			});
+		}
 	}
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
@@ -931,17 +937,25 @@ static void EnsureIndexBuffer()
 
 static void EnsureVertexBuffer()
 {
-	if (!gContext->vertex_buffer_dirty)
+	if (!gContext->vertex_buffers_dirty)
 		return;
 
-	gContext->vertex_buffer_dirty = false;
+	gContext->vertex_buffers_dirty = false;
 
-	D3D12_VERTEX_BUFFER_VIEW buffer_view = {};
-	buffer_view.BufferLocation = gContext->vertex_buffer->getD3D12Buffer()->GetGPUVirtualAddress();
-	buffer_view.SizeInBytes = (UINT)gContext->vertex_buffer->getSize();
-	buffer_view.StrideInBytes = (UINT)gContext->vertex_buffer->getStride();
+	std::vector<D3D12_VERTEX_BUFFER_VIEW> buffer_views;
 
-	gContext->cmdlist->IASetVertexBuffers(0, 1, &buffer_view);
+	for (auto vertex_buffer : gContext->vertex_buffers)
+	{
+		auto buffer_view = D3D12_VERTEX_BUFFER_VIEW{
+			.BufferLocation = vertex_buffer->getD3D12Buffer()->GetGPUVirtualAddress(),
+			.SizeInBytes = (UINT)vertex_buffer->getSize(),
+			.StrideInBytes = (UINT)vertex_buffer->getStride()
+		};
+
+		buffer_views.push_back(buffer_view);
+	}
+
+	gContext->cmdlist->IASetVertexBuffers(0, (UINT)buffer_views.size(), buffer_views.data());
 }
 
 static void EnsureGraphicsState(bool draw_indexed)
@@ -1029,7 +1043,7 @@ static void Begin()
 	gContext->viewport_dirty = true;
 	gContext->scissor_dirty = true;
 	gContext->index_buffer_dirty = true;
-	gContext->vertex_buffer_dirty = true;
+	gContext->vertex_buffers_dirty = true;
 }
 
 static void End()
@@ -1241,15 +1255,21 @@ void BackendD3D12::setShader(ShaderHandle* handle)
 	gContext->pipeline_state.shader = (ShaderD3D12*)handle;
 }
 
-void BackendD3D12::setInputLayout(const InputLayout& value)
+void BackendD3D12::setInputLayout(const std::vector<InputLayout>& value)
 {
-	gContext->pipeline_state.input_layout = value;
+	gContext->pipeline_state.input_layouts = value;
 }
 
-void BackendD3D12::setVertexBuffer(VertexBufferHandle* handle)
+void BackendD3D12::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
 {
-	gContext->vertex_buffer = (VertexBufferD3D12*)handle;
-	gContext->vertex_buffer_dirty = true;
+	gContext->vertex_buffers.clear();
+
+	for (auto handle : handles)
+	{
+		gContext->vertex_buffers.push_back((VertexBufferD3D12*)handle);
+	}
+
+	gContext->vertex_buffers_dirty = true;
 }
 
 void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
@@ -1520,8 +1540,14 @@ void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* mem
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 
-	if (gContext->vertex_buffer == buffer)
-		gContext->vertex_buffer_dirty = true;
+	for (auto vertex_buffer : gContext->vertex_buffers)
+	{
+		if (vertex_buffer != buffer)
+			continue;
+
+		gContext->vertex_buffers_dirty = true;
+		break;
+	}
 }
 
 IndexBufferHandle* BackendD3D12::createIndexBuffer(size_t size, size_t stride)

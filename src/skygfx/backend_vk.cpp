@@ -27,7 +27,7 @@ struct PipelineStateVK
 	ShaderVK* shader = nullptr;
 	std::vector<vk::Format> color_attachment_formats;
 	std::optional<vk::Format> depth_stencil_format;
-	std::optional<InputLayout> input_layout;
+	std::vector<InputLayout> input_layouts;
 
 	bool operator==(const PipelineStateVK& other) const = default;
 };
@@ -36,7 +36,7 @@ SKYGFX_MAKE_HASHABLE(PipelineStateVK,
 	t.shader,
 	t.color_attachment_formats,
 	t.depth_stencil_format,
-	t.input_layout
+	t.input_layouts
 );
 
 struct RaytracingPipelineStateVK
@@ -138,7 +138,7 @@ struct ContextVK
 	CullMode cull_mode = CullMode::None;
 	FrontFace front_face = FrontFace::Clockwise;
 	Topology topology = Topology::TriangleList;
-	VertexBufferVK* vertex_buffer = nullptr;
+	std::vector<VertexBufferVK*> vertex_buffers;
 	IndexBufferVK* index_buffer = nullptr;
 	std::optional<BlendMode> blend_mode;
 
@@ -150,7 +150,7 @@ struct ContextVK
 	bool cull_mode_dirty = true;
 	bool front_face_dirty = true;
 	bool topology_dirty = true;
-	bool vertex_buffer_dirty = true;
+	bool vertex_buffers_dirty = true;
 	bool index_buffer_dirty = true;
 	bool blend_mode_dirty = true;
 
@@ -1603,30 +1603,42 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 	auto pipeline_color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo()
 		.setAttachmentCount((uint32_t)pipeline_state.color_attachment_formats.size());
 
-	const auto& input_layout_nn = pipeline_state.input_layout.value();
-
-	auto vertex_input_binding_description = vk::VertexInputBindingDescription()
-		.setStride(static_cast<uint32_t>(input_layout_nn.stride))
-		.setInputRate(vk::VertexInputRate::eVertex)
-		.setBinding(0);
-
+	std::vector<vk::VertexInputBindingDescription> vertex_input_binding_descriptions;
 	std::vector<vk::VertexInputAttributeDescription> vertex_input_attribute_descriptions;
 
-	for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
+	for (size_t i = 0; i < pipeline_state.input_layouts.size(); i++)
 	{
-		const auto& attribute = input_layout_nn.attributes.at(i);
+		const auto& input_layout = pipeline_state.input_layouts.at(i);
 
-		auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
-			.setBinding(0)
-			.setLocation((uint32_t)i)
-			.setFormat(FormatMap.at(attribute.format))
-			.setOffset(static_cast<uint32_t>(attribute.offset));
+		static const std::unordered_map<InputLayout::Rate, vk::VertexInputRate> InputRateMap = {
+			{ InputLayout::Rate::Vertex, vk::VertexInputRate::eVertex },
+			{ InputLayout::Rate::Instance, vk::VertexInputRate::eInstance },
+		};
 
-		vertex_input_attribute_descriptions.push_back(vertex_input_attribute_description);
+		auto vertex_input_binding_description = vk::VertexInputBindingDescription()
+			.setStride((uint32_t)input_layout.stride)
+			.setInputRate(InputRateMap.at(input_layout.rate))
+			.setBinding((uint32_t)i);
+
+		vertex_input_binding_descriptions.push_back(vertex_input_binding_description);
+
+		for (const auto& [location, attribute] : input_layout.attributes)
+		{
+			auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
+				.setBinding((uint32_t)i)
+				.setLocation(location)
+				.setFormat(FormatMap.at(attribute.format))
+				.setOffset((uint32_t)attribute.offset);
+
+			vertex_input_attribute_descriptions.push_back(vertex_input_attribute_description);
+		}
 	}
 
+	// TODO: use dynamic state for InputLayout
+	// https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_vertex_input_dynamic_state.html
+
 	auto pipeline_vertex_input_state_create_info = vk::PipelineVertexInputStateCreateInfo()
-		.setVertexBindingDescriptions(vertex_input_binding_description)
+		.setVertexBindingDescriptions(vertex_input_binding_descriptions)
 		.setVertexAttributeDescriptions(vertex_input_attribute_descriptions);
 
 	auto dynamic_states = {
@@ -1730,15 +1742,25 @@ static vk::raii::Pipeline CreateRaytracingPipeline(const RaytracingPipelineState
 	return gContext->device.createRayTracingPipelineKHR(nullptr, nullptr, raytracing_pipeline_create_info);
 }
 
-static void EnsureVertexBuffer(vk::raii::CommandBuffer& cmdlist)
+static void EnsureVertexBuffers(vk::raii::CommandBuffer& cmdlist)
 {
-	if (!gContext->vertex_buffer_dirty)
+	if (!gContext->vertex_buffers_dirty)
 		return;
 
-	gContext->vertex_buffer_dirty = false;
-	
-	cmdlist.bindVertexBuffers2(0, { *gContext->vertex_buffer->getBuffer() }, { 0 }, nullptr,
-		{ gContext->vertex_buffer->getStride() });
+	gContext->vertex_buffers_dirty = false;
+
+	std::vector<vk::Buffer> buffers;
+	std::vector<vk::DeviceSize> offsets;
+	std::vector<vk::DeviceSize> strides;
+
+	for (auto vertex_buffer : gContext->vertex_buffers)
+	{
+		buffers.push_back(*vertex_buffer->getBuffer());
+		offsets.push_back(0);
+		strides.push_back(vertex_buffer->getStride());
+	}
+
+	cmdlist.bindVertexBuffers2(0, buffers, offsets, nullptr, strides);
 }
 
 static void EnsureIndexBuffer(vk::raii::CommandBuffer& cmdlist)
@@ -2031,7 +2053,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 	EnsureMemoryState(cmdlist, vk::PipelineStageFlagBits2::eAllGraphics);
 	EnsureGraphicsPipelineState(cmdlist);
 	EnsureGraphicsDescriptors(cmdlist);
-	EnsureVertexBuffer(cmdlist);
+	EnsureVertexBuffers(cmdlist);
 
 	if (draw_indexed)
 		EnsureIndexBuffer(cmdlist);
@@ -2166,7 +2188,7 @@ static void Begin()
 	gContext->scissor_dirty = true;
 	gContext->cull_mode_dirty = true;
 	gContext->front_face_dirty = true;
-	gContext->vertex_buffer_dirty = true;
+	gContext->vertex_buffers_dirty = true;
 	gContext->index_buffer_dirty = true;
 	gContext->blend_mode_dirty = true;
 	gContext->depth_mode_dirty = true;
@@ -2606,9 +2628,9 @@ void BackendVK::setShader(ShaderHandle* handle)
 	gContext->pipeline_state_dirty = true;
 }
 
-void BackendVK::setInputLayout(const InputLayout& value)
+void BackendVK::setInputLayout(const std::vector<InputLayout>& value)
 {
-	gContext->pipeline_state.input_layout = value;
+	gContext->pipeline_state.input_layouts = value;
 	gContext->pipeline_state_dirty = true;
 }
 
@@ -2618,10 +2640,16 @@ void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
 	gContext->raytracing_pipeline_state.shader = shader;
 }
 
-void BackendVK::setVertexBuffer(VertexBufferHandle* handle)
+void BackendVK::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
 {
-	gContext->vertex_buffer = (VertexBufferVK*)handle;
-	gContext->vertex_buffer_dirty = true;
+	gContext->vertex_buffers.clear();
+
+	for (auto handle : handles)
+	{
+		gContext->vertex_buffers.push_back((VertexBufferVK*)handle);
+	}
+
+	gContext->vertex_buffers_dirty = true;
 }
 
 void BackendVK::setIndexBuffer(IndexBufferHandle* handle)
@@ -2966,8 +2994,14 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 
-	if (gContext->vertex_buffer == buffer)
-		gContext->vertex_buffer_dirty = true;
+	for (auto vertex_buffer : gContext->vertex_buffers)
+	{
+		if (vertex_buffer != buffer)
+			continue;
+
+		gContext->vertex_buffers_dirty = true;
+		break;
+	}
 }
 
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)

@@ -646,6 +646,8 @@ struct ContextGL
 		{
 			draw_buffers.push_back(GL_COLOR_ATTACHMENT0 + i);
 		}
+
+		glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_vertex_attribs);
 	}
 
 	~ContextGL()
@@ -661,6 +663,8 @@ struct ContextGL
 			}
 		}
 	}
+
+	int max_vertex_attribs;
 
 	std::vector<uint32_t> draw_buffers;
 
@@ -688,21 +692,21 @@ struct ContextGL
 
 	GLenum topology;
 	ShaderGL* shader = nullptr;
-	VertexBufferGL* vertex_buffer = nullptr;
+	std::vector<VertexBufferGL*> vertex_buffers;
 	IndexBufferGL* index_buffer = nullptr;
 	std::optional<Viewport> viewport;
 	std::optional<Scissor> scissor;
 	FrontFace front_face = FrontFace::Clockwise;
-	std::optional<InputLayout> input_layout;
+	std::vector<InputLayout> input_layouts;
 
 	bool shader_dirty = false;
-	bool vertex_buffer_dirty = false;
+	bool vertex_buffers_dirty = false;
 	bool index_buffer_dirty = false;
 	bool viewport_dirty = true;
 	bool scissor_dirty = true;
 	bool sampler_state_dirty = true;
 	bool front_face_dirty = true;
-	bool input_layout_dirty = true;
+	bool input_layouts_dirty = true;
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
@@ -729,12 +733,12 @@ Format ContextGL::getBackbufferFormat()
 static void EnsureGraphicsState(bool draw_indexed)
 {
 	assert(gContext->shader);
-	assert(gContext->vertex_buffer);
+	//assert(gContext->vertex_buffer);
 
 	if (gContext->shader_dirty)
 	{
 		gContext->shader->apply();
-		gContext->vertex_buffer_dirty = true;
+		gContext->vertex_buffers_dirty = true;
 		gContext->index_buffer_dirty = draw_indexed;
 		gContext->shader_dirty = false;
 	}
@@ -745,37 +749,38 @@ static void EnsureGraphicsState(bool draw_indexed)
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gContext->index_buffer->getGLBuffer());
 	}
 
-	if (gContext->vertex_buffer_dirty)
+	if (gContext->vertex_buffers_dirty || gContext->input_layouts_dirty)
 	{
-		gContext->vertex_buffer_dirty = false;
-		glBindBuffer(GL_ARRAY_BUFFER, gContext->vertex_buffer->getGLBuffer());
-		gContext->input_layout_dirty = true;
-	}
+		gContext->vertex_buffers_dirty = false;
+		gContext->input_layouts_dirty = false;
 
-	if (gContext->input_layout_dirty)
-	{
-		gContext->input_layout_dirty = false;
+		std::unordered_set<uint32_t> active_locations;
 
-		const auto& input_layout_nn = gContext->input_layout.value();
-		auto stride = (GLsizei)input_layout_nn.stride;
-
-		for (size_t i = 0; i < input_layout_nn.attributes.size(); i++)
+		for (size_t i = 0; i < gContext->vertex_buffers.size(); i++)
 		{
-			const auto& attrib = input_layout_nn.attributes.at(i);
-			auto index = (GLuint)i;
-			auto size = (GLint)SizeMap.at(attrib.format);
-			auto type = (GLenum)FormatTypeMap.at(attrib.format);
-			auto normalized = (GLboolean)NormalizeMap.at(attrib.format);
-			auto pointer = (void*)attrib.offset;
-			glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+			auto vertex_buffer = gContext->vertex_buffers.at(i);
+
+			glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer->getGLBuffer());
+
+			const auto& input_layout = gContext->input_layouts.at(i);
+			auto stride = (GLsizei)input_layout.stride;
+
+			for (const auto& [location, attribute] : input_layout.attributes)
+			{
+				active_locations.insert(location);
+
+				auto index = (GLuint)location;
+				auto size = (GLint)SizeMap.at(attribute.format);
+				auto type = (GLenum)FormatTypeMap.at(attribute.format);
+				auto normalized = (GLboolean)NormalizeMap.at(attribute.format);
+				auto pointer = (void*)attribute.offset;
+				glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+			}
 		}
 
-		int max_attribs;
-		glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_attribs);
-
-		for (int i = 0; i < max_attribs; i++)
+		for (int i = 0; i < gContext->max_vertex_attribs; i++)
 		{
-			if (i < input_layout_nn.attributes.size())
+			if (active_locations.contains(i))
 				glEnableVertexAttribArray(i);
 			else
 				glDisableVertexAttribArray(i);
@@ -1208,16 +1213,22 @@ void BackendGL::setShader(ShaderHandle* handle)
 	gContext->shader_dirty = true;
 }
 
-void BackendGL::setInputLayout(const InputLayout& value)
+void BackendGL::setInputLayout(const std::vector<InputLayout>& value)
 {
-	gContext->input_layout = value;
-	gContext->input_layout_dirty = true;
+	gContext->input_layouts = value;
+	gContext->input_layouts_dirty = true;
 }
 
-void BackendGL::setVertexBuffer(VertexBufferHandle* handle)
+void BackendGL::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
 {
-	gContext->vertex_buffer = (VertexBufferGL*)handle;
-	gContext->vertex_buffer_dirty = true;
+	gContext->vertex_buffers.clear();
+
+	for (auto handle : handles)
+	{
+		gContext->vertex_buffers.push_back((VertexBufferGL*)handle);
+	}
+
+	gContext->vertex_buffers_dirty = true;
 }
 
 void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
@@ -1540,10 +1551,6 @@ void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 {
 	gContext->execute_after_present.add([handle] {
 		auto buffer = (VertexBufferGL*)handle;
-
-		if (gContext->vertex_buffer == buffer)
-			gContext->vertex_buffer = nullptr;
-
 		delete buffer;
 	});
 }

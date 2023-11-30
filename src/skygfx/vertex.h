@@ -29,6 +29,7 @@ namespace skygfx::vertex
 	}
 
 	std::vector<std::string> MakeSequentialLocationDefines(const std::vector<std::string>& locations);
+	std::unordered_map<uint32_t, InputLayout::Attribute> MakeSequentialAttributes(const std::vector<InputLayout::Attribute>& attributes);
 
 	struct Position
 	{

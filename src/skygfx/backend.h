@@ -19,8 +19,8 @@ namespace skygfx
 		virtual void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) = 0;
 		virtual void setRenderTarget(std::nullopt_t value) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
-		virtual void setInputLayout(const InputLayout& value) = 0;
-		virtual void setVertexBuffer(VertexBufferHandle* handle) = 0;
+		virtual void setInputLayout(const std::vector<InputLayout>& value) = 0;
+		virtual void setVertexBuffer(const std::vector<VertexBufferHandle*>& handles) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
 		virtual void setBlendMode(const std::optional<BlendMode>& blend_mode) = 0;

@@ -376,6 +376,12 @@ namespace skygfx
 
 	struct InputLayout
 	{
+		enum class Rate
+		{
+			Vertex,
+			Instance
+		};
+
 		struct Attribute
 		{
 			Format format;
@@ -385,7 +391,8 @@ namespace skygfx
 		};
 
 		size_t stride;
-		std::vector<Attribute> attributes;
+		std::unordered_map<uint32_t, Attribute> attributes;
+		Rate rate = Rate::Vertex;
 
 		bool operator==(const InputLayout& other) const = default;
 	};
@@ -565,7 +572,9 @@ namespace skygfx
 	void SetShader(const Shader& shader);
 	void SetShader(const RaytracingShader& shader);
 	void SetInputLayout(const InputLayout& value);
+	void SetInputLayout(const std::vector<InputLayout>& value);
 	void SetVertexBuffer(const VertexBuffer& value);
+	void SetVertexBuffer(const std::vector<VertexBuffer*>& value);
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
 	void SetStorageBuffer(uint32_t binding, const StorageBuffer& value);
@@ -652,7 +661,8 @@ SKYGFX_MAKE_HASHABLE(skygfx::InputLayout::Attribute,
 
 SKYGFX_MAKE_HASHABLE(skygfx::InputLayout,
 	t.stride,
-	t.attributes
+	t.attributes,
+	t.rate
 );
 
 SKYGFX_MAKE_HASHABLE(skygfx::ColorMask,

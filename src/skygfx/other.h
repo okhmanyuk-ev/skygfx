@@ -8,19 +8,30 @@ namespace skygfx
 	inline void hash_combine(std::size_t& seed) { }
 
 	template <typename T, typename... Rest>
-	inline void hash_combine(std::size_t& seed, const T& v, Rest... rest)
+	inline void hash_combine(std::size_t& seed, const T& value, Rest... rest)
 	{
 		std::hash<T> hasher;
-		seed ^= hasher(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+		seed ^= hasher(value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 		hash_combine(seed, rest...);
 	}
 
 	template <typename T, typename... Rest>
-	inline void hash_combine(std::size_t& seed, const std::vector<T>& v, Rest... rest)
+	inline void hash_combine(std::size_t& seed, const std::vector<T>& values, Rest... rest)
 	{
-		for (const auto& _v : v)
+		for (const auto& value : values)
 		{
-			hash_combine(seed, _v);
+			hash_combine(seed, value);
+		}
+		hash_combine(seed, rest...);
+	}
+
+	template <typename T, typename U, typename... Rest>
+	inline void hash_combine(std::size_t& seed, const std::unordered_map<T, U>& values, Rest... rest)
+	{
+		for (const auto& [key, value] : values)
+		{
+			hash_combine(seed, key);
+			hash_combine(seed, value);
 		}
 		hash_combine(seed, rest...);
 	}
