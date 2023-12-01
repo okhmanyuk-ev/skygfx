@@ -19,10 +19,11 @@ namespace skygfx
 		void setViewport(std::optional<Viewport> viewport) override;
 		void setScissor(std::optional<Scissor> scissor) override;
 		void setTexture(uint32_t binding, TextureHandle* handle) override;
-		void setRenderTarget(RenderTargetHandle* handle) override;
+		void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) override;
 		void setRenderTarget(std::nullopt_t value) override;
 		void setShader(ShaderHandle* handle) override;
-		void setVertexBuffer(VertexBufferHandle* handle) override;
+		void setInputLayout(const std::vector<InputLayout>& value) override;
+		void setVertexBuffer(const std::vector<VertexBufferHandle*>& handles) override;
 		void setIndexBuffer(IndexBufferHandle* handle) override;
 		void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) override;
 		void setBlendMode(const std::optional<BlendMode>& blend_mode) override;
@@ -55,8 +56,8 @@ namespace skygfx
 		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) override;
 		void destroyRenderTarget(RenderTargetHandle* handle) override;
 
-		ShaderHandle* createShader(const VertexLayout& vertex_layout, const std::string& vertex_code, 
-			const std::string& fragment_code, const std::vector<std::string>& defines) override;
+		ShaderHandle* createShader(const std::string& vertex_code, const std::string& fragment_code,
+			const std::vector<std::string>& defines) override;
 		void destroyShader(ShaderHandle* handle) override;
 
 		VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) override;

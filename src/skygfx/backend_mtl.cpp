@@ -29,6 +29,7 @@ struct PipelineStateMetal
 	MTLPixelFormat color_attachment_pixel_format;
 	MTLPixelFormat depth_stencil_attachment_pixel_format;
 	std::optional<BlendMode> blend_mode;
+	std::vector<InputLayout> input_layouts;
 
 	bool operator==(const PipelineStateMetal& other) const = default;
 };
@@ -37,7 +38,8 @@ SKYGFX_MAKE_HASHABLE(PipelineStateMetal,
 	t.shader,
 	t.color_attachment_pixel_format,
 	t.depth_stencil_attachment_pixel_format,
-	t.blend_mode
+	t.blend_mode,
+	t.input_layouts
 );
 	
 struct SamplerStateMetal
@@ -151,21 +153,17 @@ class ShaderMetal
 public:
 	auto getMetalVertFunc() const { return mVertFunc; }
 	auto getMetalFragFunc() const { return mFragFunc; }
-	auto getMetalVertexDescriptor() const { return mVertexDescriptor; }
-	
+
 private:
 	id<MTLLibrary> mVertLib = nullptr;
 	id<MTLLibrary> mFragLib = nullptr;
 	id<MTLFunction> mVertFunc = nullptr;
 	id<MTLFunction> mFragFunc = nullptr;
-	MTLVertexDescriptor* mVertexDescriptor = nullptr;
-	
+
 public:
-	ShaderMetal(const VertexLayout& vertex_layout, const std::string& vertex_code, const std::string& fragment_code,
+	ShaderMetal(const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		AddShaderLocationDefines(vertex_layout, defines);
-
 		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
@@ -192,28 +190,12 @@ public:
 
 		mVertFunc = [mVertLib newFunctionWithName:@"main0"];
 		mFragFunc = [mFragLib newFunctionWithName:@"main0"];
-		mVertexDescriptor = [[MTLVertexDescriptor alloc] init];
-		
-		for (int i = 0; i < vertex_layout.attributes.size(); i++)
-		{
-			const auto& attrib = vertex_layout.attributes.at(i);
-			auto desc = mVertexDescriptor.attributes[i];
-			desc.format = VertexFormatMap.at(attrib.format);
-			desc.offset = attrib.offset;
-			desc.bufferIndex = ContextMTL::VertexBufferStageBinding;
-		}
-
-		auto layout = mVertexDescriptor.layouts[ContextMTL::VertexBufferStageBinding];
-		layout.stride = vertex_layout.stride;
-		layout.stepRate = 1;
-		layout.stepFunction = MTLVertexStepFunctionPerVertex;
 	}
 
 	~ShaderMetal()
 	{
 		[mVertLib release];
 		[mFragLib release];
-		[mVertexDescriptor release];
 		[mVertFunc release];
 		[mFragFunc release];
 	}
@@ -278,7 +260,7 @@ public:
 	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
 		uint32_t mip_level, void* dst_memory)
 	{
-		// not implemented
+		// TODO: implement
 	}
 
 	void generateMips()
@@ -547,10 +529,28 @@ uint32_t ContextMTL::getBackbufferHeight()
 
 static id<MTLRenderPipelineState> CreateRenderPipelineState(const PipelineStateMetal& pipeline_state)
 {
+	auto vertex_descriptor = [[MTLVertexDescriptor alloc] init];
+
+	const auto& input_layout = pipeline_state.input_layouts.at(0);
+
+	for (int i = 0; i < input_layout.attributes.size(); i++)
+	{
+		const auto& attrib = input_layout.attributes.at(i);
+		auto desc = vertex_descriptor.attributes[i];
+		desc.format = VertexFormatMap.at(attrib.format);
+		desc.offset = attrib.offset;
+		desc.bufferIndex = ContextMTL::VertexBufferStageBinding;
+	}
+
+	auto layout = vertex_descriptor.layouts[ContextMTL::VertexBufferStageBinding];
+	layout.stride = input_layout.stride;
+	layout.stepRate = 1;
+	layout.stepFunction = MTLVertexStepFunctionPerVertex;
+
 	auto desc = [[MTLRenderPipelineDescriptor alloc] init];
 	desc.vertexFunction = pipeline_state.shader->getMetalVertFunc();
 	desc.fragmentFunction = pipeline_state.shader->getMetalFragFunc();
-	desc.vertexDescriptor = pipeline_state.shader->getMetalVertexDescriptor();
+	desc.vertexDescriptor = vertex_descriptor;
 	desc.depthAttachmentPixelFormat = pipeline_state.depth_stencil_attachment_pixel_format;
 	desc.stencilAttachmentPixelFormat = pipeline_state.depth_stencil_attachment_pixel_format;
 
@@ -612,6 +612,7 @@ static id<MTLRenderPipelineState> CreateRenderPipelineState(const PipelineStateM
 	auto result = [gContext->device newRenderPipelineStateWithDescriptor:desc error:&error];
 
 	[desc release];
+	[vertex_descriptor release];
 
 	if (!result)
 	{
@@ -931,6 +932,9 @@ BackendMetal::BackendMetal(void* window, uint32_t width, uint32_t height)
 	gContext->width = width;
 	gContext->height = height;
 
+	gContext->pipeline_state.color_attachment_pixel_format = gContext->view.colorPixelFormat;
+	gContext->pipeline_state.depth_stencil_attachment_pixel_format = gContext->view.depthStencilPixelFormat;
+
 	gContext->command_queue = gContext->device.newCommandQueue;
 			
 	Begin();
@@ -1002,10 +1006,10 @@ void BackendMetal::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->textures[binding] = texture;
 }
 
-void BackendMetal::setRenderTarget(RenderTargetHandle* handle)
+void BackendMetal::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 {
-	auto render_target = (RenderTargetMetal*)handle;
-	
+	auto render_target = (RenderTargetMetal*)handles.at(0); // TODO: implement mrt
+
 	if (gContext->render_target == render_target)
 		return;
 
@@ -1044,16 +1048,22 @@ void BackendMetal::setShader(ShaderHandle* handle)
 {
 	auto shader = (ShaderMetal*)handle;
 
-	if (gContext->pipeline_state.shader == shader)
+	if (gContext->pipeline_state.shader == shader) // TODO: remove comparisons like this
 		return;
 
 	gContext->pipeline_state.shader = shader;
 	gContext->pipeline_state_dirty = true;
 }
 
-void BackendMetal::setVertexBuffer(VertexBufferHandle* handle)
+void BackendMetal::setInputLayout(const std::vector<InputLayout>& value)
 {
-	auto buffer = (BufferMetal*)handle;
+	gContext->pipeline_state.input_layouts = value;
+	gContext->pipeline_state_dirty = true;
+}
+
+void BackendMetal::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
+{
+	auto buffer = (BufferMetal*)handles.at(0); // TODO: implement multiple vertex buffers
 
 	if (gContext->vertex_buffer == buffer)
 		return;
@@ -1287,10 +1297,10 @@ void BackendMetal::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendMetal::createShader(const VertexLayout& vertex_layout, const std::string& vertex_code,
-	const std::string& fragment_code, const std::vector<std::string>& defines)
+ShaderHandle* BackendMetal::createShader(const std::string& vertex_code, const std::string& fragment_code,
+	const std::vector<std::string>& defines)
 {
-	auto shader = new ShaderMetal(vertex_layout, vertex_code, fragment_code, defines);
+	auto shader = new ShaderMetal(vertex_code, fragment_code, defines);
 	return (ShaderHandle*)shader;
 }
 
