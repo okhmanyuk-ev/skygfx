@@ -700,13 +700,12 @@ struct ContextGL
 	std::vector<InputLayout> input_layouts;
 
 	bool shader_dirty = false;
-	bool vertex_buffers_dirty = false;
+	bool vertex_array_dirty = false;
 	bool index_buffer_dirty = false;
 	bool viewport_dirty = true;
 	bool scissor_dirty = true;
 	bool sampler_state_dirty = true;
 	bool front_face_dirty = true;
-	bool input_layouts_dirty = true;
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
@@ -738,7 +737,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 	if (gContext->shader_dirty)
 	{
 		gContext->shader->apply();
-		gContext->vertex_buffers_dirty = true;
+		gContext->vertex_array_dirty = true;
 		gContext->index_buffer_dirty = draw_indexed;
 		gContext->shader_dirty = false;
 	}
@@ -749,10 +748,9 @@ static void EnsureGraphicsState(bool draw_indexed)
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gContext->index_buffer->getGLBuffer());
 	}
 
-	if (gContext->vertex_buffers_dirty || gContext->input_layouts_dirty)
+	if (gContext->vertex_array_dirty)
 	{
-		gContext->vertex_buffers_dirty = false;
-		gContext->input_layouts_dirty = false;
+		gContext->vertex_array_dirty = false;
 
 		std::unordered_set<uint32_t> active_locations;
 
@@ -1217,7 +1215,7 @@ void BackendGL::setShader(ShaderHandle* handle)
 void BackendGL::setInputLayout(const std::vector<InputLayout>& value)
 {
 	gContext->input_layouts = value;
-	gContext->input_layouts_dirty = true;
+	gContext->vertex_array_dirty = true;
 }
 
 void BackendGL::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
@@ -1229,7 +1227,7 @@ void BackendGL::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
 		gContext->vertex_buffers.push_back((VertexBufferGL*)handle);
 	}
 
-	gContext->vertex_buffers_dirty = true;
+	gContext->vertex_array_dirty = true;
 }
 
 void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
