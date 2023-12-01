@@ -755,6 +755,17 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height, Adapte
 		D3D11_SDK_VERSION, &sd, gContext->swapchain.GetAddressOf(), gContext->device.GetAddressOf(),
 		NULL, gContext->context.GetAddressOf());
 
+#ifdef SKYGFX_D3D11_VALIDATION_ENABLED
+	ComPtr<ID3D11InfoQueue> info_queue;
+	gContext->device->QueryInterface(IID_PPV_ARGS(info_queue.GetAddressOf()));
+
+	info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_CORRUPTION, true);
+	info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_ERROR, true);
+	info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_INFO, true);
+	info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_MESSAGE, true);
+	info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_WARNING, true);
+#endif
+
 	CreateMainRenderTarget(width, height);
 	setRenderTarget(std::nullopt);
 }

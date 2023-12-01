@@ -2,7 +2,7 @@
 
 #ifdef SKYGFX_HAS_OPENGL
 
-//#define SKYGFX_OPENGL_DEBUG_ENABLED
+//#define SKYGFX_OPENGL_VALIDATION_ENABLED
 
 #include <unordered_map>
 #include <unordered_set>
@@ -43,7 +43,7 @@ extern "C" {
 
 using namespace skygfx;
 
-#ifdef SKYGFX_OPENGL_DEBUG_ENABLED
+#ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
 void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length,
 	const GLchar* message, const void* userParam)
 {
@@ -96,7 +96,7 @@ void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLen
 }
 #endif
 
-void CheckErrors()
+void FlushErrors()
 {
 	static const std::unordered_map<GLenum, std::string> ErrorMap = {
 		{ GL_INVALID_ENUM, "GL_INVALID_ENUM" }, // Set when an enumeration parameter is not legal.
@@ -1082,13 +1082,12 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	eglMakeCurrent(gEglDisplay, gEglSurface, gEglSurface, gEglContext);
 #endif
 
-#ifdef SKYGFX_OPENGL_DEBUG_ENABLED
+#ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
 	glEnable(GL_DEBUG_OUTPUT);
 	glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 	glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION, 0, NULL, GL_FALSE);
 	glDebugMessageCallback(DebugMessageCallback, nullptr);
 #endif
-
 
     GLint num_extensions;
     glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
@@ -1468,7 +1467,7 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 void BackendGL::present()
 {
-	CheckErrors();
+	FlushErrors();
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	SwapBuffers(gHDC);
 #elif defined(SKYGFX_PLATFORM_IOS)
