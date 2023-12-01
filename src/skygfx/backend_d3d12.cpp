@@ -828,7 +828,7 @@ static ComPtr<ID3D12PipelineState> CreateGraphicsPipelineState(const PipelineSta
 				.InputSlot = (UINT)i,
 				.AlignedByteOffset = (UINT)attribute.offset,
 				.InputSlotClass = InputRateMap.at(input_layout.rate),
-				.InstanceDataStepRate = 0
+				.InstanceDataStepRate = (UINT)(input_layout.rate == InputLayout::Rate::Vertex ? 0 : 1)
 			});
 		}
 	}
@@ -1140,14 +1140,14 @@ BackendD3D12::BackendD3D12(void* window, uint32_t width, uint32_t height, Adapte
 	ComPtr<IDXGISwapChain1> swapchain;
 	dxgi_factory->CreateSwapChainForHwnd(gContext->cmd_queue.Get(), (HWND)window,
 		&swapchain_desc, &fs_swapchain_desc, NULL, swapchain.GetAddressOf());
-		
+
 	swapchain.As(&gContext->swapchain);
 
 	gContext->device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(gContext->fence.GetAddressOf()));
 	gContext->fence_value = 1;
 	gContext->fence_event = CreateEvent(NULL, FALSE, FALSE, NULL);
 	assert(gContext->fence_event != NULL);
-	
+
 	gContext->pipeline_state.color_attachment_formats = { MainRenderTargetColorAttachmentFormat };
 	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
 

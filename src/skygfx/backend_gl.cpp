@@ -775,6 +775,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 				auto normalized = (GLboolean)NormalizeMap.at(attribute.format);
 				auto pointer = (void*)attribute.offset;
 				glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+				glVertexAttribDivisor(index, input_layout.rate == InputLayout::Rate::Vertex ? 0 : 1);
 			}
 		}
 

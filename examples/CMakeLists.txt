@@ -144,3 +144,8 @@ target_link_libraries(14_scratch_api_triangle glfw skygfx)
 
 add_executable(15_multiple_vertex_buffers 15_multiple_vertex_buffers/main.cpp)
 target_link_libraries(15_multiple_vertex_buffers glfw skygfx)
+
+# 16 - instancing
+
+add_executable(16_instancing 16_instancing/main.cpp)
+target_link_libraries(16_instancing glfw skygfx)

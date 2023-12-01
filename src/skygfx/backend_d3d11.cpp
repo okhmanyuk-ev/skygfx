@@ -455,7 +455,7 @@ static void EnsureInputLayout()
 					.InputSlot = (UINT)i,
 					.AlignedByteOffset = (UINT)attribute.offset,
 					.InputSlotClass = InputRateMap.at(input_layout.rate),
-					.InstanceDataStepRate = 0
+					.InstanceDataStepRate = (UINT)(input_layout.rate == InputLayout::Rate::Vertex ? 0 : 1)
 				});
 			}
 		}

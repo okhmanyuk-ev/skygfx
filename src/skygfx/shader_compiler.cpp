@@ -175,6 +175,7 @@ std::string skygfx::CompileSpirvToHlsl(const std::vector<uint32_t>& spirv, uint3
 
 	spirv_cross::CompilerHLSL::Options options;
 	options.shader_model = version;
+	options.flatten_matrix_vertex_input_semantics = true;
 	compiler.set_hlsl_options(options);
 
 	return compiler.compile();
