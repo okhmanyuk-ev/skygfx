@@ -57,6 +57,9 @@ target_link_libraries(YOUR_TARGET skygfx)
 ## [Bloom](examples/10_bloom)
 <img src="https://user-images.githubusercontent.com/3295141/230966107-1802fc24-3768-4939-83cd-88e3ace23bdc.gif" width="256"/>
 
+## [Instancing](examples/16_instancing)
+<img src="https://github.com/okhmanyuk-ev/skygfx/assets/3295141/65a73299-34d7-44a9-a424-134c6d21e3a8" width="256"/>
+
 ## [ImGui](examples/09_imgui)
 <img src="https://user-images.githubusercontent.com/3295141/223124707-9b3c73e7-a751-4899-96c7-f6ed167f0ea8.png" width="256"/>
 
