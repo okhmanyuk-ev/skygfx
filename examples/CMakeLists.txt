@@ -101,51 +101,51 @@ set_target_properties(07_light PROPERTIES RESOURCE ${RESOURCES})
 add_executable(08_render_target 08_render_target/main.cpp)
 target_link_libraries(08_render_target glfw skygfx)
 
-# 09 - imgui
+# 09 - multiple vertex buffers
 
-add_executable(09_imgui 09_imgui/main.cpp)
-target_link_libraries(09_imgui glfw skygfx imgui)
+add_executable(09_multiple_vertex_buffers 09_multiple_vertex_buffers/main.cpp)
+target_link_libraries(09_multiple_vertex_buffers glfw skygfx)
 
-# 10 - bloom
+# 10 - instancing
 
-add_executable(10_bloom 10_bloom/main.cpp ${RESOURCES})
-target_link_libraries(10_bloom glfw skygfx imgui)
-target_include_directories(10_bloom PUBLIC lib/stb)
-set_target_properties(10_bloom PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(10_bloom PROPERTIES RESOURCE ${RESOURCES})
+add_executable(10_instancing 10_instancing/main.cpp)
+target_link_libraries(10_instancing glfw skygfx)
 
-# 11 - raytraced triangle
+# 11 - imgui
 
-add_executable(11_raytraced_triangle 11_raytraced_triangle/main.cpp ${RESOURCES})
-target_link_libraries(11_raytraced_triangle glfw skygfx)
+add_executable(11_imgui 11_imgui/main.cpp)
+target_link_libraries(11_imgui glfw skygfx imgui)
 
-# 12 - raytraced cube
+# 12 - bloom
 
-add_executable(12_raytraced_cube 12_raytraced_cube/main.cpp ${RESOURCES})
-target_link_libraries(12_raytraced_cube glfw skygfx imgui)
-target_include_directories(12_raytraced_cube PUBLIC lib/stb)
-set_target_properties(12_raytraced_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(12_raytraced_cube PROPERTIES RESOURCE ${RESOURCES})
+add_executable(12_bloom 12_bloom/main.cpp ${RESOURCES})
+target_link_libraries(12_bloom glfw skygfx imgui)
+target_include_directories(12_bloom PUBLIC lib/stb)
+set_target_properties(12_bloom PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(12_bloom PROPERTIES RESOURCE ${RESOURCES})
 
-# 13 - raytraced shadows
+# 13 - raytraced triangle
 
-add_executable(13_raytraced_shadows 13_raytraced_shadows/main.cpp ${RESOURCES})
-target_link_libraries(13_raytraced_shadows glfw skygfx imgui)
-target_include_directories(13_raytraced_shadows PUBLIC lib/stb)
-set_target_properties(13_raytraced_shadows PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-set_target_properties(13_raytraced_shadows PROPERTIES RESOURCE ${RESOURCES})
+add_executable(13_raytraced_triangle 13_raytraced_triangle/main.cpp ${RESOURCES})
+target_link_libraries(13_raytraced_triangle glfw skygfx)
 
-# 14 - scratch api triangle
+# 14 - raytraced cube
 
-add_executable(14_scratch_api_triangle 14_scratch_api_triangle/main.cpp)
-target_link_libraries(14_scratch_api_triangle glfw skygfx)
+add_executable(14_raytraced_cube 14_raytraced_cube/main.cpp ${RESOURCES})
+target_link_libraries(14_raytraced_cube glfw skygfx imgui)
+target_include_directories(14_raytraced_cube PUBLIC lib/stb)
+set_target_properties(14_raytraced_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(14_raytraced_cube PROPERTIES RESOURCE ${RESOURCES})
 
-# 15 - multiple vertex buffers
+# 15 - raytraced shadows
 
-add_executable(15_multiple_vertex_buffers 15_multiple_vertex_buffers/main.cpp)
-target_link_libraries(15_multiple_vertex_buffers glfw skygfx)
+add_executable(15_raytraced_shadows 15_raytraced_shadows/main.cpp ${RESOURCES})
+target_link_libraries(15_raytraced_shadows glfw skygfx imgui)
+target_include_directories(15_raytraced_shadows PUBLIC lib/stb)
+set_target_properties(15_raytraced_shadows PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_target_properties(15_raytraced_shadows PROPERTIES RESOURCE ${RESOURCES})
 
-# 16 - instancing
+# 16 - scratch api triangle
 
-add_executable(16_instancing 16_instancing/main.cpp)
-target_link_libraries(16_instancing glfw skygfx)
+add_executable(16_scratch_api_triangle 16_scratch_api_triangle/main.cpp)
+target_link_libraries(16_scratch_api_triangle glfw skygfx)
