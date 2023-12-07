@@ -123,15 +123,12 @@ int main()
 	auto vertices_buffer = skygfx::VertexBuffer(vertices);
 	auto model_matrices_buffer = skygfx::VertexBuffer(model_matrices);
 
-	auto model_matrices_layout = skygfx::InputLayout{
-		.attributes = {
-			{ 2, { skygfx::Format::Float4, 0 } },
-			{ 3, { skygfx::Format::Float4, 16 } },
-			{ 4, { skygfx::Format::Float4, 32 } },
-			{ 5, { skygfx::Format::Float4, 48 } }
-		},
-		.rate = skygfx::InputLayout::Rate::Instance
-	};
+	auto model_matrices_layout = skygfx::InputLayout(skygfx::InputLayout::Rate::Instance, {
+		{ 2, { skygfx::Format::Float4, 0 } },
+		{ 3, { skygfx::Format::Float4, 16 } },
+		{ 4, { skygfx::Format::Float4, 32 } },
+		{ 5, { skygfx::Format::Float4, 48 } }
+	});
 
 	auto yaw = 0.0f;
 	auto pitch = glm::radians(-25.0f);

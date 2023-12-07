@@ -384,14 +384,19 @@ namespace skygfx
 
 		struct Attribute
 		{
+			Attribute(Format format, size_t offset);
+
 			Format format;
 			size_t offset;
 
 			bool operator==(const Attribute& other) const = default;
 		};
 
+		InputLayout(Rate rate, std::unordered_map<uint32_t, Attribute> attributes);
+		InputLayout(Rate rate, const std::vector<InputLayout::Attribute>& attributes);
+
+		Rate rate;
 		std::unordered_map<uint32_t, Attribute> attributes;
-		Rate rate = Rate::Vertex;
 
 		bool operator==(const InputLayout& other) const = default;
 	};

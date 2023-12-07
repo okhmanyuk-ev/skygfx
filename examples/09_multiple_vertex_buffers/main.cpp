@@ -62,13 +62,13 @@ int main()
 	auto positions_buffer = skygfx::VertexBuffer(positions);
 	auto colors_buffer = skygfx::VertexBuffer(colors);
 
-	auto positions_layout = skygfx::InputLayout{
-		.attributes = { { 0, { skygfx::Format::Float3 } } }
-	};
+	auto positions_layout = skygfx::InputLayout(skygfx::InputLayout::Rate::Vertex, {
+		{ 0, { skygfx::Format::Float3, 0 } } 
+	});
 
-	auto colors_layout = skygfx::InputLayout{
-		.attributes = { { 1, { skygfx::Format::Float4 } } }
-	};
+	auto colors_layout = skygfx::InputLayout(skygfx::InputLayout::Rate::Vertex, {
+		{ 1, { skygfx::Format::Float4, 0 } }
+	});
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);

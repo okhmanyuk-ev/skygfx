@@ -492,6 +492,29 @@ uint32_t skygfx::GetMipHeight(uint32_t base_height, uint32_t mip_level)
 	return glm::max<uint32_t>(1, static_cast<uint32_t>(glm::floor<uint32_t>(base_height >> mip_level)));
 }
 
+// input layout
+
+InputLayout::Attribute::Attribute(Format _format, size_t _offset) :
+	format(_format),
+	offset(_offset)
+{
+}
+
+InputLayout::InputLayout(Rate _rate, std::unordered_map<uint32_t, Attribute> _attributes) :
+	rate(_rate),
+	attributes(std::move(_attributes))
+{
+}
+
+InputLayout::InputLayout(Rate _rate, const std::vector<InputLayout::Attribute>& _attributes) :
+	rate(_rate)
+{
+	for (size_t i = 0; i < _attributes.size(); i++)
+	{
+		attributes.insert({ (uint32_t)i, _attributes.at(i) });
+	}
+}
+
 // blend mode
 
 BlendMode::BlendMode(Blend _color_src, Blend _color_dst, Blend _alpha_src, Blend _alpha_dst) :
