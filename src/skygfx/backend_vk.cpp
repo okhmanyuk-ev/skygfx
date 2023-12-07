@@ -1616,7 +1616,6 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 		};
 
 		auto vertex_input_binding_description = vk::VertexInputBindingDescription()
-			.setStride((uint32_t)input_layout.stride)
 			.setInputRate(InputRateMap.at(input_layout.rate))
 			.setBinding((uint32_t)i);
 

@@ -63,12 +63,10 @@ int main()
 	auto colors_buffer = skygfx::VertexBuffer(colors);
 
 	auto positions_layout = skygfx::InputLayout{
-		.stride = sizeof(decltype(positions)::value_type),
 		.attributes = { { 0, { skygfx::Format::Float3 } } }
 	};
 
 	auto colors_layout = skygfx::InputLayout{
-		.stride = sizeof(decltype(colors)::value_type),
 		.attributes = { { 1, { skygfx::Format::Float4 } } }
 	};
 

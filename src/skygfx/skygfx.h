@@ -390,7 +390,6 @@ namespace skygfx
 			bool operator==(const Attribute& other) const = default;
 		};
 
-		size_t stride;
 		std::unordered_map<uint32_t, Attribute> attributes;
 		Rate rate = Rate::Vertex;
 
@@ -660,7 +659,6 @@ SKYGFX_MAKE_HASHABLE(skygfx::InputLayout::Attribute,
 );
 
 SKYGFX_MAKE_HASHABLE(skygfx::InputLayout,
-	t.stride,
 	t.attributes,
 	t.rate
 );

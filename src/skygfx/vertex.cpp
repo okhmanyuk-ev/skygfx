@@ -28,34 +28,34 @@ std::unordered_map<uint32_t, skygfx::InputLayout::Attribute> skygfx::vertex::Mak
 }
 
 const skygfx::InputLayout Position::Layout = {
-	sizeof(Position), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(Position, pos) }
 	})
 };
 
 const skygfx::InputLayout PositionColor::Layout = {
-	sizeof(PositionColor), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionColor, pos) },
 		{ Format::Float4, offsetof(PositionColor, color) }
 	})
 };
 
 const skygfx::InputLayout PositionTexture::Layout = {
-	sizeof(PositionTexture), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionTexture, pos) },
 		{ Format::Float2, offsetof(PositionTexture, texcoord) }
 	})
 };
 
 const skygfx::InputLayout PositionNormal::Layout = {
-	sizeof(PositionNormal), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionNormal, pos) },
 		{ Format::Float3, offsetof(PositionNormal, normal) }
 	})
 };
 
 const skygfx::InputLayout PositionColorNormal::Layout = {
-	sizeof(PositionColorNormal), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionColorNormal, pos) },
 		{ Format::Float4, offsetof(PositionColorNormal, color) },
 		{ Format::Float3, offsetof(PositionColorNormal, normal) }
@@ -63,7 +63,7 @@ const skygfx::InputLayout PositionColorNormal::Layout = {
 };
 
 const skygfx::InputLayout PositionColorTexture::Layout = {
-	sizeof(PositionColorTexture), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionColorTexture, pos) },
 		{ Format::Float4, offsetof(PositionColorTexture, color) },
 		{ Format::Float2, offsetof(PositionColorTexture, texcoord) }
@@ -71,7 +71,7 @@ const skygfx::InputLayout PositionColorTexture::Layout = {
 };
 
 const skygfx::InputLayout PositionTextureNormal::Layout = {
-	sizeof(PositionTextureNormal), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionTextureNormal, pos) },
 		{ Format::Float2, offsetof(PositionTextureNormal, texcoord) },
 		{ Format::Float3, offsetof(PositionTextureNormal, normal) }
@@ -79,7 +79,7 @@ const skygfx::InputLayout PositionTextureNormal::Layout = {
 };
 
 const skygfx::InputLayout PositionColorTextureNormal::Layout = {
-	sizeof(PositionColorTextureNormal), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionColorTextureNormal, pos) },
 		{ Format::Float4, offsetof(PositionColorTextureNormal, color) },
 		{ Format::Float2, offsetof(PositionColorTextureNormal, texcoord) },
@@ -88,7 +88,7 @@ const skygfx::InputLayout PositionColorTextureNormal::Layout = {
 };
 
 const skygfx::InputLayout PositionColorTextureNormalTangent::Layout = {
-	sizeof(PositionColorTextureNormalTangent), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionColorTextureNormalTangent, pos) },
 		{ Format::Float4, offsetof(PositionColorTextureNormalTangent, color) },
 		{ Format::Float2, offsetof(PositionColorTextureNormalTangent, texcoord) },
@@ -98,7 +98,7 @@ const skygfx::InputLayout PositionColorTextureNormalTangent::Layout = {
 };
 
 const skygfx::InputLayout PositionColorTextureNormalTangentBitangent::Layout = {
-	sizeof(PositionColorTextureNormalTangentBitangent), MakeSequentialAttributes({
+	MakeSequentialAttributes({
 		{ Format::Float3, offsetof(PositionColorTextureNormalTangentBitangent, pos) },
 		{ Format::Float4, offsetof(PositionColorTextureNormalTangentBitangent, color) },
 		{ Format::Float2, offsetof(PositionColorTextureNormalTangentBitangent, texcoord) },

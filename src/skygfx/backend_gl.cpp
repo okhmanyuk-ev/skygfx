@@ -757,11 +757,11 @@ static void EnsureGraphicsState(bool draw_indexed)
 		for (size_t i = 0; i < gContext->vertex_buffers.size(); i++)
 		{
 			auto vertex_buffer = gContext->vertex_buffers.at(i);
+			auto stride = (GLsizei)vertex_buffer->getStride();
 
 			glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer->getGLBuffer());
 
 			const auto& input_layout = gContext->input_layouts.at(i);
-			auto stride = (GLsizei)input_layout.stride;
 
 			for (const auto& [location, attribute] : input_layout.attributes)
 			{

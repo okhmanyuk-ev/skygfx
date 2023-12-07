@@ -124,7 +124,6 @@ int main()
 	auto model_matrices_buffer = skygfx::VertexBuffer(model_matrices);
 
 	auto model_matrices_layout = skygfx::InputLayout{
-		.stride = sizeof(glm::mat4),
 		.attributes = {
 			{ 2, { skygfx::Format::Float4, 0 } },
 			{ 3, { skygfx::Format::Float4, 16 } },
