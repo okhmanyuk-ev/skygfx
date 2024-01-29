@@ -214,14 +214,14 @@ Buffer& Buffer::operator=(Buffer&& other) noexcept
 
 // vertex buffer
 
-VertexBuffer::VertexBuffer(size_t size, size_t stride) : Buffer(size)
+VertexBuffer::VertexBuffer(size_t size) : Buffer(size)
 {
-	mVertexBufferHandle = gBackend->createVertexBuffer(size, stride);
+	mVertexBufferHandle = gBackend->createVertexBuffer(size);
 }
 
-VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride) : VertexBuffer(size, stride)
+VertexBuffer::VertexBuffer(void* memory, size_t size) : VertexBuffer(size)
 {
-	write(memory, size, stride);
+	write(memory, size);
 }
 
 VertexBuffer::VertexBuffer(VertexBuffer&& other) noexcept : Buffer(std::move(other))
@@ -252,9 +252,9 @@ VertexBuffer& VertexBuffer::operator=(VertexBuffer&& other) noexcept
 	return *this;
 }
 
-void VertexBuffer::write(void* memory, size_t size, size_t stride)
+void VertexBuffer::write(void* memory, size_t size)
 {
-	gBackend->writeVertexBufferMemory(mVertexBufferHandle, memory, size, stride);
+	gBackend->writeVertexBufferMemory(mVertexBufferHandle, memory, size);
 }
 
 // index buffer
@@ -785,19 +785,9 @@ void skygfx::SetInputLayout(const std::vector<InputLayout>& value)
 	gBackend->setInputLayout(value);
 }
 
-void skygfx::SetVertexBuffer(const VertexBuffer& value)
+void skygfx::SetVertexBuffer(const std::vector<VertexBufferBinding>& binding)
 {
-	SetVertexBuffer({ (VertexBuffer*)&value });
-}
-
-void skygfx::SetVertexBuffer(const std::vector<VertexBuffer*>& value)
-{
-	std::vector<VertexBufferHandle*> handles;
-	for (auto target : value)
-	{
-		handles.push_back(*target);
-	}
-	gBackend->setVertexBuffer(handles);
+	gBackend->setVertexBuffer(binding);
 }
 
 void skygfx::SetIndexBuffer(const IndexBuffer& value)
@@ -902,11 +892,11 @@ void skygfx::SetVertexBuffer(void* memory, size_t size, size_t stride)
 		vertex_buffer_size = gVertexBuffer->getSize();
 
 	if (vertex_buffer_size < size)
-		gVertexBuffer.emplace(memory, size, stride);
+		gVertexBuffer.emplace(memory, size);
 	else
-		gVertexBuffer.value().write(memory, size, stride);
+		gVertexBuffer.value().write(memory, size);
 
-	SetVertexBuffer(gVertexBuffer.value());
+	SetVertexBuffer({ { gVertexBuffer.value(), stride } });
 }
 
 void skygfx::SetIndexBuffer(void* memory, size_t size, size_t stride)

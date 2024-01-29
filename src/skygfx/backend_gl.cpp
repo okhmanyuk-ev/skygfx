@@ -562,26 +562,19 @@ public:
 	}
 };
 
-class VertexBufferGL : public BufferGL
+class VertexBufferGL : public BufferGL // TODO: remove this class and use raw BufferGL with flag GL_ARRAY_BUFFER
 {
 public:
-	auto getStride() const { return mStride; }
-	void setStride(size_t value) { mStride = value; }
-
-private:
-	size_t mStride = 0;
-
-public:
-	VertexBufferGL(size_t size, size_t stride) : BufferGL(size, GL_ARRAY_BUFFER),
-		mStride(stride)
+	VertexBufferGL(size_t size) : BufferGL(size, GL_ARRAY_BUFFER)
 	{
 	}
 };
 
-class IndexBufferGL : public BufferGL
+class IndexBufferGL : public BufferGL // TODO: remove stride from this class, and use raw BufferGL with flag GL_ELEMENT_ARRAY_BUFFER
 {
 public:
 	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 	
 private:
 	size_t mStride = 0;
@@ -692,7 +685,7 @@ struct ContextGL
 
 	GLenum topology;
 	ShaderGL* shader = nullptr;
-	std::vector<VertexBufferGL*> vertex_buffers;
+	std::vector<VertexBufferBinding> vertex_buffer_binding;
 	IndexBufferGL* index_buffer = nullptr;
 	std::optional<Viewport> viewport;
 	std::optional<Scissor> scissor;
@@ -754,10 +747,11 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 		std::unordered_set<uint32_t> active_locations;
 
-		for (size_t i = 0; i < gContext->vertex_buffers.size(); i++)
+		for (size_t i = 0; i < gContext->vertex_buffer_binding.size(); i++)
 		{
-			auto vertex_buffer = gContext->vertex_buffers.at(i);
-			auto stride = (GLsizei)vertex_buffer->getStride();
+			const auto& binding = gContext->vertex_buffer_binding.at(i);
+			auto stride = static_cast<GLsizei>(binding.stride);
+			auto vertex_buffer = reinterpret_cast<VertexBufferGL*>(binding.handle);
 
 			glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer->getGLBuffer());
 
@@ -1217,15 +1211,9 @@ void BackendGL::setInputLayout(const std::vector<InputLayout>& value)
 	gContext->vertex_array_dirty = true;
 }
 
-void BackendGL::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
+void BackendGL::setVertexBuffer(const std::vector<VertexBufferBinding>& binding)
 {
-	gContext->vertex_buffers.clear();
-
-	for (auto handle : handles)
-	{
-		gContext->vertex_buffers.push_back((VertexBufferGL*)handle);
-	}
-
+	gContext->vertex_buffer_binding = binding;
 	gContext->vertex_array_dirty = true;
 }
 
@@ -1539,9 +1527,9 @@ void BackendGL::destroyShader(ShaderHandle* handle)
 	delete shader;
 }
 
-VertexBufferHandle* BackendGL::createVertexBuffer(size_t size, size_t stride)
+VertexBufferHandle* BackendGL::createVertexBuffer(size_t size)
 {
-	auto buffer = new VertexBufferGL(size, stride);
+	auto buffer = new VertexBufferGL(size);
 	return (VertexBufferHandle*)buffer;
 }
 
@@ -1553,11 +1541,10 @@ void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 	});
 }
 
-void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size)
 {
 	auto buffer = (VertexBufferGL*)handle;
 	buffer->write(memory, size);
-	buffer->setStride(stride);
 }
 
 IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
@@ -1580,7 +1567,7 @@ void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 
 void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
-	auto buffer = (VertexBufferGL*)handle;
+	auto buffer = (IndexBufferGL*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 }

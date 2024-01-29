@@ -515,12 +515,11 @@ void utils::Mesh::setVertices(const Vertex* memory, uint32_t count)
 		return;
 
 	size_t size = count * sizeof(Vertex);
-	size_t stride = sizeof(Vertex);
 
 	if (!mVertexBuffer.has_value() || mVertexBuffer.value().getSize() < size)
-		mVertexBuffer.emplace(size, stride);
+		mVertexBuffer.emplace(size);
 
-	mVertexBuffer.value().write(memory, count);
+	mVertexBuffer.value().write((void*)memory, size);
 }
 
 void utils::Mesh::setVertices(const Vertices& value)
@@ -1229,7 +1228,7 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 					SetTopology(topology);
 					
 					if (vertex_buffer.has_value())
-						SetVertexBuffer(vertex_buffer.value());
+						SetVertexBuffer({ { vertex_buffer.value(), sizeof(Mesh::Vertex) } });
 					
 					if (index_buffer.has_value())
 						SetIndexBuffer(index_buffer.value());

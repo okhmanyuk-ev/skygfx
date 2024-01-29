@@ -98,7 +98,7 @@ namespace skygfx
 
 		Texture& operator=(Texture&& other) noexcept;
 
-		operator TextureHandle* () { return mTextureHandle; }
+		operator TextureHandle* () const { return mTextureHandle; }
 
 		auto getWidth() const { return mWidth; }
 		auto getHeight() const { return mHeight; }
@@ -122,7 +122,7 @@ namespace skygfx
 
 		RenderTarget& operator=(RenderTarget&& other) noexcept;
 
-		operator RenderTargetHandle* () { return mRenderTargetHandle; }
+		operator RenderTargetHandle* () const { return mRenderTargetHandle; }
 
 	private:
 		RenderTargetHandle* mRenderTargetHandle = nullptr;
@@ -136,7 +136,7 @@ namespace skygfx
 		Shader(Shader&& other) noexcept;
 		virtual ~Shader();
 
-		operator ShaderHandle* () { return mShaderHandle; }
+		operator ShaderHandle* () const { return mShaderHandle; }
 
 		Shader& operator=(Shader&& other) noexcept;
 
@@ -151,7 +151,7 @@ namespace skygfx
 			const std::string& closesthit_code, const std::vector<std::string>& defines = {});
 		virtual ~RaytracingShader();
 
-		operator RaytracingShaderHandle* () { return mRaytracingShaderHandle; }
+		operator RaytracingShaderHandle* () const { return mRaytracingShaderHandle; }
 
 	private:
 		RaytracingShaderHandle* mRaytracingShaderHandle = nullptr;
@@ -174,34 +174,25 @@ namespace skygfx
 	class VertexBuffer : public Buffer
 	{
 	public:
-		VertexBuffer(size_t size, size_t stride);
-		VertexBuffer(void* memory, size_t size, size_t stride);
+		VertexBuffer(size_t size);
+		VertexBuffer(void* memory, size_t size);
 		VertexBuffer(VertexBuffer&& other) noexcept;
 		~VertexBuffer();
 
 		VertexBuffer& operator=(VertexBuffer&& other) noexcept;
-
-		template<class T>
-		explicit VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
 		
 		template<class T>
-		explicit VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
+		explicit VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size() * sizeof(T)) {}
 
-		void write(void* memory, size_t size, size_t stride);
-
-		template<class T>
-		void write(T* memory, size_t count)
-		{
-			write((void*)memory, count * sizeof(T), sizeof(T));
-		}
+		void write(void* memory, size_t size);
 
 		template<class T>
 		void write(const std::vector<T>& values)
 		{
-			write(values.data(), values.size());
+			write(values.data(), values.size() * sizeof(T));
 		}
 
-		operator VertexBufferHandle* () { return mVertexBufferHandle; }
+		operator VertexBufferHandle* () const { return mVertexBufferHandle; }
 
 	private:
 		VertexBufferHandle* mVertexBufferHandle = nullptr;
@@ -237,7 +228,7 @@ namespace skygfx
 			write(values.data(), values.size());
 		}
 
-		operator IndexBufferHandle* () { return mIndexBufferHandle; }
+		operator IndexBufferHandle* () const { return mIndexBufferHandle; }
 
 	private:
 		IndexBufferHandle* mIndexBufferHandle = nullptr;
@@ -261,7 +252,7 @@ namespace skygfx
 		template <class T>
 		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
 
-		operator UniformBufferHandle* () { return mUniformBufferHandle; }
+		operator UniformBufferHandle* () const { return mUniformBufferHandle; }
 
 	private:
 		UniformBufferHandle* mUniformBufferHandle = nullptr;
@@ -285,7 +276,7 @@ namespace skygfx
 		template <class T>
 		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
 
-		operator StorageBufferHandle* () { return mStorageBufferHandle; }
+		operator StorageBufferHandle* () const { return mStorageBufferHandle; }
 
 	private:
 		StorageBufferHandle* mStorageBufferHandle = nullptr;
@@ -313,7 +304,7 @@ namespace skygfx
 				indices.data(), (uint32_t)indices.size(), index_offset, transform)
 		{}
 
-		operator BottomLevelAccelerationStructureHandle* () { return mBottomLevelAccelerationStructureHandle; }
+		operator BottomLevelAccelerationStructureHandle* () const { return mBottomLevelAccelerationStructureHandle; }
 
 	private:
 		BottomLevelAccelerationStructureHandle* mBottomLevelAccelerationStructureHandle = nullptr;
@@ -399,6 +390,12 @@ namespace skygfx
 		std::unordered_map<uint32_t, Attribute> attributes;
 
 		bool operator==(const InputLayout& other) const = default;
+	};
+
+	struct VertexBufferBinding
+	{
+		VertexBufferHandle* handle;
+		size_t stride;
 	};
 
 	enum class Blend
@@ -577,8 +574,7 @@ namespace skygfx
 	void SetShader(const RaytracingShader& shader);
 	void SetInputLayout(const InputLayout& value);
 	void SetInputLayout(const std::vector<InputLayout>& value);
-	void SetVertexBuffer(const VertexBuffer& value);
-	void SetVertexBuffer(const std::vector<VertexBuffer*>& value);
+	void SetVertexBuffer(const std::vector<VertexBufferBinding>& binding);
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
 	void SetStorageBuffer(uint32_t binding, const StorageBuffer& value);
