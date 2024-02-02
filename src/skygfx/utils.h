@@ -316,6 +316,7 @@ namespace skygfx::utils
 			TextureAddress texaddr = TextureAddress::Clamp;
 			CullMode cull_mode = CullMode::None;
 			FrontFace front_face = FrontFace::Clockwise;
+			float mipmap_bias = 0.0f;
 
 			std::optional<Scissor> scissor;
 			std::optional<Viewport> viewport;

@@ -1785,6 +1785,7 @@ void utils::scratch::Flush()
 		commands::SetFrontFace(context.scratch.state.front_face),
 		commands::SetSampler(context.scratch.state.sampler),
 		commands::SetTextureAddress(context.scratch.state.texaddr),
+		commands::SetMipmapBias(context.scratch.state.mipmap_bias),
 		commands::SetProjectionMatrix(context.scratch.state.projection_matrix),
 		commands::SetViewMatrix(context.scratch.state.view_matrix),
 		commands::SetModelMatrix(context.scratch.state.model_matrix),
