@@ -11,9 +11,12 @@ file(GLOB ALL_SRC
 
 source_group("src" FILES ${ALL_SRC})
 
-add_library(${PROJECT_NAME} STATIC
-	${ALL_SRC}
-)
+if(SKYGFX_DLL)
+	add_library(${PROJECT_NAME} SHARED ${ALL_SRC})
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_DLL)
+else()
+	add_library(${PROJECT_NAME} STATIC ${ALL_SRC})
+endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC src)
 

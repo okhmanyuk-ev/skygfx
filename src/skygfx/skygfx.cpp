@@ -1060,3 +1060,81 @@ std::optional<BackendType> skygfx::GetDefaultBackend(const std::unordered_set<Fe
 
 	return std::nullopt;
 }
+
+#ifdef SKYGFX_DLL
+/*void skygfxInitialize(void* window, uint32_t width, uint32_t height, skygfx::BackendType type, skygfx::Adapter adapter)
+{
+	skygfx::Initialize(window, width, height, type, adapter);
+}
+
+void skygfxInitialize(void* window, uint32_t width, uint32_t height, skygfx::BackendType type)
+{
+	skygfx::Initialize(window, width, height, type);
+}*/
+
+void skygfxInitialize(void* window, uint32_t width, uint32_t height)
+{
+	skygfx::Initialize(window, width, height);
+}
+
+void skygfxFinalize()
+{
+	skygfx::Finalize();
+}
+
+void skygfxResize(uint32_t width, uint32_t height)
+{
+	skygfx::Resize(width, height);
+}
+
+void skygfxSetVsync(bool value)
+{
+	skygfx::SetVsync(value);
+}
+
+bool skygfxIsVsyncEnabled()
+{
+	return skygfx::IsVsyncEnabled();
+}
+
+void skygfxSetTopology(skygfx::Topology topology)
+{
+	skygfx::SetTopology(topology);
+}
+
+/*void skygfxSetViewport(const skygfx::Viewport& viewport)
+{
+	skygfx::SetViewport(viewport);
+}
+
+void skygfxSetViewport()
+{
+	skygfx::SetViewport(std::nullopt);
+}*/
+
+/*void skygfxSetScissor(const skygfx::Scissor& scissor)
+{
+	skygfx::SetScissor(scissor);
+}
+
+void skygfxSetScissor()
+{
+	skygfx::SetScissor(std::nullopt);
+}*/
+
+void skygfxSetTexture(uint32_t binding, skygfx::TextureHandle* handle)
+{
+	gBackend->setTexture(binding, handle);
+}
+
+void skygfxClear(float r, float g, float b, float a)
+{
+	skygfx::Clear(glm::vec4{ r, g, b, a });
+}
+
+void skygfxPresent()
+{
+	skygfx::Present();
+}
+
+#endif

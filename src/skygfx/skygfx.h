@@ -703,3 +703,51 @@ SKYGFX_MAKE_HASHABLE(skygfx::DepthBias,
 	t.factor,
 	t.units
 )
+
+#ifdef SKYGFX_DLL
+#define DLL_API extern "C" __declspec(dllexport)
+
+//DLL_API void skygfxInitialize(void* window, uint32_t width, uint32_t height, skygfx::BackendType type, skygfx::Adapter adapter);
+//DLL_API void skygfxInitialize(void* window, uint32_t width, uint32_t height, skygfx::BackendType type);
+DLL_API void skygfxInitialize(void* window, uint32_t width, uint32_t height);
+DLL_API void skygfxFinalize();
+DLL_API void skygfxResize(uint32_t width, uint32_t height);
+
+DLL_API void skygfxSetVsync(bool value);
+DLL_API bool skygfxIsVsyncEnabled();
+
+DLL_API void skygfxSetTopology(skygfx::Topology topology);
+//DLL_API void skygfxSetViewport(const skygfx::Viewport& viewport);
+//DLL_API void skygfxSetViewport();
+//DLL_API void skygfxSetScissor(const skygfx::Scissor& scissor);
+//DLL_API void skygfxSetScissor();
+DLL_API void skygfxSetTexture(uint32_t binding, skygfx::TextureHandle* handle);
+//DLL_API void skygfxSetRenderTarget(const RenderTarget& value);
+//DLL_API void skygfxSetRenderTarget(const std::vector<RenderTarget*>& value);
+//DLL_API void skygfxSetRenderTarget(std::nullopt_t value);
+//DLL_API void skygfxSetShader(const Shader& shader);
+//DLL_API void skygfxSetInputLayout(const InputLayout& value);
+//DLL_API void skygfxSetInputLayout(const std::vector<InputLayout>& value);
+//DLL_API void skygfxSetVertexBuffer(const VertexBuffer& value);
+//DLL_API void skygfxSetVertexBuffer(const std::vector<VertexBuffer*>& value);
+//DLL_API void skygfxSetIndexBuffer(const IndexBuffer& value);
+//DLL_API void skygfxSetUniformBuffer(uint32_t binding, const UniformBuffer& value);
+//DLL_API void skygfxSetStorageBuffer(uint32_t binding, const StorageBuffer& value);
+//DLL_API void skygfxSetAccelerationStructure(uint32_t binding, const TopLevelAccelerationStructure& value);
+//DLL_API void skygfxSetBlendMode(const std::optional<BlendMode>& blend_mode);
+//DLL_API void skygfxSetDepthMode(const std::optional<DepthMode>& depth_mode);
+//DLL_API void skygfxSetStencilMode(const std::optional<StencilMode>& stencil_mode);
+//DLL_API void skygfxSetCullMode(CullMode cull_mode);
+//DLL_API void skygfxSetSampler(Sampler value);
+//DLL_API void skygfxSetTextureAddress(TextureAddress value);
+//DLL_API void skygfxSetFrontFace(FrontFace value);
+//DLL_API void skygfxSetDepthBias(const std::optional<DepthBias> depth_bias);
+
+DLL_API void skygfxClear(float r, float g, float b, float a);
+//DLL_API void skygfxDraw(uint32_t vertex_count, uint32_t vertex_offset = 0, uint32_t instance_count = 1);
+//DLL_API void skygfxDrawIndexed(uint32_t index_count, uint32_t index_offset = 0, uint32_t instance_count = 1);
+//DLL_API void skygfxReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture);
+
+DLL_API void skygfxPresent();
+
+#endif
