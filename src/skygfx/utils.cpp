@@ -1062,6 +1062,21 @@ utils::commands::Draw::Draw(std::optional<DrawCommand> _draw_command) :
 
 void utils::ExecuteCommands(const std::vector<Command>& cmds)
 {
+	constexpr uint32_t ColorTextureBinding = 0;
+	constexpr uint32_t NormalTextureBinding = 1;
+	constexpr uint32_t SettingsUniformBinding = 2;
+	constexpr uint32_t EffectUniformBinding = 3;
+
+	auto& context = GetContext();
+
+	auto set_texture = [&](uint32_t binding, const Texture* texture) {
+		SetTexture(binding, texture ? *texture : context.white_pixel_texture);
+	};
+
+	auto set_shader = [&](Shader* shader) {
+		SetShader(shader == nullptr ? context.default_shader : *shader);
+	};
+
 	SetViewport(std::nullopt);
 	SetScissor(std::nullopt);
 	SetBlendMode(std::nullopt);
@@ -1073,25 +1088,12 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	SetDepthMode(std::nullopt);
 	SetStencilMode(std::nullopt);
 	SetInputLayout(Mesh::Vertex::Layout);
+	set_texture(ColorTextureBinding, nullptr);
+	set_texture(NormalTextureBinding, nullptr);
+	set_shader(nullptr);
 
-	auto& context = GetContext();
-
-	const Mesh* mesh = nullptr;
+	const Mesh* mesh = &context.default_mesh;
 	bool mesh_dirty = true;
-
-	Shader* shader = nullptr;
-	bool shader_dirty = true;
-
-	std::unordered_map<uint32_t, const Texture*> textures;
-	std::unordered_map<uint32_t, std::tuple<void*, size_t>> uniforms;
-
-	constexpr uint32_t ColorTextureBinding = 0;
-	constexpr uint32_t NormalTextureBinding = 1;
-	constexpr uint32_t SettingsUniformBinding = 2;
-	constexpr uint32_t EffectUniformBinding = 3;
-
-	textures[ColorTextureBinding] = &context.white_pixel_texture;
-	textures[NormalTextureBinding] = &context.white_pixel_texture;
 
 	struct alignas(16) Settings
 	{
@@ -1148,27 +1150,26 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				SetStencilMode(cmd.stencil_mode);
 			},
 			[&](const commands::SetMesh& cmd) {
-				mesh = cmd.mesh;
+				mesh = cmd.mesh ? cmd.mesh : &context.default_mesh;
 				mesh_dirty = true;
 			},
 			[&](const commands::SetEffect& cmd) {
-				shader = cmd.shader;
-				shader_dirty = true;
+				set_shader(cmd.shader);
 
 				if (cmd.uniform_data.has_value())
 				{
 					const auto& uniform = cmd.uniform_data.value();
-					uniforms[EffectUniformBinding] = { (void*)uniform.data(), uniform.size() };
+					SetUniformBuffer(EffectUniformBinding, (void*)uniform.data(), uniform.size());
 				}
 			},
 			[&](const commands::SetCustomTexture& cmd) {
-				textures[cmd.binding] = cmd.texture;
+				set_texture(cmd.binding, cmd.texture);
 			},
 			[&](const commands::SetColorTexture& cmd) {
-				textures[ColorTextureBinding] = cmd.color_texture ? cmd.color_texture : &context.white_pixel_texture;
+				execute_command(commands::SetCustomTexture(ColorTextureBinding, cmd.color_texture));
 			},
 			[&](const commands::SetNormalTexture& cmd) {
-				textures[NormalTextureBinding] = cmd.normal_texture ? cmd.normal_texture : &context.white_pixel_texture;
+				execute_command(commands::SetCustomTexture(NormalTextureBinding, cmd.normal_texture));
 				settings.has_normal_texture = cmd.normal_texture != nullptr;
 				settings_dirty = true;
 			},
@@ -1211,9 +1212,6 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				execute_commands(*cmd.subcommands);
 			},
 			[&](const commands::Draw& cmd) {
-				if (mesh == nullptr)
-					mesh = &context.default_mesh;
-
 				if (mesh_dirty)
 				{
 					auto topology = mesh->getTopology();
@@ -1231,35 +1229,10 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 					mesh_dirty = false;
 				}
 
-				if (shader_dirty)
-				{
-					SetShader(shader == nullptr ? context.default_shader : *shader);
-					shader_dirty = false;
-				}
-
 				if (settings_dirty)
 				{
-					uniforms[SettingsUniformBinding] = { &settings, sizeof(settings) };
+					SetUniformBuffer(SettingsUniformBinding, settings);
 					settings_dirty = false;
-				}
-
-				if (!uniforms.empty())
-				{
-					for (const auto& [binding, data] : uniforms)
-					{
-						auto [memory, size] = data;
-						SetUniformBuffer(binding, memory, size);
-					}
-					uniforms.clear();
-				}
-
-				if (!textures.empty())
-				{
-					for (auto [binding, texture] : textures)
-					{
-						SetTexture(binding, *texture);
-					}
-					textures.clear();
 				}
 
 				auto draw_command = cmd.draw_command;
