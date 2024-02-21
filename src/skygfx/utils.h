@@ -152,84 +152,6 @@ namespace skygfx::utils
 
 	namespace effects
 	{
-		namespace forward_shading
-		{
-			struct alignas(16) DirectionalLight
-			{
-				DirectionalLight() = default;
-				DirectionalLight(const utils::DirectionalLight& light);
-
-				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
-			};
-
-			struct alignas(16) PointLight
-			{
-				PointLight() = default;
-				PointLight(const utils::PointLight& light);
-
-				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float constant_attenuation = 0.0f;
-				float linear_attenuation = 0.00128f;
-				float quadratic_attenuation = 0.0f;
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
-			};
-		}
-
-		namespace deferred_shading
-		{
-			struct alignas(16) DirectionalLight
-			{
-				DirectionalLight() = default;
-				DirectionalLight(const utils::DirectionalLight& light);
-
-				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
-			};
-
-			struct alignas(16) PointLight
-			{
-				PointLight() = default;
-				PointLight(const utils::PointLight& light);
-
-				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float constant_attenuation = 0.0f;
-				float linear_attenuation = 0.00128f;
-				float quadratic_attenuation = 0.0f;
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
-			};
-
-			struct alignas(16) ExtractGeometryBuffer
-			{
-				static const std::string Shader;
-				static constexpr bool HasUniform = false;
-			};
-		}
-
 		struct alignas(16) GaussianBlur
 		{
 			GaussianBlur(glm::vec2 direction);
@@ -583,19 +505,24 @@ namespace skygfx::utils
 
 	void ExecuteRenderPass(const RenderPass& render_pass);
 
-	namespace passes
+	template <typename T>
+	concept RenderPassConcept = requires(T t) {
+		{ t.getTargets() } -> std::same_as<std::vector<RenderTarget*>>;
+		{ t.isClear() } -> std::convertible_to<bool>;
+		{ t.getCommands() } -> std::same_as<std::vector<Command>>;
+	};
+
+	void ExecuteRenderPass(const RenderPassConcept auto& render_pass)
 	{
-		struct BlitOptions
-		{
-			bool clear = false;
-			Sampler sampler = Sampler::Linear;
-			glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-			std::optional<BlendMode> blend_mode;
-			std::optional<commands::SetEffect> effect;
-		};
+		ExecuteRenderPass(RenderPass{
+			.targets = render_pass.getTargets(),
+			.clear = render_pass.isClear(),
+			.commands = render_pass.getCommands()
+		});
+	}
 
-		void Blit(Texture* src, RenderTarget* dst, const BlitOptions& options = {});
-
+	namespace techniques
+	{
 		void GaussianBlur(RenderTarget* src, RenderTarget* dst = nullptr);
 		void Grayscale(RenderTarget* src, RenderTarget* dst = nullptr, float intensity = 1.0f);
 		void Bloom(RenderTarget* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
@@ -685,5 +612,165 @@ namespace skygfx::utils
 		void TexCoord(const glm::vec2& value);
 		void End();
 		void Flush();
+	}
+
+	namespace passes
+	{
+		struct Blit
+		{
+		public:
+			struct Options
+			{
+				bool clear = false;
+				Sampler sampler = Sampler::Linear;
+				glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
+				std::optional<BlendMode> blend_mode;
+				std::optional<commands::SetEffect> effect;
+			};
+
+		public:
+			Blit(Texture* src, RenderTarget* dst, const Options& options = {});
+
+			std::vector<RenderTarget*> getTargets() const;
+			bool isClear() const;
+			std::vector<Command> getCommands() const;
+
+		private:
+			bool clear;
+			std::vector<RenderTarget*> targets;
+			std::vector<Command> commands;
+		};
+
+		struct DeferredShadingExtractGeometry
+		{
+		public:
+			struct alignas(16) Effect
+			{
+				static const std::string Shader;
+				static constexpr bool HasUniform = false;
+			};
+
+			struct Options
+			{
+				float mipmap_bias = 0.0f;
+				bool use_color_textures = true;
+				bool use_normal_textures = true;
+			};
+
+		public:
+			DeferredShadingExtractGeometry(const PerspectiveCamera& camera, const std::vector<Model>& models,
+				RenderTarget* color_buffer, RenderTarget* normal_buffer, RenderTarget* positions_buffer,
+				Options options = {});
+
+			std::vector<RenderTarget*> getTargets() const;
+			bool isClear() const;
+			std::vector<Command> getCommands() const;
+
+		private:
+			std::vector<RenderTarget*> targets;
+			std::vector<Command> commands;
+		};
+
+		struct DeferredShadingLightPass
+		{
+		public:
+			struct alignas(16) DirectionalLightEffect
+			{
+				DirectionalLightEffect() = default;
+				DirectionalLightEffect(const utils::DirectionalLight& light);
+
+				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float shininess = 32.0f;
+
+				static const std::string Shader;
+				static constexpr bool HasUniform = true;
+			};
+
+			struct alignas(16) PointLightEffect
+			{
+				PointLightEffect() = default;
+				PointLightEffect(const utils::PointLight& light);
+
+				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float constant_attenuation = 0.0f;
+				float linear_attenuation = 0.00128f;
+				float quadratic_attenuation = 0.0f;
+				float shininess = 32.0f;
+
+				static const std::string Shader;
+				static constexpr bool HasUniform = true;
+			};
+
+		public:
+			DeferredShadingLightPass(const PerspectiveCamera& camera, RenderTarget* target, bool clear,
+				const std::vector<Light>& lights, Texture* color_buffer, Texture* normal_buffer,
+				Texture* positions_buffer);
+
+			std::vector<RenderTarget*> getTargets() const;
+			bool isClear() const;
+			std::vector<Command> getCommands() const;
+
+		private:
+			bool clear;
+			std::vector<RenderTarget*> targets;
+			std::vector<Command> commands;
+		};
+
+		struct ForwardShading
+		{
+		public:
+			struct alignas(16) DirectionalLightEffect
+			{
+				DirectionalLightEffect() = default;
+				DirectionalLightEffect(const utils::DirectionalLight& light);
+
+				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float shininess = 32.0f;
+
+				static const std::string Shader;
+				static constexpr bool HasUniform = true;
+			};
+
+			struct alignas(16) PointLightEffect
+			{
+				PointLightEffect() = default;
+				PointLightEffect(const utils::PointLight& light);
+
+				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+				float constant_attenuation = 0.0f;
+				float linear_attenuation = 0.00128f;
+				float quadratic_attenuation = 0.0f;
+				float shininess = 32.0f;
+
+				static const std::string Shader;
+				static constexpr bool HasUniform = true;
+			};
+
+		public:
+			ForwardShading(RenderTarget* target, bool clear, const PerspectiveCamera& camera,
+				float mipmap_bias, const std::vector<Command>& per_light_commands,
+				const std::vector<Light>& lights);
+
+			std::vector<RenderTarget*> getTargets() const;
+			bool isClear() const;
+			std::vector<Command> getCommands() const;
+
+		private:
+			bool clear;
+			std::vector<RenderTarget*> targets;
+			std::vector<Command> commands;
+		};
 	}
 }

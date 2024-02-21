@@ -94,210 +94,6 @@ void main()
 #endif
 })";
 
-const std::string utils::effects::forward_shading::DirectionalLight::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
-{
-	vec3 direction;
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
-	float shininess;
-} light;
-
-void effect(inout vec4 result)
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-
-	vec3 normal;
-
-	if (settings.has_normal_texture != 0)
-	{
-		normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
-		normal = normal * 2.0 - 1.0;
-		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
-		normal = normalize(normal);
-	}
-	else
-	{
-		normal = normalize(In.normal);
-	}
-
-	vec3 view_dir = normalize(settings.eye_position - In.world_position);
-	vec3 light_dir = normalize(light.direction);
-
-	float diff = max(dot(normal, -light_dir), 0.0);
-	vec3 reflect_dir = reflect(light_dir, normal);
-	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
-
-	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
-
-	result *= vec4(intensity, 1.0);
-})";
-
-const std::string utils::effects::forward_shading::PointLight::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
-{
-	vec3 position;
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
-	float constant_attenuation;
-	float linear_attenuation;
-	float quadratic_attenuation;
-	float shininess;
-} light;
-
-void effect(inout vec4 result)
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-
-	vec3 normal;
-
-	if (settings.has_normal_texture != 0)
-	{
-		normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
-		normal = normal * 2.0 - 1.0;
-		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
-		normal = normalize(normal);
-	}
-	else
-	{
-		normal = normalize(In.normal);
-	}
-
-	vec3 light_offset = light.position - In.world_position;
-
-	float distance = length(light_offset);
-	float linear_attn = light.linear_attenuation * distance;
-	float quadratic_attn = light.quadratic_attenuation * (distance * distance);
-	float attenuation = 1.0 / (light.constant_attenuation + linear_attn + quadratic_attn);
-
-	vec3 light_dir = normalize(light_offset);
-	float diff = max(dot(normal, light_dir), 0.0);
-	vec3 reflect_dir = reflect(-light_dir, normal);
-	vec3 view_dir = normalize(settings.eye_position - In.world_position);
-	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
-
-	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
-
-	intensity *= attenuation;
-
-	result *= vec4(intensity, 1.0);
-})";
-
-const std::string utils::effects::deferred_shading::DirectionalLight::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
-{
-	vec3 direction;
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
-	float shininess;
-} light;
-
-layout(binding = 5) uniform sampler2D sColorBufferTexture;
-layout(binding = 6) uniform sampler2D sNormalBufferTexture;
-layout(binding = 7) uniform sampler2D sPositionsBufferTexture;
-
-void effect(inout vec4 result)
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorBufferTexture, In.tex_coord);
-
-	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord)) * 2.0 - 1.0;
-	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
-
-	vec3 view_dir = normalize(settings.eye_position - pixel_position);
-	vec3 light_dir = normalize(light.direction);
-
-	float diff = max(dot(pixel_normal, -light_dir), 0.0);
-	vec3 reflect_dir = reflect(light_dir, pixel_normal);
-	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
-
-	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
-
-	result *= vec4(intensity, 1.0);
-})";
-
-const std::string utils::effects::deferred_shading::PointLight::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
-{
-	vec3 position;
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
-	float constant_attenuation;
-	float linear_attenuation;
-	float quadratic_attenuation;
-	float shininess;
-} light;
-
-layout(binding = 5) uniform sampler2D sColorBufferTexture;
-layout(binding = 6) uniform sampler2D sNormalBufferTexture;
-layout(binding = 7) uniform sampler2D sPositionsBufferTexture;
-
-void effect(inout vec4 result)
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorBufferTexture, In.tex_coord);
-
-	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord)) * 2.0 - 1.0;
-	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
-
-	vec3 light_offset = light.position - pixel_position;
-
-	float distance = length(light_offset);
-	float linear_attn = light.linear_attenuation * distance;
-	float quadratic_attn = light.quadratic_attenuation * (distance * distance);
-	float attenuation = 1.0 / (light.constant_attenuation + linear_attn + quadratic_attn);
-
-	vec3 light_dir = normalize(light_offset);
-	float diff = max(dot(pixel_normal, light_dir), 0.0);
-	vec3 reflect_dir = reflect(-light_dir, pixel_normal);
-	vec3 view_dir = normalize(settings.eye_position - pixel_position);
-	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
-
-	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
-
-	intensity *= attenuation;
-
-	result *= vec4(intensity, 1.0);
-})";
-
-const std::string utils::effects::deferred_shading::ExtractGeometryBuffer::Shader = R"(
-//layout(location = 0) out vec4 result; // color_buffer
-layout(location = 1) out vec4 normal_buffer;
-layout(location = 2) out vec4 positions_buffer;
-
-void effect(inout vec4 result)
-{
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-
-	if (settings.has_normal_texture != 0)
-	{
-		vec3 normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
-		normal = normal * 2.0 - 1.0;
-		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
-		normal = normalize(normal);
-		normal_buffer = vec4(normal * 0.5 + 0.5, 1.0);
-	}
-	else
-	{
-		vec3 normal = normalize(In.normal);
-		normal_buffer = vec4(normal * 0.5 + 0.5, 1.0);
-	}
-
-	positions_buffer = vec4(In.world_position, 1.0);
-})";
-
 const std::string utils::effects::GaussianBlur::Shader = R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _blur
 {
@@ -791,48 +587,6 @@ bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
 	return topology == mTopology.value();
 }
 
-utils::effects::forward_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
-	direction(light.direction),
-	ambient(light.ambient),
-	diffuse(light.diffuse),
-	specular(light.specular),
-	shininess(light.shininess)
-{
-}
-
-utils::effects::forward_shading::PointLight::PointLight(const utils::PointLight& light) :
-	position(light.position),
-	ambient(light.ambient),
-	diffuse(light.diffuse),
-	specular(light.specular),
-	constant_attenuation(light.constant_attenuation),
-	linear_attenuation(light.linear_attenuation),
-	quadratic_attenuation(light.quadratic_attenuation),
-	shininess(light.shininess)
-{
-}
-
-utils::effects::deferred_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
-	direction(light.direction),
-	ambient(light.ambient),
-	diffuse(light.diffuse),
-	specular(light.specular),
-	shininess(light.shininess)
-{
-}
-
-utils::effects::deferred_shading::PointLight::PointLight(const utils::PointLight& light) :
-	position(light.position),
-	ambient(light.ambient),
-	diffuse(light.diffuse),
-	specular(light.specular),
-	constant_attenuation(light.constant_attenuation),
-	linear_attenuation(light.linear_attenuation),
-	quadratic_attenuation(light.quadratic_attenuation),
-	shininess(light.shininess)
-{
-}
-
 utils::effects::GaussianBlur::GaussianBlur(glm::vec2 _direction) :
 	direction(std::move(_direction))
 {
@@ -1277,53 +1031,32 @@ void utils::ExecuteRenderPass(const RenderPass& render_pass)
 	ExecuteCommands(render_pass.commands);
 }
 
-void utils::passes::Blit(Texture* src, RenderTarget* dst, const BlitOptions& options)
-{
-	auto render_pass = RenderPass{
-		.targets = { dst },
-		.clear = options.clear
-	};
-
-	if (options.effect.has_value())
-		render_pass.commands.push_back(options.effect.value());
-
-	render_pass.commands.insert(render_pass.commands.end(), {
-		commands::SetSampler(options.sampler),
-		commands::SetColor(options.color),
-		commands::SetBlendMode(options.blend_mode),
-		commands::SetColorTexture(src),
-		commands::Draw()
-	});
-
-	ExecuteRenderPass(render_pass);
-}
-
-void utils::passes::GaussianBlur(RenderTarget* src, RenderTarget* dst)
+void utils::techniques::GaussianBlur(RenderTarget* src, RenderTarget* dst)
 {
 	auto blur_target = AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
-	Blit(src, blur_target, {
+	ExecuteRenderPass(passes::Blit(src, blur_target, {
 		.clear = true,
 		.effect = effects::GaussianBlur({ 1.0f, 0.0f })
-	});
+	}));
 	ViewStage("gaussian horizontal", blur_target);
-	Blit(blur_target, dst, {
+	ExecuteRenderPass(passes::Blit(blur_target, dst, {
 		.effect = effects::GaussianBlur({ 0.0f, 1.0f })
-	});
+	}));
 	ViewStage("gaussian vertical", dst);
 	ReleaseTransientRenderTarget(blur_target);
 }
 
-void utils::passes::Grayscale(RenderTarget* src, RenderTarget* dst, float intensity)
+void utils::techniques::Grayscale(RenderTarget* src, RenderTarget* dst, float intensity)
 {
-	Blit(src, dst, {
+	ExecuteRenderPass(passes::Blit(src, dst, {
 		.effect = effects::Grayscale{ intensity }
-	});
+	}));
 	ViewStage("grayscale", dst);
 }
 
-void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_threshold, float intensity)
+void utils::techniques::Bloom(RenderTarget* src, RenderTarget* dst, float bright_threshold, float intensity)
 {
-	Blit(src, dst);
+	ExecuteRenderPass(passes::Blit(src, dst));
 
 	if (intensity <= 0.0f)
 		return;
@@ -1353,10 +1086,10 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 
 	if (bright_threshold > 0.0f)
 	{
-		Blit(src, bright, {
+		ExecuteRenderPass(passes::Blit(src, bright, {
 			.clear = true,
 			.effect = effects::BrightFilter(bright_threshold)
-		});
+		}));
 		ViewStage("bright", bright);
 		downsample_src = bright;
 	}
@@ -1367,9 +1100,9 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 
 	for (auto target : tex_chain)
 	{
-		Blit(downsample_src, target, {
+		ExecuteRenderPass(passes::Blit(downsample_src, target, {
 			.effect = effects::BloomDownsample(step_number)
-		});
+		}));
 		ViewStage("downsample", target);
 		downsample_src = target;
 		step_number += 1;
@@ -1379,20 +1112,20 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 
 	for (auto it = std::next(tex_chain.rbegin()); it != tex_chain.rend(); ++it)
 	{
-		Blit(*std::prev(it), *it, {
+		ExecuteRenderPass(passes::Blit(*std::prev(it), *it, {
 			.blend_mode = BlendStates::Additive,
 			.effect = effects::BloomUpsample()
-		});
+		}));
 		ViewStage("upsample", *it);
 	}
 
 	// combine
 
-	Blit(*tex_chain.begin(), dst, {
+	ExecuteRenderPass(passes::Blit(*tex_chain.begin(), dst, {
 		.color = glm::vec4(intensity),
 		.blend_mode = BlendStates::Additive,
 		.effect = effects::BloomUpsample()
-	});
+	}));
 
 	// release targets
 
@@ -1404,10 +1137,10 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 	}
 }
 
-void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float bright_threshold,
+void utils::techniques::BloomGaussian(RenderTarget* src, RenderTarget* dst, float bright_threshold,
 	float intensity)
 {
-	Blit(src, dst);
+	ExecuteRenderPass(passes::Blit(src, dst));
 
 	if (intensity <= 0.0f)
 		return;
@@ -1423,20 +1156,20 @@ void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float br
 
 	if (bright_threshold > 0.0f)
 	{
-		Blit(src, bright, {
+		ExecuteRenderPass(passes::Blit(src, bright, {
 			.clear = true,
 			.effect = effects::BrightFilter(bright_threshold)
-		});
+		}));
 		ViewStage("bright", bright);
 		blur_src = bright;
 	}
 
 	GaussianBlur(blur_src, blur_dst);
 
-	Blit(blur_dst, dst, {
+	ExecuteRenderPass(passes::Blit(blur_dst, dst, {
 		.color = glm::vec4(intensity),
 		.blend_mode = BlendStates::Additive
-	});
+	}));
 
 	ReleaseTransientRenderTarget(bright);
 	ReleaseTransientRenderTarget(blur_dst);
@@ -1470,15 +1203,6 @@ static void DrawSceneForwardShading(RenderTarget* target, const utils::Perspecti
 	if (lights.empty())
 		return;
 
-	auto render_pass = RenderPass{
-		.targets = { target },
-		.clear = options.clear_target,
-		.commands = {
-			commands::SetCamera(camera),
-			commands::SetMipmapBias(options.mipmap_bias)
-		}
-	};
-
 	std::vector<Command> draw_models;
 
 	for (const auto& model : models)
@@ -1487,30 +1211,10 @@ static void DrawSceneForwardShading(RenderTarget* target, const utils::Perspecti
 		std::ranges::move(cmds, std::back_inserter(draw_models));
 	}
 
-	bool first_light_done = false;
+	auto forward_shading = passes::ForwardShading(target, options.clear_target, camera, options.mipmap_bias,
+		draw_models, lights);
 
-	for (const auto& light : lights)
-	{
-		render_pass.commands.insert(render_pass.commands.end(), {
-			std::visit(cases{
-				[](const DirectionalLight& light) {
-					return commands::SetEffect(effects::forward_shading::DirectionalLight(light));
-				},
-				[](const PointLight& light) {
-					return commands::SetEffect(effects::forward_shading::PointLight(light));
-				}
-			}, light),
-			commands::Subcommands(&draw_models)
-		});
-
-		if (!first_light_done)
-		{
-			first_light_done = true;
-			render_pass.commands.push_back(commands::SetBlendMode(BlendStates::Additive));
-		}
-	}
-
-	ExecuteRenderPass(render_pass);
+	utils::ExecuteRenderPass(forward_shading);
 }
 
 static void DrawSceneDeferredShading(RenderTarget* target, const utils::PerspectiveCamera& camera,
@@ -1525,58 +1229,21 @@ static void DrawSceneDeferredShading(RenderTarget* target, const utils::Perspect
 	if (lights.empty())
 		return;
 
-	// g-buffer pass
-
 	auto color_buffer = AcquireTransientRenderTarget();
 	auto normal_buffer = AcquireTransientRenderTarget();
 	auto positions_buffer = AcquireTransientRenderTarget();
 
-	auto gbuffer_pass = RenderPass{
-		.targets = { color_buffer, normal_buffer, positions_buffer },
-		.clear = true,
-		.commands = {
-			commands::SetMipmapBias(options.mipmap_bias),
-			commands::SetCamera(camera),
-			commands::SetEffect(effects::deferred_shading::ExtractGeometryBuffer{}),
-		}
-	};
-
-	for (const auto& model : models)
-	{
-		auto cmds = Model::Draw(model, options.use_color_textures, options.use_normal_textures);
-		std::ranges::move(cmds, std::back_inserter(gbuffer_pass.commands));
-	}
-
-	// light pass
-
-	auto light_pass = RenderPass{
-		.targets = { target },
-		.clear = options.clear_target,
-		.commands = {
-			commands::SetEyePosition(camera.position),
-			commands::SetBlendMode(BlendStates::Additive),
-			commands::SetCustomTexture(5, color_buffer),
-			commands::SetCustomTexture(6, normal_buffer),
-			commands::SetCustomTexture(7, positions_buffer)
-		}
-	};
-
-	for (const auto& light : lights)
-	{
-		light_pass.commands.insert(light_pass.commands.end(), {
-			std::visit(cases{
-				[](const DirectionalLight& light) {
-					return commands::SetEffect(effects::deferred_shading::DirectionalLight(light));
-				},
-				[](const PointLight& light) {
-					return commands::SetEffect(effects::deferred_shading::PointLight(light));
-				}
-			}, light),
-			commands::Draw()
+	auto extract_geometry_pass = passes::DeferredShadingExtractGeometry(camera, models, color_buffer,
+		normal_buffer, positions_buffer, {
+			.mipmap_bias = options.mipmap_bias,
+			.use_color_textures = options.use_color_textures,
+			.use_normal_textures = options.use_normal_textures
 		});
-	}
 
-	ExecuteRenderPass(gbuffer_pass);
+	auto light_pass = passes::DeferredShadingLightPass(camera, target, options.clear_target, lights, color_buffer,
+		normal_buffer, positions_buffer);
+
+	ExecuteRenderPass(extract_geometry_pass);
 	ExecuteRenderPass(light_pass);
 
 	ViewStage("color_buffer", color_buffer);
@@ -1628,13 +1295,13 @@ void utils::DrawScene(RenderTarget* target, const PerspectiveCamera& camera,
 
 		std::visit(cases{
 			[&](const DrawSceneOptions::BloomPosteffect& bloom) {
-				passes::Bloom(src, dst, bloom.threshold, bloom.intensity);
+				techniques::Bloom(src, dst, bloom.threshold, bloom.intensity);
 			},
 			[&](const DrawSceneOptions::GrayscalePosteffect& grayscale) {
-				passes::Grayscale(src, dst, grayscale.intensity);
+				techniques::Grayscale(src, dst, grayscale.intensity);
 			},
 			[&](const DrawSceneOptions::GaussianBlurPosteffect& blur) {
-				passes::GaussianBlur(src, dst);
+				techniques::GaussianBlur(src, dst);
 			}
 		}, posteffect);
 
@@ -1764,4 +1431,408 @@ void utils::scratch::Flush()
 	ExecuteCommands(cmds);
 
 	context.scratch.mesh_builder.reset(false);
+}
+
+utils::passes::Blit::Blit(Texture* src, RenderTarget* dst, const Options& options) :
+	targets({ dst }),
+	clear(options.clear)
+{
+	if (options.effect.has_value())
+		commands.push_back(options.effect.value());
+
+	commands.insert(commands.end(), {
+		commands::SetSampler(options.sampler),
+		commands::SetColor(options.color),
+		commands::SetBlendMode(options.blend_mode),
+		commands::SetColorTexture(src),
+		commands::Draw()
+	});
+}
+
+std::vector<RenderTarget*> utils::passes::Blit::getTargets() const
+{
+	return targets;
+}
+
+bool utils::passes::Blit::isClear() const
+{
+	return clear;
+}
+
+std::vector<utils::Command> utils::passes::Blit::getCommands() const
+{
+	return commands;
+}
+
+const std::string utils::passes::DeferredShadingExtractGeometry::Effect::Shader = R"(
+//layout(location = 0) out vec4 result; // color_buffer
+layout(location = 1) out vec4 normal_buffer;
+layout(location = 2) out vec4 positions_buffer;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
+	if (settings.has_normal_texture != 0)
+	{
+		vec3 normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
+		normal = normal * 2.0 - 1.0;
+		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
+		normal = normalize(normal);
+		normal_buffer = vec4(normal * 0.5 + 0.5, 1.0);
+	}
+	else
+	{
+		vec3 normal = normalize(In.normal);
+		normal_buffer = vec4(normal * 0.5 + 0.5, 1.0);
+	}
+
+	positions_buffer = vec4(In.world_position, 1.0);
+})";
+
+utils::passes::DeferredShadingExtractGeometry::DeferredShadingExtractGeometry(const PerspectiveCamera& camera,
+	const std::vector<Model>& models, RenderTarget* color_buffer, RenderTarget* normal_buffer,
+	RenderTarget* positions_buffer, Options options) :
+	targets({ color_buffer, normal_buffer, positions_buffer })
+{
+	commands = {
+		commands::SetMipmapBias(options.mipmap_bias),
+		commands::SetCamera(camera),
+		commands::SetEffect(Effect{}),
+	};
+
+	for (const auto& model : models)
+	{
+		auto cmds = Model::Draw(model, options.use_color_textures, options.use_normal_textures);
+		std::ranges::move(cmds, std::back_inserter(commands));
+	}
+}
+
+std::vector<RenderTarget*> utils::passes::DeferredShadingExtractGeometry::getTargets() const
+{
+	return targets;
+}
+
+bool utils::passes::DeferredShadingExtractGeometry::isClear() const
+{
+	return true;
+}
+
+std::vector<utils::Command> utils::passes::DeferredShadingExtractGeometry::getCommands() const
+{
+	return commands;
+}
+
+const std::string utils::passes::DeferredShadingLightPass::DirectionalLightEffect::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
+{
+	vec3 direction;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	float shininess;
+} light;
+
+layout(binding = 5) uniform sampler2D sColorBufferTexture;
+layout(binding = 6) uniform sampler2D sNormalBufferTexture;
+layout(binding = 7) uniform sampler2D sPositionsBufferTexture;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorBufferTexture, In.tex_coord);
+
+	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord)) * 2.0 - 1.0;
+	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
+
+	vec3 view_dir = normalize(settings.eye_position - pixel_position);
+	vec3 light_dir = normalize(light.direction);
+
+	float diff = max(dot(pixel_normal, -light_dir), 0.0);
+	vec3 reflect_dir = reflect(light_dir, pixel_normal);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
+
+	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
+
+	result *= vec4(intensity, 1.0);
+})";
+
+const std::string utils::passes::DeferredShadingLightPass::PointLightEffect::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
+{
+	vec3 position;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	float constant_attenuation;
+	float linear_attenuation;
+	float quadratic_attenuation;
+	float shininess;
+} light;
+
+layout(binding = 5) uniform sampler2D sColorBufferTexture;
+layout(binding = 6) uniform sampler2D sNormalBufferTexture;
+layout(binding = 7) uniform sampler2D sPositionsBufferTexture;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorBufferTexture, In.tex_coord);
+
+	vec3 pixel_normal = vec3(texture(sNormalBufferTexture, In.tex_coord)) * 2.0 - 1.0;
+	vec3 pixel_position = vec3(texture(sPositionsBufferTexture, In.tex_coord));
+
+	vec3 light_offset = light.position - pixel_position;
+
+	float distance = length(light_offset);
+	float linear_attn = light.linear_attenuation * distance;
+	float quadratic_attn = light.quadratic_attenuation * (distance * distance);
+	float attenuation = 1.0 / (light.constant_attenuation + linear_attn + quadratic_attn);
+
+	vec3 light_dir = normalize(light_offset);
+	float diff = max(dot(pixel_normal, light_dir), 0.0);
+	vec3 reflect_dir = reflect(-light_dir, pixel_normal);
+	vec3 view_dir = normalize(settings.eye_position - pixel_position);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
+
+	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
+
+	intensity *= attenuation;
+
+	result *= vec4(intensity, 1.0);
+})";
+
+utils::passes::DeferredShadingLightPass::DirectionalLightEffect::DirectionalLightEffect(const utils::DirectionalLight& light) :
+	direction(light.direction),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	shininess(light.shininess)
+{
+}
+
+utils::passes::DeferredShadingLightPass::PointLightEffect::PointLightEffect(const utils::PointLight& light) :
+	position(light.position),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	constant_attenuation(light.constant_attenuation),
+	linear_attenuation(light.linear_attenuation),
+	quadratic_attenuation(light.quadratic_attenuation),
+	shininess(light.shininess)
+{
+}
+
+utils::passes::DeferredShadingLightPass::DeferredShadingLightPass(const PerspectiveCamera& camera,
+	RenderTarget* target, bool _clear, const std::vector<Light>& lights, Texture* color_buffer,
+	Texture* normal_buffer, Texture* positions_buffer) :
+	clear(_clear)
+{
+	targets = { target };
+	commands = {
+		commands::SetEyePosition(camera.position),
+		commands::SetBlendMode(BlendStates::Additive),
+		commands::SetCustomTexture(5, color_buffer),
+		commands::SetCustomTexture(6, normal_buffer),
+		commands::SetCustomTexture(7, positions_buffer)
+	};
+
+	for (const auto& light : lights)
+	{
+		commands.insert(commands.end(), {
+			std::visit(cases{
+				[](const DirectionalLight& light) {
+					return commands::SetEffect(DirectionalLightEffect(light));
+				},
+				[](const PointLight& light) {
+					return commands::SetEffect(PointLightEffect(light));
+				}
+			}, light),
+			commands::Draw()
+		});
+	}
+}
+
+std::vector<RenderTarget*> utils::passes::DeferredShadingLightPass::getTargets() const
+{
+	return targets;
+}
+
+bool utils::passes::DeferredShadingLightPass::isClear() const
+{
+	return clear;
+}
+
+std::vector<utils::Command> utils::passes::DeferredShadingLightPass::getCommands() const
+{
+	return commands;
+}
+
+const std::string utils::passes::ForwardShading::DirectionalLightEffect::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
+{
+	vec3 direction;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	float shininess;
+} light;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
+	vec3 normal;
+
+	if (settings.has_normal_texture != 0)
+	{
+		normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
+		normal = normal * 2.0 - 1.0;
+		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
+		normal = normalize(normal);
+	}
+	else
+	{
+		normal = normalize(In.normal);
+	}
+
+	vec3 view_dir = normalize(settings.eye_position - In.world_position);
+	vec3 light_dir = normalize(light.direction);
+
+	float diff = max(dot(normal, -light_dir), 0.0);
+	vec3 reflect_dir = reflect(light_dir, normal);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
+
+	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
+
+	result *= vec4(intensity, 1.0);
+})";
+
+const std::string utils::passes::ForwardShading::PointLightEffect::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
+{
+	vec3 position;
+	vec3 ambient;
+	vec3 diffuse;
+	vec3 specular;
+	float constant_attenuation;
+	float linear_attenuation;
+	float quadratic_attenuation;
+	float shininess;
+} light;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+
+	vec3 normal;
+
+	if (settings.has_normal_texture != 0)
+	{
+		normal = vec3(texture(sNormalTexture, In.tex_coord, settings.mipmap_bias));
+		normal = normal * 2.0 - 1.0;
+		normal = mat3(In.tangent, In.bitangent, In.normal) * normal;
+		normal = normalize(normal);
+	}
+	else
+	{
+		normal = normalize(In.normal);
+	}
+
+	vec3 light_offset = light.position - In.world_position;
+
+	float distance = length(light_offset);
+	float linear_attn = light.linear_attenuation * distance;
+	float quadratic_attn = light.quadratic_attenuation * (distance * distance);
+	float attenuation = 1.0 / (light.constant_attenuation + linear_attn + quadratic_attn);
+
+	vec3 light_dir = normalize(light_offset);
+	float diff = max(dot(normal, light_dir), 0.0);
+	vec3 reflect_dir = reflect(-light_dir, normal);
+	vec3 view_dir = normalize(settings.eye_position - In.world_position);
+	float spec = pow(max(dot(view_dir, reflect_dir), 0.0), light.shininess);
+
+	vec3 intensity = light.ambient + (light.diffuse * diff) + (light.specular * spec);
+
+	intensity *= attenuation;
+
+	result *= vec4(intensity, 1.0);
+})";
+
+utils::passes::ForwardShading::DirectionalLightEffect::DirectionalLightEffect(const utils::DirectionalLight& light) :
+	direction(light.direction),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	shininess(light.shininess)
+{
+}
+
+utils::passes::ForwardShading::PointLightEffect::PointLightEffect(const utils::PointLight& light) :
+	position(light.position),
+	ambient(light.ambient),
+	diffuse(light.diffuse),
+	specular(light.specular),
+	constant_attenuation(light.constant_attenuation),
+	linear_attenuation(light.linear_attenuation),
+	quadratic_attenuation(light.quadratic_attenuation),
+	shininess(light.shininess)
+{
+}
+
+utils::passes::ForwardShading::ForwardShading(RenderTarget* target, bool _clear, const PerspectiveCamera& camera,
+	float mipmap_bias, const std::vector<Command>& per_light_commands, const std::vector<Light>& lights) :
+	targets({ target }),
+	clear(_clear)
+{
+	commands = {
+		commands::SetCamera(camera),
+		commands::SetMipmapBias(mipmap_bias)
+	};
+
+	bool first_light_done = false;
+
+	for (const auto& light : lights)
+	{
+		commands.insert(commands.end(), {
+			std::visit(cases{
+				[](const DirectionalLight& light) {
+					return commands::SetEffect(DirectionalLightEffect(light));
+				},
+				[](const PointLight& light) {
+					return commands::SetEffect(PointLightEffect(light));
+				}
+			}, light),
+			commands::Subcommands(&per_light_commands)
+		});
+
+		if (!first_light_done)
+		{
+			first_light_done = true;
+			commands.push_back(commands::SetBlendMode(BlendStates::Additive));
+		}
+	}
+}
+
+std::vector<RenderTarget*> utils::passes::ForwardShading::getTargets() const
+{
+	return targets;
+}
+
+bool utils::passes::ForwardShading::isClear() const
+{
+	return clear;
+}
+
+std::vector<utils::Command> utils::passes::ForwardShading::getCommands() const
+{
+	return commands;
 }

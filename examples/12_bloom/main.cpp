@@ -137,9 +137,9 @@ int main()
 		skygfx::utils::DrawScene(src_target, camera, { model }, { light });
 
 		if (gaussian)
-			skygfx::utils::passes::BloomGaussian(src_target, nullptr, threshold, intensity);
+			skygfx::utils::techniques::BloomGaussian(src_target, nullptr, threshold, intensity);
 		else
-			skygfx::utils::passes::Bloom(src_target, nullptr, threshold, intensity);
+			skygfx::utils::techniques::Bloom(src_target, nullptr, threshold, intensity);
 
 		stage_viewer.show();
 		imgui.draw();
