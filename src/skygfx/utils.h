@@ -166,6 +166,7 @@ namespace skygfx::utils
 				float shininess = 32.0f;
 
 				static const std::string Shader;
+				static constexpr bool HasUniform = true;
 			};
 
 			struct alignas(16) PointLight
@@ -183,6 +184,7 @@ namespace skygfx::utils
 				float shininess = 32.0f;
 
 				static const std::string Shader;
+				static constexpr bool HasUniform = true;
 			};
 		}
 
@@ -200,6 +202,7 @@ namespace skygfx::utils
 				float shininess = 32.0f;
 
 				static const std::string Shader;
+				static constexpr bool HasUniform = true;
 			};
 
 			struct alignas(16) PointLight
@@ -217,13 +220,13 @@ namespace skygfx::utils
 				float shininess = 32.0f;
 
 				static const std::string Shader;
+				static constexpr bool HasUniform = true;
 			};
 
 			struct alignas(16) ExtractGeometryBuffer
 			{
-				float unused; // TODO: add ability to do without this float
-
 				static const std::string Shader;
+				static constexpr bool HasUniform = false;
 			};
 		}
 
@@ -234,6 +237,7 @@ namespace skygfx::utils
 			glm::vec2 direction;
 
 			static const std::string Shader;
+			static constexpr bool HasUniform = true;
 		};
 
 		struct alignas(16) BloomDownsample
@@ -244,11 +248,13 @@ namespace skygfx::utils
 			uint32_t step_number;
 
 			static const std::string Shader;
+			static constexpr bool HasUniform = true;
 		};
 
 		struct alignas(16) BloomUpsample
 		{
 			static const std::string Shader;
+			static constexpr bool HasUniform = false;
 		};
 
 		struct alignas(16) BrightFilter
@@ -258,6 +264,7 @@ namespace skygfx::utils
 			float threshold = 0.9f;
 
 			static const std::string Shader;
+			static constexpr bool HasUniform = true;
 		};
 
 		struct alignas(16) Grayscale
@@ -265,6 +272,7 @@ namespace skygfx::utils
 			float intensity = 1.0f;
 
 			static const std::string Shader;
+			static constexpr bool HasUniform = true;
 		};
 
 		struct alignas(16) AlphaTest
@@ -272,10 +280,14 @@ namespace skygfx::utils
 			float threshold = 0.0f;
 
 			static const std::string Shader;
+			static constexpr bool HasUniform = true;
 		};
 
 		template <typename T>
-		concept Effect = requires { T::Shader; } && std::is_same<std::remove_const_t<decltype(T::Shader)>, std::string>::value;
+		concept Effect = requires {
+			{ T::Shader } -> std::convertible_to<std::string>;
+			{ T::HasUniform } -> std::convertible_to<bool>;
+		};
 	}
 
 	struct OrthogonalCamera
@@ -370,12 +382,17 @@ namespace skygfx::utils
 					context.shaders.insert({ type_index, MakeEffectShader(T::Shader) });
 
 				shader = &context.shaders.at(type_index);
-				uniform_data.resize(sizeof(T));
-				std::memcpy(uniform_data.data(), &value, sizeof(T));
+
+				if (T::HasUniform)
+				{
+					uniform_data.emplace();
+					uniform_data.value().resize(sizeof(T));
+					std::memcpy(uniform_data.value().data(), &value, sizeof(T));
+				}
 			}
 
 			Shader* shader = nullptr;
-			std::vector<uint8_t> uniform_data;
+			std::optional<std::vector<uint8_t>> uniform_data;
 		};
 
 		struct SetViewport

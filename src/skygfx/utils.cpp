@@ -271,11 +271,6 @@ void effect(inout vec4 result)
 })";
 
 const std::string utils::effects::deferred_shading::ExtractGeometryBuffer::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _effect_settings
-{
-	float unused;
-} effect_settings;
-
 //layout(location = 0) out vec4 result; // color_buffer
 layout(location = 1) out vec4 normal_buffer;
 layout(location = 2) out vec4 positions_buffer;
@@ -408,11 +403,6 @@ void effect(inout vec4 result)
 })";
 
 const std::string utils::effects::BloomUpsample::Shader = R"(
-layout(binding = EFFECT_UNIFORM_BINDING) uniform _upsample
-{
-	int padding;
-} upsample;
-
 void effect(inout vec4 result)
 {
 	const vec2 pixelSize = vec2(1.0) / textureSize(sColorTexture, 0);
@@ -949,8 +939,9 @@ utils::commands::SetEffect::SetEffect(std::nullopt_t)
 utils::commands::SetEffect::SetEffect(Shader* _shader, void* _uniform_data, size_t uniform_size) :
 	shader(_shader)
 {
-	uniform_data.resize(uniform_size);
-	std::memcpy(uniform_data.data(), _uniform_data, uniform_size);
+	uniform_data.emplace();
+	uniform_data.value().resize(uniform_size);
+	std::memcpy(uniform_data.value().data(), _uniform_data, uniform_size);
 }
 
 utils::commands::SetViewport::SetViewport(std::optional<Viewport> _viewport) :
@@ -1162,10 +1153,13 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			},
 			[&](const commands::SetEffect& cmd) {
 				shader = cmd.shader;
-				if (shader)
-					uniforms[EffectUniformBinding] = { (void*)cmd.uniform_data.data(), cmd.uniform_data.size() };
-
 				shader_dirty = true;
+
+				if (cmd.uniform_data.has_value())
+				{
+					const auto& uniform = cmd.uniform_data.value();
+					uniforms[EffectUniformBinding] = { (void*)uniform.data(), uniform.size() };
+				}
 			},
 			[&](const commands::SetCustomTexture& cmd) {
 				textures[cmd.binding] = cmd.texture;
