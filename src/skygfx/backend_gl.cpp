@@ -552,13 +552,7 @@ public:
 	void write(void* memory, size_t size)
 	{
 		glBindBuffer(mType, mBuffer);
-#ifdef EMSCRIPTEN
-		glBufferData(mType, size, memory, GL_DYNAMIC_DRAW);
-#else
-		auto ptr = glMapBufferRange(mType, 0, size, GL_MAP_WRITE_BIT | GL_MAP_INVALIDATE_BUFFER_BIT);
-		memcpy(ptr, memory, size);
-		glUnmapBuffer(mType);
-#endif
+		glBufferSubData(mType, 0, size, memory);
 	}
 };
 
