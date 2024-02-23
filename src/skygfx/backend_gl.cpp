@@ -1580,9 +1580,8 @@ void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 
 void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
 {
-	auto buffer = (VertexBufferGL*)handle;
+	auto buffer = (IndexBufferGL*)handle;
 	buffer->write(memory, size);
-	buffer->setStride(stride);
 }
 
 UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
