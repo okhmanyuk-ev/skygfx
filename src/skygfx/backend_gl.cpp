@@ -576,6 +576,7 @@ class IndexBufferGL : public BufferGL
 {
 public:
 	auto getStride() const { return mStride; }
+	void setStride(size_t value) { mStride = value; }
 	
 private:
 	size_t mStride = 0;
@@ -1576,6 +1577,7 @@ void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, 
 {
 	auto buffer = (IndexBufferGL*)handle;
 	buffer->write(memory, size);
+	buffer->setStride(stride);
 }
 
 UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
