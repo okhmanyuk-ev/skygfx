@@ -552,7 +552,8 @@ public:
 	void write(void* memory, size_t size)
 	{
 		glBindBuffer(mType, mBuffer);
-		glBufferSubData(mType, 0, size, memory);
+		//glBufferSubData(mType, 0, size, memory); // very slow on mac/ios
+		glBufferData(mType, size, memory, GL_DYNAMIC_DRAW);
 	}
 };
 
