@@ -480,6 +480,20 @@ void effect(inout vec4 result)
 		discard;
 })";
 
+const std::string utils::effects::GammaCorrection::Shader = R"(
+layout(binding = EFFECT_UNIFORM_BINDING) uniform _gamma
+{
+	float value;
+} gamma;
+
+void effect(inout vec4 result)
+{
+	result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+    result.rgb = pow(result.rgb, vec3(1.0 / gamma.value));
+})";
+
 static std::optional<utils::Context> gContext;
 
 utils::Mesh::Mesh()

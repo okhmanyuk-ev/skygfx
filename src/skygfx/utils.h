@@ -283,6 +283,14 @@ namespace skygfx::utils
 			static constexpr bool HasUniform = true;
 		};
 
+		struct alignas(16) GammaCorrection
+		{
+			float gamma = 2.2f;
+
+			static const std::string Shader;
+			static constexpr bool HasUniform = true;
+		};
+
 		template <typename T>
 		concept Effect = requires {
 			{ T::Shader } -> std::convertible_to<std::string>;
