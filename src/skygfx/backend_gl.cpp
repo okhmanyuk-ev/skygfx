@@ -35,10 +35,10 @@
 #endif
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
-extern "C" {
-	_declspec(dllexport) uint32_t NvOptimusEnablement = 1;
-	_declspec(dllexport) uint32_t AmdPowerXpressRequestHighPerformance = 1;
-}
+//extern "C" {
+//	_declspec(dllexport) uint32_t NvOptimusEnablement = 1;
+//	_declspec(dllexport) uint32_t AmdPowerXpressRequestHighPerformance = 1;
+//}
 #endif
 
 using namespace skygfx;
@@ -903,8 +903,8 @@ static void EnsureGraphicsState(bool draw_indexed)
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adapter)
 {
 #if defined(SKYGFX_PLATFORM_WINDOWS)
-	NvOptimusEnablement = adapter == Adapter::HighPerformance ? 1 : 0;
-	AmdPowerXpressRequestHighPerformance = adapter == Adapter::HighPerformance ? 1 : 0;
+	//NvOptimusEnablement = adapter == Adapter::HighPerformance ? 1 : 0;
+	//AmdPowerXpressRequestHighPerformance = adapter == Adapter::HighPerformance ? 1 : 0;
 
 	gHDC = GetDC((HWND)window);
 
