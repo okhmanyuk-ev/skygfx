@@ -24,7 +24,8 @@ namespace skygfx
 		D3D12,
 		OpenGL,
 		Vulkan,
-		Metal
+		Metal,
+		WebGPU
 	};
 
 	enum class Adapter

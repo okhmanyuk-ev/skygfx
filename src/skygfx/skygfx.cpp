@@ -5,6 +5,7 @@
 #include "backend_gl.h"
 #include "backend_vk.h"
 #include "backend_mtl.h"
+#include "backend_webgpu.h"
 
 using namespace skygfx;
 
@@ -666,6 +667,10 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 	if (type == BackendType::Metal)
 		gBackend = new BackendMetal(window, width, height);
 #endif
+#ifdef SKYGFX_HAS_WEBGPU
+	if (type == BackendType::WebGPU)
+		gBackend = new BackendWebGPU(window, width, height, adapter);
+#endif
 
 	if (gBackend == nullptr)
 		throw std::runtime_error("backend not implemented");
@@ -1022,6 +1027,9 @@ std::unordered_set<BackendType> skygfx::GetAvailableBackends(const std::unordere
 #ifdef SKYGFX_HAS_METAL
 		BackendType::Metal,
 #endif
+#ifdef SKYGFX_HAS_WEBGPU
+		BackendType::WebGPU,
+#endif
 	};
 
 	if (features.empty())
@@ -1045,7 +1053,8 @@ std::optional<BackendType> skygfx::GetDefaultBackend(const std::unordered_set<Fe
 		BackendType::OpenGL,
 		BackendType::Metal,
 		BackendType::D3D12,
-		BackendType::Vulkan
+		BackendType::Vulkan,
+		BackendType::WebGPU
 	};
 
 	auto backends = GetAvailableBackends(features);
