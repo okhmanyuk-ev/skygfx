@@ -30,6 +30,7 @@ namespace utils
 			{ skygfx::BackendType::OpenGL, "OpenGL" },
 			{ skygfx::BackendType::Vulkan, "Vulkan" },
 			{ skygfx::BackendType::Metal, "Metal" },
+			{ skygfx::BackendType::WebGPU, "WebGPU" },
 		};
 
 		return BackendNamesMap.at(backend);
