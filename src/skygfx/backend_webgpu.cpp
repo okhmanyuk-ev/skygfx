@@ -11,6 +11,8 @@
 #include <Windows.h>
 #endif
 
+#include <tint/tint.h>
+
 using namespace skygfx;
 
 class ShaderWebGPU;
@@ -53,50 +55,47 @@ static ContextWebGPU* gContext = nullptr;
 class ShaderWebGPU
 {
 private:
-	wgpu::ShaderModule mShaderModule = nullptr;
+	wgpu::ShaderModule mVertexShader = nullptr;
+	wgpu::ShaderModule mFragmentShader = nullptr;
 
 public:
-	const wgpu::ShaderModule& getShaderModule() const { return mShaderModule; }
+	const wgpu::ShaderModule& getVertexShader() const { return mVertexShader; }
+	const wgpu::ShaderModule& getFragmentShader() const { return mFragmentShader; }
 
 public:
 	ShaderWebGPU(const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		//auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
-		//auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
+		auto createShaderModule = [](ShaderStage stage, const std::string& glsl, const std::vector<std::string>& defines) {
+			auto spirv = CompileGlslToSpirv(stage, glsl, defines);
+			auto tint_program = tint::spirv::reader::Read(spirv);
 
-		const char* shaderSource = R"(
-			@vertex
-			fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32> {
-				var p = vec2f(0.0, 0.0);
-				if (in_vertex_index == 0u) {
-					p = vec2f(-0.5, -0.5);
-				} else if (in_vertex_index == 1u) {
-					p = vec2f(0.5, -0.5);
-				} else {
-					p = vec2f(0.0, 0.5);
-				}
-				return vec4f(p, 0.0, 1.0);
+			if (tint_program.Diagnostics().ContainsErrors())
+			{
+				auto str = tint_program.Diagnostics().Str();
+				throw std::runtime_error(str);
 			}
 
-			@fragment
-			fn fs_main() -> @location(0) vec4f {
-				return vec4f(0.0, 0.4, 1.0, 1.0);
-			})";
+			auto wgsl = tint::wgsl::writer::Generate(tint_program, {});
 
-		wgpu::ShaderModuleWGSLDescriptor wgsl_desc;
-		wgsl_desc.chain.next = nullptr;
-		wgsl_desc.chain.sType = wgpu::SType::ShaderModuleWGSLDescriptor;
-		wgsl_desc.code = shaderSource;
+			if (wgsl != tint::Success)
+			{
+				auto str = wgsl.Failure().reason.Str();
+				throw std::runtime_error(str);
+			}
 
-		wgpu::ShaderModuleDescriptor desc;
-		desc.nextInChain = &wgsl_desc.chain;
-#ifdef WEBGPU_BACKEND_WGPU
-		desc.hintCount = 0;
-		desc.hints = nullptr;
-#endif
+			wgpu::ShaderModuleWGSLDescriptor spirv_desc;
+			spirv_desc.chain.sType = wgpu::SType::ShaderModuleWGSLDescriptor;
+			spirv_desc.code = wgsl.Get().wgsl.c_str();
 
-		mShaderModule = gContext->device.createShaderModule(desc);
+			wgpu::ShaderModuleDescriptor shader_module_desc;
+			shader_module_desc.nextInChain = (wgpu::ChainedStruct*)&spirv_desc;
+
+			return gContext->device.createShaderModule(shader_module_desc);
+		};
+
+		mVertexShader = createShaderModule(ShaderStage::Vertex, vertex_code, defines);
+		mFragmentShader = createShaderModule(ShaderStage::Fragment, fragment_code, defines);
 	}
 };
 
@@ -187,11 +186,12 @@ static wgpu::RenderPipeline CreateGraphicsPipeline(const PipelineStateWebGPU& pi
 	colorTarget.blend = &blendState;
 	colorTarget.writeMask = wgpu::ColorWriteMask::All;
 
-	const auto& shader_module = pipeline_state.shader->getShaderModule();
+	const auto& vertex_shader = pipeline_state.shader->getVertexShader();
+	const auto& fragment_shader = pipeline_state.shader->getVertexShader();
 
 	wgpu::FragmentState fragmentState;
-	fragmentState.module = shader_module;
-	fragmentState.entryPoint = "fs_main";
+	fragmentState.module = fragment_shader;
+	fragmentState.entryPoint = "main";
 	fragmentState.constantCount = 0;
 	fragmentState.constants = nullptr;
 	fragmentState.targetCount = 1;
@@ -200,8 +200,8 @@ static wgpu::RenderPipeline CreateGraphicsPipeline(const PipelineStateWebGPU& pi
 	wgpu::RenderPipelineDescriptor pipelineDesc;
 	pipelineDesc.vertex.bufferCount = 0;
 	pipelineDesc.vertex.buffers = nullptr;
-	pipelineDesc.vertex.module = shader_module;
-	pipelineDesc.vertex.entryPoint = "vs_main";
+	pipelineDesc.vertex.module = vertex_shader;
+	pipelineDesc.vertex.entryPoint = "main";
 	pipelineDesc.vertex.constantCount = 0;
 	pipelineDesc.vertex.constants = nullptr;
 
@@ -417,9 +417,7 @@ void BackendWebGPU::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t
 void BackendWebGPU::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	EnsureGraphicsState(true);
-	//gContext->render_pass_encoder.drawIndexed(index_count, instance_count, index_offset, 0, 0);
-	// TODO: remove next line and uncomment prev line
-	gContext->render_pass_encoder.draw(index_count, instance_count, index_offset, 0);
+	gContext->render_pass_encoder.drawIndexed(index_count, instance_count, index_offset, 0, 0);
 }
 
 void BackendWebGPU::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)

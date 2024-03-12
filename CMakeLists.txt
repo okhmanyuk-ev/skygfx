@@ -198,3 +198,19 @@ endif()
 
 add_subdirectory(lib/webgpu)
 target_link_libraries(${PROJECT_NAME} webgpu)
+
+# spirv-headers
+
+add_subdirectory(lib/spirv-headers)
+target_link_libraries(${PROJECT_NAME} SPIRV-Headers)
+
+# spirv-tools
+
+add_subdirectory(lib/spirv-tools)
+target_link_libraries(${PROJECT_NAME} SPIRV-Tools)
+include_directories(lib/spirv-tools)
+
+# tint
+
+add_subdirectory(lib/tint)
+target_link_libraries(${PROJECT_NAME} libtint)

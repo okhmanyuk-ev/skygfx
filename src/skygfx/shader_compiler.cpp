@@ -141,7 +141,7 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 	}
 
 	shader.setPreamble(preamble.c_str());
-	shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_6);
+	shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_3);
 
 	auto messages = EShMessages(EShMsgSpvRules | EShMsgVulkanRules | EShMsgEnhanced);
 
