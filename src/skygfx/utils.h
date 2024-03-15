@@ -6,148 +6,40 @@
 
 namespace skygfx::utils
 {
-	template<typename TVertex, typename TIndex>
-	class MeshGeneric
+	class Mesh
 	{
 	public:
-		using Vertex = TVertex;
-		using Index = TIndex;
+		using Vertex = vertex::PositionColorTextureNormalTangent;
+		using Index = uint32_t;
 		using Vertices = std::vector<Vertex>;
 		using Indices = std::vector<Index>;
 
 	public:
-		MeshGeneric()
-		{
-		}
+		Mesh() = default;
+		Mesh(const Vertices& vertices);
+		Mesh(const Vertices& vertices, const Indices& indices);
 
-		MeshGeneric(const Vertices& vertices)
-		{
-			setVertices(vertices);
-		}
+		void setVertices(const Vertex* memory, uint32_t count);
+		void setVertices(const Vertices& value);
 
-		MeshGeneric(const Vertices& vertices, const Indices& indices)
-		{
-			setVertices(vertices);
-			setIndices(indices);
-		}
+		void setIndices(const Index* memory, uint32_t count);
+		void setIndices(const Indices& value);
 
-	public:
 		auto getTopology() const { return mTopology; }
 		void setTopology(Topology value) { mTopology = value; }
 
-		void setVertices(const Vertex* memory, uint32_t count)
-		{
-			mVertexCount = count;
-
-			if (count == 0)
-				return;
-
-			size_t size = count * sizeof(Vertex);
-			size_t stride = sizeof(Vertex);
-
-			if (!mVertexBuffer.has_value() || mVertexBuffer.value().getSize() < size)
-				mVertexBuffer.emplace(size, stride);
-
-			mVertexBuffer.value().write(memory, count);
-		}
-
-		void setVertices(const Vertices& value)
-		{
-			setVertices(value.data(), static_cast<uint32_t>(value.size()));
-		}
-
-		void setIndices(const Index* memory, uint32_t count)
-		{
-			mIndexCount = count;
-
-			if (count == 0)
-				return;
-
-			size_t size = count * sizeof(Index);
-			size_t stride = sizeof(Index);
-
-			if (!mIndexBuffer.has_value() || mIndexBuffer.value().getSize() < size)
-				mIndexBuffer.emplace(size, stride);
-
-			mIndexBuffer.value().write(memory, count);
-		}
-
-		void setIndices(const Indices& value)
-		{
-			setIndices(value.data(), static_cast<uint32_t>(value.size()));
-		}
-
 		auto getVertexCount() const { return mVertexCount; }
 		auto getIndexCount() const { return mIndexCount; }
+
+		const auto& getVertexBuffer() const { return mVertexBuffer; }
+		const auto& getIndexBuffer() const { return mIndexBuffer; }
 
 	private:
 		Topology mTopology = Topology::TriangleList;
 		uint32_t mVertexCount = 0;
 		uint32_t mIndexCount = 0;
-
-	public:		
-		const auto& getVertexBuffer() const { return mVertexBuffer; }
-		const auto& getIndexBuffer() const { return mIndexBuffer; }
-
-	private:
 		std::optional<VertexBuffer> mVertexBuffer;
 		std::optional<IndexBuffer> mIndexBuffer;
-	};
-
-	using Mesh = MeshGeneric<vertex::PositionColorTextureNormalTangent, uint32_t>;
-
-	class MeshBuilder
-	{
-	public:
-		using Vertex = Mesh::Vertex;
-
-	public:
-		enum class Mode
-		{
-			Points,
-			Lines,
-			LineLoop,
-			LineStrip,
-			Triangles,
-			TriangleStrip,
-			TriangleFan,
-			Quads,
-			Polygon
-		};
-
-	public:
-		static Topology ConvertModeToTopology(Mode mode);
-
-	public:
-		void reset();
-		void begin(Mode mode);
-		void vertex(const Vertex& value);
-		void end();
-
-		void setToMesh(Mesh& mesh);
-
-		bool isBeginAllowed(Mode mode) const;
-
-	public:
-		bool isBegan() const { return mBegan; }
-
-		const auto& getVertices() const { return mVertices; }
-		const auto& getIndices() const { return mIndices; }
-
-		auto getVertexCount() const { return mVertexCount; }
-		auto getIndexCount() const { return mIndexCount; }
-
-		const auto& getTopology() const { return mTopology; }
-
-	private:
-		bool mBegan = false;
-		std::optional<Mode> mMode;
-		std::optional<Topology> mTopology;
-		Mesh::Vertices mVertices;
-		Mesh::Indices mIndices;
-		uint32_t mVertexStart = 0;
-		uint32_t mVertexCount = 0;
-		uint32_t mIndexCount = 0;
 	};
 
 	struct DrawVerticesCommand
@@ -687,6 +579,46 @@ namespace skygfx::utils
 	void SetStageViewer(StageViewer* value);
 	void ViewStage(const std::string& name, Texture* texture);
 
+	enum class Mode
+	{
+		Points,
+		Lines,
+		LineLoop,
+		LineStrip,
+		Triangles,
+		TriangleStrip,
+		TriangleFan,
+		Quads,
+		Polygon
+	};
+
+	Topology ConvertModeToTopology(Mode mode);
+
+	class MeshBuilder
+	{
+	public:
+		void reset();
+		void begin(Mode mode);
+		void vertex(const Mesh::Vertex& value);
+		void end();
+		void setToMesh(Mesh& mesh);
+		bool isBeginAllowed(Mode mode) const;
+
+	public:
+		bool isBegan() const { return mBegan; }
+		const auto& getTopology() const { return mTopology; }
+		const auto& getVertices() const { return mVertices; }
+		const auto& getIndices() const { return mIndices; }
+
+	private:
+		bool mBegan = false;
+		std::optional<Mode> mMode;
+		std::optional<Topology> mTopology;
+		Mesh::Vertices mVertices;
+		Mesh::Indices mIndices;
+		uint32_t mVertexStart = 0;
+	};
+
 	class Scratch
 	{
 	public:
@@ -715,8 +647,8 @@ namespace skygfx::utils
 		};
 
 	public:
-		void begin(MeshBuilder::Mode mode, const State& state = {});
-		void vertex(const MeshBuilder::Vertex& value);
+		void begin(Mode mode, const State& state);
+		void vertex(const Mesh::Vertex& value);
 		void end();
 		void flush();
 

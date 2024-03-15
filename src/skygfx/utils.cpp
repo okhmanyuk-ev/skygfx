@@ -4,6 +4,59 @@
 
 using namespace skygfx;
 
+utils::Mesh::Mesh(const Vertices& vertices)
+{
+	setVertices(vertices);
+}
+
+utils::Mesh::Mesh(const Vertices& vertices, const Indices& indices)
+{
+	setVertices(vertices);
+	setIndices(indices);
+}
+
+void utils::Mesh::setVertices(const Vertex* memory, uint32_t count)
+{
+	mVertexCount = count;
+
+	if (count == 0)
+		return;
+
+	size_t size = count * sizeof(Vertex);
+	size_t stride = sizeof(Vertex);
+
+	if (!mVertexBuffer.has_value() || mVertexBuffer.value().getSize() < size)
+		mVertexBuffer.emplace(size, stride);
+
+	mVertexBuffer.value().write(memory, count);
+}
+
+void utils::Mesh::setVertices(const Vertices& value)
+{
+	setVertices(value.data(), static_cast<uint32_t>(value.size()));
+}
+
+void utils::Mesh::setIndices(const Index* memory, uint32_t count)
+{
+	mIndexCount = count;
+
+	if (count == 0)
+		return;
+
+	size_t size = count * sizeof(Index);
+	size_t stride = sizeof(Index);
+
+	if (!mIndexBuffer.has_value() || mIndexBuffer.value().getSize() < size)
+		mIndexBuffer.emplace(size, stride);
+
+	mIndexBuffer.value().write(memory, count);
+}
+
+void utils::Mesh::setIndices(const Indices& value)
+{
+	setIndices(value.data(), static_cast<uint32_t>(value.size()));
+}
+
 const std::string vertex_shader_code = R"(
 #version 450 core
 
@@ -495,194 +548,6 @@ void effect(inout vec4 result)
 })";
 
 static std::optional<utils::Context> gContext;
-
-template<typename T>
-static void AddItem(std::vector<T>& items, uint32_t& count, const T& item)
-{
-	count++;
-	if (items.size() < count)
-		items.push_back(item);
-	else
-		items[count - 1] = item;
-}
-
-static void ExtractOrderedIndexSequence(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractLineListIndicesFromLineLoop(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	if (vertex_count == vertex_start)
-		return;
-
-	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-	AddItem(indices, index_count, vertex_start + vertex_count - 1);
-	AddItem(indices, index_count, vertex_start);
-}
-
-static void ExtractLineListIndicesFromLineStrip(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractTrianglesIndicesFromTriangleFan(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
-	{
-		AddItem(indices, index_count, vertex_start);
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractTrianglesIndicesFromPolygons(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	ExtractTrianglesIndicesFromTriangleFan(vertices, vertex_start, vertex_count, indices, index_count);
-}
-
-static void ExtractTrianglesIndicesFromQuads(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 3; i < vertex_count; i += 4) {
-		// first triangle
-		AddItem(indices, index_count, i - 3);
-		AddItem(indices, index_count, i - 2);
-		AddItem(indices, index_count, i - 1);
-		// second triangle
-		AddItem(indices, index_count, i - 3);
-		AddItem(indices, index_count, i - 1);
-		AddItem(indices, index_count, i);
-	}
-}
-
-static void ExtractTrianglesIndicesFromTriangleStrip(const utils::Mesh::Vertices& vertices, uint32_t vertex_start,
-	uint32_t vertex_count, utils::Mesh::Indices& indices, uint32_t& index_count)
-{
-	for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
-	{
-		if ((i - vertex_start) % 2 == 0)
-		{
-			AddItem(indices, index_count, i - 2);
-			AddItem(indices, index_count, i - 1);
-			AddItem(indices, index_count, i);
-		}
-		else
-		{
-			AddItem(indices, index_count, i - 1);
-			AddItem(indices, index_count, i - 2);
-			AddItem(indices, index_count, i);
-		}
-	}
-}
-
-Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
-{
-	static const std::unordered_map<Mode, Topology> TopologyMap = {
-		{ Mode::Points, Topology::PointList },
-		{ Mode::Lines, Topology::LineList },
-		{ Mode::LineLoop, Topology::LineList },
-		{ Mode::LineStrip, Topology::LineList },
-		{ Mode::Triangles, Topology::TriangleList },
-		{ Mode::TriangleStrip, Topology::TriangleList },
-		{ Mode::TriangleFan, Topology::TriangleList },
-		{ Mode::Quads, Topology::TriangleList },
-		{ Mode::Polygon, Topology::TriangleList }
-	};
-
-	return TopologyMap.at(mode);
-}
-
-void utils::MeshBuilder::reset()
-{
-	assert(!mBegan);
-	mIndexCount = 0;
-	mVertexCount = 0;
-	mMode.reset();
-	mTopology.reset();
-}
-
-void utils::MeshBuilder::begin(Mode mode)
-{
-	assert(!mBegan);
-	mBegan = true;
-
-	auto topology = ConvertModeToTopology(mode);
-
-	if (mTopology.has_value())
-	{
-		assert(topology == mTopology.value());
-	}
-	else
-	{
-		mTopology = topology;
-	}
-
-	mMode = mode;
-	mVertexStart = mVertexCount;
-}
-
-void utils::MeshBuilder::vertex(const Vertex& value)
-{
-	assert(mBegan);
-	AddItem(mVertices, mVertexCount, value);
-}
-
-void utils::MeshBuilder::end()
-{
-	assert(mBegan);
-	mBegan = false;
-
-	using ExtractIndicesFunc = std::function<void(const Mesh::Vertices& vertices,
-		uint32_t vertex_start, uint32_t vertex_count, Mesh::Indices& indices, uint32_t& index_count)>;
-
-	static const std::unordered_map<Mode, ExtractIndicesFunc> ExtractIndicesFuncs = {
-		{ Mode::Points, ExtractOrderedIndexSequence },
-		{ Mode::Lines, ExtractOrderedIndexSequence },
-		{ Mode::LineLoop, ExtractLineListIndicesFromLineLoop },
-		{ Mode::LineStrip, ExtractLineListIndicesFromLineStrip },
-		{ Mode::Polygon, ExtractTrianglesIndicesFromPolygons },
-		{ Mode::TriangleFan, ExtractTrianglesIndicesFromTriangleFan },
-		{ Mode::Quads, ExtractTrianglesIndicesFromQuads },
-		{ Mode::TriangleStrip, ExtractTrianglesIndicesFromTriangleStrip },
-		{ Mode::Triangles, ExtractOrderedIndexSequence }
-	};
-
-	ExtractIndicesFuncs.at(mMode.value())(mVertices, mVertexStart, mVertexCount, mIndices, mIndexCount);
-}
-
-void utils::MeshBuilder::setToMesh(Mesh& mesh)
-{
-	assert(!mBegan);
-	mesh.setTopology(mTopology.value());
-	mesh.setVertices(mVertices.data(), mVertexCount);
-	mesh.setIndices(mIndices.data(), mIndexCount);
-}
-
-bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
-{
-	if (!mTopology.has_value())
-		return true;
-
-	auto topology = ConvertModeToTopology(mode);
-	return topology == mTopology.value();
-}
 
 utils::effects::forward_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
 	direction(light.direction),
@@ -1551,7 +1416,143 @@ void utils::ViewStage(const std::string& name, Texture* texture)
 	gStageViewer->stage(name, texture);
 }
 
-void utils::Scratch::begin(MeshBuilder::Mode mode, const State& state)
+Topology utils::ConvertModeToTopology(Mode mode)
+{
+	static const std::unordered_map<Mode, Topology> TopologyMap = {
+		{ Mode::Points, Topology::PointList },
+		{ Mode::Lines, Topology::LineList },
+		{ Mode::LineLoop, Topology::LineList },
+		{ Mode::LineStrip, Topology::LineList },
+		{ Mode::Triangles, Topology::TriangleList },
+		{ Mode::TriangleStrip, Topology::TriangleList },
+		{ Mode::TriangleFan, Topology::TriangleList },
+		{ Mode::Quads, Topology::TriangleList },
+		{ Mode::Polygon, Topology::TriangleList }
+	};
+
+	return TopologyMap.at(mode);
+}
+
+void utils::MeshBuilder::reset()
+{
+	assert(!mBegan);
+	mIndices.clear();
+	mVertices.clear();
+	mMode.reset();
+	mTopology.reset();
+}
+
+void utils::MeshBuilder::begin(Mode mode)
+{
+	assert(!mBegan);
+	mBegan = true;
+
+	auto topology = ConvertModeToTopology(mode);
+
+	if (mTopology.has_value())
+	{
+		assert(topology == mTopology.value());
+	}
+	else
+	{
+		mTopology = topology;
+	}
+
+	mMode = mode;
+	mVertexStart = mVertices.size();
+}
+
+void utils::MeshBuilder::vertex(const Mesh::Vertex& value)
+{
+	assert(mBegan);
+	mVertices.push_back(value);
+}
+
+void utils::MeshBuilder::end()
+{
+	assert(mBegan);
+	mBegan = false;
+
+	auto extract_ordered_index_sequence = [](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
+		indices.reserve(indices.size() + (size_t)(vertex_count - vertex_start));
+
+		for (uint32_t i = vertex_start; i < vertex_count; i++)
+			indices.push_back(i);
+	};
+
+	auto add_indices = [](auto& indices, auto... elements) {
+		(indices.push_back(elements), ...);
+	};
+
+	auto extract_line_list_indices_from_line_strip = [&add_indices](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
+		for (uint32_t i = vertex_start + 1; i < vertex_count; i++)
+			add_indices(indices, i - 1, i);
+	};
+
+	auto extract_line_list_indices_from_line_loop = [&extract_line_list_indices_from_line_strip, &add_indices](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
+		if (vertex_count == vertex_start)
+			return;
+
+		extract_line_list_indices_from_line_strip(vertex_start, vertex_count, indices);
+		add_indices(indices, vertex_start + vertex_count - 1, vertex_start);
+	};
+
+	auto extract_triangles_indices_from_triangle_fan = [&add_indices](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
+		for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
+			add_indices(indices, vertex_start, i - 1, i);
+	};
+
+	auto extract_triangles_indices_from_polygons = extract_triangles_indices_from_triangle_fan;
+
+	auto extract_triangles_indices_from_quads = [&add_indices](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
+		for (uint32_t i = vertex_start + 3; i < vertex_count; i += 4)
+			add_indices(indices, i - 3, i - 2, i - 1, i - 3, i - 1, i);
+	};
+
+	auto extract_triangles_indices_from_triangle_strip = [&add_indices](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
+		for (uint32_t i = vertex_start + 2; i < vertex_count; i++)
+		{
+			bool even = (i - vertex_start) % 2 == 0;
+			add_indices(indices, i - (even ? 2 : 1), i - (even ? 1 : 2), i);
+		}
+	};
+
+	using ExtractIndicesFunc = std::function<void(uint32_t vertex_start,
+		uint32_t vertex_count, std::vector<uint32_t>& indices)>;
+
+	static const std::unordered_map<Mode, ExtractIndicesFunc> ExtractIndicesFuncs = {
+		{ Mode::Points, extract_ordered_index_sequence },
+		{ Mode::Lines, extract_ordered_index_sequence },
+		{ Mode::LineLoop, extract_line_list_indices_from_line_loop },
+		{ Mode::LineStrip, extract_line_list_indices_from_line_strip },
+		{ Mode::Polygon, extract_triangles_indices_from_polygons },
+		{ Mode::TriangleFan, extract_triangles_indices_from_triangle_fan },
+		{ Mode::Quads, extract_triangles_indices_from_quads },
+		{ Mode::TriangleStrip, extract_triangles_indices_from_triangle_strip },
+		{ Mode::Triangles, extract_ordered_index_sequence }
+	};
+
+	ExtractIndicesFuncs.at(mMode.value())(mVertexStart, (uint32_t)mVertices.size(), mIndices);
+}
+
+void utils::MeshBuilder::setToMesh(Mesh& mesh)
+{
+	assert(!mBegan);
+	mesh.setTopology(mTopology.value());
+	mesh.setVertices(mVertices);
+	mesh.setIndices(mIndices);
+}
+
+bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
+{
+	if (!mTopology.has_value())
+		return true;
+
+	auto topology = ConvertModeToTopology(mode);
+	return topology == mTopology.value();
+}
+
+void utils::Scratch::begin(Mode mode, const State& state)
 {
 	if (!mMeshBuilder.isBeginAllowed(mode))
 		flush();
@@ -1563,7 +1564,7 @@ void utils::Scratch::begin(MeshBuilder::Mode mode, const State& state)
 	mMeshBuilder.begin(mode);
 }
 
-void utils::Scratch::vertex(const MeshBuilder::Vertex& value)
+void utils::Scratch::vertex(const Mesh::Vertex& value)
 {
 	mMeshBuilder.vertex(value);
 }
@@ -1575,13 +1576,13 @@ void utils::Scratch::end()
 
 void utils::Scratch::flush()
 {
-	if (mMeshBuilder.getVertexCount() == 0)
+	if (mMeshBuilder.getVertices().empty())
 	{
 		mMeshBuilder.reset();
 		return;
 	}
-
 	mMeshBuilder.setToMesh(mMesh);
+	mMeshBuilder.reset();
 
 	std::vector<Command> cmds;
 
@@ -1605,12 +1606,10 @@ void utils::Scratch::flush()
 		commands::SetProjectionMatrix(mState.projection_matrix),
 		commands::SetViewMatrix(mState.view_matrix),
 		commands::SetModelMatrix(mState.model_matrix),
-		commands::SetMesh(&mMesh),
 		commands::SetColorTexture(mState.texture),
+		commands::SetMesh(&mMesh),
 		commands::Draw()
 	});
 
 	ExecuteCommands(cmds);
-
-	mMeshBuilder.reset();
 }
