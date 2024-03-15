@@ -368,35 +368,6 @@ namespace skygfx::utils
 
 	Shader MakeEffectShader(const std::string& effect_shader_func);
 
-	class MeshBuilder;
-
-	namespace scratch
-	{
-		struct State
-		{
-			Texture* texture = nullptr;
-			Sampler sampler = Sampler::Linear;
-			TextureAddress texaddr = TextureAddress::Clamp;
-			CullMode cull_mode = CullMode::None;
-			FrontFace front_face = FrontFace::Clockwise;
-			float mipmap_bias = 0.0f;
-
-			std::optional<Scissor> scissor;
-			std::optional<Viewport> viewport;
-			std::optional<BlendMode> blend_mode;
-			std::optional<DepthMode> depth_mode;
-			std::optional<StencilMode> stencil_mode;
-			std::optional<DepthBias> depth_bias;
-			std::optional<float> alpha_test_threshold;
-
-			glm::mat4 projection_matrix = glm::mat4(1.0f);
-			glm::mat4 view_matrix = glm::mat4(1.0f);
-			glm::mat4 model_matrix = glm::mat4(1.0f);
-
-			bool operator==(const State& other) const = default;
-		};
-	}
-
 	struct Context
 	{
 		Context();
@@ -405,12 +376,6 @@ namespace skygfx::utils
 		std::unordered_map<std::type_index, Shader> shaders;
 		Mesh default_mesh;
 		Texture white_pixel_texture;
-
-		struct {
-			scratch::State state;
-			Mesh mesh;
-			MeshBuilder mesh_builder;
-		} scratch;
 	};
 
 	Context& GetContext();
@@ -722,11 +687,42 @@ namespace skygfx::utils
 	void SetStageViewer(StageViewer* value);
 	void ViewStage(const std::string& name, Texture* texture);
 
-	namespace scratch
+	class Scratch
 	{
-		void Begin(MeshBuilder::Mode mode, const State& state = {});
-		void Vertex(const MeshBuilder::Vertex& value);
-		void End();
-		void Flush();
-	}
+	public:
+		struct State
+		{
+			Texture* texture = nullptr;
+			Sampler sampler = Sampler::Linear;
+			TextureAddress texaddr = TextureAddress::Clamp;
+			CullMode cull_mode = CullMode::None;
+			FrontFace front_face = FrontFace::Clockwise;
+			float mipmap_bias = 0.0f;
+
+			std::optional<Scissor> scissor;
+			std::optional<Viewport> viewport;
+			std::optional<BlendMode> blend_mode;
+			std::optional<DepthMode> depth_mode;
+			std::optional<StencilMode> stencil_mode;
+			std::optional<DepthBias> depth_bias;
+			std::optional<float> alpha_test_threshold;
+
+			glm::mat4 projection_matrix = glm::mat4(1.0f);
+			glm::mat4 view_matrix = glm::mat4(1.0f);
+			glm::mat4 model_matrix = glm::mat4(1.0f);
+
+			bool operator==(const State& other) const = default;
+		};
+
+	public:
+		void begin(MeshBuilder::Mode mode, const State& state = {});
+		void vertex(const MeshBuilder::Vertex& value);
+		void end();
+		void flush();
+
+	private:
+		State mState;
+		Mesh mMesh;
+		MeshBuilder mMeshBuilder;
+	};
 }

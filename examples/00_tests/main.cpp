@@ -85,12 +85,13 @@ bool Triangle(skygfx::BackendType backend, SavePixelsFunc save_pixels_func)
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 	skygfx::Clear();
 
-	skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles);
-	skygfx::utils::scratch::Vertex({ .pos = {  0.5f, -0.5f, 0.0f }, .color = { 0.0f, 0.0f, 1.0f, 1.0f } });
-	skygfx::utils::scratch::Vertex({ .pos = { -0.5f, -0.5f, 0.0f }, .color = { 1.0f, 0.0f, 0.0f, 1.0f } });
-	skygfx::utils::scratch::Vertex({ .pos = {  0.0f,  0.5f, 0.0f }, .color = { 0.0f, 1.0f, 0.0f, 1.0f } });
-	skygfx::utils::scratch::End();
-	skygfx::utils::scratch::Flush();
+	skygfx::utils::Scratch scratch;
+	scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+	scratch.vertex({ .pos = {  0.5f, -0.5f, 0.0f }, .color = { 0.0f, 0.0f, 1.0f, 1.0f } });
+	scratch.vertex({ .pos = { -0.5f, -0.5f, 0.0f }, .color = { 1.0f, 0.0f, 0.0f, 1.0f } });
+	scratch.vertex({ .pos = {  0.0f,  0.5f, 0.0f }, .color = { 0.0f, 1.0f, 0.0f, 1.0f } });
+	scratch.end();
+	scratch.flush();
 
 	auto pixels = skygfx::GetBackbufferPixels();
 	save_pixels_func(gWidth, gHeight, pixels);
@@ -119,12 +120,13 @@ bool TriangleRenderTarget(skygfx::BackendType backend, SavePixelsFunc save_pixel
 	skygfx::SetRenderTarget(target);
 	skygfx::Clear();
 
-	skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles);
-	skygfx::utils::scratch::Vertex({ .pos = {  0.5f, -0.5f, 0.0f }, .color = { 0.0f, 0.0f, 1.0f, 1.0f } });
-	skygfx::utils::scratch::Vertex({ .pos = { -0.5f, -0.5f, 0.0f }, .color = { 1.0f, 0.0f, 0.0f, 1.0f } });
-	skygfx::utils::scratch::Vertex({ .pos = {  0.0f,  0.5f, 0.0f }, .color = { 0.0f, 1.0f, 0.0f, 1.0f } });
-	skygfx::utils::scratch::End();
-	skygfx::utils::scratch::Flush();
+	skygfx::utils::Scratch scratch;
+	scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+	scratch.vertex({ .pos = {  0.5f, -0.5f, 0.0f }, .color = { 0.0f, 0.0f, 1.0f, 1.0f } });
+	scratch.vertex({ .pos = { -0.5f, -0.5f, 0.0f }, .color = { 1.0f, 0.0f, 0.0f, 1.0f } });
+	scratch.vertex({ .pos = {  0.0f,  0.5f, 0.0f }, .color = { 0.0f, 1.0f, 0.0f, 1.0f } });
+	scratch.end();
+	scratch.flush();
 
 	auto pixels = skygfx::GetBackbufferPixels();
 	save_pixels_func(target.getWidth(), target.getHeight(), pixels);

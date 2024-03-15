@@ -1551,70 +1551,66 @@ void utils::ViewStage(const std::string& name, Texture* texture)
 	gStageViewer->stage(name, texture);
 }
 
-void utils::scratch::Begin(MeshBuilder::Mode mode, const State& state)
+void utils::Scratch::begin(MeshBuilder::Mode mode, const State& state)
 {
-	auto& context = GetContext();
+	if (!mMeshBuilder.isBeginAllowed(mode))
+		flush();
 
-	if (!context.scratch.mesh_builder.isBeginAllowed(mode))
-		Flush();
+	if (mState != state)
+		flush();
 
-	if (context.scratch.state != state)
-		Flush();
-
-	context.scratch.state = state;
-	context.scratch.mesh_builder.begin(mode);
+	mState = state;
+	mMeshBuilder.begin(mode);
 }
 
-void utils::scratch::Vertex(const MeshBuilder::Vertex& value)
+void utils::Scratch::vertex(const MeshBuilder::Vertex& value)
 {
-	GetContext().scratch.mesh_builder.vertex(value);
+	mMeshBuilder.vertex(value);
 }
 
-void utils::scratch::End()
+void utils::Scratch::end()
 {
-	GetContext().scratch.mesh_builder.end();
+	mMeshBuilder.end();
 }
 
-void utils::scratch::Flush()
+void utils::Scratch::flush()
 {
-	auto& context = GetContext();
-
-	if (context.scratch.mesh_builder.getVertexCount() == 0)
+	if (mMeshBuilder.getVertexCount() == 0)
 	{
-		context.scratch.mesh_builder.reset();
+		mMeshBuilder.reset();
 		return;
 	}
 
-	context.scratch.mesh_builder.setToMesh(context.scratch.mesh);
+	mMeshBuilder.setToMesh(mMesh);
 
 	std::vector<Command> cmds;
 
-	if (context.scratch.state.alpha_test_threshold.has_value())
+	if (mState.alpha_test_threshold.has_value())
 	{
-		cmds.push_back(commands::SetEffect(effects::AlphaTest{ context.scratch.state.alpha_test_threshold.value() }));
+		cmds.push_back(commands::SetEffect(effects::AlphaTest{ mState.alpha_test_threshold.value() }));
 	}
 
 	cmds.insert(cmds.end(), {
-		commands::SetViewport(context.scratch.state.viewport),
-		commands::SetScissor(context.scratch.state.scissor),
-		commands::SetBlendMode(context.scratch.state.blend_mode),
-		commands::SetDepthBias(context.scratch.state.depth_bias),
-		commands::SetDepthMode(context.scratch.state.depth_mode),
-		commands::SetStencilMode(context.scratch.state.stencil_mode),
-		commands::SetCullMode(context.scratch.state.cull_mode),
-		commands::SetFrontFace(context.scratch.state.front_face),
-		commands::SetSampler(context.scratch.state.sampler),
-		commands::SetTextureAddress(context.scratch.state.texaddr),
-		commands::SetMipmapBias(context.scratch.state.mipmap_bias),
-		commands::SetProjectionMatrix(context.scratch.state.projection_matrix),
-		commands::SetViewMatrix(context.scratch.state.view_matrix),
-		commands::SetModelMatrix(context.scratch.state.model_matrix),
-		commands::SetMesh(&context.scratch.mesh),
-		commands::SetColorTexture(context.scratch.state.texture),
+		commands::SetViewport(mState.viewport),
+		commands::SetScissor(mState.scissor),
+		commands::SetBlendMode(mState.blend_mode),
+		commands::SetDepthBias(mState.depth_bias),
+		commands::SetDepthMode(mState.depth_mode),
+		commands::SetStencilMode(mState.stencil_mode),
+		commands::SetCullMode(mState.cull_mode),
+		commands::SetFrontFace(mState.front_face),
+		commands::SetSampler(mState.sampler),
+		commands::SetTextureAddress(mState.texaddr),
+		commands::SetMipmapBias(mState.mipmap_bias),
+		commands::SetProjectionMatrix(mState.projection_matrix),
+		commands::SetViewMatrix(mState.view_matrix),
+		commands::SetModelMatrix(mState.model_matrix),
+		commands::SetMesh(&mMesh),
+		commands::SetColorTexture(mState.texture),
 		commands::Draw()
 	});
 
 	ExecuteCommands(cmds);
 
-	context.scratch.mesh_builder.reset();
+	mMeshBuilder.reset();
 }

@@ -17,16 +17,18 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
+	skygfx::utils::Scratch scratch;
+
 	while (!glfwWindowShouldClose(window))
 	{
 		skygfx::Clear();
 
-		skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles);
-		skygfx::utils::scratch::Vertex({ .pos = {  0.5f, -0.5f, 0.0f }, .color = { 0.0f, 0.0f, 1.0f, 1.0f } });
-		skygfx::utils::scratch::Vertex({ .pos = { -0.5f, -0.5f, 0.0f }, .color = { 1.0f, 0.0f, 0.0f, 1.0f } });
-		skygfx::utils::scratch::Vertex({ .pos = {  0.0f,  0.5f, 0.0f }, .color = { 0.0f, 1.0f, 0.0f, 1.0f } });
-		skygfx::utils::scratch::End();
-		skygfx::utils::scratch::Flush();
+		scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles);
+		scratch.vertex({ .pos = {  0.5f, -0.5f, 0.0f }, .color = { 0.0f, 0.0f, 1.0f, 1.0f } });
+		scratch.vertex({ .pos = { -0.5f, -0.5f, 0.0f }, .color = { 1.0f, 0.0f, 0.0f, 1.0f } });
+		scratch.vertex({ .pos = {  0.0f,  0.5f, 0.0f }, .color = { 0.0f, 1.0f, 0.0f, 1.0f } });
+		scratch.end();
+		scratch.flush();
 
 		skygfx::Present();
 

@@ -40,7 +40,7 @@ void ImguiHelper::draw()
 
 	auto [view, proj] = skygfx::utils::MakeCameraMatrices(skygfx::utils::OrthogonalCamera{});
 
-	skygfx::utils::scratch::State state;
+	skygfx::utils::Scratch::State state;
 	state.sampler = skygfx::Sampler::Nearest;
 	state.blend_mode = skygfx::BlendStates::NonPremultiplied;
 	state.view_matrix = view;
@@ -65,27 +65,27 @@ void ImguiHelper::draw()
 					.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
 				};
 
-				skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles, state);
+				scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles, state);
 
 				for (uint32_t i = 0; i < cmd.ElemCount; i++)
 				{
 					auto index = cmdlist->IdxBuffer[i + index_offset];
 					const auto& vertex = cmdlist->VtxBuffer[index];
-					skygfx::utils::scratch::Vertex({
+					scratch.vertex({
 						.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
 						.color = glm::unpackUnorm4x8(vertex.col),
 						.texcoord = { vertex.uv.x, vertex.uv.y }
 					});
 				}
 
-				skygfx::utils::scratch::End();
+				scratch.end();
 			}
 
 			index_offset += cmd.ElemCount;
 		}
 	}
 
-	skygfx::utils::scratch::Flush();
+	scratch.flush();
 }
 
 void StageViewer::stage(const std::string& name, skygfx::Texture* texture)
