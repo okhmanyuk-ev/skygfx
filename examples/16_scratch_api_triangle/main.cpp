@@ -22,9 +22,9 @@ int main()
 		skygfx::Clear();
 
 		skygfx::utils::scratch::Begin(skygfx::utils::MeshBuilder::Mode::Triangles);
-		skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.5f, -0.5f, 0.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } });
-		skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ { -0.5f, -0.5f, 0.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } });
-		skygfx::utils::scratch::Vertex(skygfx::vertex::PositionColor{ {  0.0f,  0.5f, 0.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } });
+		skygfx::utils::scratch::Vertex({ .pos = {  0.5f, -0.5f, 0.0f }, .color = { 0.0f, 0.0f, 1.0f, 1.0f } });
+		skygfx::utils::scratch::Vertex({ .pos = { -0.5f, -0.5f, 0.0f }, .color = { 1.0f, 0.0f, 0.0f, 1.0f } });
+		skygfx::utils::scratch::Vertex({ .pos = {  0.0f,  0.5f, 0.0f }, .color = { 0.0f, 1.0f, 0.0f, 1.0f } });
 		skygfx::utils::scratch::End();
 		skygfx::utils::scratch::Flush();
 

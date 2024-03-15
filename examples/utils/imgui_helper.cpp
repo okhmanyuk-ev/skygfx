@@ -71,9 +71,11 @@ void ImguiHelper::draw()
 				{
 					auto index = cmdlist->IdxBuffer[i + index_offset];
 					const auto& vertex = cmdlist->VtxBuffer[index];
-					skygfx::utils::scratch::TexCoord({ vertex.uv.x, vertex.uv.y });
-					skygfx::utils::scratch::Color(glm::unpackUnorm4x8(vertex.col));
-					skygfx::utils::scratch::Vertex({ vertex.pos.x, vertex.pos.y });
+					skygfx::utils::scratch::Vertex({
+						.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
+						.color = glm::unpackUnorm4x8(vertex.col),
+						.texcoord = { vertex.uv.x, vertex.uv.y }
+					});
 				}
 
 				skygfx::utils::scratch::End();
