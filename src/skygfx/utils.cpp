@@ -496,63 +496,6 @@ void effect(inout vec4 result)
 
 static std::optional<utils::Context> gContext;
 
-utils::Mesh::Mesh()
-{
-}
-
-utils::Mesh::Mesh(const Vertices& vertices)
-{
-	setVertices(vertices);
-}
-
-utils::Mesh::Mesh(const Vertices& vertices, const Indices& indices)
-{
-	setVertices(vertices);
-	setIndices(indices);
-}
-
-void utils::Mesh::setVertices(const Vertex* memory, uint32_t count)
-{
-	mVertexCount = count;
-
-	if (count == 0)
-		return;
-
-	size_t size = count * sizeof(Vertex);
-	size_t stride = sizeof(Vertex);
-
-	if (!mVertexBuffer.has_value() || mVertexBuffer.value().getSize() < size)
-		mVertexBuffer.emplace(size, stride);
-
-	mVertexBuffer.value().write(memory, count);
-}
-
-void utils::Mesh::setVertices(const Vertices& value)
-{
-	setVertices(value.data(), static_cast<uint32_t>(value.size()));
-}
-
-void utils::Mesh::setIndices(const Index* memory, uint32_t count)
-{
-	mIndexCount = count;
-
-	if (count == 0)
-		return;
-
-	size_t size = count * sizeof(Index);
-	size_t stride = sizeof(Index);
-
-	if (!mIndexBuffer.has_value() || mIndexBuffer.value().getSize() < size)
-		mIndexBuffer.emplace(size, stride);
-
-	mIndexBuffer.value().write(memory, count);
-}
-
-void utils::Mesh::setIndices(const Indices& value)
-{
-	setIndices(value.data(), static_cast<uint32_t>(value.size()));
-}
-
 template<typename T>
 static void AddItem(std::vector<T>& items, uint32_t& count, const T& item)
 {

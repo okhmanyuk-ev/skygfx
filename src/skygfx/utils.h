@@ -6,28 +6,76 @@
 
 namespace skygfx::utils
 {
-	class Mesh
+	template<typename TVertex, typename TIndex>
+	class MeshGeneric
 	{
 	public:
-		using Vertex = vertex::PositionColorTextureNormalTangent;
-		using Index = uint32_t;
+		using Vertex = TVertex;
+		using Index = TIndex;
 		using Vertices = std::vector<Vertex>;
 		using Indices = std::vector<Index>;
 
 	public:
-		Mesh();
-		Mesh(const Vertices& vertices);
-		Mesh(const Vertices& vertices, const Indices& indices);
+		MeshGeneric()
+		{
+		}
+
+		MeshGeneric(const Vertices& vertices)
+		{
+			setVertices(vertices);
+		}
+
+		MeshGeneric(const Vertices& vertices, const Indices& indices)
+		{
+			setVertices(vertices);
+			setIndices(indices);
+		}
 
 	public:
 		auto getTopology() const { return mTopology; }
 		void setTopology(Topology value) { mTopology = value; }
 
-		void setVertices(const Vertex* memory, uint32_t count);
-		void setVertices(const Vertices& value);
+		void setVertices(const Vertex* memory, uint32_t count)
+		{
+			mVertexCount = count;
 
-		void setIndices(const Index* memory, uint32_t count);
-		void setIndices(const Indices& value);
+			if (count == 0)
+				return;
+
+			size_t size = count * sizeof(Vertex);
+			size_t stride = sizeof(Vertex);
+
+			if (!mVertexBuffer.has_value() || mVertexBuffer.value().getSize() < size)
+				mVertexBuffer.emplace(size, stride);
+
+			mVertexBuffer.value().write(memory, count);
+		}
+
+		void setVertices(const Vertices& value)
+		{
+			setVertices(value.data(), static_cast<uint32_t>(value.size()));
+		}
+
+		void setIndices(const Index* memory, uint32_t count)
+		{
+			mIndexCount = count;
+
+			if (count == 0)
+				return;
+
+			size_t size = count * sizeof(Index);
+			size_t stride = sizeof(Index);
+
+			if (!mIndexBuffer.has_value() || mIndexBuffer.value().getSize() < size)
+				mIndexBuffer.emplace(size, stride);
+
+			mIndexBuffer.value().write(memory, count);
+		}
+
+		void setIndices(const Indices& value)
+		{
+			setIndices(value.data(), static_cast<uint32_t>(value.size()));
+		}
 
 		auto getVertexCount() const { return mVertexCount; }
 		auto getIndexCount() const { return mIndexCount; }
@@ -45,6 +93,8 @@ namespace skygfx::utils
 		std::optional<VertexBuffer> mVertexBuffer;
 		std::optional<IndexBuffer> mIndexBuffer;
 	};
+
+	using Mesh = MeshGeneric<vertex::PositionColorTextureNormalTangent, uint32_t>;
 
 	class MeshBuilder
 	{
