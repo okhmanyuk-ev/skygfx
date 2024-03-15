@@ -609,16 +609,13 @@ Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
 	return TopologyMap.at(mode);
 }
 
-void utils::MeshBuilder::reset(bool reset_vertex)
+void utils::MeshBuilder::reset()
 {
 	assert(!mBegan);
 	mIndexCount = 0;
 	mVertexCount = 0;
 	mMode.reset();
 	mTopology.reset();
-
-	if (reset_vertex)
-		mVertex = Mesh::Vertex{};
 }
 
 void utils::MeshBuilder::begin(Mode mode)
@@ -641,71 +638,10 @@ void utils::MeshBuilder::begin(Mode mode)
 	mVertexStart = mVertexCount;
 }
 
-void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormalTangent& value)
+void utils::MeshBuilder::vertex(const Vertex& value)
 {
 	assert(mBegan);
 	AddItem(mVertices, mVertexCount, value);
-}
-
-void utils::MeshBuilder::vertex(const vertex::PositionColorTextureNormal& value)
-{
-	vertex(vertex::PositionColorTextureNormalTangent{
-		.pos = value.pos,
-		.color = value.color,
-		.texcoord = value.texcoord,
-		.normal = value.normal,
-		.tangent = vertex::defaults::Tangent
-	});
-}
-
-void utils::MeshBuilder::vertex(const vertex::PositionColorTexture& value)
-{
-	vertex(vertex::PositionColorTextureNormal{
-		.pos = value.pos,
-		.color = value.color,
-		.texcoord = value.texcoord,
-		.normal = vertex::defaults::Normal
-	});
-}
-
-void utils::MeshBuilder::vertex(const vertex::PositionColor& value)
-{
-	vertex(vertex::PositionColorTexture{
-		.pos = value.pos,
-		.color = value.color,
-		.texcoord = vertex::defaults::TexCoord
-	});
-}
-
-void utils::MeshBuilder::vertex(const glm::vec3& value)
-{
-	mVertex.pos = value;
-	vertex(mVertex);
-}
-
-void utils::MeshBuilder::vertex(const glm::vec2& value)
-{
-	vertex({ value.x, value.y, 0.0f });
-}
-
-void utils::MeshBuilder::color(const glm::vec4& value)
-{
-	mVertex.color = value;
-}
-
-void utils::MeshBuilder::color(const glm::vec3& value)
-{
-	color(glm::vec4{ value.r, value.g, value.b, mVertex.color.a });
-}
-
-void utils::MeshBuilder::normal(const glm::vec3& value)
-{
-	mVertex.normal = value;
-}
-
-void utils::MeshBuilder::texcoord(const glm::vec2& value)
-{
-	mVertex.texcoord = value;
 }
 
 void utils::MeshBuilder::end()
@@ -1629,49 +1565,9 @@ void utils::scratch::Begin(MeshBuilder::Mode mode, const State& state)
 	context.scratch.mesh_builder.begin(mode);
 }
 
-void utils::scratch::Vertex(const vertex::PositionColorTextureNormal& value)
+void utils::scratch::Vertex(const MeshBuilder::Vertex& value)
 {
 	GetContext().scratch.mesh_builder.vertex(value);
-}
-
-void utils::scratch::Vertex(const vertex::PositionColorTexture& value)
-{
-	GetContext().scratch.mesh_builder.vertex(value);
-}
-
-void utils::scratch::Vertex(const vertex::PositionColor& value)
-{
-	GetContext().scratch.mesh_builder.vertex(value);
-}
-
-void utils::scratch::Vertex(const glm::vec3& value)
-{
-	GetContext().scratch.mesh_builder.vertex(value);
-}
-
-void utils::scratch::Vertex(const glm::vec2& value)
-{
-	GetContext().scratch.mesh_builder.vertex(value);
-}
-
-void utils::scratch::Color(const glm::vec4& value)
-{
-	GetContext().scratch.mesh_builder.color(value);
-}
-
-void utils::scratch::Color(const glm::vec3& value)
-{
-	GetContext().scratch.mesh_builder.color(value);
-}
-
-void utils::scratch::Normal(const glm::vec3& value)
-{
-	GetContext().scratch.mesh_builder.normal(value);
-}
-
-void utils::scratch::TexCoord(const glm::vec2& value)
-{
-	GetContext().scratch.mesh_builder.texcoord(value);
 }
 
 void utils::scratch::End()
@@ -1685,7 +1581,7 @@ void utils::scratch::Flush()
 
 	if (context.scratch.mesh_builder.getVertexCount() == 0)
 	{
-		context.scratch.mesh_builder.reset(false);
+		context.scratch.mesh_builder.reset();
 		return;
 	}
 
@@ -1720,5 +1616,5 @@ void utils::scratch::Flush()
 
 	ExecuteCommands(cmds);
 
-	context.scratch.mesh_builder.reset(false);
+	context.scratch.mesh_builder.reset();
 }

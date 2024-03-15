@@ -99,6 +99,9 @@ namespace skygfx::utils
 	class MeshBuilder
 	{
 	public:
+		using Vertex = Mesh::Vertex;
+
+	public:
 		enum class Mode
 		{
 			Points,
@@ -116,18 +119,9 @@ namespace skygfx::utils
 		static Topology ConvertModeToTopology(Mode mode);
 
 	public:
-		void reset(bool reset_vertex = true);
+		void reset();
 		void begin(Mode mode);
-		void vertex(const vertex::PositionColorTextureNormalTangent& value);
-		void vertex(const vertex::PositionColorTextureNormal& value);
-		void vertex(const vertex::PositionColorTexture& value);
-		void vertex(const vertex::PositionColor& value);
-		void vertex(const glm::vec3& value);
-		void vertex(const glm::vec2& value);
-		void color(const glm::vec4& value);
-		void color(const glm::vec3& value);
-		void normal(const glm::vec3& value);
-		void texcoord(const glm::vec2& value);
+		void vertex(const Vertex& value);
 		void end();
 
 		void setToMesh(Mesh& mesh);
@@ -154,7 +148,6 @@ namespace skygfx::utils
 		uint32_t mVertexStart = 0;
 		uint32_t mVertexCount = 0;
 		uint32_t mIndexCount = 0;
-		Mesh::Vertex mVertex;
 	};
 
 	struct DrawVerticesCommand
@@ -732,15 +725,7 @@ namespace skygfx::utils
 	namespace scratch
 	{
 		void Begin(MeshBuilder::Mode mode, const State& state = {});
-		void Vertex(const vertex::PositionColorTextureNormal& value);
-		void Vertex(const vertex::PositionColorTexture& value);
-		void Vertex(const vertex::PositionColor& value);
-		void Vertex(const glm::vec3& value);
-		void Vertex(const glm::vec2& value);
-		void Color(const glm::vec4& value);
-		void Color(const glm::vec3& value);
-		void Normal(const glm::vec3& value);
-		void TexCoord(const glm::vec2& value);
+		void Vertex(const MeshBuilder::Vertex& value);
 		void End();
 		void Flush();
 	}
