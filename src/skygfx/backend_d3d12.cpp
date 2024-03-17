@@ -203,7 +203,7 @@ void OneTimeSubmit(std::function<void(ID3D12GraphicsCommandList*)> func)
 	EndCommandList(cmd_queue.Get(), cmd_list.Get(), true);
 }
 
-ComPtr<ID3D12Resource> CreateBuffer(size_t size)
+ComPtr<ID3D12Resource> CreateBuffer(uint64_t size)
 {
 	ComPtr<ID3D12Resource> result;
 
@@ -389,7 +389,7 @@ public:
 		DestroyStaging(mTexture);
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, void* memory,
+	void write(uint32_t width, uint32_t height, Format format, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		auto upload_size = GetRequiredIntermediateSize(mTexture.Get(), mip_level, 1);
@@ -607,7 +607,7 @@ public:
 		DestroyStaging(mBuffer);
 	}
 
-	void write(void* memory, size_t size)
+	void write(const void* memory, size_t size)
 	{
 		auto staging_buffer = CreateBuffer(size);
 
@@ -1470,15 +1470,15 @@ TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Form
 	return (TextureHandle*)texture;
 }
 
-void BackendD3D12::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
-	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendD3D12::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureD3D12*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
 }
 
-void BackendD3D12::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level, void* dst_memory)
+void BackendD3D12::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width,
+	uint32_t height, uint32_t mip_level, void* dst_memory)
 {
 	auto texture = (TextureD3D12*)handle;
 	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
@@ -1534,7 +1534,7 @@ void BackendD3D12::destroyVertexBuffer(VertexBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (VertexBufferD3D12*)handle;
 	buffer->write(memory, size);
@@ -1556,7 +1556,7 @@ IndexBufferHandle* BackendD3D12::createIndexBuffer(size_t size, size_t stride)
 	return (IndexBufferHandle*)buffer;
 }
 
-void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (IndexBufferD3D12*)handle;
 	buffer->write(memory, size);
@@ -1584,7 +1584,7 @@ void BackendD3D12::destroyUniformBuffer(UniformBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
 {
 	auto buffer = (UniformBufferD3D12*)handle;
 	buffer->write(memory, size);

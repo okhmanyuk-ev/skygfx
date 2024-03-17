@@ -424,7 +424,7 @@ public:
 		glDeleteTextures(1, &mTexture);
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, void* memory,
+	void write(uint32_t width, uint32_t height, Format format, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		auto channels_count = GetFormatChannelsCount(format);
@@ -549,7 +549,7 @@ public:
 		glDeleteBuffers(1, &mBuffer);
 	}
 
-	void write(void* memory, size_t size)
+	void write(const void* memory, size_t size)
 	{
 		glBindBuffer(mType, mBuffer);
 		//glBufferSubData(mType, 0, size, memory); // very slow on mac/ios
@@ -1483,8 +1483,8 @@ TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format 
 	return (TextureHandle*)texture;
 }
 
-void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
-	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureGL*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
@@ -1549,7 +1549,7 @@ void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 	});
 }
 
-void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (VertexBufferGL*)handle;
 	buffer->write(memory, size);
@@ -1574,7 +1574,7 @@ void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 	});
 }
 
-void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (IndexBufferGL*)handle;
 	buffer->write(memory, size);
@@ -1595,7 +1595,7 @@ void BackendGL::destroyUniformBuffer(UniformBufferHandle* handle)
 	});
 }
 
-void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
 {
 	auto buffer = (UniformBufferGL*)handle;
 	buffer->write(memory, size);

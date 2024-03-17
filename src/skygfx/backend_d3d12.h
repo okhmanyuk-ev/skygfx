@@ -46,8 +46,8 @@ namespace skygfx
 
 		TextureHandle* createTexture(uint32_t width, uint32_t height, Format format,
 			uint32_t mip_count) override;
-		void writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
-			uint32_t mip_level, uint32_t offset_x, uint32_t offset_y) override;
+		void writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+			const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y) override;
 		void readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
 			uint32_t mip_level, void* dst_memory) override;
 		void generateMips(TextureHandle* handle) override;
@@ -62,15 +62,15 @@ namespace skygfx
 
 		VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) override;
 		void destroyVertexBuffer(VertexBufferHandle* handle) override;
-		void writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride) override;
+		void writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride) override;
 
 		IndexBufferHandle* createIndexBuffer(size_t size, size_t stride) override;
 		void destroyIndexBuffer(IndexBufferHandle* handle) override;
-		void writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride) override;
+		void writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride) override;
 
 		UniformBufferHandle* createUniformBuffer(size_t size) override;
 		void destroyUniformBuffer(UniformBufferHandle* handle) override;
-		void writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size) override;
+		void writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size) override;
 	};
 }
 

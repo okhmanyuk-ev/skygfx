@@ -180,7 +180,7 @@ static uint32_t GetMemoryType(vk::MemoryPropertyFlags properties, uint32_t type_
 	return 0xFFFFFFFF; // Unable to find memoryType
 }
 
-static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(size_t size, vk::BufferUsageFlags usage)
+static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(uint64_t size, vk::BufferUsageFlags usage)
 {
 	auto buffer_create_info = vk::BufferCreateInfo()
 		.setSize(size)
@@ -548,7 +548,7 @@ public:
 			DestroyStaging(std::move(mDeviceMemory.value()));
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, void* memory,
+	void write(uint32_t width, uint32_t height, Format format, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		EnsureRenderPassDeactivated();
@@ -723,7 +723,7 @@ public:
 		DestroyStaging(std::move(mDeviceMemory));
 	}
 
-	void write(void* memory, size_t size)
+	void write(const void* memory, size_t size)
 	{
 		EnsureRenderPassDeactivated();
 		EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eTransfer);
@@ -812,8 +812,8 @@ private:
 	vk::raii::DeviceMemory mBlasMemory = nullptr;
 
 public:
-	BottomLevelAccelerationStructureVK(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_stride,
-		void* index_memory, uint32_t index_count, uint32_t index_stride, const glm::mat4& _transform)
+	BottomLevelAccelerationStructureVK(const void* vertex_memory, uint32_t vertex_count, uint32_t vertex_stride,
+		const void* index_memory, uint32_t index_count, uint32_t index_stride, const glm::mat4& _transform)
 	{
 		auto transform = glm::transpose(_transform);
 
@@ -2875,8 +2875,8 @@ TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format 
 	return (TextureHandle*)texture;
 }
 
-void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
-	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureVK*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
@@ -2987,7 +2987,7 @@ void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (VertexBufferVK*)handle;
 	buffer->write(memory, size);
@@ -3017,7 +3017,7 @@ void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (IndexBufferVK*)handle;
 	buffer->write(memory, size);
@@ -3047,14 +3047,14 @@ void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
 {
 	auto buffer = (UniformBufferVK*)handle;
 	buffer->write(memory, size);
 }
 
-BottomLevelAccelerationStructureHandle* BackendVK::createBottomLevelAccelerationStructure(void* vertex_memory,
-	uint32_t vertex_count, uint32_t vertex_stride, void* index_memory, uint32_t index_count,
+BottomLevelAccelerationStructureHandle* BackendVK::createBottomLevelAccelerationStructure(const void* vertex_memory,
+	uint32_t vertex_count, uint32_t vertex_stride, const void* index_memory, uint32_t index_count,
 	uint32_t index_stride, const glm::mat4& transform)
 {
 	auto bottom_level_acceleration_structure = new BottomLevelAccelerationStructureVK(vertex_memory,
@@ -3111,7 +3111,7 @@ void BackendVK::destroyStorageBuffer(StorageBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendVK::writeStorageBufferMemory(StorageBufferHandle* handle, void* memory, size_t size)
+void BackendVK::writeStorageBufferMemory(StorageBufferHandle* handle, const void* memory, size_t size)
 {
 	auto buffer = (StorageBufferVK*)handle;
 	buffer->write(memory, size);

@@ -228,7 +228,7 @@ public:
 	{
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, void* memory,
+	void write(uint32_t width, uint32_t height, Format format, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		auto channels = GetFormatChannelsCount(format);
@@ -327,7 +327,7 @@ public:
 		gContext->device->CreateBuffer(&desc, NULL, mBuffer.GetAddressOf());
 	}
 
-	void write(void* memory, size_t size)
+	void write(const void* memory, size_t size)
 	{
 		assert(size <= mSize);
 		D3D11_MAPPED_SUBRESOURCE resource;
@@ -1097,15 +1097,15 @@ TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, Form
 	return (TextureHandle*)texture;
 }
 
-void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format, void* memory,
-	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureD3D11*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
 }
 
-void BackendD3D11::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level, void* dst_memory)
+void BackendD3D11::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width,
+	uint32_t height, uint32_t mip_level, void* dst_memory)
 {
 	auto texture = (TextureD3D11*)handle;
 	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
@@ -1161,7 +1161,7 @@ void BackendD3D11::destroyVertexBuffer(VertexBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendD3D11::writeVertexBufferMemory(VertexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendD3D11::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (VertexBufferD3D11*)handle;
 	buffer->write(memory, size);
@@ -1174,7 +1174,7 @@ IndexBufferHandle* BackendD3D11::createIndexBuffer(size_t size, size_t stride)
 	return (IndexBufferHandle*)buffer;
 }
 
-void BackendD3D11::writeIndexBufferMemory(IndexBufferHandle* handle, void* memory, size_t size, size_t stride)
+void BackendD3D11::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = (IndexBufferD3D11*)handle;
 	buffer->write(memory, size);
@@ -1199,7 +1199,7 @@ void BackendD3D11::destroyUniformBuffer(UniformBufferHandle* handle)
 	delete buffer;
 }
 
-void BackendD3D11::writeUniformBufferMemory(UniformBufferHandle* handle, void* memory, size_t size)
+void BackendD3D11::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
 {
 	auto buffer = (UniformBufferD3D11*)handle;
 	buffer->write(memory, size);

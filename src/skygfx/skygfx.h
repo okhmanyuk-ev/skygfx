@@ -84,11 +84,11 @@ namespace skygfx
 	{
 	public:
 		Texture(uint32_t width, uint32_t height, Format format, uint32_t mip_count);
-		Texture(uint32_t width, uint32_t height, Format format, void* memory, bool generate_mips = false);
+		Texture(uint32_t width, uint32_t height, Format format, const void* memory, bool generate_mips = false);
 		Texture(Texture&& other) noexcept;
 		virtual ~Texture();
 
-		void write(uint32_t width, uint32_t height, Format format, void* memory,
+		void write(uint32_t width, uint32_t height, Format format, const void* memory,
 			uint32_t mip_level = 0, uint32_t offset_x = 0, uint32_t offset_y = 0);
 		void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
 			uint32_t mip_level, void* dst_memory);
@@ -175,24 +175,24 @@ namespace skygfx
 	{
 	public:
 		VertexBuffer(size_t size, size_t stride);
-		VertexBuffer(void* memory, size_t size, size_t stride);
+		VertexBuffer(const void* memory, size_t size, size_t stride);
 		VertexBuffer(VertexBuffer&& other) noexcept;
 		~VertexBuffer();
 
 		VertexBuffer& operator=(VertexBuffer&& other) noexcept;
 
 		template<class T>
-		explicit VertexBuffer(T* memory, size_t count) : VertexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		explicit VertexBuffer(const T* memory, size_t count) : VertexBuffer(memory, count * sizeof(T), sizeof(T)) {}
 		
 		template<class T>
 		explicit VertexBuffer(const std::vector<T>& values) : VertexBuffer(values.data(), values.size()) {}
 
-		void write(void* memory, size_t size, size_t stride);
+		void write(const void* memory, size_t size, size_t stride);
 
 		template<class T>
-		void write(T* memory, size_t count)
+		void write(const T* memory, size_t count)
 		{
-			write((void*)memory, count * sizeof(T), sizeof(T));
+			write(memory, count * sizeof(T), sizeof(T));
 		}
 
 		template<class T>
@@ -211,24 +211,24 @@ namespace skygfx
 	{
 	public:
 		IndexBuffer(size_t size, size_t stride);
-		IndexBuffer(void* memory, size_t size, size_t stride);
+		IndexBuffer(const void* memory, size_t size, size_t stride);
 		IndexBuffer(IndexBuffer&& other) noexcept;
 		~IndexBuffer();
 
 		IndexBuffer& operator=(IndexBuffer&& other) noexcept;
 
 		template<class T>
-		explicit IndexBuffer(T* memory, size_t count) : IndexBuffer((void*)memory, count * sizeof(T), sizeof(T)) {}
+		explicit IndexBuffer(const T* memory, size_t count) : IndexBuffer(memory, count * sizeof(T), sizeof(T)) {}
 
 		template<class T>
 		explicit IndexBuffer(const std::vector<T>& values) : IndexBuffer(values.data(), values.size()) {}
 
-		void write(void* memory, size_t size, size_t stride);
+		void write(const void* memory, size_t size, size_t stride);
 
 		template<class T>
-		void write(T* memory, size_t count)
+		void write(const T* memory, size_t count)
 		{
-			write((void*)memory, count * sizeof(T), sizeof(T));
+			write(memory, count * sizeof(T), sizeof(T));
 		}
 
 		template<class T>
@@ -247,7 +247,7 @@ namespace skygfx
 	{
 	public:
 		UniformBuffer(size_t size);
-		UniformBuffer(void* memory, size_t size);
+		UniformBuffer(const void* memory, size_t size);
 		UniformBuffer(UniformBuffer&& other) noexcept;
 		~UniformBuffer();
 
@@ -256,7 +256,7 @@ namespace skygfx
 		template <class T>
 		explicit UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
 
-		void write(void* memory, size_t size);
+		void write(const void* memory, size_t size);
 		
 		template <class T>
 		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
@@ -271,7 +271,7 @@ namespace skygfx
 	{
 	public:
 		StorageBuffer(size_t size);
-		StorageBuffer(void* memory, size_t size);
+		StorageBuffer(const void* memory, size_t size);
 		StorageBuffer(StorageBuffer&& other) noexcept;
 		~StorageBuffer();
 
@@ -280,7 +280,7 @@ namespace skygfx
 		template <class T>
 		explicit StorageBuffer(T value) : StorageBuffer(&value, sizeof(T)) {}
 
-		void write(void* memory, size_t size);
+		void write(const void* memory, size_t size);
 
 		template <class T>
 		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
@@ -294,16 +294,16 @@ namespace skygfx
 	class BottomLevelAccelerationStructure : public noncopyable
 	{
 	public:
-		BottomLevelAccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
-			uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_offset,
+		BottomLevelAccelerationStructure(const void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
+			uint32_t vertex_stride, const void* index_memory, uint32_t index_count, uint32_t index_offset,
 			uint32_t index_stride, const glm::mat4& transform);
 		~BottomLevelAccelerationStructure();
 
 		template<class Vertex, class Index>
-		explicit BottomLevelAccelerationStructure(Vertex* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
-			Index* index_memory, uint32_t index_count, uint32_t index_offset, const glm::mat4& transform)
-			: BottomLevelAccelerationStructure((void*)vertex_memory, vertex_count, vertex_offset, sizeof(Vertex),
-				(void*)index_memory, index_count, index_offset, sizeof(Index), transform)
+		explicit BottomLevelAccelerationStructure(const Vertex* vertex_memory, uint32_t vertex_count,
+			uint32_t vertex_offset, const Index* index_memory, uint32_t index_count, uint32_t index_offset,
+			const glm::mat4& transform) : BottomLevelAccelerationStructure(vertex_memory, vertex_count,
+				vertex_offset, sizeof(Vertex), index_memory, index_count, index_offset, sizeof(Index), transform)
 		{}
 
 		template<class Vertex, class Index>
@@ -602,12 +602,12 @@ namespace skygfx
 
 	void Present();
 
-	void SetVertexBuffer(void* memory, size_t size, size_t stride);
+	void SetVertexBuffer(const void* memory, size_t size, size_t stride);
 
 	template<class T>
-	void SetVertexBuffer(T* memory, size_t count)
+	void SetVertexBuffer(const T* memory, size_t count)
 	{
-		SetVertexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+		SetVertexBuffer(memory, count * sizeof(T), sizeof(T));
 	}
 
 	template<class T>
@@ -616,12 +616,12 @@ namespace skygfx
 		SetVertexBuffer(values.data(), values.size());
 	}
 
-	void SetIndexBuffer(void* memory, size_t size, size_t stride);
+	void SetIndexBuffer(const void* memory, size_t size, size_t stride);
 
 	template<class T>
-	void SetIndexBuffer(T* memory, size_t count)
+	void SetIndexBuffer(const T* memory, size_t count)
 	{
-		SetIndexBuffer((void*)memory, count * sizeof(T), sizeof(T));
+		SetIndexBuffer(memory, count * sizeof(T), sizeof(T));
 	}
 
 	template<class T>
@@ -630,7 +630,7 @@ namespace skygfx
 		SetIndexBuffer(values.data(), values.size());
 	}
 
-	void SetUniformBuffer(uint32_t binding, void* memory, size_t size);
+	void SetUniformBuffer(uint32_t binding, const void* memory, size_t size);
 
 	template <class T>
 	void SetUniformBuffer(uint32_t binding, const T& value)
@@ -638,7 +638,7 @@ namespace skygfx
 		SetUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
 	}
 
-	void SetStorageBuffer(uint32_t binding, void* memory, size_t size);
+	void SetStorageBuffer(uint32_t binding, const void* memory, size_t size);
 
 	uint32_t GetWidth();
 	uint32_t GetHeight();

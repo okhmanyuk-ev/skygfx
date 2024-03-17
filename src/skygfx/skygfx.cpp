@@ -34,7 +34,7 @@ Texture::Texture(uint32_t width, uint32_t height, Format format, uint32_t mip_co
 	mTextureHandle = gBackend->createTexture(width, height, format, mip_count);
 }
 
-Texture::Texture(uint32_t width, uint32_t height, Format format, void* memory, bool generate_mips) :
+Texture::Texture(uint32_t width, uint32_t height, Format format, const void* memory, bool generate_mips) :
 	Texture(width, height, format, generate_mips ? GetMipCount(width, height) : 1)
 {
 	write(width, height, format, memory);
@@ -58,7 +58,7 @@ Texture::~Texture()
 		gBackend->destroyTexture(mTextureHandle);
 }
 
-void Texture::write(uint32_t width, uint32_t height, Format format, void* memory,
+void Texture::write(uint32_t width, uint32_t height, Format format, const void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	assert(width > 0);
@@ -219,7 +219,7 @@ VertexBuffer::VertexBuffer(size_t size, size_t stride) : Buffer(size)
 	mVertexBufferHandle = gBackend->createVertexBuffer(size, stride);
 }
 
-VertexBuffer::VertexBuffer(void* memory, size_t size, size_t stride) : VertexBuffer(size, stride)
+VertexBuffer::VertexBuffer(const void* memory, size_t size, size_t stride) : VertexBuffer(size, stride)
 {
 	write(memory, size, stride);
 }
@@ -252,7 +252,7 @@ VertexBuffer& VertexBuffer::operator=(VertexBuffer&& other) noexcept
 	return *this;
 }
 
-void VertexBuffer::write(void* memory, size_t size, size_t stride)
+void VertexBuffer::write(const void* memory, size_t size, size_t stride)
 {
 	gBackend->writeVertexBufferMemory(mVertexBufferHandle, memory, size, stride);
 }
@@ -264,7 +264,7 @@ IndexBuffer::IndexBuffer(size_t size, size_t stride) : Buffer(size)
 	mIndexBufferHandle = gBackend->createIndexBuffer(size, stride);
 }
 
-IndexBuffer::IndexBuffer(void* memory, size_t size, size_t stride) : IndexBuffer(size, stride)
+IndexBuffer::IndexBuffer(const void* memory, size_t size, size_t stride) : IndexBuffer(size, stride)
 {
 	write(memory, size, stride);
 }
@@ -294,7 +294,7 @@ IndexBuffer& IndexBuffer::operator=(IndexBuffer&& other) noexcept
 	return *this;
 }
 
-void IndexBuffer::write(void* memory, size_t size, size_t stride)
+void IndexBuffer::write(const void* memory, size_t size, size_t stride)
 {
 	gBackend->writeIndexBufferMemory(mIndexBufferHandle, memory, size, stride);
 }
@@ -306,7 +306,7 @@ UniformBuffer::UniformBuffer(size_t size) : Buffer(size)
 	mUniformBufferHandle = gBackend->createUniformBuffer(size);
 }
 
-UniformBuffer::UniformBuffer(void* memory, size_t size) : UniformBuffer(size)
+UniformBuffer::UniformBuffer(const void* memory, size_t size) : UniformBuffer(size)
 {
 	write(memory, size);
 }
@@ -336,7 +336,7 @@ UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) noexcept
 	return *this;
 }
 
-void UniformBuffer::write(void* memory, size_t size)
+void UniformBuffer::write(const void* memory, size_t size)
 {
 	gBackend->writeUniformBufferMemory(mUniformBufferHandle, memory, size);
 }
@@ -348,7 +348,7 @@ StorageBuffer::StorageBuffer(size_t size) : Buffer(size)
 	mStorageBufferHandle = gRaytracingBackend->createStorageBuffer(size);
 }
 
-StorageBuffer::StorageBuffer(void* memory, size_t size) : StorageBuffer(size)
+StorageBuffer::StorageBuffer(const void* memory, size_t size) : StorageBuffer(size)
 {
 	write(memory, size);
 }
@@ -378,16 +378,16 @@ StorageBuffer& StorageBuffer::operator=(StorageBuffer&& other) noexcept
 	return *this;
 }
 
-void StorageBuffer::write(void* memory, size_t size)
+void StorageBuffer::write(const void* memory, size_t size)
 {
 	gRaytracingBackend->writeStorageBufferMemory(mStorageBufferHandle, memory, size);
 }
 
 // bottom level acceleration structure
 
-BottomLevelAccelerationStructure::BottomLevelAccelerationStructure(void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
-	uint32_t vertex_stride, void* index_memory, uint32_t index_count, uint32_t index_offset, uint32_t index_stride,
-	const glm::mat4& transform)
+BottomLevelAccelerationStructure::BottomLevelAccelerationStructure(const void* vertex_memory, uint32_t vertex_count,
+	uint32_t vertex_offset, uint32_t vertex_stride, const void* index_memory, uint32_t index_count,
+	uint32_t index_offset, uint32_t index_stride, const glm::mat4& transform)
 {
 	auto vertex_memory_with_offset = (void*)((size_t)vertex_memory + vertex_offset);
 	auto index_memory_with_offset = (void*)((size_t)index_memory + index_offset);
@@ -892,7 +892,7 @@ void skygfx::Present()
 	DestroyTransientRenderTargets();
 }
 
-void skygfx::SetVertexBuffer(void* memory, size_t size, size_t stride)
+void skygfx::SetVertexBuffer(const void* memory, size_t size, size_t stride)
 {
 	assert(size > 0);
 
@@ -909,7 +909,7 @@ void skygfx::SetVertexBuffer(void* memory, size_t size, size_t stride)
 	SetVertexBuffer(gVertexBuffer.value());
 }
 
-void skygfx::SetIndexBuffer(void* memory, size_t size, size_t stride)
+void skygfx::SetIndexBuffer(const void* memory, size_t size, size_t stride)
 {
 	assert(size > 0);
 
@@ -926,7 +926,7 @@ void skygfx::SetIndexBuffer(void* memory, size_t size, size_t stride)
 	SetIndexBuffer(gIndexBuffer.value());
 }
 
-void skygfx::SetUniformBuffer(uint32_t binding, void* memory, size_t size)
+void skygfx::SetUniformBuffer(uint32_t binding, const void* memory, size_t size)
 {
 	assert(size > 0);
 
@@ -943,7 +943,7 @@ void skygfx::SetUniformBuffer(uint32_t binding, void* memory, size_t size)
 	SetUniformBuffer(binding, buffer);
 }
 
-void skygfx::SetStorageBuffer(uint32_t binding, void* memory, size_t size)
+void skygfx::SetStorageBuffer(uint32_t binding, const void* memory, size_t size)
 {
 	assert(size > 0);
 
