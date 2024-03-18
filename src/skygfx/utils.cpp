@@ -1416,7 +1416,7 @@ void utils::ViewStage(const std::string& name, Texture* texture)
 	gStageViewer->stage(name, texture);
 }
 
-Topology utils::ConvertModeToTopology(Mode mode)
+Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
 {
 	static const std::unordered_map<Mode, Topology> TopologyMap = {
 		{ Mode::Points, Topology::PointList },
@@ -1459,7 +1459,7 @@ void utils::MeshBuilder::begin(Mode mode)
 	}
 
 	mMode = mode;
-	mVertexStart = mVertices.size();
+	mVertexStart = (uint32_t)mVertices.size();
 }
 
 void utils::MeshBuilder::vertex(const Mesh::Vertex& value)
@@ -1552,7 +1552,7 @@ bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
 	return topology == mTopology.value();
 }
 
-void utils::Scratch::begin(Mode mode, const State& state)
+void utils::Scratch::begin(MeshBuilder::Mode mode, const State& state)
 {
 	if (!mMeshBuilder.isBeginAllowed(mode))
 		flush();
@@ -1562,6 +1562,11 @@ void utils::Scratch::begin(Mode mode, const State& state)
 
 	mState = state;
 	mMeshBuilder.begin(mode);
+}
+
+void utils::Scratch::begin(MeshBuilder::Mode mode)
+{
+	begin(mode, {});
 }
 
 void utils::Scratch::vertex(const Mesh::Vertex& value)

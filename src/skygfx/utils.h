@@ -579,23 +579,24 @@ namespace skygfx::utils
 	void SetStageViewer(StageViewer* value);
 	void ViewStage(const std::string& name, Texture* texture);
 
-	enum class Mode
-	{
-		Points,
-		Lines,
-		LineLoop,
-		LineStrip,
-		Triangles,
-		TriangleStrip,
-		TriangleFan,
-		Quads,
-		Polygon
-	};
-
-	Topology ConvertModeToTopology(Mode mode);
-
 	class MeshBuilder
 	{
+	public:
+		enum class Mode
+		{
+			Points,
+			Lines,
+			LineLoop,
+			LineStrip,
+			Triangles,
+			TriangleStrip,
+			TriangleFan,
+			Quads,
+			Polygon
+		};
+
+		static Topology ConvertModeToTopology(Mode mode);
+
 	public:
 		void reset();
 		void begin(Mode mode);
@@ -647,7 +648,8 @@ namespace skygfx::utils
 		};
 
 	public:
-		void begin(Mode mode, const State& state);
+		void begin(MeshBuilder::Mode mode, const State& state);
+		void begin(MeshBuilder::Mode mode);
 		void vertex(const Mesh::Vertex& value);
 		void end();
 		void flush();
