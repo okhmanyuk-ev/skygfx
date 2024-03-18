@@ -570,15 +570,15 @@ namespace skygfx
 	void SetViewport(const std::optional<Viewport>& viewport);
 	void SetScissor(const std::optional<Scissor>& scissor);
 	void SetTexture(uint32_t binding, const Texture& texture);
+	void SetRenderTarget(const std::vector<const RenderTarget*>& value);
 	void SetRenderTarget(const RenderTarget& value);
-	void SetRenderTarget(const std::vector<RenderTarget*>& value);
 	void SetRenderTarget(std::nullopt_t value);
 	void SetShader(const Shader& shader);
 	void SetShader(const RaytracingShader& shader);
 	void SetInputLayout(const InputLayout& value);
 	void SetInputLayout(const std::vector<InputLayout>& value);
+	void SetVertexBuffer(const std::vector<const VertexBuffer*>& value);
 	void SetVertexBuffer(const VertexBuffer& value);
-	void SetVertexBuffer(const std::vector<VertexBuffer*>& value);
 	void SetIndexBuffer(const IndexBuffer& value);
 	void SetUniformBuffer(uint32_t binding, const UniformBuffer& value);
 	void SetStorageBuffer(uint32_t binding, const StorageBuffer& value);

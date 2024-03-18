@@ -1024,7 +1024,7 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 
 void utils::ExecuteRenderPass(const RenderPass& render_pass)
 {
-	if (render_pass.targets.empty() || render_pass.targets == std::vector<RenderTarget*>{ nullptr })
+	if (render_pass.targets.empty() || render_pass.targets == std::vector<const RenderTarget*>{ nullptr })
 		SetRenderTarget(std::nullopt);
 	else
 		SetRenderTarget(render_pass.targets);

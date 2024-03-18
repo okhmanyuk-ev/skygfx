@@ -479,7 +479,7 @@ namespace skygfx::utils
 
 	struct RenderPass
 	{
-		std::vector<RenderTarget*> targets;
+		std::vector<const RenderTarget*> targets;
 		bool clear = false;
 		struct {
 			std::optional<glm::vec4> color = glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f };

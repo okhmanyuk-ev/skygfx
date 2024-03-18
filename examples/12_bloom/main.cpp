@@ -97,6 +97,7 @@ int main()
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 
 	float angle = 1.0f;
+	float speed = 1.0f;
 	bool animated = true;
 
 	float threshold = 1.0f;
@@ -124,13 +125,14 @@ int main()
 		ImGui::SliderFloat("Threshold", &threshold, 0.0f, 1.0f);
 		ImGui::Checkbox("Gaussian", &gaussian);
 		ImGui::Checkbox("Animated", &animated);
+		ImGui::SliderFloat("Speed", &speed, 0.0f, 2.0f);
 		ImGui::SliderAngle("Angle", &angle, 0.0f);
 		ImGui::End();
 
 		auto src_target = skygfx::AcquireTransientRenderTarget();
 
 		if (animated)
-			angle = glm::wrapAngle((float)glfwGetTime());
+			angle = glm::wrapAngle((float)glfwGetTime() * speed);
 
 		model.matrix = glm::rotate(glm::mat4(1.0f), angle, { 0.0f, 1.0f, 0.0f });
 

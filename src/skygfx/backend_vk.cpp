@@ -138,7 +138,7 @@ struct ContextVK
 	CullMode cull_mode = CullMode::None;
 	FrontFace front_face = FrontFace::Clockwise;
 	Topology topology = Topology::TriangleList;
-	std::vector<VertexBufferVK*> vertex_buffers;
+	std::vector<VertexBufferVK*> vertex_buffers; // TODO: store pointer and count, not std::vector
 	IndexBufferVK* index_buffer = nullptr;
 	std::optional<BlendMode> blend_mode;
 
@@ -2574,20 +2574,28 @@ void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->graphics_pipeline_ignore_bindings.erase(binding);
 }
 
-void BackendVK::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
+void BackendVK::setRenderTarget(const RenderTarget** render_target, size_t count)
 {
 	std::vector<RenderTargetVK*> render_targets;
 	std::vector<vk::Format> color_attachment_formats;
 	std::optional<vk::Format> depth_stencil_format;
 
-	for (auto handle : handles)
+	if (count == 0)
 	{
-		auto render_target = (RenderTargetVK*)handle;
-		render_targets.push_back(render_target);
-		color_attachment_formats.push_back(render_target->getTexture()->getFormat());
+		color_attachment_formats = { gContext->surface_format.format };
+		depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
+	}
+	else
+	{
+		for (size_t i = 0; i < count; i++)
+		{
+			auto target = (RenderTargetVK*)(RenderTargetHandle*)*(RenderTarget*)render_target[i];
+			render_targets.push_back(target);
+			color_attachment_formats.push_back(target->getTexture()->getFormat());
 
-		if (!depth_stencil_format.has_value())
-			depth_stencil_format = render_target->getDepthStencilFormat();
+			if (!depth_stencil_format.has_value())
+				depth_stencil_format = target->getDepthStencilFormat();
+		}
 	}
 
 	if (gContext->render_targets.size() != render_targets.size())
@@ -2597,21 +2605,6 @@ void BackendVK::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 	gContext->pipeline_state.color_attachment_formats = color_attachment_formats;
 	gContext->pipeline_state.depth_stencil_format = depth_stencil_format;
 	gContext->render_targets = render_targets;
-	EnsureRenderPassDeactivated();
-
-	if (!gContext->viewport.has_value())
-		gContext->viewport_dirty = true;
-
-	if (!gContext->scissor.has_value())
-		gContext->scissor_dirty = true;
-}
-
-void BackendVK::setRenderTarget(std::nullopt_t value)
-{
-	gContext->pipeline_state_dirty = true;
-	gContext->pipeline_state.color_attachment_formats = { gContext->surface_format.format };
-	gContext->pipeline_state.depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
-	gContext->render_targets.clear();
 	EnsureRenderPassDeactivated();
 
 	if (!gContext->viewport.has_value())
@@ -2639,15 +2632,14 @@ void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
 	gContext->raytracing_pipeline_state.shader = shader;
 }
 
-void BackendVK::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
+void BackendVK::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
 {
 	gContext->vertex_buffers.clear();
-
-	for (auto handle : handles)
+	for (size_t i = 0; i < count; i++)
 	{
-		gContext->vertex_buffers.push_back((VertexBufferVK*)handle);
+		auto buffer = (VertexBufferVK*)(VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i];
+		gContext->vertex_buffers.push_back(buffer);
 	}
-
 	gContext->vertex_buffers_dirty = true;
 }
 

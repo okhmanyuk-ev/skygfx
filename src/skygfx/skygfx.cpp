@@ -741,28 +741,29 @@ void skygfx::SetTexture(uint32_t binding, const Texture& texture)
 	gBackend->setTexture(binding, const_cast<Texture&>(texture));
 }
 
+void skygfx::SetRenderTarget(const std::vector<const RenderTarget*>& value)
+{
+	gBackend->setRenderTarget((const RenderTarget**)value.data(), value.size());
+	if (value.empty())
+	{
+		gRenderTargetSize.reset();
+		gBackbufferFormat = Format::Byte4;
+	}
+	else
+	{
+		gRenderTargetSize = { value.at(0)->getWidth(), value.at(0)->getHeight() };
+		gBackbufferFormat = value.at(0)->getFormat(); // TODO: wtf when mrt
+	}
+}
+
 void skygfx::SetRenderTarget(const RenderTarget& value)
 {
 	SetRenderTarget({ (RenderTarget*)&value });
 }
 
-void skygfx::SetRenderTarget(const std::vector<RenderTarget*>& value)
-{
-	std::vector<RenderTargetHandle*> handles;
-	for (auto target : value)
-	{
-		handles.push_back(*target);
-	}
-	gBackend->setRenderTarget(handles);
-	gRenderTargetSize = { value.at(0)->getWidth(), value.at(0)->getHeight()};
-	gBackbufferFormat = value.at(0)->getFormat(); // TODO: wtf when mrt
-}
-
 void skygfx::SetRenderTarget(std::nullopt_t value)
 {
-	gBackend->setRenderTarget(value);
-	gRenderTargetSize.reset();
-	gBackbufferFormat = Format::Byte4;
+	SetRenderTarget({});
 }
 
 void skygfx::SetShader(const Shader& shader)
@@ -785,19 +786,14 @@ void skygfx::SetInputLayout(const std::vector<InputLayout>& value)
 	gBackend->setInputLayout(value);
 }
 
-void skygfx::SetVertexBuffer(const VertexBuffer& value)
+void skygfx::SetVertexBuffer(const std::vector<const VertexBuffer*>& vertex_buffers)
 {
-	SetVertexBuffer({ (VertexBuffer*)&value });
+	gBackend->setVertexBuffer((const VertexBuffer**)vertex_buffers.data(), vertex_buffers.size());
 }
 
-void skygfx::SetVertexBuffer(const std::vector<VertexBuffer*>& value)
+void skygfx::SetVertexBuffer(const VertexBuffer& value)
 {
-	std::vector<VertexBufferHandle*> handles;
-	for (auto target : value)
-	{
-		handles.push_back(*target);
-	}
-	gBackend->setVertexBuffer(handles);
+	SetVertexBuffer({ &value});
 }
 
 void skygfx::SetIndexBuffer(const IndexBuffer& value)

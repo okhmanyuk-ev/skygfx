@@ -16,11 +16,10 @@ namespace skygfx
 		virtual void setViewport(std::optional<Viewport> viewport) = 0;
 		virtual void setScissor(std::optional<Scissor> scissor) = 0;
 		virtual void setTexture(uint32_t binding, TextureHandle* handle) = 0;
-		virtual void setRenderTarget(const std::vector<RenderTargetHandle*>& handles) = 0;
-		virtual void setRenderTarget(std::nullopt_t value) = 0;
+		virtual void setRenderTarget(const RenderTarget** render_target, size_t count) = 0;
 		virtual void setShader(ShaderHandle* handle) = 0;
 		virtual void setInputLayout(const std::vector<InputLayout>& value) = 0;
-		virtual void setVertexBuffer(const std::vector<VertexBufferHandle*>& handles) = 0;
+		virtual void setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count) = 0;
 		virtual void setIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void setUniformBuffer(uint32_t binding, UniformBufferHandle* handle) = 0;
 		virtual void setBlendMode(const std::optional<BlendMode>& blend_mode) = 0;

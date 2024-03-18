@@ -688,7 +688,7 @@ struct ContextGL
 
 	GLenum topology;
 	ShaderGL* shader = nullptr;
-	std::vector<VertexBufferGL*> vertex_buffers;
+	std::vector<VertexBufferGL*> vertex_buffers; // TODO: store pointer and count, not std::vector
 	IndexBufferGL* index_buffer = nullptr;
 	std::optional<Viewport> viewport;
 	std::optional<Scissor> scissor;
@@ -1160,13 +1160,28 @@ void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->sampler_state_dirty = true;
 }
 
-void BackendGL::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
+void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count)
 {
+	if (count == 0)
+	{
+#if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#elif defined(SKYGFX_PLATFORM_IOS)
+		[gGLKView bindDrawable];
+#endif
+		gContext->render_targets.clear();
+
+		if (!gContext->viewport.has_value())
+			gContext->viewport_dirty = true;
+
+		return;
+	}
 	std::vector<RenderTargetGL*> render_targets;
 
-	for (auto handle : handles)
+	for (size_t i = 0; i < count; i++)
 	{
-		render_targets.push_back((RenderTargetGL*)handle);
+		auto target = (RenderTargetGL*)(RenderTargetHandle*)*(RenderTarget*)render_target[i];
+		render_targets.push_back(target);
 	}
 
 	glBindFramebuffer(GL_FRAMEBUFFER, render_targets.at(0)->getGLFramebuffer());
@@ -1188,19 +1203,6 @@ void BackendGL::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
 		gContext->viewport_dirty = true;
 }
 
-void BackendGL::setRenderTarget(std::nullopt_t value)
-{
-#if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-#elif defined(SKYGFX_PLATFORM_IOS)
-	[gGLKView bindDrawable];
-#endif
-	gContext->render_targets.clear();
-
-	if (!gContext->viewport.has_value())
-		gContext->viewport_dirty = true;
-}
-
 void BackendGL::setShader(ShaderHandle* handle)
 {
 	gContext->shader = (ShaderGL*)handle;
@@ -1213,15 +1215,14 @@ void BackendGL::setInputLayout(const std::vector<InputLayout>& value)
 	gContext->vertex_array_dirty = true;
 }
 
-void BackendGL::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
+void BackendGL::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
 {
 	gContext->vertex_buffers.clear();
-
-	for (auto handle : handles)
+	for (size_t i = 0; i < count; i++)
 	{
-		gContext->vertex_buffers.push_back((VertexBufferGL*)handle);
+		auto buffer = (VertexBufferGL*)(VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i];
+		gContext->vertex_buffers.push_back(buffer);
 	}
-
 	gContext->vertex_array_dirty = true;
 }
 

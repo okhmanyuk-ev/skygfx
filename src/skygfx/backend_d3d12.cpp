@@ -118,7 +118,7 @@ struct ContextD3D12
 	Topology topology = Topology::TriangleList;
 	std::optional<Viewport> viewport;
 	std::optional<Scissor> scissor;
-	std::vector<VertexBufferD3D12*> vertex_buffers;
+	std::vector<VertexBufferD3D12*> vertex_buffers; // TODO: store pointer and count, not std::vector
 	IndexBufferD3D12* index_buffer = nullptr;
 
 	bool topology_dirty = true;
@@ -1210,38 +1210,34 @@ void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->textures[binding] = (TextureD3D12*)handle;
 }
 
-void BackendD3D12::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
+void BackendD3D12::setRenderTarget(const RenderTarget** render_target, size_t count)
 {
 	std::vector<RenderTargetD3D12*> render_targets;
 	std::vector<DXGI_FORMAT> color_attachment_formats;
 	std::optional<DXGI_FORMAT> depth_stencil_format;
 
-	for (auto handle : handles)
+	if (count == 0)
 	{
-		auto render_target = (RenderTargetD3D12*)handle;
-		render_targets.push_back(render_target);
-		color_attachment_formats.push_back(FormatMap.at(render_target->getTexture()->getFormat()));
+		color_attachment_formats = { MainRenderTargetColorAttachmentFormat };
+		depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
+	}
+	else
+	{
+		for (size_t i = 0; i < count; i++)
+		{
+			auto target = (RenderTargetD3D12*)(RenderTargetHandle*)*(RenderTarget*)render_target[i];
 
-		if (!depth_stencil_format.has_value())
-			depth_stencil_format = render_target->getDepthStencilFormat();
+			render_targets.push_back(target);
+			color_attachment_formats.push_back(FormatMap.at(target->getTexture()->getFormat()));
+
+			if (!depth_stencil_format.has_value())
+				depth_stencil_format = target->getDepthStencilFormat();
+		}
 	}
 
 	gContext->pipeline_state.color_attachment_formats = color_attachment_formats;
 	gContext->pipeline_state.depth_stencil_format = depth_stencil_format;
 	gContext->render_targets = render_targets;
-
-	if (!gContext->viewport.has_value())
-		gContext->viewport_dirty = true;
-
-	if (!gContext->scissor.has_value())
-		gContext->scissor_dirty = true;
-}
-
-void BackendD3D12::setRenderTarget(std::nullopt_t value)
-{
-	gContext->pipeline_state.color_attachment_formats = { MainRenderTargetColorAttachmentFormat };
-	gContext->pipeline_state.depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
-	gContext->render_targets.clear();
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
@@ -1260,15 +1256,14 @@ void BackendD3D12::setInputLayout(const std::vector<InputLayout>& value)
 	gContext->pipeline_state.input_layouts = value;
 }
 
-void BackendD3D12::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
+void BackendD3D12::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
 {
 	gContext->vertex_buffers.clear();
-
-	for (auto handle : handles)
+	for (size_t i = 0; i < count; i++)
 	{
-		gContext->vertex_buffers.push_back((VertexBufferD3D12*)handle);
+		auto buffer = (VertexBufferD3D12*)(VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i];
+		gContext->vertex_buffers.push_back(buffer);
 	}
-
 	gContext->vertex_buffers_dirty = true;
 }
 

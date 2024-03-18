@@ -767,7 +767,7 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height, Adapte
 #endif
 
 	CreateMainRenderTarget(width, height);
-	setRenderTarget(std::nullopt);
+	setRenderTarget(nullptr, 0);
 }
 
 BackendD3D11::~BackendD3D11()
@@ -781,7 +781,7 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	DestroyMainRenderTarget();
 	gContext->swapchain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
 	CreateMainRenderTarget(width, height);
-	setRenderTarget(std::nullopt); // TODO: do it when nullptr was before
+	setRenderTarget(nullptr, 0); // TODO: do it when nullptr was before
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
@@ -842,8 +842,21 @@ void BackendD3D11::setInputLayout(const std::vector<InputLayout>& value)
 	gContext->input_layouts_dirty = true;
 }
 
-void BackendD3D11::setRenderTarget(const std::vector<RenderTargetHandle*>& handles)
+void BackendD3D11::setRenderTarget(const RenderTarget** render_target, size_t count)
 {
+	if (count == 0)
+	{
+		gContext->context->OMSetRenderTargets(1, gContext->main_render_target->getD3D11RenderTargetView().GetAddressOf(),
+			gContext->main_render_target->getD3D11DepthStencilView().Get());
+
+		gContext->render_targets = { gContext->main_render_target };
+
+		if (!gContext->viewport.has_value())
+			gContext->viewport_dirty = true;
+
+		return;
+	}
+
 	ComPtr<ID3D11ShaderResourceView> prev_shader_resource_view;
 	gContext->context->PSGetShaderResources(0, 1, prev_shader_resource_view.GetAddressOf());
 
@@ -852,11 +865,11 @@ void BackendD3D11::setRenderTarget(const std::vector<RenderTargetHandle*>& handl
 
 	gContext->render_targets.clear();
 
-	for (auto handle : handles)
+	for (size_t i = 0; i < count; i++)
 	{
-		auto render_target = (RenderTargetD3D11*)handle;
+		auto target = (RenderTargetD3D11*)(RenderTargetHandle*)*(RenderTarget*)render_target[i];
 
-		if (prev_shader_resource_view.Get() == render_target->getTexture()->getD3D11ShaderResourceView().Get())
+		if (prev_shader_resource_view.Get() == target->getTexture()->getD3D11ShaderResourceView().Get())
 		{
 			ID3D11ShaderResourceView* null[] = { NULL };
 			gContext->context->PSSetShaderResources(0, 1, null); // remove old shader view
@@ -864,28 +877,17 @@ void BackendD3D11::setRenderTarget(const std::vector<RenderTargetHandle*>& handl
 			// we should remove every binding with this texture
 		}
 
-		render_target_views.push_back(render_target->getD3D11RenderTargetView().Get());
+		render_target_views.push_back(target->getD3D11RenderTargetView().Get());
 
 		if (!depth_stencil_view.has_value())
-			depth_stencil_view = render_target->getD3D11DepthStencilView().Get();
+			depth_stencil_view = target->getD3D11DepthStencilView().Get();
 
-		gContext->render_targets.push_back(render_target);
+		gContext->render_targets.push_back(target);
 	}
 
 	gContext->context->OMSetRenderTargets((UINT)render_target_views.size(),
 		render_target_views.data(), depth_stencil_view.value_or(nullptr));
 	
-	if (!gContext->viewport.has_value())
-		gContext->viewport_dirty = true;
-}
-
-void BackendD3D11::setRenderTarget(std::nullopt_t value)
-{
-	gContext->context->OMSetRenderTargets(1, gContext->main_render_target->getD3D11RenderTargetView().GetAddressOf(),
-		gContext->main_render_target->getD3D11DepthStencilView().Get());
-	
-	gContext->render_targets = { gContext->main_render_target };
-
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
 }
@@ -897,22 +899,21 @@ void BackendD3D11::setShader(ShaderHandle* handle)
 	gContext->input_layouts_dirty = true;
 }
 
-void BackendD3D11::setVertexBuffer(const std::vector<VertexBufferHandle*>& handles)
+void BackendD3D11::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
 {
 	std::vector<ID3D11Buffer*> buffers;
 	std::vector<UINT> strides;
 	std::vector<UINT> offsets;
 
-	for (auto handle : handles)
+	for (size_t i = 0; i < count; i++)
 	{
-		auto buffer = (VertexBufferD3D11*)handle;
-
+		auto buffer = (VertexBufferD3D11*)(VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i];
 		buffers.push_back(buffer->getD3D11Buffer().Get());
 		strides.push_back((UINT)buffer->getStride());
 		offsets.push_back(0);
 	}
 
-	gContext->context->IASetVertexBuffers(0, (UINT)handles.size(), buffers.data(), strides.data(), offsets.data());
+	gContext->context->IASetVertexBuffers(0, (UINT)buffers.size(), buffers.data(), strides.data(), offsets.data());
 }
 
 void BackendD3D11::setIndexBuffer(IndexBufferHandle* handle)
