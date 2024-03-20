@@ -566,6 +566,9 @@ namespace skygfx
 	void SetVsync(bool value);
 	bool IsVsyncEnabled();
 
+	void Push();
+	void Pop();
+
 	void SetTopology(Topology topology);
 	void SetViewport(const std::optional<Viewport>& viewport);
 	void SetScissor(const std::optional<Scissor>& scissor);

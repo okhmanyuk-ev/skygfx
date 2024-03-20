@@ -5,6 +5,7 @@
 #include "backend_gl.h"
 #include "backend_vk.h"
 #include "backend_mtl.h"
+#include <stack>
 
 using namespace skygfx;
 
@@ -637,6 +638,39 @@ static void DestroyTransientRenderTargets()
 	});
 }
 
+// state
+
+namespace skygfx
+{
+	struct State
+	{
+		Topology topology = Topology::TriangleList;
+		std::optional<Viewport> viewport = std::nullopt;
+		std::optional<Scissor> scissor = std::nullopt;
+		std::unordered_map<uint32_t, skygfx::TextureHandle*> textures;
+		std::vector<const RenderTarget*> render_target;
+
+		static inline bool TopologyDirty = false;
+		static inline bool ViewportDirty = false;
+		static inline bool ScissorDirty = false;
+		static inline bool TexturesDirty = false;
+		static inline std::unordered_set<uint32_t> TexturesDirtyIgnore;
+		static inline bool RenderTargetDirty = false;
+
+		static void MarkDirtyAll()
+		{
+			TopologyDirty = true;
+			ViewportDirty = true;
+			ScissorDirty = true;
+			TexturesDirty = true;
+			TexturesDirtyIgnore.clear();
+			RenderTargetDirty = true;
+		}
+	};
+}
+
+static std::stack<State> gStateStack;
+
 // device
 
 void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type,
@@ -684,11 +718,17 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 		if (gRaytracingBackend == nullptr)
 			throw std::runtime_error("this backend does not support raytracing");
 	}
+
+	gStateStack.push(State());
+	State::MarkDirtyAll();
 }
 
 void skygfx::Finalize()
 {
 	assert(gBackend != nullptr);
+
+	assert(gStateStack.size() == 1);
+	gStateStack.pop();
 
 	gIndexBuffer.reset();
 	gVertexBuffer.reset();
@@ -721,39 +761,104 @@ bool skygfx::IsVsyncEnabled()
 	return gVsync;
 }
 
+void skygfx::Push()
+{
+	gStateStack.push(gStateStack.top());
+}
+
+void skygfx::Pop()
+{
+	gStateStack.pop();
+	State::MarkDirtyAll();
+}
+
+static State& GetCurrentState()
+{
+	return gStateStack.top();
+}
+
+static void ApplyState()
+{
+	const auto& state = GetCurrentState();
+
+	if (State::TopologyDirty)
+	{
+		gBackend->setTopology(state.topology);
+		State::TopologyDirty = false;
+	}
+
+	if (State::ViewportDirty)
+	{
+		gBackend->setViewport(state.viewport);
+		State::ViewportDirty = false;
+	}
+
+	if (State::ScissorDirty)
+	{
+		gBackend->setScissor(state.scissor);
+		State::ScissorDirty = false;
+	}
+
+	if (State::TexturesDirty)
+	{
+		for (const auto& [binding, handle] : state.textures)
+		{
+			if (State::TexturesDirtyIgnore.contains(binding))
+				continue;
+
+			gBackend->setTexture(binding, handle);
+			State::TexturesDirtyIgnore.insert(binding);
+		}
+		State::TexturesDirty = false;
+	}
+
+	if (State::RenderTargetDirty)
+	{
+		const auto& targets = state.render_target;
+		gBackend->setRenderTarget((const RenderTarget**)targets.data(), targets.size());
+		if (targets.empty())
+		{
+			gRenderTargetSize.reset();
+			gBackbufferFormat = Format::Byte4;
+		}
+		else
+		{
+			gRenderTargetSize = { targets.at(0)->getWidth(), targets.at(0)->getHeight() };
+			gBackbufferFormat = targets.at(0)->getFormat(); // TODO: wtf when mrt
+		}
+		State::RenderTargetDirty = false;
+	}
+}
+
 void skygfx::SetTopology(Topology topology)
 {
-	gBackend->setTopology(topology);
+	GetCurrentState().topology = topology;
+	State::TopologyDirty = true;
 }
 
 void skygfx::SetViewport(const std::optional<Viewport>& viewport)
 {
-	gBackend->setViewport(viewport);
+	GetCurrentState().viewport = viewport;
+	State::ViewportDirty = true;
 }
 
 void skygfx::SetScissor(const std::optional<Scissor>& scissor)
 {
-	gBackend->setScissor(scissor);
+	GetCurrentState().scissor = scissor;
+	State::ScissorDirty = true;
 }
 
 void skygfx::SetTexture(uint32_t binding, const Texture& texture)
 {
-	gBackend->setTexture(binding, const_cast<Texture&>(texture));
+	GetCurrentState().textures[binding] = const_cast<Texture&>(texture);
+	State::TexturesDirty = true;
+	State::TexturesDirtyIgnore.erase(binding);
 }
 
 void skygfx::SetRenderTarget(const std::vector<const RenderTarget*>& value)
 {
-	gBackend->setRenderTarget((const RenderTarget**)value.data(), value.size());
-	if (value.empty())
-	{
-		gRenderTargetSize.reset();
-		gBackbufferFormat = Format::Byte4;
-	}
-	else
-	{
-		gRenderTargetSize = { value.at(0)->getWidth(), value.at(0)->getHeight() };
-		gBackbufferFormat = value.at(0)->getFormat(); // TODO: wtf when mrt
-	}
+	GetCurrentState().render_target = value;
+	State::RenderTargetDirty = true;
 }
 
 void skygfx::SetRenderTarget(const RenderTarget& value)
@@ -859,31 +964,38 @@ void skygfx::SetDepthBias(const std::optional<DepthBias> depth_bias)
 void skygfx::Clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
+	ApplyState();
 	gBackend->clear(color, depth, stencil);
 }
 
 void skygfx::Draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
+	ApplyState();
 	gBackend->draw(vertex_count, vertex_offset, instance_count);
 }
 
 void skygfx::DrawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
+	ApplyState();
 	gBackend->drawIndexed(index_count, index_offset, instance_count);
 }
 
 void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture)
 {
+	ApplyState();
 	gBackend->readPixels(pos, size, dst_texture);
 }
 
 void skygfx::DispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 {
+	ApplyState();
 	gRaytracingBackend->dispatchRays(width, height, depth);
 }
 
 void skygfx::Present()
 {
+	assert(gStateStack.size() == 1);
+
 	gBackend->present();
 	DestroyTransientRenderTargets();
 }
