@@ -557,6 +557,11 @@ namespace skygfx
 		bool operator==(const DepthBias& other) const = default;
 	};
 
+	struct PresentResult
+	{
+		uint32_t drawcalls = 0;
+	};
+
 	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,
 		Adapter adapter = Adapter::HighPerformance, const std::unordered_set<Feature>& features = {});
 	void Finalize();
@@ -600,7 +605,7 @@ namespace skygfx
 
 	void DispatchRays(uint32_t width, uint32_t height, uint32_t depth);
 
-	void Present();
+	PresentResult Present();
 
 	void SetVertexBuffer(const void* memory, size_t size, size_t stride);
 

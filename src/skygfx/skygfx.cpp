@@ -12,6 +12,7 @@ static Backend* gBackend = nullptr;
 static RaytracingBackend* gRaytracingBackend = nullptr;
 static glm::u32vec2 gSize = { 0, 0 };
 static bool gVsync = false;
+static uint32_t gDrawcalls = 0;
 static std::optional<glm::u32vec2> gRenderTargetSize;
 static Format gBackbufferFormat;
 static BackendType gBackendType = BackendType::OpenGL;
@@ -676,6 +677,7 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 	gRenderTargetSize.reset();
 	gBackendType = type;
 	gBackbufferFormat = Format::Byte4;
+	gDrawcalls = 0;
 
 	if (features.contains(Feature::Raytracing))
 	{
@@ -865,11 +867,13 @@ void skygfx::Clear(const std::optional<glm::vec4>& color, const std::optional<fl
 void skygfx::Draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
 {
 	gBackend->draw(vertex_count, vertex_offset, instance_count);
+	gDrawcalls++;
 }
 
 void skygfx::DrawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	gBackend->drawIndexed(index_count, index_offset, instance_count);
+	gDrawcalls++;
 }
 
 void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture)
@@ -882,10 +886,17 @@ void skygfx::DispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 	gRaytracingBackend->dispatchRays(width, height, depth);
 }
 
-void skygfx::Present()
+PresentResult skygfx::Present()
 {
 	gBackend->present();
 	DestroyTransientRenderTargets();
+
+	PresentResult result;
+	result.drawcalls = gDrawcalls;
+
+	gDrawcalls = 0;
+
+	return result;
 }
 
 void skygfx::SetVertexBuffer(const void* memory, size_t size, size_t stride)
