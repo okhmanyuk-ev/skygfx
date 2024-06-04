@@ -702,6 +702,11 @@ utils::commands::SetEffect::SetEffect(Shader* _shader, void* _uniform_data, size
 	std::memcpy(uniform_data.value().data(), _uniform_data, uniform_size);
 }
 
+utils::commands::SetTopology::SetTopology(Topology _topology) :
+	topology(_topology)
+{
+}
+
 utils::commands::SetViewport::SetViewport(std::optional<Viewport> _viewport) :
 	viewport(std::move(_viewport))
 {
@@ -835,6 +840,7 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 		SetShader(shader == nullptr ? context.default_shader : *shader);
 	};
 
+	SetTopology(Topology::TriangleList);
 	SetViewport(std::nullopt);
 	SetScissor(std::nullopt);
 	SetBlendMode(std::nullopt);
@@ -877,6 +883,9 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 
 	execute_command = [&](const Command& _cmd) {
 		std::visit(cases{
+			[&](const commands::SetTopology& cmd) {
+				SetTopology(cmd.topology);
+			},
 			[&](const commands::SetViewport& cmd) {
 				SetViewport(cmd.viewport);
 			},
@@ -972,12 +981,9 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			[&](const commands::Draw& cmd) {
 				if (mesh_dirty)
 				{
-					auto topology = mesh->getTopology();
 					const auto& vertex_buffer = mesh->getVertexBuffer();
 					const auto& index_buffer = mesh->getIndexBuffer();
 
-					SetTopology(topology);
-					
 					if (vertex_buffer.has_value())
 						SetVertexBuffer(vertex_buffer.value());
 					
@@ -1538,7 +1544,6 @@ void utils::MeshBuilder::end()
 void utils::MeshBuilder::setToMesh(Mesh& mesh)
 {
 	assert(!mBegan);
-	mesh.setTopology(mTopology.value());
 	mesh.setVertices(mVertices);
 	mesh.setIndices(mIndices);
 }
@@ -1586,6 +1591,9 @@ void utils::Scratch::flush()
 		mMeshBuilder.reset();
 		return;
 	}
+
+	auto topology = mMeshBuilder.getTopology().value();
+
 	mMeshBuilder.setToMesh(mMesh);
 	mMeshBuilder.reset();
 
@@ -1613,6 +1621,7 @@ void utils::Scratch::flush()
 		commands::SetModelMatrix(mState.model_matrix),
 		commands::SetColorTexture(mState.texture),
 		commands::SetMesh(&mMesh),
+		commands::SetTopology(topology),
 		commands::Draw()
 	});
 

@@ -25,9 +25,6 @@ namespace skygfx::utils
 		void setIndices(const Index* memory, uint32_t count);
 		void setIndices(const Indices& value);
 
-		auto getTopology() const { return mTopology; }
-		void setTopology(Topology value) { mTopology = value; }
-
 		auto getVertexCount() const { return mVertexCount; }
 		auto getIndexCount() const { return mIndexCount; }
 
@@ -35,7 +32,6 @@ namespace skygfx::utils
 		const auto& getIndexBuffer() const { return mIndexBuffer; }
 
 	private:
-		Topology mTopology = Topology::TriangleList;
 		uint32_t mVertexCount = 0;
 		uint32_t mIndexCount = 0;
 		std::optional<VertexBuffer> mVertexBuffer;
@@ -303,6 +299,12 @@ namespace skygfx::utils
 			std::optional<std::vector<uint8_t>> uniform_data;
 		};
 
+		struct SetTopology
+		{
+			SetTopology(Topology topology);
+			Topology topology;
+		};
+
 		struct SetViewport
 		{
 			SetViewport(std::optional<Viewport> viewport);
@@ -440,6 +442,7 @@ namespace skygfx::utils
 	}
 
 	using Command = std::variant<
+		commands::SetTopology,
 		commands::SetViewport,
 		commands::SetScissor,
 		commands::SetBlendMode,
