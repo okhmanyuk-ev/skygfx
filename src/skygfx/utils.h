@@ -598,15 +598,12 @@ namespace skygfx::utils
 			Polygon
 		};
 
-		static Topology ConvertModeToTopology(Mode mode);
-
 	public:
 		void reset();
-		void begin(Mode mode);
+		void begin(Mode mode, std::function<void()> onFlush = nullptr);
 		void vertex(const Mesh::Vertex& value);
 		void end();
 		void setToMesh(Mesh& mesh);
-		bool isBeginAllowed(Mode mode) const;
 
 	public:
 		bool isBegan() const { return mBegan; }
@@ -655,11 +652,25 @@ namespace skygfx::utils
 		void begin(MeshBuilder::Mode mode);
 		void vertex(const Mesh::Vertex& value);
 		void end();
-		void flush();
+		void flush(bool sort_textures = false);
+
+	private:
+		void pushCommand();
 
 	private:
 		State mState;
 		Mesh mMesh;
 		MeshBuilder mMeshBuilder;
+
+		struct ScratchCommand
+		{
+			State state;
+			skygfx::Topology topology;
+			uint32_t index_count;
+			uint32_t index_offset;
+		};
+
+		std::vector<ScratchCommand> mScratchCommands;
+		std::vector<Command> mCommands;
 	};
 }

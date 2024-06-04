@@ -1422,8 +1422,20 @@ void utils::ViewStage(const std::string& name, Texture* texture)
 	gStageViewer->stage(name, texture);
 }
 
-Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
+void utils::MeshBuilder::reset()
 {
+	assert(!mBegan);
+	mIndices.clear();
+	mVertices.clear();
+	mMode.reset();
+	mTopology.reset();
+}
+
+void utils::MeshBuilder::begin(Mode mode, std::function<void()> onFlush)
+{
+	assert(!mBegan);
+	mBegan = true;
+
 	static const std::unordered_map<Mode, Topology> TopologyMap = {
 		{ Mode::Points, Topology::PointList },
 		{ Mode::Lines, Topology::LineList },
@@ -1436,34 +1448,12 @@ Topology utils::MeshBuilder::ConvertModeToTopology(Mode mode)
 		{ Mode::Polygon, Topology::TriangleList }
 	};
 
-	return TopologyMap.at(mode);
-}
+	auto topology = TopologyMap.at(mode);
 
-void utils::MeshBuilder::reset()
-{
-	assert(!mBegan);
-	mIndices.clear();
-	mVertices.clear();
-	mMode.reset();
-	mTopology.reset();
-}
+	if (mTopology.has_value() && topology != mTopology.value() && onFlush)
+		onFlush();
 
-void utils::MeshBuilder::begin(Mode mode)
-{
-	assert(!mBegan);
-	mBegan = true;
-
-	auto topology = ConvertModeToTopology(mode);
-
-	if (mTopology.has_value())
-	{
-		assert(topology == mTopology.value());
-	}
-	else
-	{
-		mTopology = topology;
-	}
-
+	mTopology = topology;
 	mMode = mode;
 	mVertexStart = (uint32_t)mVertices.size();
 }
@@ -1474,11 +1464,9 @@ void utils::MeshBuilder::vertex(const Mesh::Vertex& value)
 	mVertices.push_back(value);
 }
 
-void utils::MeshBuilder::end()
+static void AddIndicesForVertexArray(utils::MeshBuilder::Mode mode, skygfx::Topology topology,
+	uint32_t vertex_start, uint32_t vertex_count, std::vector<uint32_t>& indices)
 {
-	assert(mBegan);
-	mBegan = false;
-
 	auto extract_ordered_index_sequence = [](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
 		indices.reserve(indices.size() + (size_t)(vertex_count - vertex_start));
 
@@ -1526,19 +1514,26 @@ void utils::MeshBuilder::end()
 	using ExtractIndicesFunc = std::function<void(uint32_t vertex_start,
 		uint32_t vertex_count, std::vector<uint32_t>& indices)>;
 
-	static const std::unordered_map<Mode, ExtractIndicesFunc> ExtractIndicesFuncs = {
-		{ Mode::Points, extract_ordered_index_sequence },
-		{ Mode::Lines, extract_ordered_index_sequence },
-		{ Mode::LineLoop, extract_line_list_indices_from_line_loop },
-		{ Mode::LineStrip, extract_line_list_indices_from_line_strip },
-		{ Mode::Polygon, extract_triangles_indices_from_polygons },
-		{ Mode::TriangleFan, extract_triangles_indices_from_triangle_fan },
-		{ Mode::Quads, extract_triangles_indices_from_quads },
-		{ Mode::TriangleStrip, extract_triangles_indices_from_triangle_strip },
-		{ Mode::Triangles, extract_ordered_index_sequence }
+	static const std::unordered_map<utils::MeshBuilder::Mode, std::unordered_map<skygfx::Topology, ExtractIndicesFunc>> ExtractIndicesFuncs = {
+		{ utils::MeshBuilder::Mode::Points, { { skygfx::Topology::PointList, extract_ordered_index_sequence } } },
+		{ utils::MeshBuilder::Mode::Lines, { { skygfx::Topology::LineList, extract_ordered_index_sequence } } },
+		{ utils::MeshBuilder::Mode::LineLoop, { { skygfx::Topology::LineList, extract_line_list_indices_from_line_loop } } },
+		{ utils::MeshBuilder::Mode::LineStrip, { { skygfx::Topology::LineList, extract_line_list_indices_from_line_strip } } },
+		{ utils::MeshBuilder::Mode::Polygon, { { skygfx::Topology::TriangleList, extract_triangles_indices_from_polygons } } },
+		{ utils::MeshBuilder::Mode::TriangleFan, { { skygfx::Topology::TriangleList, extract_triangles_indices_from_triangle_fan } } },
+		{ utils::MeshBuilder::Mode::Quads, { { skygfx::Topology::TriangleList, extract_triangles_indices_from_quads } } },
+		{ utils::MeshBuilder::Mode::TriangleStrip, { { skygfx::Topology::TriangleList, extract_triangles_indices_from_triangle_strip } } },
+		{ utils::MeshBuilder::Mode::Triangles, { { skygfx::Topology::TriangleList, extract_ordered_index_sequence } } }
 	};
 
-	ExtractIndicesFuncs.at(mMode.value())(mVertexStart, (uint32_t)mVertices.size(), mIndices);
+	ExtractIndicesFuncs.at(mode).at(topology)(vertex_start, vertex_count, indices);
+}
+
+void utils::MeshBuilder::end()
+{
+	assert(mBegan);
+	mBegan = false;
+	AddIndicesForVertexArray(mMode.value(), mTopology.value(), mVertexStart, (uint32_t)mVertices.size(), mIndices);
 }
 
 void utils::MeshBuilder::setToMesh(Mesh& mesh)
@@ -1548,25 +1543,16 @@ void utils::MeshBuilder::setToMesh(Mesh& mesh)
 	mesh.setIndices(mIndices);
 }
 
-bool utils::MeshBuilder::isBeginAllowed(Mode mode) const
-{
-	if (!mTopology.has_value())
-		return true;
-
-	auto topology = ConvertModeToTopology(mode);
-	return topology == mTopology.value();
-}
-
 void utils::Scratch::begin(MeshBuilder::Mode mode, const State& state)
 {
-	if (!mMeshBuilder.isBeginAllowed(mode))
-		flush();
+	if (!mMeshBuilder.getVertices().empty() && mState != state)
+		pushCommand();
 
-	if (mState != state)
-		flush();
+	mMeshBuilder.begin(mode, [&] {
+		pushCommand();
+	});
 
 	mState = state;
-	mMeshBuilder.begin(mode);
 }
 
 void utils::Scratch::begin(MeshBuilder::Mode mode)
@@ -1584,7 +1570,7 @@ void utils::Scratch::end()
 	mMeshBuilder.end();
 }
 
-void utils::Scratch::flush()
+void utils::Scratch::flush(bool sort_textures)
 {
 	if (mMeshBuilder.getVertices().empty())
 	{
@@ -1592,38 +1578,74 @@ void utils::Scratch::flush()
 		return;
 	}
 
-	auto topology = mMeshBuilder.getTopology().value();
+	pushCommand();
 
 	mMeshBuilder.setToMesh(mMesh);
 	mMeshBuilder.reset();
 
-	std::vector<Command> cmds;
-
-	if (mState.alpha_test_threshold.has_value())
+	if (sort_textures)
 	{
-		cmds.push_back(commands::SetEffect(effects::AlphaTest{ mState.alpha_test_threshold.value() }));
+		std::sort(mScratchCommands.begin(), mScratchCommands.end(), [](const ScratchCommand& left, const ScratchCommand& right) {
+			return left.state.texture < right.state.texture;
+		});
 	}
 
-	cmds.insert(cmds.end(), {
-		commands::SetViewport(mState.viewport),
-		commands::SetScissor(mState.scissor),
-		commands::SetBlendMode(mState.blend_mode),
-		commands::SetDepthBias(mState.depth_bias),
-		commands::SetDepthMode(mState.depth_mode),
-		commands::SetStencilMode(mState.stencil_mode),
-		commands::SetCullMode(mState.cull_mode),
-		commands::SetFrontFace(mState.front_face),
-		commands::SetSampler(mState.sampler),
-		commands::SetTextureAddress(mState.texaddr),
-		commands::SetMipmapBias(mState.mipmap_bias),
-		commands::SetProjectionMatrix(mState.projection_matrix),
-		commands::SetViewMatrix(mState.view_matrix),
-		commands::SetModelMatrix(mState.model_matrix),
-		commands::SetColorTexture(mState.texture),
-		commands::SetMesh(&mMesh),
-		commands::SetTopology(topology),
-		commands::Draw()
-	});
+	mCommands.push_back(commands::SetMesh(&mMesh));
 
-	ExecuteCommands(cmds);
+	for (const auto& command : mScratchCommands)
+	{
+		mCommands.insert(mCommands.end(), {
+			command.state.alpha_test_threshold.has_value() ?
+				commands::SetEffect(effects::AlphaTest{ command.state.alpha_test_threshold.value() }) :
+				commands::SetEffect(std::nullopt),
+			commands::SetViewport(command.state.viewport),
+			commands::SetScissor(command.state.scissor),
+			commands::SetBlendMode(command.state.blend_mode),
+			commands::SetDepthBias(command.state.depth_bias),
+			commands::SetDepthMode(command.state.depth_mode),
+			commands::SetStencilMode(command.state.stencil_mode),
+			commands::SetCullMode(command.state.cull_mode),
+			commands::SetFrontFace(command.state.front_face),
+			commands::SetSampler(command.state.sampler),
+			commands::SetTextureAddress(command.state.texaddr),
+			commands::SetMipmapBias(command.state.mipmap_bias),
+			commands::SetProjectionMatrix(command.state.projection_matrix),
+			commands::SetViewMatrix(command.state.view_matrix),
+			commands::SetModelMatrix(command.state.model_matrix),
+			commands::SetColorTexture(command.state.texture),
+			commands::SetTopology(command.topology),
+			commands::Draw(DrawIndexedVerticesCommand{
+				.index_count = command.index_count,
+				.index_offset = command.index_offset
+			})
+		});
+	}
+
+	mScratchCommands.clear();
+
+	ExecuteCommands(mCommands);
+
+	mCommands.clear();
+}
+
+void utils::Scratch::pushCommand()
+{
+	uint32_t index_offset = 0;
+
+	if (!mScratchCommands.empty())
+	{
+		const auto& prev_command = mScratchCommands.at(mScratchCommands.size() - 1);
+		index_offset = prev_command.index_offset + prev_command.index_count;
+	}
+
+	uint32_t index_count = static_cast<uint32_t>(mMeshBuilder.getIndices().size()) - index_offset;
+
+	auto topology = mMeshBuilder.getTopology().value();
+
+	mScratchCommands.push_back(ScratchCommand{
+		.state = mState,
+		.topology = topology,
+		.index_count = index_count,
+		.index_offset = index_offset
+	});
 }

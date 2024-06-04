@@ -65,27 +65,27 @@ void ImguiHelper::draw()
 					.size = { cmd.ClipRect.z - cmd.ClipRect.x, cmd.ClipRect.w - cmd.ClipRect.y }
 				};
 
-				scratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles, state);
+				mScratch.begin(skygfx::utils::MeshBuilder::Mode::Triangles, state);
 
 				for (uint32_t i = 0; i < cmd.ElemCount; i++)
 				{
 					auto index = cmdlist->IdxBuffer[i + index_offset];
 					const auto& vertex = cmdlist->VtxBuffer[index];
-					scratch.vertex({
+					mScratch.vertex({
 						.pos = { vertex.pos.x, vertex.pos.y, 0.0f },
 						.color = glm::unpackUnorm4x8(vertex.col),
 						.texcoord = { vertex.uv.x, vertex.uv.y }
 					});
 				}
 
-				scratch.end();
+				mScratch.end();
 			}
 
 			index_offset += cmd.ElemCount;
 		}
 	}
 
-	scratch.flush();
+	mScratch.flush();
 }
 
 void StageViewer::stage(const std::string& name, skygfx::Texture* texture)
