@@ -91,7 +91,7 @@ out gl_PerVertex { vec4 gl_Position; };
 
 void main()
 {
-	Out.world_position = mat3(settings.model) * aPosition;
+	Out.world_position = vec3(settings.model * vec4(aPosition, 1.0));
 	Out.normal = transpose(inverse(mat3(settings.model))) * aNormal;
 	Out.tangent = transpose(inverse(mat3(settings.model))) * aTangent;
 	Out.bitangent = cross(Out.normal, Out.tangent);
