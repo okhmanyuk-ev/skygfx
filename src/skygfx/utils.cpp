@@ -1628,6 +1628,11 @@ void utils::Scratch::flush(bool sort_textures)
 	mCommands.clear();
 }
 
+bool utils::Scratch::isBegan() const
+{
+	return mMeshBuilder.isBegan();
+}
+
 void utils::Scratch::pushCommand()
 {
 	uint32_t index_offset = 0;

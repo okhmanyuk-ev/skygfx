@@ -653,6 +653,7 @@ namespace skygfx::utils
 		void vertex(const Mesh::Vertex& value);
 		void end();
 		void flush(bool sort_textures = false);
+		bool isBegan() const;
 
 	private:
 		void pushCommand();
