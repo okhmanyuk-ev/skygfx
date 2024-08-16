@@ -1424,7 +1424,9 @@ void utils::ViewStage(const std::string& name, Texture* texture)
 
 void utils::MeshBuilder::reset()
 {
-	assert(!mBegan);
+	if (mBegan)
+		throw std::runtime_error("missing end()");
+
 	mIndices.clear();
 	mVertices.clear();
 	mMode.reset();
@@ -1433,7 +1435,9 @@ void utils::MeshBuilder::reset()
 
 void utils::MeshBuilder::begin(Mode mode, std::function<void()> onFlush)
 {
-	assert(!mBegan);
+	if (mBegan)
+		throw std::runtime_error("missing end()");
+
 	mBegan = true;
 
 	static const std::unordered_map<Mode, Topology> TopologyMap = {
@@ -1460,7 +1464,9 @@ void utils::MeshBuilder::begin(Mode mode, std::function<void()> onFlush)
 
 void utils::MeshBuilder::vertex(const Mesh::Vertex& value)
 {
-	assert(mBegan);
+	if (!mBegan)
+		throw std::runtime_error("missing begin()");
+
 	mVertices.push_back(value);
 }
 
@@ -1531,14 +1537,18 @@ static void AddIndicesForVertexArray(utils::MeshBuilder::Mode mode, skygfx::Topo
 
 void utils::MeshBuilder::end()
 {
-	assert(mBegan);
+	if (!mBegan)
+		throw std::runtime_error("missing begin()");
+
 	mBegan = false;
 	AddIndicesForVertexArray(mMode.value(), mTopology.value(), mVertexStart, (uint32_t)mVertices.size(), mIndices);
 }
 
 void utils::MeshBuilder::setToMesh(Mesh& mesh)
 {
-	assert(!mBegan);
+	if (mBegan)
+		throw std::runtime_error("missing end()");
+
 	mesh.setVertices(mVertices);
 	mesh.setIndices(mIndices);
 }
