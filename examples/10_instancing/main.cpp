@@ -30,8 +30,8 @@ const std::string fragment_shader_code = R"(
 layout(location = 0) out vec4 result;
 layout(location = 0) in struct { vec4 Color; } In;
 
-void main() 
-{ 
+void main()
+{
 	result = In.Color;
 })";
 

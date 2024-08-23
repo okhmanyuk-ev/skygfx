@@ -23,8 +23,8 @@ const std::string triangle_fragment_shader_code = R"(
 layout(location = 0) out vec4 result;
 layout(location = 0) in struct { vec4 Color; } In;
 
-void main() 
-{ 
+void main()
+{
 	result = In.Color;
 })";
 
@@ -83,8 +83,8 @@ layout(location = 0) out vec4 result;
 layout(location = 0) in struct { vec3 Position; vec3 Normal; vec2 TexCoord; } In;
 layout(binding = 0) uniform sampler2D sTexture;
 
-void main() 
-{ 
+void main()
+{
 	result = texture(sTexture, In.TexCoord);
 
 	vec3 normal = normalize(In.Normal);
@@ -180,7 +180,7 @@ int main()
 	glfwSetFramebufferSizeCallback(window, [](GLFWwindow* window, int width, int height) {
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
-	
+
 	auto cube_shader = skygfx::Shader(cube_vertex_shader_code, cube_fragment_shader_code, CubeVertex::Defines);
 	auto triangle_shader = skygfx::Shader(triangle_vertex_shader_code, triangle_fragment_shader_code, TriangleVertex::Defines);
 

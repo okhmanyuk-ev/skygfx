@@ -30,8 +30,8 @@ const std::string fragment_shader_code = R"(
 layout(location = 0) out vec4 result;
 layout(location = 0) in struct { vec4 Color; } In;
 
-void main() 
-{ 
+void main()
+{
 	result = In.Color;
 })";
 
@@ -114,7 +114,7 @@ int main()
 	});
 
 	auto shader = skygfx::Shader(vertex_shader_code, fragment_shader_code, Vertex::Defines);
-	
+
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);
 	const auto position = glm::vec3{ -5.0f, 2.0f, 0.0f };

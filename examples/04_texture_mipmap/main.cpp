@@ -36,8 +36,8 @@ layout(location = 0) in struct { vec4 Color; vec2 TexCoord; } In;
 
 layout(binding = 0) uniform sampler2D sTexture;
 
-void main() 
-{ 
+void main()
+{
 	result = In.Color * texture(sTexture, In.TexCoord, ubo.mipmap_bias);
 })";
 
@@ -90,7 +90,7 @@ int main()
 		settings.mipmap_bias = glm::abs(glm::mod(static_cast<float>(glfwGetTime() * 4.0f), 16.0f) - 8.0f);
 
 		skygfx::SetUniformBuffer(1, settings);
-		
+
 		skygfx::Clear();
 		skygfx::DrawIndexed(static_cast<uint32_t>(indices.size()));
 		skygfx::Present();

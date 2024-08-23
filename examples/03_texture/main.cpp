@@ -31,8 +31,8 @@ layout(location = 0) in struct { vec4 Color; vec2 TexCoord; } In;
 
 layout(binding = 0) uniform sampler2D sTexture;
 
-void main() 
-{ 
+void main()
+{
 	result = In.Color * texture(sTexture, In.TexCoord);
 })";
 
