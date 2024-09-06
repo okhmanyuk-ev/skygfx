@@ -57,7 +57,7 @@ void utils::Mesh::setIndices(const Indices& value)
 	setIndices(value.data(), static_cast<uint32_t>(value.size()));
 }
 
-const std::string vertex_shader_code = R"(
+const std::string utils::effects::BasicEffect::VertexShaderCode = R"(
 #version 450 core
 
 layout(location = POSITION_LOCATION) in vec3 aPosition;
@@ -103,7 +103,7 @@ void main()
 	gl_Position = settings.projection * settings.view * settings.model * vec4(aPosition, 1.0);
 })";
 
-const std::string fragment_shader_code = R"(
+const std::string utils::effects::BasicEffect::FragmentShaderCode = R"(
 #version 450 core
 
 layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
@@ -130,7 +130,6 @@ layout(location = 0) in struct
 } In;
 
 layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
-layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 #ifdef EFFECT_FUNC
 void EFFECT_FUNC(inout vec4);
@@ -147,7 +146,42 @@ void main()
 #endif
 })";
 
-const std::string utils::effects::forward_shading::DirectionalLight::Shader = R"(
+static std::vector<std::string> ConcatDefines(std::vector<std::vector<std::string>> defines)
+{
+	auto result = std::vector<std::string>();
+	for (const auto& strs : defines)
+	{
+		result.insert(result.end(), strs.begin(), strs.end());
+	}
+	return result;
+}
+
+static std::vector<std::string> MakeBasicEffectDefines()
+{
+	return ConcatDefines({ utils::Mesh::Vertex::Defines, {
+		"COLOR_TEXTURE_BINDING 0",
+		"SETTINGS_UNIFORM_BINDING 2"
+	} });
+}
+
+static std::vector<std::string> MakeEffectDefines()
+{
+	return ConcatDefines({ utils::effects::BasicEffect::Defines, {
+		"NORMAL_TEXTURE_BINDING 1",
+		"EFFECT_UNIFORM_BINDING 3",
+		"EFFECT_FUNC effect"
+	} });
+}
+
+const std::vector<std::string> utils::effects::BasicEffect::Defines = MakeBasicEffectDefines();
+
+const std::vector<std::string> utils::effects::forward_shading::DirectionalLight::Defines = MakeEffectDefines();
+
+const std::string utils::effects::forward_shading::DirectionalLight::VertexShaderCode =
+	utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::forward_shading::DirectionalLight::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
@@ -156,6 +190,8 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 	vec3 specular;
 	float shininess;
 } light;
+
+layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void effect(inout vec4 result)
 {
@@ -189,7 +225,13 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::forward_shading::PointLight::Shader = R"(
+const std::vector<std::string> utils::effects::forward_shading::PointLight::Defines = MakeEffectDefines();
+
+const std::string utils::effects::forward_shading::PointLight::VertexShaderCode =
+	utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::forward_shading::PointLight::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
@@ -201,6 +243,8 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 	float quadratic_attenuation;
 	float shininess;
 } light;
+
+layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void effect(inout vec4 result)
 {
@@ -242,7 +286,13 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::deferred_shading::DirectionalLight::Shader = R"(
+const std::vector<std::string> utils::effects::deferred_shading::DirectionalLight::Defines = MakeEffectDefines();
+
+const std::string utils::effects::deferred_shading::DirectionalLight::VertexShaderCode =
+	utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::deferred_shading::DirectionalLight::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 direction;
@@ -277,7 +327,13 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::deferred_shading::PointLight::Shader = R"(
+const std::vector<std::string> utils::effects::deferred_shading::PointLight::Defines = MakeEffectDefines();
+
+const std::string utils::effects::deferred_shading::PointLight::VertexShaderCode =
+	utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::deferred_shading::PointLight::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _light
 {
 	vec3 position;
@@ -323,10 +379,18 @@ void effect(inout vec4 result)
 	result *= vec4(intensity, 1.0);
 })";
 
-const std::string utils::effects::deferred_shading::ExtractGeometryBuffer::Shader = R"(
+const std::vector<std::string> utils::effects::deferred_shading::ExtractGeometryBuffer::Defines = MakeEffectDefines();
+
+const std::string utils::effects::deferred_shading::ExtractGeometryBuffer::VertexShaderCode =
+	utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::deferred_shading::ExtractGeometryBuffer::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 //layout(location = 0) out vec4 result; // color_buffer
 layout(location = 1) out vec4 normal_buffer;
 layout(location = 2) out vec4 positions_buffer;
+
+layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void effect(inout vec4 result)
 {
@@ -351,7 +415,12 @@ void effect(inout vec4 result)
 	positions_buffer = vec4(In.world_position, 1.0);
 })";
 
-const std::string utils::effects::GaussianBlur::Shader = R"(
+const std::vector<std::string> utils::effects::GaussianBlur::Defines = MakeEffectDefines();
+
+const std::string utils::effects::GaussianBlur::VertexShaderCode = utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::GaussianBlur::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _blur
 {
 	vec2 direction;
@@ -374,7 +443,12 @@ void effect(inout vec4 result)
 	result += texture(sColorTexture, In.tex_coord - off2) * 0.0702702703;
 })";
 
-const std::string utils::effects::BloomDownsample::Shader = R"(
+const std::vector<std::string> utils::effects::BloomDownsample::Defines = MakeEffectDefines();
+
+const std::string utils::effects::BloomDownsample::VertexShaderCode = utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::BloomDownsample::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _downsample
 {
 	uint step_number;
@@ -455,7 +529,12 @@ void effect(inout vec4 result)
 	result = vec4(downsample13tap(sColorTexture, In.tex_coord), 1.0);
 })";
 
-const std::string utils::effects::BloomUpsample::Shader = R"(
+const std::vector<std::string> utils::effects::BloomUpsample::Defines = MakeEffectDefines();
+
+const std::string utils::effects::BloomUpsample::VertexShaderCode = utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::BloomUpsample::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 void effect(inout vec4 result)
 {
 	const vec2 pixelSize = vec2(1.0) / textureSize(sColorTexture, 0);
@@ -484,7 +563,12 @@ void effect(inout vec4 result)
 	result = vec4(r, 1.0) * settings.color;
 })";
 
-const std::string utils::effects::BrightFilter::Shader = R"(
+const std::vector<std::string> utils::effects::BrightFilter::Defines = MakeEffectDefines();
+
+const std::string utils::effects::BrightFilter::VertexShaderCode = utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::BrightFilter::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _bright
 {
 	float threshold;
@@ -501,7 +585,12 @@ void effect(inout vec4 result)
 	result *= sign(luminance);
 })";
 
-const std::string utils::effects::Grayscale::Shader = R"(
+const std::vector<std::string> utils::effects::Grayscale::Defines = MakeEffectDefines();
+
+const std::string utils::effects::Grayscale::VertexShaderCode = utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::Grayscale::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _grayscale
 {
 	float intensity;
@@ -517,7 +606,12 @@ void effect(inout vec4 result)
 	result.rgb = mix(result.rgb, vec3(gray), grayscale.intensity);
 })";
 
-const std::string utils::effects::AlphaTest::Shader = R"(
+const std::vector<std::string> utils::effects::AlphaTest::Defines = MakeEffectDefines();
+
+const std::string utils::effects::AlphaTest::VertexShaderCode = utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::AlphaTest::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _alphatest
 {
 	float threshold;
@@ -533,7 +627,12 @@ void effect(inout vec4 result)
 		discard;
 })";
 
-const std::string utils::effects::GammaCorrection::Shader = R"(
+const std::vector<std::string> utils::effects::GammaCorrection::Defines = MakeEffectDefines();
+
+const std::string utils::effects::GammaCorrection::VertexShaderCode = utils::effects::BasicEffect::VertexShaderCode;
+
+const std::string utils::effects::GammaCorrection::FragmentShaderCode =
+	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _gamma
 {
 	float value;
@@ -549,7 +648,7 @@ void effect(inout vec4 result)
 
 static std::optional<utils::Context> gContext;
 
-utils::effects::forward_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
+utils::effects::BaseDirectionalLightEffect::BaseDirectionalLightEffect(const utils::DirectionalLight& light) :
 	direction(light.direction),
 	ambient(light.ambient),
 	diffuse(light.diffuse),
@@ -558,28 +657,7 @@ utils::effects::forward_shading::DirectionalLight::DirectionalLight(const utils:
 {
 }
 
-utils::effects::forward_shading::PointLight::PointLight(const utils::PointLight& light) :
-	position(light.position),
-	ambient(light.ambient),
-	diffuse(light.diffuse),
-	specular(light.specular),
-	constant_attenuation(light.constant_attenuation),
-	linear_attenuation(light.linear_attenuation),
-	quadratic_attenuation(light.quadratic_attenuation),
-	shininess(light.shininess)
-{
-}
-
-utils::effects::deferred_shading::DirectionalLight::DirectionalLight(const utils::DirectionalLight& light) :
-	direction(light.direction),
-	ambient(light.ambient),
-	diffuse(light.diffuse),
-	specular(light.specular),
-	shininess(light.shininess)
-{
-}
-
-utils::effects::deferred_shading::PointLight::PointLight(const utils::PointLight& light) :
+utils::effects::BasePointLightEffect::BasePointLightEffect(const utils::PointLight& light) :
 	position(light.position),
 	ambient(light.ambient),
 	diffuse(light.diffuse),
@@ -637,19 +715,6 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const
 	return { proj, view };
 }
 
-Shader utils::MakeEffectShader(const std::string& effect_shader_func)
-{
-	auto defines = utils::Mesh::Vertex::Defines;
-	defines.insert(defines.end(), {
-		"COLOR_TEXTURE_BINDING 0",
-		"NORMAL_TEXTURE_BINDING 1",
-		"SETTINGS_UNIFORM_BINDING 2",
-		"EFFECT_UNIFORM_BINDING 3",
-		"EFFECT_FUNC effect"
-	});
-	return Shader(vertex_shader_code, fragment_shader_code + effect_shader_func, defines);
-}
-
 void utils::ClearContext()
 {
 	gContext.reset();
@@ -665,19 +730,7 @@ utils::Context& utils::GetContext()
 
 static const uint32_t white_pixel = 0xFFFFFFFF;
 
-static std::vector<std::string> MakeDefaultShaderDefines()
-{
-	auto result = utils::Mesh::Vertex::Defines;
-	result.insert(result.end(), {
-		"COLOR_TEXTURE_BINDING 0",
-		"NORMAL_TEXTURE_BINDING 1",
-		"SETTINGS_UNIFORM_BINDING 2"
-	});
-	return result;
-}
-
 utils::Context::Context() :
-	default_shader(vertex_shader_code, fragment_shader_code, MakeDefaultShaderDefines()),
 	default_mesh({
 		{ { -1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
 		{ { -1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
@@ -690,7 +743,7 @@ utils::Context::Context() :
 
 // commands
 
-utils::commands::SetEffect::SetEffect(std::nullopt_t)
+utils::commands::SetEffect::SetEffect(std::nullopt_t) : SetEffect(effects::BasicEffect{})
 {
 }
 
@@ -762,7 +815,7 @@ utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
 {
 }
 
-utils::commands::SetCustomTexture::SetCustomTexture(uint32_t _binding, const Texture* _texture) :
+utils::commands::SetTexture::SetTexture(uint32_t _binding, const Texture* _texture) :
 	binding(_binding),
 	texture(_texture)
 {
@@ -836,10 +889,6 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 		SetTexture(binding, texture ? *texture : context.white_pixel_texture);
 	};
 
-	auto set_shader = [&](Shader* shader) {
-		SetShader(shader == nullptr ? context.default_shader : *shader);
-	};
-
 	SetTopology(Topology::TriangleList);
 	SetViewport(std::nullopt);
 	SetScissor(std::nullopt);
@@ -853,8 +902,6 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	SetStencilMode(std::nullopt);
 	SetInputLayout(Mesh::Vertex::Layout);
 	set_texture(ColorTextureBinding, nullptr);
-	set_texture(NormalTextureBinding, nullptr);
-	set_shader(nullptr);
 
 	const Mesh* mesh = &context.default_mesh;
 	bool mesh_dirty = true;
@@ -871,6 +918,7 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	} settings;
 
 	bool settings_dirty = true;
+	bool effect_setted_up = false;
 
 	std::function<void(const Command&)> execute_command;
 
@@ -921,22 +969,26 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				mesh_dirty = true;
 			},
 			[&](const commands::SetEffect& cmd) {
-				set_shader(cmd.shader);
+				if (cmd.shader == nullptr)
+					throw std::runtime_error("shader must be not null");
 
+				effect_setted_up = true;
+				SetShader(*cmd.shader);
+				
 				if (cmd.uniform_data.has_value())
 				{
 					const auto& uniform = cmd.uniform_data.value();
 					SetUniformBuffer(EffectUniformBinding, (void*)uniform.data(), uniform.size());
 				}
 			},
-			[&](const commands::SetCustomTexture& cmd) {
+			[&](const commands::SetTexture& cmd) {
 				set_texture(cmd.binding, cmd.texture);
 			},
 			[&](const commands::SetColorTexture& cmd) {
-				execute_command(commands::SetCustomTexture(ColorTextureBinding, cmd.color_texture));
+				execute_command(commands::SetTexture(ColorTextureBinding, cmd.color_texture));
 			},
 			[&](const commands::SetNormalTexture& cmd) {
-				execute_command(commands::SetCustomTexture(NormalTextureBinding, cmd.normal_texture));
+				execute_command(commands::SetTexture(NormalTextureBinding, cmd.normal_texture));
 				settings.has_normal_texture = cmd.normal_texture != nullptr;
 				settings_dirty = true;
 			},
@@ -979,6 +1031,9 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				execute_commands(*cmd.subcommands);
 			},
 			[&](const commands::Draw& cmd) {
+				if (!effect_setted_up)
+					execute_command(commands::SetEffect(std::nullopt));
+
 				if (mesh_dirty)
 				{
 					const auto& vertex_buffer = mesh->getVertexBuffer();
@@ -1319,9 +1374,9 @@ static void DrawSceneDeferredShading(RenderTarget* target, const utils::Perspect
 		.commands = {
 			commands::SetEyePosition(camera.position),
 			commands::SetBlendMode(BlendStates::Additive),
-			commands::SetCustomTexture(5, color_buffer),
-			commands::SetCustomTexture(6, normal_buffer),
-			commands::SetCustomTexture(7, positions_buffer)
+			commands::SetTexture(5, color_buffer),
+			commands::SetTexture(6, normal_buffer),
+			commands::SetTexture(7, positions_buffer)
 		}
 	};
 

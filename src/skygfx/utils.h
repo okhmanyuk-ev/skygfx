@@ -83,81 +83,84 @@ namespace skygfx::utils
 
 	namespace effects
 	{
+		struct BasicEffect
+		{
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = false;
+			static const std::vector<std::string> Defines;
+		};
+
+		struct alignas(16) BaseDirectionalLightEffect
+		{
+			BaseDirectionalLightEffect() = default;
+			BaseDirectionalLightEffect(const utils::DirectionalLight& light);
+
+			alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
+			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+			float shininess = 32.0f;
+		
+			static constexpr bool HasEffectUniform = true;
+		};
+
+		struct alignas(16) BasePointLightEffect
+		{
+			BasePointLightEffect() = default;
+			BasePointLightEffect(const utils::PointLight& light);
+
+			alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
+			alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
+			alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
+			float constant_attenuation = 0.0f;
+			float linear_attenuation = 0.00128f;
+			float quadratic_attenuation = 0.0f;
+			float shininess = 32.0f;
+
+			static constexpr bool HasEffectUniform = true;
+		};
+
 		namespace forward_shading
 		{
-			struct alignas(16) DirectionalLight
+			struct alignas(16) DirectionalLight : BaseDirectionalLightEffect
 			{
-				DirectionalLight() = default;
-				DirectionalLight(const utils::DirectionalLight& light);
-
-				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
+				static const std::string VertexShaderCode;
+				static const std::string FragmentShaderCode;
+				static const std::vector<std::string> Defines;
 			};
 
-			struct alignas(16) PointLight
+			struct alignas(16) PointLight : BasePointLightEffect
 			{
-				PointLight() = default;
-				PointLight(const utils::PointLight& light);
-
-				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float constant_attenuation = 0.0f;
-				float linear_attenuation = 0.00128f;
-				float quadratic_attenuation = 0.0f;
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
+				static const std::string VertexShaderCode;
+				static const std::string FragmentShaderCode;
+				static const std::vector<std::string> Defines;
 			};
 		}
 
 		namespace deferred_shading
 		{
-			struct alignas(16) DirectionalLight
+			struct alignas(16) DirectionalLight : BaseDirectionalLightEffect
 			{
-				DirectionalLight() = default;
-				DirectionalLight(const utils::DirectionalLight& light);
-
-				alignas(16) glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
+				static const std::string VertexShaderCode;
+				static const std::string FragmentShaderCode;
+				static const std::vector<std::string> Defines;
 			};
 
-			struct alignas(16) PointLight
+			struct alignas(16) PointLight : BasePointLightEffect
 			{
-				PointLight() = default;
-				PointLight(const utils::PointLight& light);
-
-				alignas(16) glm::vec3 position = { 0.0f, 0.0f, 0.0f };
-				alignas(16) glm::vec3 ambient = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 diffuse = { 1.0f, 1.0f, 1.0f };
-				alignas(16) glm::vec3 specular = { 1.0f, 1.0f, 1.0f };
-				float constant_attenuation = 0.0f;
-				float linear_attenuation = 0.00128f;
-				float quadratic_attenuation = 0.0f;
-				float shininess = 32.0f;
-
-				static const std::string Shader;
-				static constexpr bool HasUniform = true;
+				static const std::string VertexShaderCode;
+				static const std::string FragmentShaderCode;
+				static const std::vector<std::string> Defines;
 			};
 
 			struct alignas(16) ExtractGeometryBuffer
 			{
-				static const std::string Shader;
-				static constexpr bool HasUniform = false;
+				static const std::string VertexShaderCode;
+				static const std::string FragmentShaderCode;
+				static constexpr bool HasEffectUniform = false;
+				static const std::vector<std::string> Defines;
 			};
 		}
 
@@ -167,8 +170,10 @@ namespace skygfx::utils
 
 			glm::vec2 direction;
 
-			static const std::string Shader;
-			static constexpr bool HasUniform = true;
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = true;
+			static const std::vector<std::string> Defines;
 		};
 
 		struct alignas(16) BloomDownsample
@@ -178,14 +183,18 @@ namespace skygfx::utils
 			glm::vec2 resolution;
 			uint32_t step_number;
 
-			static const std::string Shader;
-			static constexpr bool HasUniform = true;
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = true;
+			static const std::vector<std::string> Defines;
 		};
 
 		struct alignas(16) BloomUpsample
 		{
-			static const std::string Shader;
-			static constexpr bool HasUniform = false;
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = false;
+			static const std::vector<std::string> Defines;
 		};
 
 		struct alignas(16) BrightFilter
@@ -194,38 +203,48 @@ namespace skygfx::utils
 
 			float threshold = 0.9f;
 
-			static const std::string Shader;
-			static constexpr bool HasUniform = true;
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = true;
+			static const std::vector<std::string> Defines;
 		};
 
 		struct alignas(16) Grayscale
 		{
 			float intensity = 1.0f;
 
-			static const std::string Shader;
-			static constexpr bool HasUniform = true;
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = true;
+			static const std::vector<std::string> Defines;
 		};
 
 		struct alignas(16) AlphaTest
 		{
 			float threshold = 0.0f;
 
-			static const std::string Shader;
-			static constexpr bool HasUniform = true;
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = true;
+			static const std::vector<std::string> Defines;
 		};
 
 		struct alignas(16) GammaCorrection
 		{
 			float gamma = 2.2f;
 
-			static const std::string Shader;
-			static constexpr bool HasUniform = true;
+			static const std::string VertexShaderCode;
+			static const std::string FragmentShaderCode;
+			static constexpr bool HasEffectUniform = true;
+			static const std::vector<std::string> Defines;
 		};
 
 		template <typename T>
 		concept Effect = requires {
-			{ T::Shader } -> std::convertible_to<std::string>;
-			{ T::HasUniform } -> std::convertible_to<bool>;
+			{ T::VertexShaderCode } -> std::convertible_to<std::string>;
+			{ T::FragmentShaderCode } -> std::convertible_to<std::string>;
+			{ T::HasEffectUniform } -> std::convertible_to<bool>;
+			{ T::Defines } -> std::convertible_to<std::vector<std::string>>;
 		};
 	}
 
@@ -254,13 +273,10 @@ namespace skygfx::utils
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeCameraMatrices(const OrthogonalCamera& camera);
 	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeCameraMatrices(const PerspectiveCamera& camera);
 
-	Shader MakeEffectShader(const std::string& effect_shader_func);
-
 	struct Context
 	{
 		Context();
 
-		Shader default_shader;
 		std::unordered_map<std::type_index, Shader> shaders;
 		Mesh default_mesh;
 		Texture white_pixel_texture;
@@ -283,11 +299,11 @@ namespace skygfx::utils
 				auto& context = GetContext();
 
 				if (!context.shaders.contains(type_index))
-					context.shaders.insert({ type_index, MakeEffectShader(T::Shader) });
+					context.shaders.insert({ type_index, Shader(T::VertexShaderCode, T::FragmentShaderCode, T::Defines) });
 
 				shader = &context.shaders.at(type_index);
 
-				if (T::HasUniform)
+				if (T::HasEffectUniform)
 				{
 					uniform_data.emplace();
 					uniform_data.value().resize(sizeof(T));
@@ -371,9 +387,9 @@ namespace skygfx::utils
 			const Mesh* mesh;
 		};
 
-		struct SetCustomTexture
+		struct SetTexture
 		{
-			SetCustomTexture(uint32_t binding, const Texture* texture);
+			SetTexture(uint32_t binding, const Texture* texture);
 			uint32_t binding;
 			const Texture* texture;
 		};
@@ -455,7 +471,7 @@ namespace skygfx::utils
 		commands::SetStencilMode,
 		commands::SetMesh,
 		commands::SetEffect,
-		commands::SetCustomTexture,
+		commands::SetTexture,
 		commands::SetColorTexture,
 		commands::SetNormalTexture,
 		commands::SetColor,
