@@ -38,23 +38,6 @@ namespace skygfx::utils
 		std::optional<IndexBuffer> mIndexBuffer;
 	};
 
-	struct DrawVerticesCommand
-	{
-		std::optional<uint32_t> vertex_count = std::nullopt;
-		uint32_t vertex_offset = 0;
-	};
-
-	struct DrawIndexedVerticesCommand
-	{
-		std::optional<uint32_t> index_count = std::nullopt;
-		uint32_t index_offset = 0;
-	};
-
-	using DrawCommand = std::variant<
-		DrawVerticesCommand,
-		DrawIndexedVerticesCommand
-	>;
-
 	struct DirectionalLight
 	{
 		glm::vec3 direction = { 0.5f, 0.5f, 0.5f };
@@ -103,6 +86,7 @@ namespace skygfx::utils
 			float shininess = 32.0f;
 		
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 		};
 
 		struct alignas(16) BasePointLightEffect
@@ -120,6 +104,7 @@ namespace skygfx::utils
 			float shininess = 32.0f;
 
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 		};
 
 		namespace forward_shading
@@ -173,6 +158,7 @@ namespace skygfx::utils
 			static const std::string VertexShaderCode;
 			static const std::string FragmentShaderCode;
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 			static const std::vector<std::string> Defines;
 		};
 
@@ -186,6 +172,7 @@ namespace skygfx::utils
 			static const std::string VertexShaderCode;
 			static const std::string FragmentShaderCode;
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 			static const std::vector<std::string> Defines;
 		};
 
@@ -206,6 +193,7 @@ namespace skygfx::utils
 			static const std::string VertexShaderCode;
 			static const std::string FragmentShaderCode;
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 			static const std::vector<std::string> Defines;
 		};
 
@@ -216,6 +204,7 @@ namespace skygfx::utils
 			static const std::string VertexShaderCode;
 			static const std::string FragmentShaderCode;
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 			static const std::vector<std::string> Defines;
 		};
 
@@ -226,6 +215,7 @@ namespace skygfx::utils
 			static const std::string VertexShaderCode;
 			static const std::string FragmentShaderCode;
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 			static const std::vector<std::string> Defines;
 		};
 
@@ -236,6 +226,7 @@ namespace skygfx::utils
 			static const std::string VertexShaderCode;
 			static const std::string FragmentShaderCode;
 			static constexpr bool HasEffectUniform = true;
+			static constexpr uint32_t EffectUniformBinding = 3;
 			static const std::vector<std::string> Defines;
 		};
 
@@ -289,8 +280,14 @@ namespace skygfx::utils
 	{
 		struct SetEffect
 		{
+			struct Uniform
+			{
+				uint32_t binding;
+				std::vector<uint8_t> data;
+			};
+
 			SetEffect(std::nullopt_t);
-			SetEffect(Shader* shader, void* uniform_data, size_t uniform_size);
+			SetEffect(Shader* shader, uint32_t uniform_binding, void* uniform_data, size_t uniform_size);
 
 			template<effects::Effect T>
 			SetEffect(T value)
@@ -303,16 +300,17 @@ namespace skygfx::utils
 
 				shader = &context.shaders.at(type_index);
 
-				if (T::HasEffectUniform)
+				if constexpr (T::HasEffectUniform)
 				{
-					uniform_data.emplace();
-					uniform_data.value().resize(sizeof(T));
-					std::memcpy(uniform_data.value().data(), &value, sizeof(T));
+					uniform.emplace();
+					uniform->binding = T::EffectUniformBinding;
+					uniform->data.resize(sizeof(T));
+					std::memcpy(uniform->data.data(), &value, sizeof(T));
 				}
 			}
 
 			Shader* shader = nullptr;
-			std::optional<std::vector<uint8_t>> uniform_data;
+			std::optional<Uniform> uniform;
 		};
 
 		struct SetTopology
@@ -381,10 +379,30 @@ namespace skygfx::utils
 			std::optional<StencilMode> stencil_mode;
 		};
 
-		struct SetMesh
+		struct SetShader
 		{
-			SetMesh(const Mesh* mesh);
-			const Mesh* mesh;
+			SetShader(const Shader* shader);
+			const Shader* shader;
+		};
+
+		struct SetVertexBuffer
+		{
+			SetVertexBuffer(const VertexBuffer* buffer);
+			const VertexBuffer* buffer;
+		};
+
+		struct SetIndexBuffer
+		{
+			SetIndexBuffer(const IndexBuffer* buffer);
+			const IndexBuffer* buffer;
+		};
+
+		struct SetUniformBuffer
+		{
+			SetUniformBuffer(uint32_t binding, const void* memory, size_t size);
+			uint32_t binding;
+			const void* memory;
+			size_t size;
 		};
 
 		struct SetTexture
@@ -392,6 +410,28 @@ namespace skygfx::utils
 			SetTexture(uint32_t binding, const Texture* texture);
 			uint32_t binding;
 			const Texture* texture;
+		};
+
+		struct Draw
+		{
+			Draw(uint32_t vertex_count, uint32_t vertex_offset = 0, uint32_t instance_count = 1);
+			uint32_t vertex_count;
+			uint32_t vertex_offset;
+			uint32_t instance_count;
+		};
+
+		struct DrawIndexed
+		{
+			DrawIndexed(uint32_t index_count, uint32_t index_offset = 0, uint32_t instance_count = 1);
+			uint32_t index_count;
+			uint32_t index_offset;
+			uint32_t instance_count;
+		};
+
+		struct SetMesh
+		{
+			SetMesh(const Mesh* mesh);
+			const Mesh* mesh;
 		};
 
 		struct SetColorTexture
@@ -448,9 +488,26 @@ namespace skygfx::utils
 			float mipmap_bias;
 		};
 
-		struct Draw
+		struct DrawMesh
 		{
-			Draw(std::optional<DrawCommand> draw_command = std::nullopt);
+			struct DrawVerticesCommand
+			{
+				std::optional<uint32_t> vertex_count = std::nullopt;
+				uint32_t vertex_offset = 0;
+			};
+
+			struct DrawIndexedVerticesCommand
+			{
+				std::optional<uint32_t> index_count = std::nullopt;
+				uint32_t index_offset = 0;
+			};
+
+			using DrawCommand = std::variant<
+				DrawVerticesCommand,
+				DrawIndexedVerticesCommand
+			>;
+
+			DrawMesh(std::optional<DrawCommand> draw_command = std::nullopt);
 			std::optional<DrawCommand> draw_command;
 		};
 
@@ -469,9 +526,15 @@ namespace skygfx::utils
 		commands::SetDepthBias,
 		commands::SetDepthMode,
 		commands::SetStencilMode,
+		commands::SetShader,
+		commands::SetVertexBuffer,
+		commands::SetIndexBuffer,
+		commands::SetUniformBuffer,
+		commands::SetTexture,
+		commands::Draw,
+		commands::DrawIndexed,
 		commands::SetMesh,
 		commands::SetEffect,
-		commands::SetTexture,
 		commands::SetColorTexture,
 		commands::SetNormalTexture,
 		commands::SetColor,
@@ -482,7 +545,7 @@ namespace skygfx::utils
 		commands::SetEyePosition,
 		commands::SetMipmapBias,
 		commands::Subcommands,
-		commands::Draw
+		commands::DrawMesh
 	>;
 
 	namespace commands
@@ -537,7 +600,7 @@ namespace skygfx::utils
 		Texture* color_texture = nullptr;
 		Texture* normal_texture = nullptr;
 		glm::vec4 color = { 1.0f, 1.0f, 1.0f, 1.0f };
-		std::optional<DrawCommand> draw_command = std::nullopt;
+		std::optional<commands::DrawMesh::DrawCommand> draw_command = std::nullopt;
 		glm::mat4 matrix = glm::mat4(1.0f);
 		CullMode cull_mode = CullMode::None;
 		TextureAddress texture_address = TextureAddress::Clamp;

@@ -747,12 +747,14 @@ utils::commands::SetEffect::SetEffect(std::nullopt_t) : SetEffect(effects::Basic
 {
 }
 
-utils::commands::SetEffect::SetEffect(Shader* _shader, void* _uniform_data, size_t uniform_size) :
+utils::commands::SetEffect::SetEffect(Shader* _shader, uint32_t uniform_binding, void* uniform_data,
+	size_t uniform_size) :
 	shader(_shader)
 {
-	uniform_data.emplace();
-	uniform_data.value().resize(uniform_size);
-	std::memcpy(uniform_data.value().data(), _uniform_data, uniform_size);
+	uniform.emplace();
+	uniform->binding = uniform_binding;
+	uniform->data.resize(uniform_size);
+	std::memcpy(uniform->data.data(), uniform_data, uniform_size);
 }
 
 utils::commands::SetTopology::SetTopology(Topology _topology) :
@@ -810,6 +812,26 @@ utils::commands::SetStencilMode::SetStencilMode(std::optional<StencilMode> _sten
 {
 }
 
+utils::commands::SetShader::SetShader(const Shader* _shader) :
+	shader(_shader)
+{
+}
+
+utils::commands::SetVertexBuffer::SetVertexBuffer(const VertexBuffer* _buffer) :
+	buffer(_buffer)
+{
+}
+
+utils::commands::SetIndexBuffer::SetIndexBuffer(const IndexBuffer* _buffer) :
+	buffer(_buffer)
+{
+}
+
+utils::commands::SetUniformBuffer::SetUniformBuffer(uint32_t _binding, const void* _memory, size_t _size) :
+	binding(_binding), memory(_memory), size(_size)
+{
+}
+
 utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
 	mesh(_mesh)
 {
@@ -818,6 +840,20 @@ utils::commands::SetMesh::SetMesh(const Mesh* _mesh) :
 utils::commands::SetTexture::SetTexture(uint32_t _binding, const Texture* _texture) :
 	binding(_binding),
 	texture(_texture)
+{
+}
+
+utils::commands::Draw::Draw(uint32_t _vertex_count, uint32_t _vertex_offset, uint32_t _instance_count) :
+	vertex_count(_vertex_count),
+	vertex_offset(_vertex_offset),
+	instance_count(_instance_count)
+{
+}
+
+utils::commands::DrawIndexed::DrawIndexed(uint32_t _index_count, uint32_t _index_offset, uint32_t _instance_count) :
+	index_count(_index_count),
+	index_offset(_index_offset),
+	instance_count(_instance_count)
 {
 }
 
@@ -871,24 +907,13 @@ utils::commands::Subcommands::Subcommands(const std::vector<Command>* _subcomman
 {
 }
 
-utils::commands::Draw::Draw(std::optional<DrawCommand> _draw_command) :
+utils::commands::DrawMesh::DrawMesh(std::optional<DrawCommand> _draw_command) :
 	draw_command(std::move(_draw_command))
 {
 }
 
 void utils::ExecuteCommands(const std::vector<Command>& cmds)
 {
-	constexpr uint32_t ColorTextureBinding = 0;
-	constexpr uint32_t NormalTextureBinding = 1;
-	constexpr uint32_t SettingsUniformBinding = 2;
-	constexpr uint32_t EffectUniformBinding = 3;
-
-	auto& context = GetContext();
-
-	auto set_texture = [&](uint32_t binding, const Texture* texture) {
-		SetTexture(binding, texture ? *texture : context.white_pixel_texture);
-	};
-
 	SetTopology(Topology::TriangleList);
 	SetViewport(std::nullopt);
 	SetScissor(std::nullopt);
@@ -901,7 +926,14 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 	SetDepthMode(std::nullopt);
 	SetStencilMode(std::nullopt);
 	SetInputLayout(Mesh::Vertex::Layout);
-	set_texture(ColorTextureBinding, nullptr);
+
+	constexpr uint32_t ColorTextureBinding = 0;
+	constexpr uint32_t NormalTextureBinding = 1;
+	constexpr uint32_t SettingsUniformBinding = 2;
+
+	auto& context = GetContext();
+
+	SetTexture(ColorTextureBinding, context.white_pixel_texture);
 
 	const Mesh* mesh = &context.default_mesh;
 	bool mesh_dirty = true;
@@ -931,39 +963,24 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 
 	execute_command = [&](const Command& _cmd) {
 		std::visit(cases{
-			[&](const commands::SetTopology& cmd) {
-				SetTopology(cmd.topology);
-			},
-			[&](const commands::SetViewport& cmd) {
-				SetViewport(cmd.viewport);
-			},
-			[&](const commands::SetScissor& cmd) {
-				SetScissor(cmd.scissor);
-			},
-			[&](const commands::SetBlendMode& cmd) {
-				SetBlendMode(cmd.blend_mode);
-			},
-			[&](const commands::SetSampler& cmd) {
-				SetSampler(cmd.sampler);
-			},
-			[&](const commands::SetCullMode& cmd) {
-				SetCullMode(cmd.cull_mode);
-			},
-			[&](const commands::SetTextureAddress& cmd) {
-				SetTextureAddress(cmd.texture_address);
-			},
-			[&](const commands::SetFrontFace& cmd) {
-				SetFrontFace(cmd.front_face);
-			},
-			[&](const commands::SetDepthBias& cmd) {
-				SetDepthBias(cmd.depth_bias);
-			},
-			[&](const commands::SetDepthMode& cmd) {
-				SetDepthMode(cmd.depth_mode);
-			},
-			[&](const commands::SetStencilMode& cmd) {
-				SetStencilMode(cmd.stencil_mode);
-			},
+			[&](const commands::SetTopology& cmd) { SetTopology(cmd.topology); },
+			[&](const commands::SetViewport& cmd) { SetViewport(cmd.viewport); },
+			[&](const commands::SetScissor& cmd) { SetScissor(cmd.scissor); },
+			[&](const commands::SetBlendMode& cmd) { SetBlendMode(cmd.blend_mode); },
+			[&](const commands::SetSampler& cmd) { SetSampler(cmd.sampler); },
+			[&](const commands::SetCullMode& cmd) { SetCullMode(cmd.cull_mode); },
+			[&](const commands::SetTextureAddress& cmd) { SetTextureAddress(cmd.texture_address); },
+			[&](const commands::SetFrontFace& cmd) { SetFrontFace(cmd.front_face); },
+			[&](const commands::SetDepthBias& cmd) { SetDepthBias(cmd.depth_bias); },
+			[&](const commands::SetDepthMode& cmd) { SetDepthMode(cmd.depth_mode); },
+			[&](const commands::SetStencilMode& cmd) { SetStencilMode(cmd.stencil_mode); },
+			[&](const commands::SetShader& cmd) { SetShader(*cmd.shader); },
+			[&](const commands::SetVertexBuffer& cmd) { SetVertexBuffer(*cmd.buffer); },
+			[&](const commands::SetIndexBuffer& cmd) { SetIndexBuffer(*cmd.buffer); },
+			[&](const commands::SetUniformBuffer& cmd) { SetUniformBuffer(cmd.binding, cmd.memory, cmd.size); },
+			[&](const commands::SetTexture& cmd) { SetTexture(cmd.binding, *cmd.texture); },
+			[&](const commands::Draw& cmd) { Draw(cmd.vertex_count, cmd.vertex_offset, cmd.instance_count); },
+			[&](const commands::DrawIndexed& cmd) { DrawIndexed(cmd.index_count, cmd.index_offset, cmd.instance_count); },
 			[&](const commands::SetMesh& cmd) {
 				mesh = cmd.mesh ? cmd.mesh : &context.default_mesh;
 				mesh_dirty = true;
@@ -973,22 +990,21 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 					throw std::runtime_error("shader must be not null");
 
 				effect_setted_up = true;
-				SetShader(*cmd.shader);
+				execute_command(commands::SetShader(cmd.shader));
 				
-				if (cmd.uniform_data.has_value())
+				if (cmd.uniform.has_value())
 				{
-					const auto& uniform = cmd.uniform_data.value();
-					SetUniformBuffer(EffectUniformBinding, (void*)uniform.data(), uniform.size());
+					execute_command(commands::SetUniformBuffer(cmd.uniform->binding, (void*)cmd.uniform->data.data(),
+						cmd.uniform->data.size()));
 				}
 			},
-			[&](const commands::SetTexture& cmd) {
-				set_texture(cmd.binding, cmd.texture);
-			},
 			[&](const commands::SetColorTexture& cmd) {
-				execute_command(commands::SetTexture(ColorTextureBinding, cmd.color_texture));
+				auto texture = cmd.color_texture ? cmd.color_texture : &context.white_pixel_texture;
+				execute_command(commands::SetTexture(ColorTextureBinding, texture));
 			},
 			[&](const commands::SetNormalTexture& cmd) {
-				execute_command(commands::SetTexture(NormalTextureBinding, cmd.normal_texture));
+				auto texture = cmd.normal_texture ? cmd.normal_texture : &context.white_pixel_texture;
+				execute_command(commands::SetTexture(NormalTextureBinding, texture));
 				settings.has_normal_texture = cmd.normal_texture != nullptr;
 				settings_dirty = true;
 			},
@@ -1030,7 +1046,7 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 			[&](const commands::Subcommands& cmd) {
 				execute_commands(*cmd.subcommands);
 			},
-			[&](const commands::Draw& cmd) {
+			[&](const commands::DrawMesh& cmd) {
 				if (!effect_setted_up)
 					execute_command(commands::SetEffect(std::nullopt));
 
@@ -1040,17 +1056,17 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 					const auto& index_buffer = mesh->getIndexBuffer();
 
 					if (vertex_buffer.has_value())
-						SetVertexBuffer(vertex_buffer.value());
+						execute_command(commands::SetVertexBuffer(&vertex_buffer.value()));
 					
 					if (index_buffer.has_value())
-						SetIndexBuffer(index_buffer.value());
+						execute_command(commands::SetIndexBuffer(&index_buffer.value()));
 
 					mesh_dirty = false;
 				}
 
 				if (settings_dirty)
 				{
-					SetUniformBuffer(SettingsUniformBinding, settings);
+					execute_command(commands::SetUniformBuffer(SettingsUniformBinding, &settings, sizeof(settings)));
 					settings_dirty = false;
 				}
 
@@ -1059,21 +1075,21 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				if (!draw_command.has_value())
 				{
 					if (mesh->getIndexCount() == 0)
-						draw_command = DrawVerticesCommand{};
+						draw_command = commands::DrawMesh::DrawVerticesCommand{};
 					else
-						draw_command = DrawIndexedVerticesCommand{};
+						draw_command = commands::DrawMesh::DrawIndexedVerticesCommand{};
 				}
 
 				std::visit(cases{
-					[&](const DrawVerticesCommand& draw) {
+					[&](const commands::DrawMesh::DrawVerticesCommand& draw) {
 						auto vertex_count = draw.vertex_count.value_or(mesh->getVertexCount());
 						auto vertex_offset = draw.vertex_offset;
-						Draw(vertex_count, vertex_offset);
+						execute_command(commands::Draw(vertex_count, vertex_offset));
 					},
-					[&](const DrawIndexedVerticesCommand& draw) {
+					[&](const commands::DrawMesh::DrawIndexedVerticesCommand& draw) {
 						auto index_count = draw.index_count.value_or(mesh->getIndexCount());
 						auto index_offset = draw.index_offset;
-						DrawIndexed(index_count, index_offset);
+						execute_command(commands::DrawIndexed(index_count, index_offset));
 					}
 				}, draw_command.value());
 			}
@@ -1111,7 +1127,7 @@ void utils::passes::Blit(Texture* src, RenderTarget* dst, const BlitOptions& opt
 		commands::SetColor(options.color),
 		commands::SetBlendMode(options.blend_mode),
 		commands::SetColorTexture(src),
-		commands::Draw()
+		commands::DrawMesh()
 	});
 
 	ExecuteRenderPass(render_pass);
@@ -1273,7 +1289,7 @@ std::vector<utils::Command> utils::Model::Draw(const Model& model, bool use_colo
 		commands::SetDepthMode(model.depth_mode),
 		commands::SetColor(model.color),
 		commands::SetSampler(model.sampler),
-		commands::Draw(model.draw_command)
+		commands::DrawMesh(model.draw_command)
 	};
 }
 
@@ -1391,7 +1407,7 @@ static void DrawSceneDeferredShading(RenderTarget* target, const utils::Perspect
 					return commands::SetEffect(effects::deferred_shading::PointLight(light));
 				}
 			}, light),
-			commands::Draw()
+			commands::DrawMesh()
 		});
 	}
 
@@ -1679,7 +1695,7 @@ void utils::Scratch::flush(bool sort_textures)
 			commands::SetModelMatrix(command.state.model_matrix),
 			commands::SetColorTexture(command.state.texture),
 			commands::SetTopology(command.topology),
-			commands::Draw(DrawIndexedVerticesCommand{
+			commands::DrawMesh(commands::DrawMesh::DrawIndexedVerticesCommand{
 				.index_count = command.index_count,
 				.index_offset = command.index_offset
 			})
