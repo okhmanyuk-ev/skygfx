@@ -117,8 +117,6 @@ layout(binding = SETTINGS_UNIFORM_BINDING) uniform _settings
 	uint has_normal_texture;
 } settings;
 
-layout(location = 0) out vec4 result;
-
 layout(location = 0) in struct
 {
 	vec3 world_position;
@@ -135,14 +133,22 @@ layout(binding = COLOR_TEXTURE_BINDING) uniform sampler2D sColorTexture;
 void EFFECT_FUNC(inout vec4);
 #endif
 
+vec4 GetBasicResult()
+{	
+	vec4 result = In.color;
+	result *= settings.color;
+	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	return result;
+}
+
+layout(location = 0) out vec4 result;
+
 void main()
 {
 #ifdef EFFECT_FUNC
 	EFFECT_FUNC(result);
 #else
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = GetBasicResult();
 #endif
 })";
 
@@ -195,9 +201,7 @@ layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void effect(inout vec4 result)
 {
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = GetBasicResult();
 
 	vec3 normal;
 
@@ -248,9 +252,7 @@ layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void effect(inout vec4 result)
 {
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = GetBasicResult();
 
 	vec3 normal;
 
@@ -394,9 +396,7 @@ layout(binding = NORMAL_TEXTURE_BINDING) uniform sampler2D sNormalTexture;
 
 void effect(inout vec4 result)
 {
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = GetBasicResult();
 
 	if (settings.has_normal_texture != 0)
 	{
@@ -576,10 +576,7 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _bright
 
 void effect(inout vec4 result)
 {
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-
+	result = GetBasicResult();
 	float luminance = dot(vec3(0.2125, 0.7154, 0.0721), result.xyz);
 	luminance = max(0.0, luminance - bright.threshold);
 	result *= sign(luminance);
@@ -598,10 +595,7 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _grayscale
 
 void effect(inout vec4 result)
 {
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
-
+	result = GetBasicResult();
 	float gray = dot(result.rgb, vec3(0.299, 0.587, 0.114));
 	result.rgb = mix(result.rgb, vec3(gray), grayscale.intensity);
 })";
@@ -619,9 +613,7 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _alphatest
 
 void effect(inout vec4 result)
 {
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = GetBasicResult();
 
 	if (result.a <= alphatest.threshold)
 		discard;
@@ -640,9 +632,7 @@ layout(binding = EFFECT_UNIFORM_BINDING) uniform _gamma
 
 void effect(inout vec4 result)
 {
-	result = In.color;
-	result *= settings.color;
-	result *= texture(sColorTexture, In.tex_coord, settings.mipmap_bias);
+	result = GetBasicResult();
     result.rgb = pow(result.rgb, vec3(1.0 / gamma.value));
 })";
 
