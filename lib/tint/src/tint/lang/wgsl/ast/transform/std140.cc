@@ -436,7 +436,6 @@ struct Std140::State {
                         //   this method only handles types transitively used as uniform buffers.
                         // * Runtime-sized arrays cannot be used in uniform buffers.
                         TINT_ICE() << "unexpected non-constant array count";
-                        count = 1;
                     }
                     return b.ty.array(std140, b.Expr(u32(count.value())), std::move(attrs));
                 }
@@ -456,6 +455,8 @@ struct Std140::State {
         uint32_t size) {
         // Replace the member with column vectors.
         const auto num_columns = mat->columns();
+        const auto column_size = mat->ColumnType()->Size();
+        const auto column_stride = mat->ColumnStride();
         // Build a struct member for each column of the matrix
         tint::Vector<const StructMember*, 4> out;
         for (uint32_t i = 0; i < num_columns; i++) {
@@ -466,10 +467,13 @@ struct Std140::State {
                 // needs to be applied to the first column vector.
                 attributes.Push(b.MemberAlign(i32(align)));
             }
-            if ((i == num_columns - 1) && mat->Size() != size) {
-                // The matrix was @size() annotated with a larger size than the
-                // natural size for the matrix. This extra padding needs to be
-                // applied to the last column vector.
+            if ((i == num_columns - 1) &&
+                (column_stride * (num_columns - 1) + column_size) != size) {
+                // The matrix size is larger than the individual component vectors.
+                // This occurs with matNx3 matrices, as the last vec3 column has space for one extra
+                // trailing scalar, which is occupied by the matrix. It also applies to matrices
+                // with an explicit @size() attribute.
+                // Apply extra padding needs to the last column vector.
                 attributes.Push(
                     b.MemberSize(AInt(size - mat->ColumnType()->Align() * (num_columns - 1))));
             }
@@ -522,7 +526,6 @@ struct Std140::State {
                     }
                     TINT_ICE() << "unexpected variable found walking access chain: "
                                << user->Variable()->Declaration()->name->symbol.Name();
-                    return Action::kError;
                 },
                 [&](const sem::StructMemberAccess* a) {
                     // Is this a std140 decomposed matrix?
@@ -578,15 +581,13 @@ struct Std140::State {
                                           default:
                                               TINT_ICE() << "unhandled unary op for access chain: "
                                                          << u->op;
-                                              return Action::kError;
                                       }
                                   });
                 },
-                [&](Default) {
+                [&](Default) -> Action {
                     TINT_ICE() << "unhandled expression type for access chain\n"
                                << "AST: " << expr->Declaration()->TypeInfo().name << "\n"
                                << "SEM: " << expr->TypeInfo().name;
-                    return Action::kError;
                 });
 
             switch (action) {
@@ -631,7 +632,6 @@ struct Std140::State {
                     //   this method only handles types transitively used as uniform buffers.
                     // * Runtime-sized arrays cannot be used in uniform buffers.
                     TINT_ICE() << "unexpected non-constant array count";
-                    count = 1;
                 }
                 return "arr" + std::to_string(count.value()) + "_" + ConvertSuffix(arr->ElemType());
             },
@@ -733,7 +733,6 @@ struct Std140::State {
                         //   this method only handles types transitively used as uniform buffers.
                         // * Runtime-sized arrays cannot be used in uniform buffers.
                         TINT_ICE() << "unexpected non-constant array count";
-                        count = 1;
                     }
                     stmts.Push(b.Decl(var));
                     stmts.Push(b.For(b.Decl(i),                          //

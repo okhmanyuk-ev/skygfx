@@ -52,6 +52,7 @@
 #include "src/tint/lang/wgsl/ast/identifier.h"
 #include "src/tint/lang/wgsl/ast/if_statement.h"
 #include "src/tint/lang/wgsl/ast/increment_decrement_statement.h"
+#include "src/tint/lang/wgsl/ast/input_attachment_index_attribute.h"
 #include "src/tint/lang/wgsl/ast/internal_attribute.h"
 #include "src/tint/lang/wgsl/ast/interpolate_attribute.h"
 #include "src/tint/lang/wgsl/ast/invariant_attribute.h"
@@ -133,12 +134,12 @@ using GlobalMap = Hashmap<Symbol, Global*, 16>;
 
 /// @returns a new error diagnostic with the given source.
 diag::Diagnostic& AddError(diag::List& diagnostics, const Source& source) {
-    return diagnostics.AddError(diag::System::Resolver, source);
+    return diagnostics.AddError(source);
 }
 
 /// @returns a new note diagnostic with the given source.
 diag::Diagnostic& AddNote(diag::List& diagnostics, const Source& source) {
-    return diagnostics.AddNote(diag::System::Resolver, source);
+    return diagnostics.AddNote(source);
 }
 
 /// DependencyScanner is used to traverse a module to build the list of
@@ -379,6 +380,7 @@ class DependencyScanner {
             [&](const ast::ColorAttribute* color) { TraverseExpression(color->expr); },
             [&](const ast::GroupAttribute* group) { TraverseExpression(group->expr); },
             [&](const ast::IdAttribute* id) { TraverseExpression(id->expr); },
+            [&](const ast::InputAttachmentIndexAttribute* idx) { TraverseExpression(idx->expr); },
             [&](const ast::BlendSrcAttribute* index) { TraverseExpression(index->expr); },
             [&](const ast::InterpolateAttribute* interpolate) {
                 TraverseExpression(interpolate->type);
@@ -760,7 +762,6 @@ struct DependencyAnalysis {
         }
         TINT_ICE() << "failed to find dependency info for edge: '" << NameOf(from->node) << "' -> '"
                    << NameOf(to->node) << "'";
-        return {};
     }
 
     /// CyclicDependencyFound() emits an error diagnostic for a cyclic dependency.
@@ -907,7 +908,6 @@ std::string ResolvedIdentifier::String() const {
     }
 
     TINT_UNREACHABLE() << "unhandled ResolvedIdentifier";
-    return "<unknown>";
 }
 
 }  // namespace tint::resolver

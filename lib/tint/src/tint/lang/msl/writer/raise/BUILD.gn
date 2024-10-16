@@ -46,8 +46,12 @@ if (tint_build_msl_writer) {
     sources = [
       "builtin_polyfill.cc",
       "builtin_polyfill.h",
+      "module_scope_vars.cc",
+      "module_scope_vars.h",
       "raise.cc",
       "raise.h",
+      "shader_io.cc",
+      "shader_io.h",
     ]
     deps = [
       "${tint_src_dir}/api/common",
@@ -57,6 +61,7 @@ if (tint_build_msl_writer) {
       "${tint_src_dir}/lang/core/intrinsic",
       "${tint_src_dir}/lang/core/ir",
       "${tint_src_dir}/lang/core/ir/transform",
+      "${tint_src_dir}/lang/core/ir/transform/common",
       "${tint_src_dir}/lang/core/type",
       "${tint_src_dir}/lang/msl",
       "${tint_src_dir}/lang/msl/intrinsic",
@@ -84,7 +89,11 @@ if (tint_build_msl_writer) {
 if (tint_build_unittests) {
   if (tint_build_msl_writer) {
     tint_unittests_source_set("unittests") {
-      sources = [ "builtin_polyfill_test.cc" ]
+      sources = [
+        "builtin_polyfill_test.cc",
+        "module_scope_vars_test.cc",
+        "shader_io_test.cc",
+      ]
       deps = [
         "${tint_src_dir}:gmock_and_gtest",
         "${tint_src_dir}/api/common",

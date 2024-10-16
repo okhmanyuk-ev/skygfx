@@ -369,6 +369,9 @@ BuiltinFn ParseBuiltinFn(std::string_view name) {
     if (name == "textureLoad") {
         return BuiltinFn::kTextureLoad;
     }
+    if (name == "inputAttachmentLoad") {
+        return BuiltinFn::kInputAttachmentLoad;
+    }
     if (name == "atomicLoad") {
         return BuiltinFn::kAtomicLoad;
     }
@@ -638,6 +641,8 @@ const char* str(BuiltinFn i) {
             return "textureStore";
         case BuiltinFn::kTextureLoad:
             return "textureLoad";
+        case BuiltinFn::kInputAttachmentLoad:
+            return "inputAttachmentLoad";
         case BuiltinFn::kAtomicLoad:
             return "atomicLoad";
         case BuiltinFn::kAtomicStore:
@@ -696,7 +701,7 @@ bool IsTexture(BuiltinFn f) {
            f == BuiltinFn::kTextureSampleCompareLevel ||     //
            f == BuiltinFn::kTextureSampleGrad ||             //
            f == BuiltinFn::kTextureSampleLevel ||            //
-           f == BuiltinFn::kTextureStore;
+           f == BuiltinFn::kTextureStore || f == BuiltinFn::kInputAttachmentLoad;
 }
 
 bool IsImageQuery(BuiltinFn f) {
@@ -752,6 +757,18 @@ bool HasSideEffects(BuiltinFn f) {
         case BuiltinFn::kAtomicStore:
         case BuiltinFn::kAtomicSub:
         case BuiltinFn::kAtomicXor:
+        case BuiltinFn::kDpdx:
+        case BuiltinFn::kDpdxCoarse:
+        case BuiltinFn::kDpdxFine:
+        case BuiltinFn::kDpdy:
+        case BuiltinFn::kDpdyCoarse:
+        case BuiltinFn::kDpdyFine:
+        case BuiltinFn::kFwidth:
+        case BuiltinFn::kFwidthCoarse:
+        case BuiltinFn::kFwidthFine:
+        case BuiltinFn::kTextureSample:
+        case BuiltinFn::kTextureSampleBias:
+        case BuiltinFn::kTextureSampleCompare:
         case BuiltinFn::kTextureStore:
         case BuiltinFn::kWorkgroupUniformLoad:
             return true;

@@ -834,9 +834,9 @@ struct DirectVariableAccess::State {
                     if (auto incoming_shape = variant_sig.Get(param)) {
                         auto& symbols = *variant.ptr_param_symbols.Get(param);
                         if (symbols.base_ptr.IsValid()) {
-                            auto base_ptr_ty =
-                                b.ty.ptr(incoming_shape->root.address_space,
-                                         CreateASTTypeFor(ctx, incoming_shape->root.type));
+                            auto base_ptr_ty = b.ty.ptr(
+                                incoming_shape->root.address_space,
+                                CreateASTTypeFor(ctx, incoming_shape->root.type->UnwrapPtrOrRef()));
                             params.Push(b.Param(symbols.base_ptr, base_ptr_ty));
                         }
                         if (symbols.indices.IsValid()) {
@@ -1110,7 +1110,6 @@ struct DirectVariableAccess::State {
             }
 
             TINT_ICE() << "unhandled variant for access chain";
-            break;
         }
         return ss.str();
     }
@@ -1158,7 +1157,6 @@ struct DirectVariableAccess::State {
         }
 
         TINT_ICE() << "unhandled variant type for access chain";
-        return nullptr;
     }
 
     /// @returns a new Symbol starting with @p symbol concatenated with @p suffix, and possibly an
@@ -1203,6 +1201,7 @@ struct DirectVariableAccess::State {
     }
 };
 
+DirectVariableAccess::Config::Config() = default;
 DirectVariableAccess::Config::Config(const Options& opt) : options(opt) {}
 
 DirectVariableAccess::Config::~Config() = default;

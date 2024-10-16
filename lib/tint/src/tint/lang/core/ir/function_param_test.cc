@@ -27,7 +27,6 @@
 
 #include <string>
 
-#include "gtest/gtest-spi.h"
 #include "src/tint/lang/core/ir/function_param.h"
 #include "src/tint/lang/core/ir/ir_helper_test.h"
 
@@ -37,18 +36,8 @@ namespace {
 using namespace tint::core::number_suffixes;  // NOLINT
 using IR_FunctionParamTest = IRTestHelper;
 
-TEST_F(IR_FunctionParamTest, Fail_NullType) {
-    EXPECT_FATAL_FAILURE(
-        {
-            Module mod;
-            Builder b{mod};
-            b.FunctionParam(nullptr);
-        },
-        "");
-}
-
 TEST_F(IR_FunctionParamTest, Fail_SetDuplicateBuiltin) {
-    EXPECT_FATAL_FAILURE(
+    EXPECT_DEATH_IF_SUPPORTED(
         {
             Module mod;
             Builder b{mod};

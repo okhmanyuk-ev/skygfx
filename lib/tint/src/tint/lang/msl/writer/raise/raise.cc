@@ -29,6 +29,7 @@
 
 #include <utility>
 
+#include "src/tint/lang/core/ir/transform/array_length_from_uniform.h"
 #include "src/tint/lang/core/ir/transform/binary_polyfill.h"
 #include "src/tint/lang/core/ir/transform/binding_remapper.h"
 #include "src/tint/lang/core/ir/transform/builtin_polyfill.h"
@@ -36,12 +37,16 @@
 #include "src/tint/lang/core/ir/transform/demote_to_helper.h"
 #include "src/tint/lang/core/ir/transform/multiplanar_external_texture.h"
 #include "src/tint/lang/core/ir/transform/preserve_padding.h"
+#include "src/tint/lang/core/ir/transform/remove_terminator_args.h"
+#include "src/tint/lang/core/ir/transform/rename_conflicts.h"
 #include "src/tint/lang/core/ir/transform/robustness.h"
 #include "src/tint/lang/core/ir/transform/value_to_let.h"
 #include "src/tint/lang/core/ir/transform/vectorize_scalar_matrix_constructors.h"
 #include "src/tint/lang/core/ir/transform/zero_init_workgroup_memory.h"
 #include "src/tint/lang/msl/writer/common/option_helpers.h"
 #include "src/tint/lang/msl/writer/raise/builtin_polyfill.h"
+#include "src/tint/lang/msl/writer/raise/module_scope_vars.h"
+#include "src/tint/lang/msl/writer/raise/shader_io.h"
 
 namespace tint::msl::writer {
 
@@ -92,18 +97,24 @@ Result<SuccessType> Raise(core::ir::Module& module, const Options& options) {
     }
 
     RUN_TRANSFORM(core::ir::transform::MultiplanarExternalTexture, external_texture_options);
+    RUN_TRANSFORM(core::ir::transform::ArrayLengthFromUniform,
+                  BindingPoint{0u, array_length_from_uniform_options.ubo_binding},
+                  array_length_from_uniform_options.bindpoint_to_size_index);
 
     if (!options.disable_workgroup_init) {
         RUN_TRANSFORM(core::ir::transform::ZeroInitWorkgroupMemory);
     }
 
-    // PreservePadding must come before DirectVariableAccess.
     RUN_TRANSFORM(core::ir::transform::PreservePadding);
     RUN_TRANSFORM(core::ir::transform::VectorizeScalarMatrixConstructors);
 
     // DemoteToHelper must come before any transform that introduces non-core instructions.
     RUN_TRANSFORM(core::ir::transform::DemoteToHelper);
 
+    RUN_TRANSFORM(raise::ShaderIO, raise::ShaderIOConfig{options.emit_vertex_point_size});
+    RUN_TRANSFORM(raise::ModuleScopeVars);
+    RUN_TRANSFORM(core::ir::transform::RemoveTerminatorArgs);
+    RUN_TRANSFORM(core::ir::transform::RenameConflicts);
     RUN_TRANSFORM(core::ir::transform::ValueToLet);
     RUN_TRANSFORM(raise::BuiltinPolyfill);
 

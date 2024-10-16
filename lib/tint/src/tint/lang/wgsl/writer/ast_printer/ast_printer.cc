@@ -55,6 +55,7 @@
 #include "src/tint/lang/wgsl/ast/if_statement.h"
 #include "src/tint/lang/wgsl/ast/increment_decrement_statement.h"
 #include "src/tint/lang/wgsl/ast/index_accessor_expression.h"
+#include "src/tint/lang/wgsl/ast/input_attachment_index_attribute.h"
 #include "src/tint/lang/wgsl/ast/int_literal_expression.h"
 #include "src/tint/lang/wgsl/ast/internal_attribute.h"
 #include "src/tint/lang/wgsl/ast/interpolate_attribute.h"
@@ -338,7 +339,7 @@ void ASTPrinter::EmitFunction(const ast::Function* func) {
 void ASTPrinter::EmitImageFormat(StringStream& out, const core::TexelFormat fmt) {
     switch (fmt) {
         case core::TexelFormat::kUndefined:
-            diagnostics_.AddError(diag::System::Writer, Source{}) << "unknown image format";
+            diagnostics_.AddError(Source{}) << "unknown image format";
             break;
         default:
             out << fmt;
@@ -547,6 +548,11 @@ void ASTPrinter::EmitAttributes(StringStream& out, VectorRef<const ast::Attribut
             [&](const ast::StrideAttribute* stride) { out << "stride(" << stride->stride << ")"; },
             [&](const ast::InternalAttribute* internal) {
                 out << "internal(" << internal->InternalName() << ")";
+            },
+            [&](const ast::InputAttachmentIndexAttribute* index) {
+                out << "input_attachment_index(";
+                EmitExpression(out, index->expr);
+                out << ")";
             },  //
             TINT_ICE_ON_NO_MATCH);
     }

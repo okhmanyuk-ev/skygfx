@@ -70,7 +70,7 @@ ast::transform::Transform::ApplyResult TruncateInterstageVariables::Apply(
 
     const auto* data = config.Get<Config>();
     if (data == nullptr) {
-        b.Diagnostics().AddError(diag::System::Transform, Source{})
+        b.Diagnostics().AddError(Source{})
             << "missing transform data for "
             << tint::TypeInfo::Of<TruncateInterstageVariables>().name;
         return resolver::Resolve(b);
@@ -104,7 +104,6 @@ ast::transform::Transform::ApplyResult TruncateInterstageVariables::Apply(
             TINT_ICE() << "Entrypoint function return type is non-struct.\n"
                        << "TruncateInterstageVariables transform needs to run after "
                           "CanonicalizeEntryPointIO transform.";
-            continue;
         }
 
         // A prepass to check if any interstage variable locations in the entry point needs
@@ -113,6 +112,14 @@ ast::transform::Transform::ApplyResult TruncateInterstageVariables::Apply(
 
         for (auto* member : str->Members()) {
             if (auto location = member->Attributes().location) {
+                const size_t kMaxLocation = data->interstage_locations.size() - 1u;
+                if (location.value() > kMaxLocation) {
+                    b.Diagnostics().AddError(Source{})
+                        << "The location (" << location.value() << ") of " << member->Name().Name()
+                        << " in " << str->Name().Name() << " exceeds the maximum value ("
+                        << kMaxLocation << ").";
+                    return resolver::Resolve(b);
+                }
                 if (!data->interstage_locations.test(location.value())) {
                     omit_members.Add(member);
                 }

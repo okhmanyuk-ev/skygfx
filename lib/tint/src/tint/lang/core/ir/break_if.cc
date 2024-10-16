@@ -42,14 +42,20 @@ namespace tint::core::ir {
 
 BreakIf::BreakIf() = default;
 
-BreakIf::BreakIf(Value* condition, ir::Loop* loop, VectorRef<Value*> args) : loop_(loop) {
+BreakIf::BreakIf(Value* condition,
+                 ir::Loop* loop,
+                 VectorRef<Value*> next_iter_values /* = tint::Empty */,
+                 VectorRef<Value*> exit_values /* = tint::Empty */)
+    : loop_(loop), num_next_iter_values_(next_iter_values.Length()) {
     TINT_ASSERT(loop_);
 
     AddOperand(BreakIf::kConditionOperandOffset, condition);
-    AddOperands(BreakIf::kArgsOperandOffset, std::move(args));
+    AddOperands(BreakIf::kArgsOperandOffset, std::move(next_iter_values));
+    AddOperands(BreakIf::kArgsOperandOffset + num_next_iter_values_, std::move(exit_values));
 
     if (loop_) {
         loop_->Body()->AddInboundSiblingBranch(this);
+        SetControlInstruction(loop_);
     }
 }
 
@@ -59,7 +65,7 @@ BreakIf* BreakIf::Clone(CloneContext& ctx) {
     auto* loop = ctx.Remap(loop_);
     auto* cond = ctx.Remap(Condition());
     auto args = ctx.Remap<BreakIf::kDefaultNumOperands>(Args());
-    return ctx.ir.instructions.Create<BreakIf>(cond, loop, args);
+    return ctx.ir.allocators.instructions.Create<BreakIf>(cond, loop, args);
 }
 
 void BreakIf::SetLoop(ir::Loop* loop) {
@@ -67,6 +73,7 @@ void BreakIf::SetLoop(ir::Loop* loop) {
         loop_->Body()->RemoveInboundSiblingBranch(this);
     }
     loop_ = loop;
+    SetControlInstruction(loop);
     if (loop) {
         loop->Body()->AddInboundSiblingBranch(this);
     }

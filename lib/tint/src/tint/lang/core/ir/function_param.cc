@@ -29,20 +29,19 @@
 
 #include "src/tint/lang/core/ir/clone_context.h"
 #include "src/tint/lang/core/ir/module.h"
+#include "src/tint/lang/core/type/type.h"
 #include "src/tint/utils/ice/ice.h"
 
 TINT_INSTANTIATE_TYPEINFO(tint::core::ir::FunctionParam);
 
 namespace tint::core::ir {
 
-FunctionParam::FunctionParam(const core::type::Type* ty) : type_(ty) {
-    TINT_ASSERT(ty != nullptr);
-}
+FunctionParam::FunctionParam(const core::type::Type* ty) : type_(ty) {}
 
 FunctionParam::~FunctionParam() = default;
 
 FunctionParam* FunctionParam::Clone(CloneContext& ctx) {
-    auto* out = ctx.ir.values.Create<FunctionParam>(type_);
+    auto* out = ctx.ir.allocators.values.Create<FunctionParam>(type_);
     out->builtin_ = builtin_;
     out->location_ = location_;
     out->binding_point_ = binding_point_;

@@ -38,6 +38,7 @@
 #include "src/tint/lang/core/type/atomic.h"
 #include "src/tint/lang/core/type/depth_multisampled_texture.h"
 #include "src/tint/lang/core/type/depth_texture.h"
+#include "src/tint/lang/core/type/input_attachment.h"
 #include "src/tint/lang/core/type/multisampled_texture.h"
 #include "src/tint/lang/core/type/pointer.h"
 #include "src/tint/lang/core/type/reference.h"
@@ -180,15 +181,15 @@ Validator::Validator(
 Validator::~Validator() = default;
 
 diag::Diagnostic& Validator::AddError(const Source& source) const {
-    return diagnostics_.AddError(diag::System::Resolver, source);
+    return diagnostics_.AddError(source);
 }
 
 diag::Diagnostic& Validator::AddWarning(const Source& source) const {
-    return diagnostics_.AddWarning(diag::System::Resolver, source);
+    return diagnostics_.AddWarning(source);
 }
 
 diag::Diagnostic& Validator::AddNote(const Source& source) const {
-    return diagnostics_.AddNote(diag::System::Resolver, source);
+    return diagnostics_.AddNote(source);
 }
 
 diag::Diagnostic* Validator::MaybeAddDiagnostic(wgsl::DiagnosticRule rule,
@@ -197,7 +198,6 @@ diag::Diagnostic* Validator::MaybeAddDiagnostic(wgsl::DiagnosticRule rule,
     if (severity != wgsl::DiagnosticSeverity::kOff) {
         diag::Diagnostic d{};
         d.severity = ToSeverity(severity);
-        d.system = diag::System::Resolver;
         d.source = source;
         return &diagnostics_.Add(std::move(d));
     }
@@ -339,6 +339,16 @@ bool Validator::Pointer(const ast::TemplatedIdentifier* a, const core::type::Poi
         return false;
     }
 
+    if (s->AddressSpace() != core::AddressSpace::kHandle) {
+        if (s->StoreType()->Is<core::type::Texture>()) {
+            AddError(a->source) << "pointer can not be formed to a texture";
+            return false;
+        } else if (s->StoreType()->Is<core::type::Sampler>()) {
+            AddError(a->source) << "pointer can not be formed to a sampler";
+            return false;
+        }
+    }
+
     if (a->arguments.Length() > 2) {  // ptr<address-space, type [, access]>
         // https://www.w3.org/TR/WGSL/#access-mode-defaults
         // When writing a variable declaration or a pointer type in WGSL source:
@@ -432,6 +442,44 @@ bool Validator::MultisampledTexture(const core::type::MultisampledTexture* t,
     return true;
 }
 
+bool Validator::InputAttachment(const core::type::InputAttachment* t, const Source& source) const {
+    if (!enabled_extensions_.Contains(wgsl::Extension::kChromiumInternalInputAttachments)) {
+        AddError(source) << "use of " << style::Type("input_attachment")
+                         << " requires enabling extension "
+                         << style::Code("chromium_internal_input_attachments");
+        return false;
+    }
+    if (!t->type()->UnwrapRef()->IsAnyOf<core::type::F32, core::type::I32, core::type::U32>()) {
+        AddError(source) << "input_attachment<type>: type must be f32, i32 or u32";
+        return false;
+    }
+
+    return true;
+}
+
+bool Validator::InputAttachmentIndexAttribute(const ast::InputAttachmentIndexAttribute* attr,
+                                              const core::type::Type* type,
+                                              const Source& source) const {
+    if (!enabled_extensions_.Contains(wgsl::Extension::kChromiumInternalInputAttachments)) {
+        AddError(source) << "use of " << style::Attribute("@input_attachment_index")
+                         << " requires enabling extension "
+                         << style::Code("chromium_internal_input_attachments");
+        return false;
+    }
+
+    if (!type->Is<core::type::InputAttachment>()) {
+        std::string invalid_type = sem_.TypeNameOf(type);
+        AddError(source) << "cannot apply " << style::Attribute("@input_attachment_index")
+                         << " to declaration of type " << style::Type(invalid_type);
+        AddNote(attr->source) << style::Attribute("@input_attachment_index")
+                              << " must only be applied to declarations of "
+                              << style::Type("input_attachment") << " type";
+        return false;
+    }
+
+    return true;
+}
+
 bool Validator::Materialize(const core::type::Type* to,
                             const core::type::Type* from,
                             const Source& source) const {
@@ -509,13 +557,14 @@ bool Validator::AddressSpaceLayout(const core::type::Type* store_ty,
     }
 
     if (auto* str = store_ty->As<sem::Struct>()) {
+        auto& str_source = str->Declaration()->name->source;
         for (size_t i = 0; i < str->Members().Length(); ++i) {
             auto* const m = str->Members()[i];
             uint32_t required_align = required_alignment_of(m->Type());
 
             // Recurse into the member type.
             if (!AddressSpaceLayout(m->Type(), address_space, m->Declaration()->type->source)) {
-                AddNote(str->Declaration()->source) << "see layout of struct:\n" << str->Layout();
+                AddNote(str_source) << "see layout of struct:\n" << str->Layout();
                 note_usage();
                 return false;
             }
@@ -533,11 +582,12 @@ bool Validator::AddressSpaceLayout(const core::type::Type* store_ty,
                     << style::Attribute("@align") << style::Code("(", required_align, ")")
                     << " on this member";
 
-                AddNote(str->Declaration()->source) << "see layout of struct:\n" << str->Layout();
+                AddNote(str_source) << "see layout of struct:\n" << str->Layout();
 
                 if (auto* member_str = m->Type()->As<sem::Struct>()) {
-                    AddNote(member_str->Declaration()->source) << "and layout of struct member:\n"
-                                                               << member_str->Layout();
+                    AddNote(member_str->Declaration()->name->source)
+                        << "and layout of struct member:\n"
+                        << member_str->Layout();
                 }
 
                 note_usage();
@@ -562,11 +612,10 @@ bool Validator::AddressSpaceLayout(const core::type::Type* store_ty,
                         << style::Variable(member_name_of(m)) << ". Consider setting "
                         << style::Attribute("@align") << style::Code("(16)") << " on this member";
 
-                    AddNote(str->Declaration()->source) << "see layout of struct:\n"
-                                                        << str->Layout();
+                    AddNote(str_source) << "see layout of struct:\n" << str->Layout();
 
                     auto* prev_member_str = prev_member->Type()->As<sem::Struct>();
-                    AddNote(prev_member_str->Declaration()->source)
+                    AddNote(prev_member_str->Declaration()->name->source)
                         << "and layout of previous member struct:\n"
                         << prev_member_str->Layout();
                     note_usage();
@@ -689,6 +738,13 @@ bool Validator::GlobalVariable(
         return false;
     }
 
+    auto* input_attachment_index_attr =
+        ast::GetAttribute<ast::InputAttachmentIndexAttribute>(decl->attributes);
+    if (input_attachment_index_attr &&
+        !InputAttachmentIndexAttribute(input_attachment_index_attr, global->Type()->UnwrapRef(),
+                                       decl->source)) {
+        return false;
+    }
     switch (global->AddressSpace()) {
         case core::AddressSpace::kUniform:
         case core::AddressSpace::kStorage:
@@ -699,6 +755,13 @@ bool Validator::GlobalVariable(
                 AddError(decl->source)
                     << "resource variables require " << style::Attribute("@group") << " and "
                     << style::Attribute("@binding") << " attributes";
+                return false;
+            }
+            if (global->Type()->UnwrapRef()->Is<core::type::InputAttachment>() &&
+                !input_attachment_index_attr) {
+                AddError(decl->source)
+                    << style::Type("input_attachment") << " variables require "
+                    << style::Attribute("@input_attachment_index") << " attribute";
                 return false;
             }
             break;
@@ -1086,8 +1149,8 @@ bool Validator::Function(const sem::Function* func, ast::PipelineStage stage) co
     }
 
     if (decl->params.Length() > kMaxFunctionParameters) {
-        AddError(decl->source) << "function declares " << decl->params.Length()
-                               << " parameters, maximum is " << kMaxFunctionParameters;
+        AddError(decl->name->source) << "function declares " << decl->params.Length()
+                                     << " parameters, maximum is " << kMaxFunctionParameters;
         return false;
     }
 
@@ -1104,7 +1167,9 @@ bool Validator::Function(const sem::Function* func, ast::PipelineStage stage) co
                 behaviors = sem_.Get(last)->Behaviors();
             }
             if (behaviors.Contains(sem::Behavior::kNext)) {
-                AddError(decl->source) << "missing return at end of function";
+                auto end_source = decl->body->source.End();
+                end_source.range.begin.column--;
+                AddError(end_source) << "missing return at end of function";
                 return false;
             }
         } else if (TINT_UNLIKELY(IsValidationEnabled(
@@ -1210,7 +1275,6 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
 
                     if (TINT_UNLIKELY(!location.has_value())) {
                         TINT_ICE() << "@location has no value";
-                        return false;
                     }
 
                     return LocationAttribute(loc_attr, ty, stage, source);
@@ -1220,7 +1284,6 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
 
                     if (TINT_UNLIKELY(!blend_src.has_value())) {
                         TINT_ICE() << "@blend_src has no value";
-                        return false;
                     }
 
                     return BlendSrcAttribute(blend_src_attr, stage);
@@ -1240,7 +1303,6 @@ bool Validator::EntryPoint(const sem::Function* func, ast::PipelineStage stage) 
 
                     if (TINT_UNLIKELY(!color.has_value())) {
                         TINT_ICE() << "@color has no value";
-                        return false;
                     }
 
                     return ColorAttribute(col_attr, ty, stage, source, is_input);
@@ -2029,7 +2091,6 @@ bool Validator::ArrayConstructor(const ast::CallExpression* ctor,
 
     if (TINT_UNLIKELY(!c->Is<core::type::ConstantArrayCount>())) {
         TINT_ICE() << "Invalid ArrayCount found";
-        return false;
     }
 
     const auto count = c->As<core::type::ConstantArrayCount>()->value;
@@ -2220,7 +2281,7 @@ bool Validator::Alias(const ast::Alias*) const {
 
 bool Validator::Structure(const sem::Struct* str, ast::PipelineStage stage) const {
     if (str->Members().IsEmpty()) {
-        AddError(str->Declaration()->source) << "structures must have at least one member";
+        AddError(str->Declaration()->name->source) << "structures must have at least one member";
         return false;
     }
 
@@ -2422,10 +2483,11 @@ bool Validator::ColorAttribute(const ast::ColorAttribute* attr,
 bool Validator::BlendSrcAttribute(const ast::BlendSrcAttribute* attr,
                                   ast::PipelineStage stage,
                                   const std::optional<bool> is_input) const {
-    if (!enabled_extensions_.Contains(wgsl::Extension::kChromiumInternalDualSourceBlending)) {
+    if (!enabled_extensions_.Contains(wgsl::Extension::kChromiumInternalDualSourceBlending) &&
+        !enabled_extensions_.Contains(wgsl::Extension::kDualSourceBlending)) {
         AddError(attr->source) << "use of " << style::Attribute("@blend_src")
                                << " requires enabling extension "
-                               << style::Code("chromium_internal_dual_source_blending");
+                               << style::Code("dual_source_blending");
         return false;
     }
 
@@ -2542,7 +2604,6 @@ bool Validator::Assignment(const ast::Statement* a, const core::type::Type* rhs_
         rhs = compound->rhs;
     } else {
         TINT_ICE() << "invalid assignment statement";
-        return false;
     }
 
     if (lhs->Is<ast::PhonyExpression>()) {

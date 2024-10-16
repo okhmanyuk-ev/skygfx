@@ -45,7 +45,7 @@ namespace {
 struct VectorConstructorInfo {
     const sem::Call* call = nullptr;
     const sem::ValueConstructor* ctor = nullptr;
-    operator bool() const { return call != nullptr; }
+    explicit operator bool() const { return call != nullptr; }
 };
 VectorConstructorInfo AsVectorConstructor(const sem::ValueExpression* expr) {
     if (auto* call = expr->As<sem::Call>()) {
@@ -72,7 +72,6 @@ const sem::ValueExpression* Zero(ProgramBuilder& b,
         expr = b.Expr(false);
     } else {
         TINT_UNREACHABLE() << "unsupported vector element type: " << ty->TypeInfo().name;
-        return nullptr;
     }
     auto* sem = b.create<sem::ValueExpression>(expr, ty, core::EvaluationStage::kRuntime, stmt,
                                                /* constant_value */ nullptr,

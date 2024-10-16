@@ -33,6 +33,8 @@
 #include <utility>
 
 #include "src/tint/lang/core/evaluation_stage.h"
+#include "src/tint/lang/core/type/input_attachment.h"
+#include "src/tint/lang/wgsl/ast/input_attachment_index_attribute.h"
 #include "src/tint/lang/wgsl/ast/pipeline_stage.h"
 #include "src/tint/lang/wgsl/common/allowed_features.h"
 #include "src/tint/lang/wgsl/program/program_builder.h"
@@ -427,6 +429,21 @@ class Validator {
     /// @param source the source of the texture
     /// @returns true on success, false otherwise
     bool MultisampledTexture(const core::type::MultisampledTexture* t, const Source& source) const;
+
+    /// Validates a input attachment
+    /// @param t the input attachment to validate
+    /// @param source the source of the input attachment
+    /// @returns true on success, false otherwise
+    bool InputAttachment(const core::type::InputAttachment* t, const Source& source) const;
+
+    /// Validates a input attachment index attribute
+    /// @param attr the input attachment index attribute to validate
+    /// @param type the variable type
+    /// @param source the source of declaration using the attribute
+    /// @returns true on success, false otherwise.
+    bool InputAttachmentIndexAttribute(const ast::InputAttachmentIndexAttribute* attr,
+                                       const core::type::Type* type,
+                                       const Source& source) const;
 
     /// Validates a structure
     /// @param str the structure to validate

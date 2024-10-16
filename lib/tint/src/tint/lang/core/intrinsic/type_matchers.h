@@ -43,10 +43,12 @@
 #include "src/tint/lang/core/type/f16.h"
 #include "src/tint/lang/core/type/f32.h"
 #include "src/tint/lang/core/type/i32.h"
+#include "src/tint/lang/core/type/input_attachment.h"
 #include "src/tint/lang/core/type/manager.h"
 #include "src/tint/lang/core/type/matrix.h"
 #include "src/tint/lang/core/type/multisampled_texture.h"
 #include "src/tint/lang/core/type/pointer.h"
+#include "src/tint/lang/core/type/reference.h"
 #include "src/tint/lang/core/type/sampled_texture.h"
 #include "src/tint/lang/core/type/storage_texture.h"
 #include "src/tint/lang/core/type/texture_dimension.h"
@@ -302,6 +304,36 @@ inline const type::Pointer* BuildPtr(intrinsic::MatchState& state,
                            static_cast<core::Access>(A.Value()));
 }
 
+inline bool MatchRef(intrinsic::MatchState&,
+                     const type::Type* ty,
+                     intrinsic::Number& S,
+                     const type::Type*& T,
+                     intrinsic::Number& A) {
+    if (ty->Is<intrinsic::Any>()) {
+        S = intrinsic::Number::any;
+        T = ty;
+        A = intrinsic::Number::any;
+        return true;
+    }
+
+    if (auto* p = ty->As<type::Reference>()) {
+        S = intrinsic::Number(static_cast<uint32_t>(p->AddressSpace()));
+        T = p->StoreType();
+        A = intrinsic::Number(static_cast<uint32_t>(p->Access()));
+        return true;
+    }
+    return false;
+}
+
+inline const type::Reference* BuildRef(intrinsic::MatchState& state,
+                                       const type::Type*,
+                                       intrinsic::Number S,
+                                       const type::Type* T,
+                                       intrinsic::Number& A) {
+    return state.types.ref(static_cast<core::AddressSpace>(S.Value()), T,
+                           static_cast<core::Access>(A.Value()));
+}
+
 inline bool MatchAtomic(intrinsic::MatchState&, const type::Type* ty, const type::Type*& T) {
     if (ty->Is<intrinsic::Any>()) {
         T = ty;
@@ -499,6 +531,26 @@ inline bool MatchTextureExternal(intrinsic::MatchState&, const type::Type* ty) {
 inline const type::ExternalTexture* BuildTextureExternal(intrinsic::MatchState& state,
                                                          const type::Type*) {
     return state.types.Get<type::ExternalTexture>();
+}
+
+inline bool MatchInputAttachment(intrinsic::MatchState&,
+                                 const type::Type* ty,
+                                 const type::Type*& T) {
+    if (ty->Is<intrinsic::Any>()) {
+        T = ty;
+        return true;
+    }
+    if (auto* v = ty->As<type::InputAttachment>()) {
+        T = v->type();
+        return true;
+    }
+    return false;
+}
+
+inline const type::InputAttachment* BuildInputAttachment(intrinsic::MatchState& state,
+                                                         const type::Type*,
+                                                         const type::Type* T) {
+    return state.types.Get<type::InputAttachment>(T);
 }
 
 // Builtin types starting with a _ prefix cannot be declared in WGSL, so they

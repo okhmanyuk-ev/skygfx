@@ -155,10 +155,12 @@ tint_target_add_dependencies(tint_lang_hlsl_writer_fuzz fuzz
   tint_lang_hlsl_writer_common
   tint_lang_wgsl
   tint_lang_wgsl_ast
+  tint_lang_wgsl_ast_transform
   tint_lang_wgsl_features
   tint_lang_wgsl_program
   tint_lang_wgsl_sem
   tint_utils_bytes
+  tint_utils_command
   tint_utils_containers
   tint_utils_diagnostic
   tint_utils_ice
@@ -176,6 +178,7 @@ tint_target_add_dependencies(tint_lang_hlsl_writer_fuzz fuzz
 
 if(TINT_BUILD_HLSL_WRITER)
   tint_target_add_dependencies(tint_lang_hlsl_writer_fuzz fuzz
+    tint_lang_hlsl_validate
     tint_lang_hlsl_writer
   )
 endif(TINT_BUILD_HLSL_WRITER)

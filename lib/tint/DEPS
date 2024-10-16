@@ -111,6 +111,10 @@ deps = {
     'url': '{chromium_git}/chromium/src/third_party/abseil-cpp@4ef9b33175828ea46d091e7e5ec28259d39a8ba5',
   },
 
+  'third_party/dxc': {
+    'url': '{chromium_git}/external/github.com/microsoft/DirectXShaderCompiler@e7b78ff9c99c19a6a0c98256db9794e0af4eb59d',
+  },
+
   # Dependencies required for testing
   'testing': {
     'url': '{chromium_git}/chromium/src/testing@035a9b18047370df7403758b006e6c9696d6b84d',

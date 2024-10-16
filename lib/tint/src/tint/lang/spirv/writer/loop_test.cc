@@ -212,7 +212,7 @@ TEST_F(SpirvWriterTest, Loop_UseResultFromBodyInContinuing) {
         auto* loop = b.Loop();
         b.Append(loop->Body(), [&] {
             auto* result = b.Equal(ty.bool_(), 1_i, 2_i);
-            b.Continue(loop, result);
+            b.Continue(loop);
 
             b.Append(loop->Continuing(), [&] {  //
                 b.BreakIf(loop, result);
@@ -358,7 +358,7 @@ TEST_F(SpirvWriterTest, Loop_Phi_SingleValue) {
         loop->Continuing()->SetParams({cont_param});
         b.Append(loop->Continuing(), [&] {
             auto* cmp = b.GreaterThan(ty.bool_(), cont_param, 5_i);
-            b.BreakIf(loop, cmp, cont_param);
+            b.BreakIf(loop, cmp, /* next_iter */ Vector{cont_param}, /* exit */ Empty);
         });
 
         b.Return(func);
@@ -410,7 +410,7 @@ TEST_F(SpirvWriterTest, Loop_Phi_MultipleValue) {
         b.Append(loop->Continuing(), [&] {
             auto* cmp = b.GreaterThan(ty.bool_(), cont_param_a, 5_i);
             auto* not_b = b.Not(ty.bool_(), cont_param_b);
-            b.BreakIf(loop, cmp, cont_param_a, not_b);
+            b.BreakIf(loop, cmp, b.Values(cont_param_a, not_b), Empty);
         });
 
         b.Return(func);
@@ -467,7 +467,7 @@ TEST_F(SpirvWriterTest, Loop_Phi_NestedIf) {
         loop->Continuing()->SetParams({cont_param});
         b.Append(loop->Continuing(), [&] {
             auto* cmp = b.GreaterThan(ty.bool_(), cont_param, 5_i);
-            b.BreakIf(loop, cmp, cont_param);
+            b.BreakIf(loop, cmp, /* next_iter */ Vector{cont_param}, /* exit */ Empty);
         });
 
         b.Return(func);
@@ -533,7 +533,7 @@ TEST_F(SpirvWriterTest, Loop_Phi_NestedLoop) {
         outer->Continuing()->SetParams({cont_param});
         b.Append(outer->Continuing(), [&] {
             auto* cmp = b.GreaterThan(ty.bool_(), cont_param, 5_i);
-            b.BreakIf(outer, cmp, cont_param);
+            b.BreakIf(outer, cmp, /* next_iter */ Vector{cont_param}, /* exit */ Empty);
         });
 
         b.Return(func);
@@ -617,6 +617,113 @@ TEST_F(SpirvWriterTest, Loop_Phi_NestedIfWithResultAndImplicitFalse_InContinuing
                OpBranchConditional %14 %8 %7
           %8 = OpLabel
                OpReturn
+               OpFunctionEnd
+)");
+}
+
+TEST_F(SpirvWriterTest, Loop_ExitValue) {
+    auto* func = b.Function("foo", ty.i32());
+    b.Append(func->Block(), [&] {
+        auto* result = b.InstructionResult(ty.i32());
+        auto* loop = b.Loop();
+        loop->SetResults(Vector{result});
+        b.Append(loop->Body(), [&] {  //
+            b.ExitLoop(loop, 42_i);
+        });
+        b.Return(func, result);
+    });
+
+    EXPECT_EQ(IR(), R"(
+%foo = func():i32 {
+  $B1: {
+    %2:i32 = loop [b: $B2] {  # loop_1
+      $B2: {  # body
+        exit_loop 42i  # loop_1
+      }
+    }
+    ret %2
+  }
+}
+)");
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+          %4 = OpLabel
+               OpBranch %7
+          %7 = OpLabel
+               OpLoopMerge %8 %6 None
+               OpBranch %5
+          %5 = OpLabel
+               OpBranch %8
+          %6 = OpLabel
+               OpBranch %7
+          %8 = OpLabel
+          %9 = OpPhi %int %int_42 %5
+               OpReturnValue %9
+               OpFunctionEnd
+)");
+}
+
+TEST_F(SpirvWriterTest, Loop_ExitValue_BreakIf) {
+    auto* func = b.Function("foo", ty.i32());
+    b.Append(func->Block(), [&] {
+        auto* result = b.InstructionResult(ty.i32());
+        auto* loop = b.Loop();
+        loop->SetResults(Vector{result});
+        b.Append(loop->Body(), [&] {  //
+            auto* if_ = b.If(false);
+            b.Append(if_->True(), [&] {  //
+                b.ExitLoop(loop, 1_i);
+            });
+            b.Continue(loop);
+
+            b.Append(loop->Continuing(), [&] {  //
+                b.BreakIf(loop, true, Empty, 42_i);
+            });
+        });
+        b.Return(func, result);
+    });
+
+    EXPECT_EQ(IR(), R"(
+%foo = func():i32 {
+  $B1: {
+    %2:i32 = loop [b: $B2, c: $B3] {  # loop_1
+      $B2: {  # body
+        if false [t: $B4] {  # if_1
+          $B4: {  # true
+            exit_loop 1i  # loop_1
+          }
+        }
+        continue  # -> $B3
+      }
+      $B3: {  # continuing
+        break_if true exit_loop: [ 42i ]  # -> [t: exit_loop loop_1, f: $B2]
+      }
+    }
+    ret %2
+  }
+}
+)");
+
+    ASSERT_TRUE(Generate()) << Error() << output_;
+    EXPECT_INST(R"(
+          %4 = OpLabel
+               OpBranch %7
+          %7 = OpLabel
+               OpLoopMerge %8 %6 None
+               OpBranch %5
+          %5 = OpLabel
+               OpSelectionMerge %9 None
+               OpBranchConditional %false %10 %9
+         %10 = OpLabel
+               OpBranch %8
+          %9 = OpLabel
+               OpBranch %6
+          %6 = OpLabel
+               OpBranchConditional %true %8 %7
+          %8 = OpLabel
+         %14 = OpPhi %int %int_42 %6 %int_1 %10
+               OpReturnValue %14
                OpFunctionEnd
 )");
 }

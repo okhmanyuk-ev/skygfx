@@ -41,8 +41,7 @@ Program Parse(const Source::File* file, const Options& options) {
     if (TINT_UNLIKELY(file->content.data.size() >
                       static_cast<size_t>(std::numeric_limits<uint32_t>::max()))) {
         ProgramBuilder b;
-        b.Diagnostics().AddError(tint::diag::System::Reader, Source{})
-            << "WGSL source must be 0xffffffff bytes or fewer";
+        b.Diagnostics().AddError(tint::Source{}) << "WGSL source must be 0xffffffff bytes or fewer";
         return Program(std::move(b));
     }
     Parser parser(file);
@@ -76,6 +75,22 @@ tint::Result<core::ir::Module> ProgramToLoweredIR(const Program& program) {
     }
 
     return ir;
+}
+
+bool IsUnsupportedByIR(const ast::Enable* enable) {
+    for (auto ext : enable->extensions) {
+        switch (ext->name) {
+            case tint::wgsl::Extension::kChromiumExperimentalFramebufferFetch:
+            case tint::wgsl::Extension::kChromiumExperimentalPixelLocal:
+            case tint::wgsl::Extension::kChromiumExperimentalPushConstant:
+            case tint::wgsl::Extension::kChromiumInternalDualSourceBlending:
+            case tint::wgsl::Extension::kChromiumInternalRelaxedUniformLayout:
+                return true;
+            default:
+                break;
+        }
+    }
+    return false;
 }
 
 }  // namespace tint::wgsl::reader

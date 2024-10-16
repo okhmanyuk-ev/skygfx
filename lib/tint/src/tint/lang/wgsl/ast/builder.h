@@ -28,34 +28,17 @@
 #ifndef SRC_TINT_LANG_WGSL_AST_BUILDER_H_
 #define SRC_TINT_LANG_WGSL_AST_BUILDER_H_
 
-#include <string>
-#include <unordered_set>
 #include <utility>
 
 #include "src/tint/api/common/override_id.h"
 
-#include "src/tint/lang/core/constant/manager.h"
 #include "src/tint/lang/core/fluent_types.h"
 #include "src/tint/lang/core/interpolation_sampling.h"
 #include "src/tint/lang/core/interpolation_type.h"
 #include "src/tint/lang/core/number.h"
-#include "src/tint/lang/core/type/array.h"
-#include "src/tint/lang/core/type/bool.h"
-#include "src/tint/lang/core/type/depth_texture.h"
-#include "src/tint/lang/core/type/external_texture.h"
-#include "src/tint/lang/core/type/f16.h"
-#include "src/tint/lang/core/type/f32.h"
-#include "src/tint/lang/core/type/i32.h"
-#include "src/tint/lang/core/type/matrix.h"
-#include "src/tint/lang/core/type/multisampled_texture.h"
-#include "src/tint/lang/core/type/pointer.h"
-#include "src/tint/lang/core/type/sampled_texture.h"
+#include "src/tint/lang/core/texel_format.h"
 #include "src/tint/lang/core/type/sampler_kind.h"
-#include "src/tint/lang/core/type/storage_texture.h"
 #include "src/tint/lang/core/type/texture_dimension.h"
-#include "src/tint/lang/core/type/u32.h"
-#include "src/tint/lang/core/type/vector.h"
-#include "src/tint/lang/core/type/void.h"
 #include "src/tint/lang/wgsl/ast/alias.h"
 #include "src/tint/lang/wgsl/ast/assignment_statement.h"
 #include "src/tint/lang/wgsl/ast/binary_expression.h"
@@ -86,6 +69,7 @@
 #include "src/tint/lang/wgsl/ast/if_statement.h"
 #include "src/tint/lang/wgsl/ast/increment_decrement_statement.h"
 #include "src/tint/lang/wgsl/ast/index_accessor_expression.h"
+#include "src/tint/lang/wgsl/ast/input_attachment_index_attribute.h"
 #include "src/tint/lang/wgsl/ast/int_literal_expression.h"
 #include "src/tint/lang/wgsl/ast/interpolate_attribute.h"
 #include "src/tint/lang/wgsl/ast/invariant_attribute.h"
@@ -116,6 +100,8 @@
 #include "src/tint/lang/wgsl/builtin_fn.h"
 #include "src/tint/lang/wgsl/extension.h"
 #include "src/tint/utils/id/generation_id.h"
+#include "src/tint/utils/memory/block_allocator.h"
+#include "src/tint/utils/symbol/symbol_table.h"
 #include "src/tint/utils/text/string.h"
 
 #ifdef CURRENTLY_IN_TINT_PUBLIC_HEADER
@@ -1296,6 +1282,12 @@ class Builder {
 
         /// @returns the external texture
         ast::Type external_texture() const { return (*this)("texture_external"); }
+
+        /// @param subtype the texture subtype.
+        /// @returns the input attachment
+        ast::Type input_attachment(ast::Type subtype) const {
+            return (*this)("input_attachment", subtype);
+        }
 
         /// @param source the Source of the node
         /// @returns the external texture
@@ -3238,6 +3230,24 @@ class Builder {
     template <typename EXPR>
     const ast::IdAttribute* Id(EXPR&& id) {
         return create<ast::IdAttribute>(Expr(std::forward<EXPR>(id)));
+    }
+
+    /// Creates an ast::InputAttachmentIndexAttribute
+    /// @param index the index value expression
+    /// @returns the index attribute pointer
+    template <typename EXPR>
+    const ast::InputAttachmentIndexAttribute* InputAttachmentIndex(EXPR&& index) {
+        return create<ast::InputAttachmentIndexAttribute>(source_, Expr(std::forward<EXPR>(index)));
+    }
+
+    /// Creates an ast::InputAttachmentIndexAttribute
+    /// @param source the source information
+    /// @param index the index value expression
+    /// @returns the index attribute pointer
+    template <typename EXPR>
+    const ast::InputAttachmentIndexAttribute* InputAttachmentIndex(const Source& source,
+                                                                   EXPR&& index) {
+        return create<ast::InputAttachmentIndexAttribute>(source, Expr(std::forward<EXPR>(index)));
     }
 
     /// Creates an ast::StageAttribute

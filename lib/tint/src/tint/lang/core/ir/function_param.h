@@ -38,6 +38,11 @@
 #include "src/tint/utils/ice/ice.h"
 #include "src/tint/utils/rtti/castable.h"
 
+// Forward declarations
+namespace tint::core::ir {
+class Function;
+}  // namespace tint::core::ir
+
 namespace tint::core::ir {
 
 /// A function parameter in the IR.
@@ -48,8 +53,29 @@ class FunctionParam : public Castable<FunctionParam, Value> {
     explicit FunctionParam(const core::type::Type* type);
     ~FunctionParam() override;
 
+    /// Sets the function that this parameter belongs to.
+    /// @param func the function
+    void SetFunction(ir::Function* func) { func_ = func; }
+
+    /// @returns the function that this parameter belongs to, or nullptr
+    ir::Function* Function() { return func_; }
+
+    /// @returns the function that this parameter belongs to, or nullptr
+    const ir::Function* Function() const { return func_; }
+
+    /// Sets the index of the parameter in the function's parameter list
+    /// @param index the index
+    void SetIndex(uint32_t index) { index_ = index; }
+
+    /// @returns the index of the parameter in the function's parameter list
+    uint32_t Index() const { return index_; }
+
     /// @returns the type of the var
     const core::type::Type* Type() const override { return type_; }
+
+    /// Sets the type of the parameter to @p type
+    /// @param type the new type of the parameter
+    void SetType(const core::type::Type* type) { type_ = type; }
 
     /// @copydoc Value::Clone()
     FunctionParam* Clone(CloneContext& ctx) override;
@@ -95,10 +121,18 @@ class FunctionParam : public Castable<FunctionParam, Value> {
     /// @param binding the binding
     void SetBindingPoint(uint32_t group, uint32_t binding) { binding_point_ = {group, binding}; }
 
+    /// Sets the binding point
+    /// @param binding_point the binding point
+    void SetBindingPoint(std::optional<struct BindingPoint> binding_point) {
+        binding_point_ = binding_point;
+    }
+
     /// @returns the binding points if `Attributes` contains `kBindingPoint`
     std::optional<struct BindingPoint> BindingPoint() const { return binding_point_; }
 
   private:
+    ir::Function* func_ = nullptr;
+    uint32_t index_ = 0xffffffff;
     const core::type::Type* type_ = nullptr;
     std::optional<core::BuiltinValue> builtin_;
     std::optional<struct Location> location_;

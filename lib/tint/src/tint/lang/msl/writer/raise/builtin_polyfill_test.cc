@@ -46,14 +46,15 @@ using MslWriter_BuiltinPolyfillTest = core::ir::transform::TransformTest;
 TEST_F(MslWriter_BuiltinPolyfillTest, WorkgroupBarrier) {
     auto* func = b.Function("foo", ty.void_());
     func->SetStage(core::ir::Function::PipelineStage::kCompute);
+    func->SetWorkgroupSize(1, 1, 1);
     b.Append(func->Block(), [&] {
         b.Call(ty.void_(), core::BuiltinFn::kWorkgroupBarrier);
         b.Return(func);
     });
 
     auto* src = R"(
-%foo = @compute func():void -> %b1 {
-  %b1 = block {
+%foo = @compute @workgroup_size(1, 1, 1) func():void {
+  $B1: {
     %2:void = workgroupBarrier
     ret
   }
@@ -62,8 +63,8 @@ TEST_F(MslWriter_BuiltinPolyfillTest, WorkgroupBarrier) {
     EXPECT_EQ(src, str());
 
     auto* expect = R"(
-%foo = @compute func():void -> %b1 {
-  %b1 = block {
+%foo = @compute @workgroup_size(1, 1, 1) func():void {
+  $B1: {
     %2:void = msl.threadgroup_barrier 4u
     ret
   }
@@ -78,14 +79,15 @@ TEST_F(MslWriter_BuiltinPolyfillTest, WorkgroupBarrier) {
 TEST_F(MslWriter_BuiltinPolyfillTest, StorageBarrier) {
     auto* func = b.Function("foo", ty.void_());
     func->SetStage(core::ir::Function::PipelineStage::kCompute);
+    func->SetWorkgroupSize(1, 1, 1);
     b.Append(func->Block(), [&] {
         b.Call(ty.void_(), core::BuiltinFn::kStorageBarrier);
         b.Return(func);
     });
 
     auto* src = R"(
-%foo = @compute func():void -> %b1 {
-  %b1 = block {
+%foo = @compute @workgroup_size(1, 1, 1) func():void {
+  $B1: {
     %2:void = storageBarrier
     ret
   }
@@ -94,8 +96,8 @@ TEST_F(MslWriter_BuiltinPolyfillTest, StorageBarrier) {
     EXPECT_EQ(src, str());
 
     auto* expect = R"(
-%foo = @compute func():void -> %b1 {
-  %b1 = block {
+%foo = @compute @workgroup_size(1, 1, 1) func():void {
+  $B1: {
     %2:void = msl.threadgroup_barrier 1u
     ret
   }
@@ -110,14 +112,15 @@ TEST_F(MslWriter_BuiltinPolyfillTest, StorageBarrier) {
 TEST_F(MslWriter_BuiltinPolyfillTest, TextureBarrier) {
     auto* func = b.Function("foo", ty.void_());
     func->SetStage(core::ir::Function::PipelineStage::kCompute);
+    func->SetWorkgroupSize(1, 1, 1);
     b.Append(func->Block(), [&] {
         b.Call(ty.void_(), core::BuiltinFn::kTextureBarrier);
         b.Return(func);
     });
 
     auto* src = R"(
-%foo = @compute func():void -> %b1 {
-  %b1 = block {
+%foo = @compute @workgroup_size(1, 1, 1) func():void {
+  $B1: {
     %2:void = textureBarrier
     ret
   }
@@ -126,8 +129,8 @@ TEST_F(MslWriter_BuiltinPolyfillTest, TextureBarrier) {
     EXPECT_EQ(src, str());
 
     auto* expect = R"(
-%foo = @compute func():void -> %b1 {
-  %b1 = block {
+%foo = @compute @workgroup_size(1, 1, 1) func():void {
+  $B1: {
     %2:void = msl.threadgroup_barrier 2u
     ret
   }

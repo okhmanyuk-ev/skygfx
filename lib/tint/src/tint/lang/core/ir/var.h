@@ -73,9 +73,9 @@ class Var final : public Castable<Var, OperandInstruction<1, 1>> {
     /// @param initializer the initializer
     void SetInitializer(Value* initializer);
     /// @returns the initializer
-    Value* Initializer() { return operands_[kInitializerOperandOffset]; }
+    Value* Initializer() { return Operand(kInitializerOperandOffset); }
     /// @returns the initializer
-    const Value* Initializer() const { return operands_[kInitializerOperandOffset]; }
+    const Value* Initializer() const { return Operand(kInitializerOperandOffset); }
 
     /// Sets the binding point
     /// @param group the group
@@ -83,6 +83,12 @@ class Var final : public Castable<Var, OperandInstruction<1, 1>> {
     void SetBindingPoint(uint32_t group, uint32_t binding) { binding_point_ = {group, binding}; }
     /// @returns the binding points if `Attributes` contains `kBindingPoint`
     std::optional<struct BindingPoint> BindingPoint() const { return binding_point_; }
+
+    /// Sets the input attachment index
+    /// @param index the index
+    void SetInputAttachmentIndex(uint32_t index) { input_attachment_index_ = index; }
+    /// @returns the input attachment index if any
+    std::optional<uint32_t> InputAttachmentIndex() const { return input_attachment_index_; }
 
     /// Sets the IO attributes
     /// @param attrs the attributes
@@ -98,6 +104,7 @@ class Var final : public Castable<Var, OperandInstruction<1, 1>> {
 
   private:
     std::optional<struct BindingPoint> binding_point_;
+    std::optional<uint32_t> input_attachment_index_;
     IOAttributes attributes_;
 };
 

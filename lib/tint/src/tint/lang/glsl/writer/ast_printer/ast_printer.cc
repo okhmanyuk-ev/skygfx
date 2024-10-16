@@ -66,6 +66,7 @@
 #include "src/tint/lang/wgsl/ast/transform/direct_variable_access.h"
 #include "src/tint/lang/wgsl/ast/transform/disable_uniformity_analysis.h"
 #include "src/tint/lang/wgsl/ast/transform/expand_compound_assignment.h"
+#include "src/tint/lang/wgsl/ast/transform/fold_constants.h"
 #include "src/tint/lang/wgsl/ast/transform/manager.h"
 #include "src/tint/lang/wgsl/ast/transform/multiplanar_external_texture.h"
 #include "src/tint/lang/wgsl/ast/transform/offset_first_index.h"
@@ -145,6 +146,8 @@ SanitizedResult Sanitize(const Program& in,
     ast::transform::Manager manager;
     ast::transform::DataMap data;
 
+    manager.Add<ast::transform::FoldConstants>();
+
     manager.Add<ast::transform::DisableUniformityAnalysis>();
 
     // ExpandCompoundAssignment must come before BuiltinPolyfill
@@ -167,10 +170,50 @@ SanitizedResult Sanitize(const Program& in,
         manager.Add<ast::transform::Robustness>();
     }
 
+    if (!options.disable_workgroup_init) {
+        // ZeroInitWorkgroupMemory must come before CanonicalizeEntryPointIO as
+        // ZeroInitWorkgroupMemory may inject new builtin parameters.
+        manager.Add<ast::transform::ZeroInitWorkgroupMemory>();
+    }
+
+    manager.Add<ast::transform::RemovePhonies>();
+
+    // TextureBuiltinsFromUniform must come before CombineSamplers to preserve texture binding point
+    // info, instead of combined sampler binding point. As a result, TextureBuiltinsFromUniform also
+    // comes before BindingRemapper so the binding point info it reflects is before remapping.
+    manager.Add<TextureBuiltinsFromUniform>();
+    data.Add<TextureBuiltinsFromUniform::Config>(
+        options.texture_builtins_from_uniform.ubo_binding,
+        options.texture_builtins_from_uniform.ubo_bindingpoint_ordering);
+
     // Note: it is more efficient for MultiplanarExternalTexture to come after Robustness
+    // Must come before builtin polyfills
     data.Add<ast::transform::MultiplanarExternalTexture::NewBindingPoints>(
         options.external_texture_options.bindings_map);
     manager.Add<ast::transform::MultiplanarExternalTexture>();
+
+    // Must be after multiplanar and must be before OffsetFirstindex
+    manager.Add<ast::transform::AddBlockAttribute>();
+
+    // This must come before ClampFragDepth as the AddBlockAttribute will change around the struct
+    // that gets created for the push constants and we end up with the `inner` structure sitting at
+    // the same offset we want to place the first_instance value.
+    manager.Add<ast::transform::OffsetFirstIndex>();
+    data.Add<ast::transform::OffsetFirstIndex::Config>(options.first_vertex_offset,
+                                                       options.first_instance_offset);
+
+    // ClampFragDepth must come before CanonicalizeEntryPointIO, or the assignments to FragDepth are
+    // lost
+    manager.Add<ast::transform::ClampFragDepth>();
+    data.Add<ast::transform::ClampFragDepth::Config>(options.depth_range_offsets);
+
+    // CanonicalizeEntryPointIO must come after Robustness
+    manager.Add<ast::transform::CanonicalizeEntryPointIO>();
+    data.Add<ast::transform::CanonicalizeEntryPointIO::Config>(
+        ast::transform::CanonicalizeEntryPointIO::ShaderStyle::kGlsl);
+
+    // DemoteToHelper must come after PromoteSideEffectsToDecl and ExpandCompoundAssignment.
+    manager.Add<ast::transform::DemoteToHelper>();
 
     {  // Builtin polyfills
         ast::transform::BuiltinPolyfill::Builtins polyfills;
@@ -198,48 +241,21 @@ SanitizedResult Sanitize(const Program& in,
 
     manager.Add<ast::transform::DirectVariableAccess>();
 
-    if (!options.disable_workgroup_init) {
-        // ZeroInitWorkgroupMemory must come before CanonicalizeEntryPointIO as
-        // ZeroInitWorkgroupMemory may inject new builtin parameters.
-        manager.Add<ast::transform::ZeroInitWorkgroupMemory>();
-    }
-
-    manager.Add<ast::transform::AddBlockAttribute>();
-
-    manager.Add<ast::transform::OffsetFirstIndex>();
-
-    // ClampFragDepth must come before CanonicalizeEntryPointIO, or the assignments to FragDepth are
-    // lost
-    manager.Add<ast::transform::ClampFragDepth>();
-
-    // CanonicalizeEntryPointIO must come after Robustness
-    manager.Add<ast::transform::CanonicalizeEntryPointIO>();
-
-    // PadStructs must come after CanonicalizeEntryPointIO
-    manager.Add<PadStructs>();
-
-    // DemoteToHelper must come after PromoteSideEffectsToDecl and ExpandCompoundAssignment.
-    manager.Add<ast::transform::DemoteToHelper>();
-
-    manager.Add<ast::transform::RemovePhonies>();
-
-    // TextureBuiltinsFromUniform must come before CombineSamplers to preserve texture binding point
-    // info, instead of combined sampler binding point. As a result, TextureBuiltinsFromUniform also
-    // comes before BindingRemapper so the binding point info it reflects is before remapping.
-    manager.Add<TextureBuiltinsFromUniform>();
-    data.Add<TextureBuiltinsFromUniform::Config>(
-        options.texture_builtins_from_uniform.ubo_binding,
-        options.texture_builtins_from_uniform.ubo_bindingpoint_ordering);
-
-    data.Add<CombineSamplers::BindingInfo>(options.binding_map, options.placeholder_binding_point);
+    // Must come after builtin polyfills (specifically texture_sample_base_clamp_to_edge_2d_f32)
+    data.Add<CombineSamplersInfo>(options.combined_samplers_info);
     manager.Add<CombineSamplers>();
 
+    // Must come after CombineSamplers
     data.Add<ast::transform::BindingRemapper::Remappings>(
         options.binding_remapper_options.binding_points,
         std::unordered_map<BindingPoint, core::Access>{},
         /* allow_collisions */ true);
     manager.Add<ast::transform::BindingRemapper>();
 
+    // PadStructs must come after CanonicalizeEntryPointIO and CombineSamplers
+    manager.Add<PadStructs>();
+
+    // Promote initializers must come after binding polyfill
     manager.Add<ast::transform::PromoteInitializersToLet>();
     manager.Add<ast::transform::RemoveContinueInSwitch>();
     manager.Add<ast::transform::AddEmptyEntryPoint>();
@@ -250,13 +266,6 @@ SanitizedResult Sanitize(const Program& in,
     manager.Add<Texture1DTo2D>();
 
     manager.Add<ast::transform::SimplifyPointers>();
-
-    data.Add<ast::transform::CanonicalizeEntryPointIO::Config>(
-        ast::transform::CanonicalizeEntryPointIO::ShaderStyle::kGlsl);
-
-    data.Add<ast::transform::OffsetFirstIndex::Config>(std::nullopt, options.first_instance_offset);
-
-    data.Add<ast::transform::ClampFragDepth::Config>(options.depth_range_offsets);
 
     SanitizedResult result;
     ast::transform::DataMap outputs;
@@ -278,6 +287,7 @@ bool ASTPrinter::Generate() {
                 wgsl::Extension::kChromiumInternalDualSourceBlending,
                 wgsl::Extension::kChromiumInternalGraphite,
                 wgsl::Extension::kF16,
+                wgsl::Extension::kDualSourceBlending,
             })) {
         return false;
     }
@@ -376,7 +386,8 @@ void ASTPrinter::RecordExtension(const ast::Enable* enable) {
         requires_f16_extension_ = true;
     }
 
-    if (enable->HasExtension(wgsl::Extension::kChromiumInternalDualSourceBlending)) {
+    if (enable->HasExtension(wgsl::Extension::kChromiumInternalDualSourceBlending) ||
+        enable->HasExtension(wgsl::Extension::kDualSourceBlending)) {
         requires_dual_source_blending_extension_ = true;
     }
 }
@@ -394,7 +405,7 @@ void ASTPrinter::EmitBitcastCall(StringStream& out, const ast::CallExpression* c
     auto* dst_type = TypeOf(call);
 
     if (!dst_type->is_integer_scalar_or_vector() && !dst_type->is_float_scalar_or_vector()) {
-        diagnostics_.AddError(diag::System::Writer, Source{})
+        diagnostics_.AddError(Source{})
             << "Unable to do bitcast to type " << dst_type->FriendlyName();
         return;
     }
@@ -609,7 +620,6 @@ void ASTPrinter::EmitBitwiseBoolOp(StringStream& out, const ast::BinaryExpressio
         out << " | ";
     } else {
         TINT_ICE() << "unexpected binary op: " << expr->op;
-        return;
     }
 
     // Cast RHS to uint scalar or vector type.
@@ -735,7 +745,6 @@ void ASTPrinter::EmitBinary(StringStream& out, const ast::BinaryExpression* expr
         case core::BinaryOp::kLogicalOr: {
             // These are both handled above.
             TINT_UNREACHABLE();
-            return;
         }
         case core::BinaryOp::kEqual:
             out << "==";
@@ -1346,7 +1355,6 @@ void ASTPrinter::EmitTextureCall(StringStream& out,
     auto* texture = arg(Usage::kTexture);
     if (TINT_UNLIKELY(!texture)) {
         TINT_ICE() << "missing texture argument";
-        return;
     }
 
     auto* texture_type = TypeOf(texture)->UnwrapRef()->As<core::type::Texture>();
@@ -1519,7 +1527,6 @@ void ASTPrinter::EmitTextureCall(StringStream& out,
             break;
         default:
             TINT_ICE() << "Unhandled texture builtin '" << std::string(builtin->str()) << "'";
-            return;
     }
 
     if (builtin->Signature().IndexOf(core::ParameterUsage::kOffset) >= 0) {
@@ -1533,7 +1540,6 @@ void ASTPrinter::EmitTextureCall(StringStream& out,
     auto* param_coords = arg(Usage::kCoords);
     if (TINT_UNLIKELY(!param_coords)) {
         TINT_ICE() << "missing coords argument";
-        return;
     }
 
     if (auto* array_index = arg(Usage::kArrayIndex)) {
@@ -1625,7 +1631,6 @@ void ASTPrinter::EmitTextureCall(StringStream& out,
         TINT_ICE() << "WGSL return width (" << wgsl_ret_width
                    << ") is wider than GLSL return width (" << glsl_ret_width << ") for "
                    << builtin->Fn();
-        return;
     }
 }
 
@@ -1741,8 +1746,7 @@ std::string ASTPrinter::generate_builtin_name(const sem::BuiltinFn* builtin) {
         case wgsl::BuiltinFn::kUnpack4X8Unorm:
             return "unpackUnorm4x8";
         default:
-            diagnostics_.AddError(diag::System::Writer, Source{})
-                << "Unknown builtin method: " << builtin;
+            diagnostics_.AddError(Source{}) << "Unknown builtin method: " << builtin;
     }
 
     return "";
@@ -1913,14 +1917,13 @@ void ASTPrinter::EmitGlobalVariable(const ast::Variable* global) {
                     return;
                 default: {
                     TINT_ICE() << "unhandled address space " << sem->AddressSpace();
-                    break;
                 }
             }
         },
         [&](const ast::Let* let) { EmitProgramConstVariable(let); },
         [&](const ast::Override*) {
             // Override is removed with SubstituteOverride
-            diagnostics_.AddError(diag::System::Writer, Source{})
+            diagnostics_.AddError(Source{})
                 << "override-expressions should have been removed with the "
                    "SubstituteOverride transform";
         },
@@ -1935,7 +1938,6 @@ void ASTPrinter::EmitUniformVariable(const ast::Var* var, const sem::Variable* s
     auto* str = type->As<core::type::Struct>();
     if (TINT_UNLIKELY(!str)) {
         TINT_ICE() << "storage variable must be of struct type";
-        return;
     }
     auto bp = *sem->As<sem::GlobalVariable>()->Attributes().binding_point;
     {
@@ -1954,7 +1956,6 @@ void ASTPrinter::EmitStorageVariable(const ast::Var* var, const sem::Variable* s
     auto* str = type->As<core::type::Struct>();
     if (TINT_UNLIKELY(!str)) {
         TINT_ICE() << "storage variable must be of struct type";
-        return;
     }
     auto bp = *sem->As<sem::GlobalVariable>()->Attributes().binding_point;
     Line() << "layout(binding = " << bp.binding << ", std430) buffer "
@@ -1980,7 +1981,6 @@ void ASTPrinter::EmitHandleVariable(const ast::Var* var, const sem::Variable* se
         switch (storage->texel_format()) {
             case core::TexelFormat::kBgra8Unorm:
                 TINT_ICE() << "bgra8unorm should have been polyfilled to rgba8unorm";
-                break;
             case core::TexelFormat::kR32Uint:
                 out << "r32ui";
                 break;
@@ -2034,7 +2034,6 @@ void ASTPrinter::EmitHandleVariable(const ast::Var* var, const sem::Variable* se
                 break;
             case core::TexelFormat::kUndefined:
                 TINT_ICE() << "invalid texel format";
-                return;
         }
         out << ") ";
     }
@@ -2189,7 +2188,7 @@ void ASTPrinter::EmitEntryPointFunction(const ast::Function* func) {
             out << "local_size_" << (i == 0 ? "x" : i == 1 ? "y" : "z") << " = ";
 
             if (!wgsize[i].has_value()) {
-                diagnostics_.AddError(diag::System::Writer, Source{})
+                diagnostics_.AddError(Source{})
                     << "override-expressions should have been removed with the SubstituteOverride "
                        "transform";
                 return;
@@ -2292,8 +2291,7 @@ void ASTPrinter::EmitConstant(StringStream& out, const core::constant::Value* co
 
             auto count = a->ConstantCount();
             if (!count) {
-                diagnostics_.AddError(diag::System::Writer, Source{})
-                    << core::type::Array::kErrExpectedConstantCount;
+                diagnostics_.AddError(Source{}) << core::type::Array::kErrExpectedConstantCount;
                 return;
             }
 
@@ -2344,8 +2342,7 @@ void ASTPrinter::EmitLiteral(StringStream& out, const ast::LiteralExpression* li
                     return;
                 }
             }
-            diagnostics_.AddError(diag::System::Writer, Source{})
-                << "unknown integer literal suffix type";
+            diagnostics_.AddError(Source{}) << "unknown integer literal suffix type";
         },  //
         TINT_ICE_ON_NO_MATCH);
 }
@@ -2397,8 +2394,7 @@ void ASTPrinter::EmitZeroValue(StringStream& out, const core::type::Type* type) 
 
         auto count = arr->ConstantCount();
         if (!count) {
-            diagnostics_.AddError(diag::System::Writer, Source{})
-                << core::type::Array::kErrExpectedConstantCount;
+            diagnostics_.AddError(Source{}) << core::type::Array::kErrExpectedConstantCount;
             return;
         }
 
@@ -2409,7 +2405,7 @@ void ASTPrinter::EmitZeroValue(StringStream& out, const core::type::Type* type) 
             EmitZeroValue(out, arr->ElemType());
         }
     } else {
-        diagnostics_.AddError(diag::System::Writer, Source{})
+        diagnostics_.AddError(Source{})
             << "Invalid type for zero emission: " << type->FriendlyName();
     }
 }
@@ -2685,8 +2681,7 @@ void ASTPrinter::EmitType(StringStream& out,
             } else {
                 auto count = arr->ConstantCount();
                 if (!count) {
-                    diagnostics_.AddError(diag::System::Writer, Source{})
-                        << core::type::Array::kErrExpectedConstantCount;
+                    diagnostics_.AddError(Source{}) << core::type::Array::kErrExpectedConstantCount;
                     return;
                 }
                 sizes.push_back(count.value());
@@ -2734,7 +2729,6 @@ void ASTPrinter::EmitType(StringStream& out,
     } else if (auto* tex = type->As<core::type::Texture>()) {
         if (TINT_UNLIKELY(tex->Is<core::type::ExternalTexture>())) {
             TINT_ICE() << "Multiplanar external texture transform was not run.";
-            return;
         }
 
         auto* storage = tex->As<core::type::StorageTexture>();
@@ -2772,7 +2766,6 @@ void ASTPrinter::EmitType(StringStream& out,
                 } break;
                 default:
                     TINT_UNREACHABLE() << "unexpected storage texture access " << storage->access();
-                    return;
             }
         }
         auto* subtype = sampled   ? sampled->type()
@@ -2786,7 +2779,6 @@ void ASTPrinter::EmitType(StringStream& out,
             out << "u";
         } else {
             TINT_ICE() << "Unsupported texture type";
-            return;
         }
 
         out << (storage ? "image" : "sampler");
@@ -2812,7 +2804,6 @@ void ASTPrinter::EmitType(StringStream& out,
                 break;
             default:
                 TINT_UNREACHABLE() << "unexpected TextureDimension " << tex->dim();
-                return;
         }
         if (tex->Is<core::type::DepthTexture>()) {
             out << "Shadow";
@@ -2841,7 +2832,7 @@ void ASTPrinter::EmitType(StringStream& out,
     } else if (type->Is<core::type::Void>()) {
         out << "void";
     } else {
-        diagnostics_.AddError(diag::System::Writer, Source{}) << "unknown type in EmitType";
+        diagnostics_.AddError(Source{}) << "unknown type in EmitType";
     }
 }
 

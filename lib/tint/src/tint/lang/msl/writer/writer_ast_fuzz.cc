@@ -35,8 +35,9 @@
 namespace tint::msl::writer {
 namespace {
 
-void ASTFuzzer(const tint::Program& program, Options options) {
+void ASTFuzzer(const tint::Program& program, const fuzz::wgsl::Context& context, Options options) {
     if (program.AST().HasOverrides()) {
+        // MSL writer assumes the SubstituteOverride and SingleEntryPoint transforms have been run
         return;
     }
 

@@ -26,6 +26,8 @@ if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
   set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
+message(WARNING "Note: https://dawn.googlesource.com/tint is deprecated and the auto-mirroring has been turned off. No more updates will appear in this mirror. Please switch to the Dawn repo (https://dawn.googlesource.com/dawn) to retrieve the Tint source code. If there are any issues integrating the Dawn repo with your build, please file bugs at (https://crbug.com/dawn).")
+
 set(DAWN_BUILD_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/gen")
 
 # TINT_IS_SUBPROJECT is 1 if added via add_subdirectory() from another project.
@@ -108,6 +110,8 @@ option_if_not_defined(TINT_ENABLE_MSAN "Enable memory sanitizer" OFF)
 option_if_not_defined(TINT_ENABLE_ASAN "Enable address sanitizer" OFF)
 option_if_not_defined(TINT_ENABLE_UBSAN "Enable undefined behaviour sanitizer" OFF)
 
+option_if_not_defined(TINT_WERROR "Build with -Werror (or equivalent)" OFF)
+
 option_if_not_defined(TINT_ENABLE_BREAK_IN_DEBUGGER "Enable tint::debugger::Break()" OFF)
 
 option_if_not_defined(TINT_EMIT_COVERAGE "Emit code coverage information" OFF)
@@ -159,6 +163,10 @@ function(common_compile_options TARGET)
       -Wno-deprecated-builtins
       -Wno-unknown-warning-option
     )
+
+    if (${TINT_WERROR})
+        target_compile_options(${TARGET} PRIVATE -Werror)
+    endif()
 
     if (${TINT_ENABLE_MSAN})
       target_compile_options(${TARGET} PUBLIC -fsanitize=memory)

@@ -195,16 +195,15 @@ std::string OverflowErrorMessage(NumberT lhs, const char* op, NumberT rhs) {
 template <typename VALUE_TY>
 std::string OverflowErrorMessage(VALUE_TY value, std::string_view target_ty) {
     StringStream ss;
-    ss << "value " << value << " cannot be represented as "
-       << "'" << target_ty << "'";
+    ss << "value " << value << " cannot be represented as " << "'" << target_ty << "'";
     return ss.str();
 }
 
 template <typename NumberT>
 std::string OverflowExpErrorMessage(std::string_view base, NumberT exp) {
     StringStream ss;
-    ss << base << "^" << exp << " cannot be represented as "
-       << "'" << FriendlyName<NumberT>() << "'";
+    ss << base << "^" << exp << " cannot be represented as " << "'" << FriendlyName<NumberT>()
+       << "'";
     return ss.str();
 }
 
@@ -281,7 +280,7 @@ const ScalarBase* ScalarConvert(const Scalar<T>* scalar,
             // [abstract-numeric -> x] - materialization failure
             auto msg = OverflowErrorMessage(scalar->value, target_ty->FriendlyName());
             if (ctx.use_runtime_semantics) {
-                ctx.diags.AddWarning(tint::diag::System::Resolver, ctx.source) << msg;
+                ctx.diags.AddWarning(ctx.source) << msg;
                 switch (conv.Failure()) {
                     case ConversionFailure::kExceedsNegativeLimit:
                         return ctx.mgr.Get<Scalar<TO>>(target_ty, TO::Lowest());
@@ -289,7 +288,7 @@ const ScalarBase* ScalarConvert(const Scalar<T>* scalar,
                         return ctx.mgr.Get<Scalar<TO>>(target_ty, TO::Highest());
                 }
             } else {
-                ctx.diags.AddError(tint::diag::System::Resolver, ctx.source) << msg;
+                ctx.diags.AddError(ctx.source) << msg;
                 return nullptr;
             }
         } else if constexpr (IsFloatingPoint<TO>) {
@@ -297,7 +296,7 @@ const ScalarBase* ScalarConvert(const Scalar<T>* scalar,
             // https://www.w3.org/TR/WGSL/#floating-point-conversion
             auto msg = OverflowErrorMessage(scalar->value, target_ty->FriendlyName());
             if (ctx.use_runtime_semantics) {
-                ctx.diags.AddWarning(tint::diag::System::Resolver, ctx.source) << msg;
+                ctx.diags.AddWarning(ctx.source) << msg;
                 switch (conv.Failure()) {
                     case ConversionFailure::kExceedsNegativeLimit:
                         return ctx.mgr.Get<Scalar<TO>>(target_ty, TO::Lowest());
@@ -305,7 +304,7 @@ const ScalarBase* ScalarConvert(const Scalar<T>* scalar,
                         return ctx.mgr.Get<Scalar<TO>>(target_ty, TO::Highest());
                 }
             } else {
-                ctx.diags.AddError(tint::diag::System::Resolver, ctx.source) << msg;
+                ctx.diags.AddError(ctx.source) << msg;
                 return nullptr;
             }
         } else if constexpr (IsFloatingPoint<FROM>) {
@@ -359,7 +358,7 @@ const Value* ConvertInternal(const Value* root_value,
         if (auto* build = std::get_if<ActionBuildSplat>(&next)) {
             TINT_ASSERT(value_stack.Length() >= 1);
             auto* el = value_stack.Pop();
-            value_stack.Push(ctx.mgr.Splat(build->type, el, build->count));
+            value_stack.Push(ctx.mgr.Splat(build->type, el));
             continue;
         }
 
@@ -425,7 +424,6 @@ const Value* ConvertInternal(const Value* root_value,
                         if (members[i]->Type() != target_el_ty) {
                             TINT_ICE()
                                 << "inconsistent target struct member types for SplatConvert";
-                            return false;
                         }
                     }
                 } else {
@@ -447,7 +445,6 @@ const Value* ConvertInternal(const Value* root_value,
                     if (TINT_UNLIKELY(str->Members().Length() != el_count)) {
                         TINT_ICE()
                             << "const-eval conversion of structure has mismatched element counts";
-                        return false;
                     }
                     // Struct composites can have different types for each member.
                     auto members = str->Members();
@@ -1222,7 +1219,6 @@ Eval::Result Eval::Dot(const Source& source, const Value* v1, const Value* v2) {
                 v2->Index(0), v2->Index(1), v2->Index(2), v2->Index(3));
     }
     TINT_ICE() << "Expected vector";
-    return error;
 }
 
 Eval::Result Eval::Length(const Source& source, const core::type::Type* ty, const Value* c0) {
@@ -1334,7 +1330,7 @@ Eval::Result Eval::VecSplat(const core::type::Type* ty,
                             VectorRef<const Value*> args,
                             const Source&) {
     if (auto* arg = args[0]) {
-        return mgr.Splat(ty, arg, static_cast<const core::type::Vector*>(ty)->Width());
+        return mgr.Splat(ty, arg);
     }
     return nullptr;
 }
@@ -1398,7 +1394,7 @@ Eval::Result Eval::Index(const Value* obj_val,
                          const core::type::Type* obj_ty,
                          const Value* idx_val,
                          const Source& idx_source) {
-    auto el = obj_ty->UnwrapRef()->Elements();
+    auto el = obj_ty->UnwrapPtrOrRef()->Elements();
 
     AInt idx = idx_val->ValueAs<AInt>();
     if (idx < 0 || (el.count > 0 && idx >= el.count)) {
@@ -2066,7 +2062,6 @@ Eval::Result Eval::ShiftLeft(const core::type::Type* ty,
 
     if (TINT_UNLIKELY(!args[1]->Type()->DeepestElement()->Is<core::type::U32>())) {
         TINT_ICE() << "Element type of rhs of ShiftLeft must be a u32";
-        return error;
     }
 
     return TransformBinaryElements(mgr, ty, transform, args[0], args[1]);
@@ -2132,7 +2127,6 @@ Eval::Result Eval::ShiftRight(const core::type::Type* ty,
 
     if (TINT_UNLIKELY(!args[1]->Type()->DeepestElement()->Is<core::type::U32>())) {
         TINT_ICE() << "Element type of rhs of ShiftLeft must be a u32";
-        return error;
     }
 
     return TransformBinaryElements(mgr, ty, transform, args[0], args[1]);
@@ -2500,7 +2494,6 @@ Eval::Result Eval::determinant(const core::type::Type* ty,
                                            me(0, 3), me(1, 3), me(2, 3), me(3, 3));
         }
         TINT_ICE() << "Unexpected number of matrix rows";
-        return error;
     };
     auto r = calculate();
     if (r != Success) {
@@ -4014,18 +4007,18 @@ Eval::Result Eval::Convert(const core::type::Type* target_ty,
 
 diag::Diagnostic& Eval::AddError(const Source& source) const {
     if (use_runtime_semantics_) {
-        return diags.AddWarning(diag::System::Constant, source);
+        return diags.AddWarning(source);
     } else {
-        return diags.AddError(diag::System::Constant, source);
+        return diags.AddError(source);
     }
 }
 
 diag::Diagnostic& Eval::AddWarning(const Source& source) const {
-    return diags.AddWarning(diag::System::Constant, source);
+    return diags.AddWarning(source);
 }
 
 diag::Diagnostic& Eval::AddNote(const Source& source) const {
-    return diags.AddNote(diag::System::Constant, source);
+    return diags.AddNote(source);
 }
 
 }  // namespace tint::core::constant

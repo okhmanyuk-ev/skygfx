@@ -169,6 +169,8 @@ struct GlobalVariableAttributes {
     /// @note a GlobalVariable generally doesn't have a `color` in WGSL, as it isn't allowed by
     /// the spec. The location maybe attached by transforms such as CanonicalizeEntryPointIO.
     std::optional<uint32_t> color;
+    /// The `input_attachment_index` attribute value for the variable, if set
+    std::optional<uint32_t> input_attachment_index;
 };
 
 /// GlobalVariable is a module-scope variable
@@ -197,7 +199,6 @@ class GlobalVariable final : public Castable<GlobalVariable, Variable> {
     const GlobalVariableAttributes& Attributes() const { return attributes_; }
 
   private:
-    std::optional<tint::BindingPoint> binding_point_;
     tint::OverrideId override_id_;
     UniqueVector<const GlobalVariable*, 4> transitively_referenced_overrides_;
     GlobalVariableAttributes attributes_;

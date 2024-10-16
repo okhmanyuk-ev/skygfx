@@ -119,7 +119,7 @@ struct ZeroInitWorkgroupMemory::State {
         ArrayIndices array_indices;
 
         /// @returns true if the expr is not null (null usually indicates a failure)
-        operator bool() const { return expr != nullptr; }
+        explicit operator bool() const { return expr != nullptr; }
     };
 
     /// Statement holds information about a statement that will zero workgroup
@@ -385,7 +385,7 @@ struct ZeroInitWorkgroupMemory::State {
                 //      `(idx % modulo) / division`
                 auto count = arr->ConstantCount();
                 if (!count) {
-                    ctx.dst->Diagnostics().AddError(diag::System::Transform, Source{})
+                    ctx.dst->Diagnostics().AddError(Source{})
                         << core::type::Array::kErrExpectedConstantCount;
                     return Expression{};  // error
                 }
@@ -405,7 +405,6 @@ struct ZeroInitWorkgroupMemory::State {
         }
 
         TINT_UNREACHABLE() << "could not zero workgroup type: " << ty->FriendlyName();
-        return false;
     }
 
     /// DeclareArrayIndices returns a list of statements that contain the `let`

@@ -200,9 +200,7 @@ class Impl {
         ~ControlStackScope() { impl_->control_stack_.Pop(); }
     };
 
-    diag::Diagnostic& AddError(const Source& source) {
-        return diagnostics_.AddError(tint::diag::System::IR, source);
-    }
+    diag::Diagnostic& AddError(const Source& source) { return diagnostics_.AddError(source); }
 
     bool NeedTerminator() { return current_block_ && !current_block_->Terminator(); }
 
@@ -320,7 +318,6 @@ class Impl {
                 }
                 default: {
                     TINT_ICE() << "Invalid pipeline stage";
-                    return;
                 }
             }
 
@@ -342,7 +339,6 @@ class Impl {
                             ir_func->SetReturnBuiltin(ident_sem->Value());
                         } else {
                             TINT_ICE() << "Builtin attribute sem invalid";
-                            return;
                         }
                     });
             }
@@ -378,7 +374,6 @@ class Impl {
                             param->SetBuiltin(ident_sem->Value());
                         } else {
                             TINT_ICE() << "Builtin attribute sem invalid";
-                            return;
                         }
                     });
 
@@ -575,22 +570,31 @@ class Impl {
 
         ControlStackScope scope(this, loop_inst);
 
+        auto& body_behaviors = program_.Sem().Get(stmt->body)->Behaviors();
         {
             TINT_SCOPED_ASSIGNMENT(current_block_, loop_inst->Body());
 
             EmitStatements(stmt->body->statements);
 
-            // The current block didn't `break`, `return` or `continue`, go to the continuing block.
+            // The current block didn't `break`, `return` or `continue`, go to the continuing block
+            // or mark the end of the block as unreachable.
             if (NeedTerminator()) {
-                SetTerminator(builder_.Continue(loop_inst));
+                if (body_behaviors.Contains(sem::Behavior::kNext)) {
+                    SetTerminator(builder_.Continue(loop_inst));
+                } else {
+                    SetTerminator(builder_.Unreachable());
+                }
             }
         }
 
-        {
+        // Emit a continuing block if it is reachable.
+        if (body_behaviors.Contains(sem::Behavior::kNext) ||
+            body_behaviors.Contains(sem::Behavior::kContinue)) {
             TINT_SCOPED_ASSIGNMENT(current_block_, loop_inst->Continuing());
             if (stmt->continuing) {
                 EmitBlock(stmt->continuing);
             }
+
             // Branch back to the start block if the continue target didn't terminate already
             if (NeedTerminator()) {
                 SetTerminator(builder_.NextIteration(loop_inst));
@@ -845,7 +849,6 @@ class Impl {
                     return *val;
                 }
                 TINT_ICE() << "expression did not resolve to a value";
-                return nullptr;
             }
 
             void PushBlock(core::ir::Block* block) {
@@ -877,7 +880,6 @@ class Impl {
                 auto* obj = GetValue(expr->object);
                 if (!obj) {
                     TINT_UNREACHABLE() << "no object result";
-                    return;
                 }
 
                 auto* sem = impl.program_.Sem().Get(expr)->Unwrap();
@@ -899,7 +901,6 @@ class Impl {
                                 return impl.builder_.Constant(cv);
                             }
                             TINT_UNREACHABLE() << "constant clone failed";
-                            return nullptr;
                         }
                         return GetValue(idx->Index()->Declaration());
                     },
@@ -1036,8 +1037,9 @@ class Impl {
                         inst = impl.builder_.Bitcast(ty, args[0]);
                     } else {
                         auto* res = impl.builder_.InstructionResult(ty);
-                        inst = impl.builder_.ir.instructions.Create<wgsl::ir::BuiltinCall>(
-                            res, b->Fn(), std::move(args));
+                        inst =
+                            impl.builder_.ir.allocators.instructions.Create<wgsl::ir::BuiltinCall>(
+                                res, b->Fn(), std::move(args));
                     }
                 } else if (sem->Target()->As<sem::ValueConstructor>()) {
                     inst = impl.builder_.Construct(ty, std::move(args));
@@ -1045,7 +1047,6 @@ class Impl {
                     inst = impl.builder_.Convert(ty, args[0]);
                 } else if (expr->target->identifier->Is<ast::TemplatedIdentifier>()) {
                     TINT_UNIMPLEMENTED() << "missing templated ident support";
-                    return;
                 } else {
                     // Not a builtin and not a templated call, so this is a user function.
                     inst = impl.builder_.Call(ty,
@@ -1156,7 +1157,7 @@ class Impl {
                 auto res = GetValue(b);
                 auto* src = res->As<core::ir::InstructionResult>()->Instruction();
                 auto* if_ = src->As<core::ir::If>();
-                TINT_ASSERT_OR_RETURN(if_);
+                TINT_ASSERT(if_);
                 auto rhs = GetValue(b->rhs);
                 if (!rhs) {
                     return;
@@ -1221,7 +1222,6 @@ class Impl {
             return *val;
         }
         TINT_ICE() << "expression did not resolve to a value";
-        return nullptr;
     }
 
     void EmitCall(const ast::CallStatement* stmt) { (void)EmitValueExpression(stmt->expr); }
@@ -1247,9 +1247,15 @@ class Impl {
                 }
                 current_block_->Append(val);
 
-                if (auto* gv = sem->As<sem::GlobalVariable>(); gv && var->HasBindingPoint()) {
-                    val->SetBindingPoint(gv->Attributes().binding_point->group,
-                                         gv->Attributes().binding_point->binding);
+                if (auto* gv = sem->As<sem::GlobalVariable>(); gv) {
+                    if (var->HasBindingPoint()) {
+                        val->SetBindingPoint(gv->Attributes().binding_point->group,
+                                             gv->Attributes().binding_point->binding);
+                    }
+                    if (var->HasInputAttachmentIndex()) {
+                        val->SetInputAttachmentIndex(
+                            gv->Attributes().input_attachment_index.value());
+                    }
                 }
 
                 // Store the declaration so we can get the instruction to store too
@@ -1325,10 +1331,8 @@ class Impl {
             case core::BinaryOp::kLogicalAnd:
             case core::BinaryOp::kLogicalOr:
                 TINT_ICE() << "short circuit op should have already been handled";
-                return nullptr;
         }
         TINT_UNREACHABLE();
-        return nullptr;
     }
 };
 
@@ -1343,7 +1347,7 @@ tint::Result<core::ir::Module> ProgramToIR(const Program& program) {
     auto r = b.Build();
     if (r != Success) {
         diag::List err = std::move(r.Failure().reason);
-        err.AddNote(diag::System::IR, Source{}) << "AST:\n" + Program::printer(program);
+        err.AddNote(Source{}) << "AST:\n" + Program::printer(program);
         return Failure{err};
     }
 

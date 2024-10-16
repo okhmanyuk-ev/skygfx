@@ -46,6 +46,7 @@
 #include "src/tint/lang/core/type/depth_multisampled_texture.h"
 #include "src/tint/lang/core/type/depth_texture.h"
 #include "src/tint/lang/core/type/external_texture.h"
+#include "src/tint/lang/core/type/input_attachment.h"
 #include "src/tint/lang/core/type/memory_view.h"
 #include "src/tint/lang/core/type/multisampled_texture.h"
 #include "src/tint/lang/core/type/pointer.h"
@@ -64,6 +65,7 @@
 #include "src/tint/lang/wgsl/ast/for_loop_statement.h"
 #include "src/tint/lang/wgsl/ast/id_attribute.h"
 #include "src/tint/lang/wgsl/ast/if_statement.h"
+#include "src/tint/lang/wgsl/ast/input_attachment_index_attribute.h"
 #include "src/tint/lang/wgsl/ast/internal_attribute.h"
 #include "src/tint/lang/wgsl/ast/interpolate_attribute.h"
 #include "src/tint/lang/wgsl/ast/loop_statement.h"
@@ -118,6 +120,9 @@ using namespace tint::core::fluent_types;  // NOLINT
 namespace tint::resolver {
 namespace {
 
+/// ICE() is a wrapper around TINT_ICE() that includes a prefixed source location
+#define ICE(SOURCE) TINT_ICE() << SOURCE << (SOURCE.file ? ": " : "")
+
 using CtorConvIntrinsic = wgsl::intrinsic::CtorConv;
 using OverloadFlag = core::intrinsic::OverloadFlag;
 
@@ -160,8 +165,7 @@ bool Resolver::Resolve() {
     bool result = ResolveInternal();
 
     if (TINT_UNLIKELY(!result && !diagnostics_.ContainsErrors())) {
-        AddICE("resolving failed, but no error was raised", {});
-        return false;
+        TINT_ICE() << "resolving failed, but no error was raised";
     }
 
     if (!validator_.Enables(b.AST().Enables())) {
@@ -230,11 +234,9 @@ bool Resolver::ResolveInternal() {
     bool result = true;
     for (auto* node : b.ASTNodes().Objects()) {
         if (TINT_UNLIKELY(!marked_[node->node_id.value])) {
-            StringStream err;
-            err << "AST node '" << node->TypeInfo().name << "' was not reached by the resolver\n"
-                << "Pointer: " << node;
-            AddICE(err.str(), node->source);
-            result = false;
+            ICE(node->source) << "AST node '" << node->TypeInfo().name
+                              << "' was not reached by the resolver\n"
+                              << "Pointer: " << node;
         }
     }
 
@@ -613,7 +615,7 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
         bool has_io_address_space = sem->AddressSpace() == core::AddressSpace::kIn ||
                                     sem->AddressSpace() == core::AddressSpace::kOut;
 
-        std::optional<uint32_t> group, binding;
+        std::optional<uint32_t> group, binding, input_attachment_index;
         for (auto* attribute : var->attributes) {
             Mark(attribute);
             enum Status { kSuccess, kErrored, kInvalid };
@@ -633,6 +635,14 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
                         return kErrored;
                     }
                     group = value.Get();
+                    return kSuccess;
+                },
+                [&](const ast::InputAttachmentIndexAttribute* attr) {
+                    auto value = InputAttachmentIndexAttribute(attr);
+                    if (value != Success) {
+                        return kErrored;
+                    }
+                    input_attachment_index = value.Get();
                     return kSuccess;
                 },
                 [&](const ast::LocationAttribute* attr) {
@@ -705,6 +715,10 @@ sem::Variable* Resolver::Var(const ast::Var* var, bool is_global) {
 
         if (group && binding) {
             global->Attributes().binding_point = BindingPoint{group.value(), binding.value()};
+        }
+
+        if (input_attachment_index) {
+            global->Attributes().input_attachment_index = input_attachment_index;
         }
 
     } else {
@@ -929,10 +943,9 @@ void Resolver::SetShadows() {
     for (auto& it : dependencies_.shadows) {
         CastableBase* shadowed = sem_.Get(it.value);
         if (TINT_UNLIKELY(!shadowed)) {
-            StringStream err;
-            err << "AST node '" << it.value->TypeInfo().name << "' had no semantic info\n"
-                << "Pointer: " << it.value;
-            AddICE(err.str(), it.value->source);
+            ICE(it.value->source) << "AST node '" << it.value->TypeInfo().name
+                                  << "' had no semantic info\n"
+                                  << "Pointer: " << it.value;
         }
 
         Switch(
@@ -1156,9 +1169,10 @@ sem::Function* Resolver::Function(const ast::Function* decl) {
     }
 
     if (auto* str = return_type->As<core::type::Struct>()) {
-        if (!ApplyAddressSpaceUsageToType(core::AddressSpace::kUndefined, str, decl->source)) {
-            AddNote(decl->source) << "while instantiating return type for "
-                                  << decl->name->symbol.NameView();
+        if (!ApplyAddressSpaceUsageToType(core::AddressSpace::kUndefined, str,
+                                          decl->return_type->source)) {
+            AddNote(decl->return_type->source)
+                << "while instantiating return type for " << decl->name->symbol.NameView();
             return nullptr;
         }
 
@@ -1186,9 +1200,8 @@ sem::Function* Resolver::Function(const ast::Function* decl) {
     if (decl->body) {
         Mark(decl->body);
         if (TINT_UNLIKELY(current_compound_statement_)) {
-            AddICE("Resolver::Function() called with a current compound statement",
-                   decl->body->source);
-            return nullptr;
+            ICE(decl->body->source)
+                << "Resolver::Function() called with a current compound statement";
         }
         auto* body = StatementScope(decl->body, b.create<sem::FunctionBlockStatement>(func),
                                     [&] { return Statements(decl->body->statements); });
@@ -1581,7 +1594,7 @@ sem::Expression* Resolver::Expression(const ast::Expression* root) {
                     // Mark entire expression tree to not const-evaluate
                     auto r = ast::TraverseExpressions(  //
                         (*binary)->rhs, [&](const ast::Expression* e) {
-                            skip_const_eval_.Add(e);
+                            not_evaluated_.Add(e);
                             return ast::TraverseAction::Descend;
                         });
                     if (!r) {
@@ -1593,8 +1606,7 @@ sem::Expression* Resolver::Expression(const ast::Expression* root) {
         }
     }
 
-    AddICE("Expression() did not find root node", root->source);
-    return nullptr;
+    ICE(root->source) << "Expression() did not find root node";
 }
 
 sem::ValueExpression* Resolver::ValueExpression(const ast::Expression* expr) {
@@ -1866,7 +1878,7 @@ const sem::ValueExpression* Resolver::Load(const sem::ValueExpression* expr) {
         return expr;
     }
 
-    auto* load = b.create<sem::Load>(expr, current_statement_);
+    auto* load = b.create<sem::Load>(expr, current_statement_, expr->Stage());
     load->Behaviors() = expr->Behaviors();
     b.Sem().Replace(expr->Declaration(), load);
 
@@ -1897,14 +1909,11 @@ const sem::ValueExpression* Resolver::Materialize(
     }
 
     const core::constant::Value* materialized_val = nullptr;
-    if (!skip_const_eval_.Contains(decl)) {
+    if (!not_evaluated_.Contains(decl)) {
         auto expr_val = expr->ConstantValue();
         if (TINT_UNLIKELY(!expr_val)) {
-            StringStream err;
-            err << decl->source << "Materialize(" << decl->TypeInfo().name
-                << ") called on expression with no constant value";
-            AddICE(err.str(), expr->Declaration()->source);
-            return nullptr;
+            ICE(decl->source) << "Materialize(" << decl->TypeInfo().name
+                              << ") called on expression with no constant value";
         }
 
         auto val = const_eval_.Convert(concrete_ty, expr_val, decl->source);
@@ -1914,11 +1923,8 @@ const sem::ValueExpression* Resolver::Materialize(
         }
         materialized_val = val.Get();
         if (TINT_UNLIKELY(!materialized_val)) {
-            StringStream err;
-            err << decl->source << "ConvertValue(" << expr_val->Type()->FriendlyName() << " -> "
-                << concrete_ty->FriendlyName() << ") returned invalid value";
-            AddICE(err.str(), expr->Declaration()->source);
-            return nullptr;
+            ICE(decl->source) << "ConvertValue(" << expr_val->Type()->FriendlyName() << " -> "
+                              << concrete_ty->FriendlyName() << ") returned invalid value";
         }
     }
 
@@ -2040,7 +2046,7 @@ sem::ValueExpression* Resolver::IndexAccessor(const ast::IndexAccessorExpression
 
     const core::constant::Value* val = nullptr;
     auto stage = core::EarliestStage(obj->Stage(), idx->Stage());
-    if (stage == core::EvaluationStage::kConstant && skip_const_eval_.Contains(expr)) {
+    if (not_evaluated_.Contains(expr)) {
         stage = core::EvaluationStage::kNotEvaluated;
     } else {
         if (auto* idx_val = idx->ConstantValue()) {
@@ -2133,7 +2139,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
 
         const core::constant::Value* value = nullptr;
         auto stage = core::EarliestStage(overload_stage, args_stage);
-        if (stage == core::EvaluationStage::kConstant && skip_const_eval_.Contains(expr)) {
+        if (not_evaluated_.Contains(expr)) {
             stage = core::EvaluationStage::kNotEvaluated;
         }
         if (stage == core::EvaluationStage::kConstant) {
@@ -2159,7 +2165,7 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
                                const sem::CallTarget* call_target) -> sem::Call* {
         auto stage = args_stage;                       // The evaluation stage of the call
         const core::constant::Value* value = nullptr;  // The constant value for the call
-        if (stage == core::EvaluationStage::kConstant && skip_const_eval_.Contains(expr)) {
+        if (not_evaluated_.Contains(expr)) {
             stage = core::EvaluationStage::kNotEvaluated;
         }
         if (stage == core::EvaluationStage::kConstant) {
@@ -2318,7 +2324,6 @@ sem::Call* Resolver::Call(const ast::CallExpression* expr) {
             }
             default: {
                 TINT_ICE() << "unhandled IncompleteType builtin: " << t->builtin;
-                return nullptr;
             }
         }
     };
@@ -2427,7 +2432,7 @@ sem::Call* Resolver::BuiltinCall(const ast::CallExpression* expr,
     // now.
     const core::constant::Value* value = nullptr;
     auto stage = core::EarliestStage(arg_stage, target->Stage());
-    if (stage == core::EvaluationStage::kConstant && skip_const_eval_.Contains(expr)) {
+    if (not_evaluated_.Contains(expr)) {
         stage = core::EvaluationStage::kNotEvaluated;
     }
     if (stage == core::EvaluationStage::kConstant) {
@@ -2663,6 +2668,8 @@ core::type::Type* Resolver::BuiltinType(core::BuiltinType builtin_ty,
             return StorageTexture(ident, core::type::TextureDimension::k2dArray);
         case core::BuiltinType::kTextureStorage3D:
             return StorageTexture(ident, core::type::TextureDimension::k3d);
+        case core::BuiltinType::kInputAttachment:
+            return InputAttachment(ident);
         case core::BuiltinType::kPackedVec3:
             return PackedVec3T(ident);
         case core::BuiltinType::kAtomicCompareExchangeResultI32:
@@ -2721,11 +2728,7 @@ core::type::Type* Resolver::BuiltinType(core::BuiltinType builtin_ty,
             break;
     }
 
-    auto name = ident->symbol.NameView();
-    StringStream err;
-    err << " unhandled builtin type '" << name << "'";
-    AddICE(err.str(), ident->source);
-    return nullptr;
+    ICE(ident->source) << " unhandled builtin type '" << ident->symbol.NameView() << "'";
 }
 
 core::type::AbstractFloat* Resolver::AF() {
@@ -2981,6 +2984,21 @@ core::type::StorageTexture* Resolver::StorageTexture(const ast::Identifier* iden
     return tex;
 }
 
+core::type::InputAttachment* Resolver::InputAttachment(const ast::Identifier* ident) {
+    auto* tmpl_ident = TemplatedIdentifier(ident, 1);
+    if (TINT_UNLIKELY(!tmpl_ident)) {
+        return nullptr;
+    }
+
+    auto* ty_expr = sem_.GetType(tmpl_ident->arguments[0]);
+    if (TINT_UNLIKELY(!ty_expr)) {
+        return nullptr;
+    }
+
+    auto* out = b.create<core::type::InputAttachment>(ty_expr);
+    return validator_.InputAttachment(out, ident->source) ? out : nullptr;
+}
+
 core::type::Vector* Resolver::PackedVec3T(const ast::Identifier* ident) {
     auto* tmpl_ident = TemplatedIdentifier(ident, 1);
     if (TINT_UNLIKELY(!tmpl_ident)) {
@@ -3054,12 +3072,17 @@ size_t Resolver::NestDepth(const core::type::Type* ty) const {
 
 void Resolver::CollectTextureSamplerPairs(const sem::BuiltinFn* builtin,
                                           VectorRef<const sem::ValueExpression*> args) const {
+    if (builtin->Fn() == wgsl::BuiltinFn::kInputAttachmentLoad) {
+        // inputAttachmentLoad() is considered a texture function, however it doesn't need sampler,
+        // and its parameter has ParameterUsage::kInputAttachment, so return early.
+        return;
+    }
+
     // Collect a texture/sampler pair for this builtin.
     const auto& signature = builtin->Signature();
     int texture_index = signature.IndexOf(core::ParameterUsage::kTexture);
     if (TINT_UNLIKELY(texture_index == -1)) {
-        AddICE("texture builtin without texture parameter", {});
-        return;
+        TINT_ICE() << "texture builtin without texture parameter";
     }
     if (auto* user =
             args[static_cast<size_t>(texture_index)]->UnwrapLoad()->As<sem::VariableUser>()) {
@@ -3086,10 +3109,12 @@ sem::Call* Resolver::FunctionCall(const ast::CallExpression* expr,
         return nullptr;
     }
 
+    auto stage = not_evaluated_.Contains(expr) ? core::EvaluationStage::kNotEvaluated
+                                               : core::EvaluationStage::kRuntime;
+
     // TODO(crbug.com/tint/1420): For now, assume all function calls have side effects.
     bool has_side_effects = true;
-    auto* call = b.create<sem::Call>(expr, target, core::EvaluationStage::kRuntime, std::move(args),
-                                     current_statement_,
+    auto* call = b.create<sem::Call>(expr, target, stage, std::move(args), current_statement_,
                                      /* constant_value */ nullptr, has_side_effects);
 
     target->AddCallSite(call);
@@ -3191,7 +3216,6 @@ sem::ValueExpression* Resolver::Literal(const ast::LiteralExpression* literal) {
                     return b.create<core::type::U32>();
             }
             TINT_UNREACHABLE() << "Unhandled integer literal suffix: " << i->suffix;
-            return nullptr;
         },
         [&](const ast::FloatLiteralExpression* f) -> core::type::Type* {
             switch (f->suffix) {
@@ -3204,7 +3228,6 @@ sem::ValueExpression* Resolver::Literal(const ast::LiteralExpression* literal) {
                                                                        : nullptr;
             }
             TINT_UNREACHABLE() << "Unhandled float literal suffix: " << f->suffix;
-            return nullptr;
         },
         [&](const ast::BoolLiteralExpression*) { return b.create<core::type::Bool>(); },  //
         TINT_ICE_ON_NO_MATCH);
@@ -3215,7 +3238,7 @@ sem::ValueExpression* Resolver::Literal(const ast::LiteralExpression* literal) {
 
     const core::constant::Value* val = nullptr;
     auto stage = core::EvaluationStage::kConstant;
-    if (skip_const_eval_.Contains(literal)) {
+    if (not_evaluated_.Contains(literal)) {
         stage = core::EvaluationStage::kNotEvaluated;
     }
     if (stage == core::EvaluationStage::kConstant) {
@@ -3255,10 +3278,7 @@ sem::Expression* Resolver::Identifier(const ast::IdentifierExpression* expr) {
 
     auto resolved = dependencies_.resolved_identifiers.Get(ident);
     if (!resolved) {
-        StringStream err;
-        err << "identifier '" << ident->symbol.NameView() << "' was not resolved";
-        AddICE(err.str(), expr->source);
-        return nullptr;
+        ICE(expr->source) << "identifier '" << ident->symbol.NameView() << "' was not resolved";
     }
 
     if (auto* ast_node = resolved->Node()) {
@@ -3272,7 +3292,7 @@ sem::Expression* Resolver::Identifier(const ast::IdentifierExpression* expr) {
 
                 auto stage = variable->Stage();
                 const core::constant::Value* value = variable->ConstantValue();
-                if (skip_const_eval_.Contains(expr)) {
+                if (not_evaluated_.Contains(expr)) {
                     // This expression is short-circuited by an ancestor expression.
                     // Do not const-eval.
                     stage = core::EvaluationStage::kNotEvaluated;
@@ -3414,7 +3434,6 @@ sem::Expression* Resolver::Identifier(const ast::IdentifierExpression* expr) {
     }
 
     TINT_UNREACHABLE() << "unhandled resolved identifier: " << resolved->String();
-    return nullptr;
 }
 
 sem::ValueExpression* Resolver::MemberAccessor(const ast::MemberAccessorExpression* expr) {
@@ -3613,7 +3632,7 @@ sem::ValueExpression* Resolver::Binary(const ast::BinaryExpression* expr) {
     }
 
     const core::constant::Value* value = nullptr;
-    if (skip_const_eval_.Contains(expr)) {
+    if (not_evaluated_.Contains(expr)) {
         // This expression is short-circuited by an ancestor expression.
         // Do not const-eval.
         stage = core::EvaluationStage::kNotEvaluated;
@@ -3871,6 +3890,31 @@ tint::Result<uint32_t> Resolver::GroupAttribute(const ast::GroupAttribute* attr)
     auto value = const_value->ValueAs<AInt>();
     if (value < 0) {
         AddError(attr->source) << style::Attribute("@group") << " value must be non-negative";
+        return Failure{};
+    }
+    return static_cast<uint32_t>(value);
+}
+
+tint::Result<uint32_t> Resolver::InputAttachmentIndexAttribute(
+    const ast::InputAttachmentIndexAttribute* attr) {
+    ExprEvalStageConstraint constraint{core::EvaluationStage::kConstant, "@input_attachment_index"};
+    TINT_SCOPED_ASSIGNMENT(expr_eval_stage_constraint_, constraint);
+
+    auto* materialized = Materialize(ValueExpression(attr->expr));
+    if (!materialized) {
+        return Failure{};
+    }
+    if (!materialized->Type()->IsAnyOf<core::type::I32, core::type::U32>()) {
+        AddError(attr->source) << style::Attribute("@input_attachment_index") << " must be an "
+                               << style::Type("i32") << " or " << style::Type("u32") << " value";
+        return Failure{};
+    }
+
+    auto const_value = materialized->ConstantValue();
+    auto value = const_value->ValueAs<AInt>();
+    if (value < 0) {
+        AddError(attr->source) << style::Attribute("@input_attachment_index")
+                               << " value must be non-negative";
         return Failure{};
     }
     return static_cast<uint32_t>(value);
@@ -4535,8 +4579,7 @@ sem::Struct* Resolver::Structure(const ast::Struct* str) {
         return nullptr;
     }
     if (TINT_UNLIKELY(struct_align > std::numeric_limits<uint32_t>::max())) {
-        AddICE("calculated struct stride exceeds uint32", str->source);
-        return nullptr;
+        ICE(str->source) << "calculated struct stride exceeds uint32";
     }
 
     auto* out = b.create<sem::Struct>(
@@ -5000,20 +5043,16 @@ SEM* Resolver::StatementScope(const ast::Statement* ast, SEM* sem, F&& callback)
 
 bool Resolver::Mark(const ast::Node* node) {
     if (TINT_UNLIKELY(node == nullptr)) {
-        AddICE("Resolver::Mark() called with nullptr", {});
-        return false;
+        TINT_ICE() << "Resolver::Mark() called with nullptr";
     }
     auto marked_bit_ref = marked_[node->node_id.value];
     if (TINT_LIKELY(!marked_bit_ref)) {
         marked_bit_ref = true;
         return true;
     }
-    StringStream err;
-    err << "AST node '" << node->TypeInfo().name
-        << "' was encountered twice in the same AST of a Program\n"
-        << "Pointer: " << node;
-    AddICE(err.str(), node->source);
-    return false;
+    ICE(node->source) << "AST node '" << node->TypeInfo().name
+                      << "' was encountered twice in the same AST of a Program\n"
+                      << "Pointer: " << node;
 }
 
 template <typename NODE>
@@ -5041,29 +5080,16 @@ void Resolver::ErrorInvalidAttribute(const ast::Attribute* attr, StyledText use)
     AddError(attr->source) << style::Attribute("@", attr->Name()) << " is not valid for " << use;
 }
 
-void Resolver::AddICE(std::string_view msg, const Source& source) const {
-    if (source.file) {
-        TINT_ICE() << source << ": " << msg;
-    } else {
-        TINT_ICE() << msg;
-    }
-    diag::Diagnostic err{};
-    err.severity = diag::Severity::InternalCompilerError;
-    err.system = diag::System::Resolver;
-    err.source = source;
-    diagnostics_.Add(std::move(err)) << msg;
-}
-
 diag::Diagnostic& Resolver::AddError(const Source& source) const {
-    return diagnostics_.AddError(diag::System::Resolver, source);
+    return diagnostics_.AddError(source);
 }
 
 diag::Diagnostic& Resolver::AddWarning(const Source& source) const {
-    return diagnostics_.AddWarning(diag::System::Resolver, source);
+    return diagnostics_.AddWarning(source);
 }
 
 diag::Diagnostic& Resolver::AddNote(const Source& source) const {
-    return diagnostics_.AddNote(diag::System::Resolver, source);
+    return diagnostics_.AddNote(source);
 }
 
 }  // namespace tint::resolver

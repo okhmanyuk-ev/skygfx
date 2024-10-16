@@ -41,30 +41,13 @@
 
 #if TINT_BUILD_WGSL_READER
 namespace tint::fuzz::ir {
-namespace {
-
-bool IsUnsupported(const ast::Enable* enable) {
-    for (auto ext : enable->extensions) {
-        switch (ext->name) {
-            case tint::wgsl::Extension::kChromiumExperimentalPixelLocal:
-            case tint::wgsl::Extension::kChromiumExperimentalPushConstant:
-            case tint::wgsl::Extension::kChromiumInternalDualSourceBlending:
-            case tint::wgsl::Extension::kChromiumInternalRelaxedUniformLayout:
-                return true;
-            default:
-                break;
-        }
-    }
-    return false;
-}
-
-}  // namespace
 
 void Register(const IRFuzzer& fuzzer) {
     wgsl::Register({
         fuzzer.name,
-        [fn = fuzzer.fn](const Program& program, Slice<const std::byte> data) {
-            if (program.AST().Enables().Any(IsUnsupported)) {
+        [fn = fuzzer.fn](const Program& program, const fuzz::wgsl::Context& context,
+                         Slice<const std::byte> data) {
+            if (program.AST().Enables().Any(tint::wgsl::reader::IsUnsupportedByIR)) {
                 return;
             }
 
@@ -81,7 +64,6 @@ void Register(const IRFuzzer& fuzzer) {
 
             if (auto val = core::ir::Validate(ir.Get()); val != Success) {
                 TINT_ICE() << val.Failure();
-                return;
             }
 
             return fn(ir.Get(), data);

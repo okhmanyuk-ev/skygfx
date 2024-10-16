@@ -62,7 +62,8 @@ Loop* Loop::Clone(CloneContext& ctx) {
     auto* new_body = ctx.ir.blocks.Create<MultiInBlock>();
     auto* new_continuing = ctx.ir.blocks.Create<MultiInBlock>();
 
-    auto* new_loop = ctx.ir.instructions.Create<Loop>(new_init, new_body, new_continuing);
+    auto* new_loop =
+        ctx.ir.allocators.instructions.Create<Loop>(new_init, new_body, new_continuing);
     ctx.Replace(this, new_loop);
 
     initializer_->CloneInto(ctx, new_init);
@@ -75,6 +76,18 @@ Loop* Loop::Clone(CloneContext& ctx) {
 }
 
 void Loop::ForeachBlock(const std::function<void(ir::Block*)>& cb) {
+    if (initializer_) {
+        cb(initializer_);
+    }
+    if (body_) {
+        cb(body_);
+    }
+    if (continuing_) {
+        cb(continuing_);
+    }
+}
+
+void Loop::ForeachBlock(const std::function<void(const ir::Block*)>& cb) const {
     if (initializer_) {
         cb(initializer_);
     }

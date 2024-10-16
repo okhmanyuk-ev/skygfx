@@ -31,6 +31,7 @@
 #include <string_view>
 #include <utility>
 
+#include "src/tint/utils/ice/ice.h"
 #include "src/tint/utils/text/string_stream.h"
 #include "src/tint/utils/text/unicode.h"
 
@@ -150,7 +151,7 @@ std::string ToString(const Source& source) {
         }
 
         if (source.file) {
-            out << std::endl << std::endl;
+            out << "\n\n";
 
             auto repeat = [&](char c, size_t n) {
                 while (n--) {
@@ -162,9 +163,7 @@ std::string ToString(const Source& source) {
                 if (line < source.file->content.lines.size() + 1) {
                     auto len = source.file->content.lines[line - 1].size();
 
-                    out << source.file->content.lines[line - 1];
-
-                    out << std::endl;
+                    out << source.file->content.lines[line - 1] << "\n";
 
                     if (line == rng.begin.line && line == rng.end.line) {
                         // Single line
@@ -182,12 +181,33 @@ std::string ToString(const Source& source) {
                         repeat('^', len);
                     }
 
-                    out << std::endl;
+                    out << "\n";
                 }
             }
         }
     }
     return out.str();
+}
+
+size_t Source::Range::Length(const FileContent& content) const {
+    TINT_ASSERT(begin <= end);
+    TINT_ASSERT(begin.column > 0);
+    TINT_ASSERT(begin.line > 0);
+    TINT_ASSERT(end.line <= 1 + content.lines.size());
+    TINT_ASSERT(end.column <= 1 + content.lines[end.line - 1].size());
+
+    if (end.line == begin.line) {
+        return end.column - begin.column;
+    }
+
+    size_t len = (content.lines[begin.line - 1].size() + 1 - begin.column) +  // first line
+                 (end.column - 1) +                                           // last line
+                 end.line - begin.line;                                       // newlines
+
+    for (size_t line = begin.line + 1; line < end.line; line++) {
+        len += content.lines[line - 1].size();  // whole-lines
+    }
+    return len;
 }
 
 }  // namespace tint

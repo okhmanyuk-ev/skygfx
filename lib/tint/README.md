@@ -1,6 +1,12 @@
 # Tint
 
 ---
+Note: This repo is deprecated and the auto-mirroring has been turned
+off. No more updates will appear in this mirror. Please switch to
+[the Dawn repo](https://dawn.googlesource.com/dawn) to retrieve the Tint
+source code. If there are any issues integrating the Dawn repo with your
+build, please [file bugs](https://crbug.com/dawn).
+
 Note: This repo is read-only, minimized mirror of [the Dawn repo](https://dawn.googlesource.com/dawn).
 
 **Tint changes should be made in [the Dawn repo](https://dawn.googlesource.com/dawn).**

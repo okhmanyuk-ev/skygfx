@@ -70,6 +70,8 @@ enum diagnostic_severity {
 enum extension {
   // WGSL Extension "f16"
   f16
+  // WGSL Extension "dual_source_blending"
+  dual_source_blending
   // A Chromium-specific extension for disabling uniformity analysis.
   chromium_disable_uniformity_analysis
   // A Chromium-specific extension for push constants
@@ -78,9 +80,14 @@ enum extension {
   chromium_experimental_subgroups
   // A Chromium-specific extension that enables features for graphite
   chromium_internal_graphite
+  // A Chromium-specific extension that enables features for input
+  // attachments
+  chromium_internal_input_attachments
   // A Chromium-specific extension that relaxes memory layout requirements for uniform storage.
   chromium_internal_relaxed_uniform_layout
   // A Chromium-specific extension that enables dual source blending.
+  // TODO(chromium:341973423): Remove `chromium_internal_dual_source_blending` when it is totally
+  // replaced with `dual_source_blending`.
   chromium_internal_dual_source_blending
   // A Chromium-specific extension that enables pixel local storage.
   // Cannot be used with chromium_experimental_framebuffer_fetch
@@ -132,6 +139,7 @@ type mat4x4<T>
 @display("vec{N}<{T}>")     type vec<N: num, T>
 @display("mat{N}x{M}<{T}>") type mat<N: num, M: num, T>
 type ptr<S: address_space, T, A: access>
+type ref<S: address_space, T, A: access>
 type atomic<T>
 type array<T>
 type sampler
@@ -154,6 +162,7 @@ type texture_storage_2d_array<F: texel_format, A: access>
 type texture_storage_3d<F: texel_format, A: access>
 type texture_external
 type packedVec3<T>
+type input_attachment<T>
 
 @display("__modf_result_{T}")        type __modf_result<T>
 @display("__modf_result_vec{N}_{T}") type __modf_result_vec<N: num, T>
@@ -576,6 +585,8 @@ fn textureStore[C: iu32, F: u32_texel_format, W: writable](texture: texture_stor
 @must_use fn textureLoad[C: iu32, F: i32_texel_format, R: readable](texture: texture_storage_3d<F, R>, coords: vec3<C>) -> vec4<i32>
 @must_use fn textureLoad[C: iu32, F: u32_texel_format, R: readable](texture: texture_storage_3d<F, R>, coords: vec3<C>) -> vec4<u32>
 
+@stage("fragment") fn inputAttachmentLoad[T: fiu32](input_attachment: input_attachment<T>) -> vec4<T>
+
 @stage("fragment", "compute") fn atomicLoad[T: iu32, S: workgroup_or_storage](ptr<S, atomic<T>, read_write>) -> T
 @stage("fragment", "compute") fn atomicStore[T: iu32, S: workgroup_or_storage](ptr<S, atomic<T>, read_write>, T)
 @stage("fragment", "compute") fn atomicAdd[T: iu32, S: workgroup_or_storage](ptr<S, atomic<T>, read_write>, T) -> T
@@ -838,6 +849,9 @@ ctor mat4x4[T: fa_f32_f16](T, T, T, T,
 ////////////////////////////////////////////////////////////////////////////////
 // Unary Operators                                                            //
 ////////////////////////////////////////////////////////////////////////////////
+@must_use op & [S: address_space, T, A: access] (ref<S, T, A>) -> ptr<S, T, A>
+@must_use op * [S: address_space, T, A: access] (ptr<S, T, A>) -> ref<S, T, A>
+
 @must_use @const op ! (bool) -> bool
 @must_use @const op ! [N: num](vec<N, bool>) -> vec<N, bool>
 

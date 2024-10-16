@@ -50,6 +50,13 @@ config("tint_common_config") {
     "${tint_root_dir}",
     "${tint_gen_dir}",
   ]
+
+  # Some versions of MSVC ignores the [[noreturn]] on ~InternalCompilerError(),
+  # triggering a warning if it is the last statement on a function that has a
+  # return value.
+  if (!is_clang && is_win) {
+    cflags = [ "/wd4715" ]
+  }
 }
 
 config("tint_public_config") {
@@ -108,6 +115,12 @@ config("tint_public_config") {
     defines += [ "TINT_BUILD_SYNTAX_TREE_WRITER=0" ]
   }
 
+  if (tint_build_ir_binary) {
+    defines += [ "TINT_BUILD_IR_BINARY=1" ]
+  } else {
+    defines += [ "TINT_BUILD_IR_BINARY=0" ]
+  }
+
   if (tint_build_is_win) {
     defines += [ "TINT_BUILD_IS_WIN=1" ]
   } else {
@@ -137,6 +150,10 @@ config("tint_config") {
   if (tint_build_spv_reader || tint_build_spv_writer) {
     include_dirs += [ "${tint_spirv_tools_dir}/include/" ]
   }
+}
+
+source_set("dl") {
+  # GN doesn't appear to need to depend on any dl libraries.
 }
 
 source_set("thread") {
@@ -238,10 +255,10 @@ if (tint_build_benchmarks) {
 }
 
 group("abseil") {
-  # When build_with_chromium=true we need to include "//third_party/abseil-cpp:absl" while
+  # When building within Chromium or ANGLE we need to include "//third_party/abseil-cpp:absl" while
   # it's beneficial to be more specific with standalone Dawn, especially when it comes to
   # including it as a dependency in other projects (such as Skia).
-  if (build_with_chromium) {
+  if (build_with_chromium || build_with_angle) {
     public_deps = [ "$dawn_abseil_dir:absl" ]
   } else {
     public_deps = [ "${dawn_root}/third_party/gn/abseil-cpp:strings" ]
@@ -252,19 +269,43 @@ source_set("winsock") {
   libs = [ "ws2_32.lib" ]
 }
 
+config("dxc-include-config") {
+  include_dirs = [ "${dawn_dxc_dir}/include" ]
+}
+source_set("dxc-include") {
+  public_configs = [ ":dxc-include-config" ]
+}
+
 ###############################################################################
 # Fuzzers
 ###############################################################################
 if (tint_has_fuzzers) {
   action("tint_generate_wgsl_corpus") {
     script = "${tint_src_dir}/cmd/fuzz/wgsl/generate_wgsl_corpus.py"
-    sources = [ "${tint_src_dir}/cmd/fuzz/wgsl/generate_wgsl_corpus.py" ]
+    sources = [ "${script}" ]
     args = [
       "--stamp=" + rebase_path(fuzzer_corpus_wgsl_stamp, root_build_dir),
       rebase_path("${tint_root_dir}/test", root_build_dir),
       rebase_path(fuzzer_corpus_wgsl_dir, root_build_dir),
     ]
     outputs = [ fuzzer_corpus_wgsl_stamp ]
+  }
+
+  if (tint_build_cmds) {
+    if (tint_build_wgsl_reader && tint_build_ir_binary) {
+      action("tint_generate_ir_corpus") {
+        script = "${tint_src_dir}/cmd/fuzz/wgsl/generate_ir_corpus.py"
+        sources = [ "${script}" ]
+        deps = [ "${tint_src_dir}/cmd/tint" ]
+        args = [
+          "--stamp=" + rebase_path(fuzzer_corpus_ir_stamp, root_build_dir),
+          rebase_path("${root_build_dir}/tint", root_build_dir),
+          rebase_path("${tint_root_dir}/test", root_build_dir),
+          rebase_path(fuzzer_corpus_ir_dir, root_build_dir),
+        ]
+        outputs = [ fuzzer_corpus_ir_stamp ]
+      }
+    }
   }
 }
 
@@ -284,16 +325,16 @@ group("cmds") {
       "${tint_src_dir}/cmd/tint",
     ]
   }
+  if (tint_build_tintd) {
+    deps += [ "${tint_src_dir}/cmd/tintd" ]
+  }
 }
 
 group("fuzzers") {
   testonly = true
   deps = []
   if (tint_has_fuzzers) {
-    deps += [
-      "${tint_src_dir}/cmd/fuzz/wgsl",
-      "${tint_src_dir}/fuzzers",
-    ]
+    deps += [ "${tint_src_dir}/cmd/fuzz/wgsl" ]
   }
 }
 
