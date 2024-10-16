@@ -1417,13 +1417,13 @@ void BackendGL::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t ins
 void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t instance_count)
 {
 	EnsureGraphicsState(true);
-	auto index_size = gContext->index_buffer->getStride();
-	auto index_type = index_size == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 	auto mode = gContext->topology;
 	auto count = (GLsizei)index_count;
+	auto index_size = gContext->index_buffer->getStride();
+	auto type = index_size == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
 	auto indices = (void*)(size_t)(index_offset * index_size);
 	auto primcount = (GLsizei)instance_count;
-	glDrawElementsInstanced(mode, count, index_type, indices, primcount);
+	glDrawElementsInstanced(mode, count, type, indices, primcount);
 }
 
 void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)

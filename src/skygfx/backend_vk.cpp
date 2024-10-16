@@ -2985,14 +2985,12 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, const void* 
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 
-	for (auto vertex_buffer : gContext->vertex_buffers)
-	{
-		if (vertex_buffer != buffer)
-			continue;
+	auto has_buffer = std::ranges::any_of(gContext->vertex_buffers, [&](auto vertex_buffer) {
+		return vertex_buffer == buffer;
+	});
 
+	if (has_buffer)
 		gContext->vertex_buffers_dirty = true;
-		break;
-	}
 }
 
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
