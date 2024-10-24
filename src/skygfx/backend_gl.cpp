@@ -13,7 +13,6 @@
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	#define GLEW_STATIC
 	#include <GL/glew.h>
-	#include <GL/GL.h>
 	#include <GL/wglew.h>
 	#pragma comment(lib, "opengl32")
 	#pragma comment(lib, "glu32")
