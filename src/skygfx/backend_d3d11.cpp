@@ -108,20 +108,35 @@ struct ContextD3D11
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
-	Format getBackbufferFormat();
+	PixelFormat getBackbufferFormat();
 };
 
 static ContextD3D11* gContext = nullptr;
 
-static const std::unordered_map<Format, DXGI_FORMAT> FormatMap = {
-	{ Format::Float1, DXGI_FORMAT_R32_FLOAT },
-	{ Format::Float2, DXGI_FORMAT_R32G32_FLOAT },
-	{ Format::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
-	{ Format::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
-	{ Format::Byte1, DXGI_FORMAT_R8_UNORM },
-	{ Format::Byte2, DXGI_FORMAT_R8G8_UNORM },
-	//	{ Format::Byte3, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: fix
-	{ Format::Byte4, DXGI_FORMAT_R8G8B8A8_UNORM }
+static const std::unordered_map<VertexFormat, DXGI_FORMAT> VertexFormatMap = {
+	{ VertexFormat::Float1, DXGI_FORMAT_R32_FLOAT },
+	{ VertexFormat::Float2, DXGI_FORMAT_R32G32_FLOAT },
+	{ VertexFormat::Float3, DXGI_FORMAT_R32G32B32_FLOAT },
+	{ VertexFormat::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
+	{ VertexFormat::UChar1Normalized, DXGI_FORMAT_R8_UNORM },
+	{ VertexFormat::UChar2Normalized, DXGI_FORMAT_R8G8_UNORM },
+	// { VertexFormat::UChar3Normalized, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: wtf
+	{ VertexFormat::UChar4Normalized, DXGI_FORMAT_R8G8B8A8_UNORM },
+	{ VertexFormat::UChar1Normalized, DXGI_FORMAT_R8_UINT },
+	{ VertexFormat::UChar2Normalized, DXGI_FORMAT_R8G8_UINT },
+	// { VertexFormat::UChar3Normalized, DXGI_FORMAT_R8G8B8_UINT }, // TODO: wtf
+	{ VertexFormat::UChar4Normalized, DXGI_FORMAT_R8G8B8A8_UINT },
+};
+
+static const std::unordered_map<PixelFormat, DXGI_FORMAT> PixelFormatMap = {
+	{ PixelFormat::R32Float, DXGI_FORMAT_R32_FLOAT },
+	{ PixelFormat::RG32Float, DXGI_FORMAT_R32G32_FLOAT },
+	{ PixelFormat::RGB32Float, DXGI_FORMAT_R32G32B32_FLOAT },
+	{ PixelFormat::RGBA32Float, DXGI_FORMAT_R32G32B32A32_FLOAT },
+	{ PixelFormat::R8UNorm, DXGI_FORMAT_R8_UNORM },
+	{ PixelFormat::RG8UNorm, DXGI_FORMAT_R8G8_UNORM },
+	//	{ PixelFormat::RGB8UNorm, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: wtf
+	{ PixelFormat::RGBA8UNorm, DXGI_FORMAT_R8G8B8A8_UNORM }
 };
 
 SKYGFX_MAKE_HASHABLE(std::vector<InputLayout>,
@@ -201,16 +216,16 @@ private:
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
 	uint32_t mMipCount = 0;
-	Format mFormat;
+	PixelFormat mFormat;
 
 public:
-	TextureD3D11(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
+	TextureD3D11(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count) :
 		mWidth(width),
 		mHeight(height),
 		mFormat(format),
 		mMipCount(mip_count)
 	{
-		auto tex_desc = CD3D11_TEXTURE2D_DESC(FormatMap.at(format), width, height);
+		auto tex_desc = CD3D11_TEXTURE2D_DESC(PixelFormatMap.at(format), width, height);
 		tex_desc.MipLevels = mip_count;
 		tex_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
 		tex_desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
@@ -220,7 +235,7 @@ public:
 		gContext->device->CreateShaderResourceView(mTexture2D.Get(), &srv_desc, mShaderResourceView.GetAddressOf());
 	}
 
-	TextureD3D11(uint32_t width, uint32_t height, Format format, ComPtr<ID3D11Texture2D> texture) :
+	TextureD3D11(uint32_t width, uint32_t height, PixelFormat format, ComPtr<ID3D11Texture2D> texture) :
 		mWidth(width),
 		mHeight(height),
 		mFormat(format),
@@ -228,7 +243,7 @@ public:
 	{
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, const void* memory,
+	void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		auto channels = GetFormatChannelsCount(format);
@@ -243,7 +258,7 @@ public:
 	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
 		uint32_t mip_level, void* dst_memory)
 	{
-		CD3D11_TEXTURE2D_DESC desc(FormatMap.at(mFormat), width, height, 1, 1, 0, D3D11_USAGE_STAGING,
+		CD3D11_TEXTURE2D_DESC desc(PixelFormatMap.at(mFormat), width, height, 1, 1, 0, D3D11_USAGE_STAGING,
 			D3D11_CPU_ACCESS_READ);
 
 		ComPtr<ID3D11Texture2D> staging_texture = nullptr;
@@ -298,7 +313,7 @@ public:
 	RenderTargetD3D11(uint32_t width, uint32_t height, TextureD3D11* texture) :
 		mTexture(texture)
 	{
-		auto format = FormatMap.at(texture->getFormat());
+		auto format = PixelFormatMap.at(texture->getFormat());
 		auto rtv_desc = CD3D11_RENDER_TARGET_VIEW_DESC(D3D11_RTV_DIMENSION_TEXTURE2D, format);
 		gContext->device->CreateRenderTargetView(texture->getD3D11Texture2D().Get(), &rtv_desc, mRenderTargetView.GetAddressOf());
 
@@ -391,7 +406,7 @@ uint32_t ContextD3D11::getBackbufferHeight()
 	return render_targets.at(0)->getTexture()->getHeight();
 }
 
-Format ContextD3D11::getBackbufferFormat() // TODO: wtf when mrt
+PixelFormat ContextD3D11::getBackbufferFormat() // TODO: wtf when mrt
 {
 	return render_targets.at(0)->getTexture()->getFormat();
 }
@@ -401,7 +416,7 @@ static void CreateMainRenderTarget(uint32_t width, uint32_t height)
 	ComPtr<ID3D11Texture2D> backbuffer;
 	gContext->swapchain->GetBuffer(0, IID_PPV_ARGS(backbuffer.GetAddressOf()));
 
-	gContext->backbuffer_texture = new TextureD3D11(width, height, skygfx::Format::Byte4, backbuffer);
+	gContext->backbuffer_texture = new TextureD3D11(width, height, skygfx::PixelFormat::RGBA8UNorm, backbuffer);
 	gContext->main_render_target = new RenderTargetD3D11(width, height, gContext->backbuffer_texture);
 }
 
@@ -451,7 +466,7 @@ static void EnsureInputLayout()
 				input_elements.push_back(D3D11_INPUT_ELEMENT_DESC{
 					.SemanticName = "TEXCOORD",
 					.SemanticIndex = (UINT)location,
-					.Format = FormatMap.at(attribute.format),
+					.Format = VertexFormatMap.at(attribute.format),
 					.InputSlot = (UINT)i,
 					.AlignedByteOffset = (UINT)attribute.offset,
 					.InputSlotClass = InputRateMap.at(input_layout.rate),
@@ -1091,14 +1106,14 @@ void BackendD3D11::present()
 	gContext->swapchain->Present(gContext->vsync ? 1 : 0, 0);
 }
 
-TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, Format format,
+TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, PixelFormat format,
 	uint32_t mip_count)
 {
 	auto texture = new TextureD3D11(width, height, format, mip_count);
 	return (TextureHandle*)texture;
 }
 
-void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format,
 	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureD3D11*)handle;

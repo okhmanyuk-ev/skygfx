@@ -727,7 +727,7 @@ utils::Context::Context() :
 		{ {  1.0f,  1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
 		{ {  1.0f, -1.0f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
 	}, { 0, 1, 2, 0, 2, 3 }),
-	white_pixel_texture(1, 1, Format::Byte4, (void*)&white_pixel)
+	white_pixel_texture(1, 1, PixelFormat::RGBA8UNorm, (void*)&white_pixel)
 {
 }
 

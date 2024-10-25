@@ -20,7 +20,7 @@ ImguiHelper::ImguiHelper()
 	int32_t height;
 
 	io.Fonts->GetTexDataAsRGBA32(&data, &width, &height);
-	mFontTexture = std::make_shared<skygfx::Texture>(width, height, skygfx::Format::Byte4, data);
+	mFontTexture = std::make_shared<skygfx::Texture>(width, height, skygfx::PixelFormat::RGBA8UNorm, data);
 	io.Fonts->TexID = mFontTexture.get();
 }
 

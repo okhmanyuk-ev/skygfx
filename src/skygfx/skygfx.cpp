@@ -14,7 +14,7 @@ static glm::u32vec2 gSize = { 0, 0 };
 static bool gVsync = false;
 static uint32_t gDrawcalls = 0;
 static std::optional<glm::u32vec2> gRenderTargetSize;
-static Format gBackbufferFormat;
+static PixelFormat gBackbufferFormat;
 static BackendType gBackendType = BackendType::OpenGL;
 static std::optional<VertexBuffer> gVertexBuffer;
 static std::optional<IndexBuffer> gIndexBuffer;
@@ -23,7 +23,7 @@ static std::unordered_map<uint32_t, StorageBuffer> gStorageBuffers;
 
 // texture
 
-Texture::Texture(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
+Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count) :
 	mWidth(width),
 	mHeight(height),
 	mFormat(format),
@@ -35,7 +35,7 @@ Texture::Texture(uint32_t width, uint32_t height, Format format, uint32_t mip_co
 	mTextureHandle = gBackend->createTexture(width, height, format, mip_count);
 }
 
-Texture::Texture(uint32_t width, uint32_t height, Format format, const void* memory, bool generate_mips) :
+Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, const void* memory, bool generate_mips) :
 	Texture(width, height, format, generate_mips ? GetMipCount(width, height) : 1)
 {
 	write(width, height, format, memory);
@@ -59,7 +59,7 @@ Texture::~Texture()
 		gBackend->destroyTexture(mTextureHandle);
 }
 
-void Texture::write(uint32_t width, uint32_t height, Format format, const void* memory,
+void Texture::write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	assert(width > 0);
@@ -114,7 +114,7 @@ Texture& Texture::operator=(Texture&& other) noexcept
 	return *this;
 }
 
-RenderTarget::RenderTarget(uint32_t width, uint32_t height, Format format) : Texture(width, height, format, 1)
+RenderTarget::RenderTarget(uint32_t width, uint32_t height, PixelFormat format) : Texture(width, height, format, 1)
 {
 	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
 }
@@ -448,32 +448,32 @@ TopologyKind skygfx::GetTopologyKind(Topology topology)
 	return TopologyKindMap.at(topology);
 }
 
-uint32_t skygfx::GetFormatChannelsCount(Format format)
+uint32_t skygfx::GetFormatChannelsCount(PixelFormat format)
 {
-	static const std::unordered_map<Format, uint32_t> FormatChannelsMap = {
-		{ Format::Float1, 1 },
-		{ Format::Float2, 2 },
-		{ Format::Float3, 3 },
-		{ Format::Float4, 4 },
-		{ Format::Byte1, 1 },
-		{ Format::Byte2, 2 },
-		{ Format::Byte3, 3 },
-		{ Format::Byte4, 4 }
+	static const std::unordered_map<PixelFormat, uint32_t> FormatChannelsMap = {
+		{ PixelFormat::R32Float, 1 },
+		{ PixelFormat::RG32Float, 2 },
+		{ PixelFormat::RGB32Float, 3 },
+		{ PixelFormat::RGBA32Float, 4 },
+		{ PixelFormat::R8UNorm, 1 },
+		{ PixelFormat::RG8UNorm, 2 },
+		{ PixelFormat::RGB8UNorm, 3 },
+		{ PixelFormat::RGBA8UNorm, 4 }
 	};
 	return FormatChannelsMap.at(format);
 }
 
-uint32_t skygfx::GetFormatChannelSize(Format format)
+uint32_t skygfx::GetFormatChannelSize(PixelFormat format)
 {
-	static const std::unordered_map<Format, uint32_t> FormatChannelSizeMap = {
-		{ Format::Float1, 4 },
-		{ Format::Float2, 4 },
-		{ Format::Float3, 4 },
-		{ Format::Float4, 4 },
-		{ Format::Byte1, 1 },
-		{ Format::Byte2, 1 },
-		{ Format::Byte3, 1 },
-		{ Format::Byte4, 1 }
+	static const std::unordered_map<PixelFormat, uint32_t> FormatChannelSizeMap = {
+		{ PixelFormat::R32Float, 4 },
+		{ PixelFormat::RG32Float, 4 },
+		{ PixelFormat::RGB32Float, 4 },
+		{ PixelFormat::RGBA32Float, 4 },
+		{ PixelFormat::R8UNorm, 1 },
+		{ PixelFormat::RG8UNorm, 1 },
+		{ PixelFormat::RGB8UNorm, 1 },
+		{ PixelFormat::RGBA8UNorm, 1 }
 	};
 	return FormatChannelSizeMap.at(format);
 }
@@ -495,7 +495,7 @@ uint32_t skygfx::GetMipHeight(uint32_t base_height, uint32_t mip_level)
 
 // input layout
 
-InputLayout::Attribute::Attribute(Format _format, size_t _offset) :
+InputLayout::Attribute::Attribute(VertexFormat _format, size_t _offset) :
 	format(_format),
 	offset(_offset)
 {
@@ -507,7 +507,7 @@ InputLayout::InputLayout(Rate _rate, std::unordered_map<uint32_t, Attribute> _at
 {
 }
 
-InputLayout::InputLayout(Rate _rate, const std::vector<InputLayout::Attribute>& _attributes) :
+InputLayout::InputLayout(Rate _rate, const std::vector<Attribute>& _attributes) :
 	rate(_rate)
 {
 	for (size_t i = 0; i < _attributes.size(); i++)
@@ -538,14 +538,14 @@ DepthBias::DepthBias(float _factor, float _units) :
 
 struct TransientRenderTargetDesc
 {
-	TransientRenderTargetDesc(uint32_t _width, uint32_t _height, Format _format) :
+	TransientRenderTargetDesc(uint32_t _width, uint32_t _height, PixelFormat _format) :
 		width(_width), height(_height), format(_format)
 	{
 	}
 
 	uint32_t width;
 	uint32_t height;
-	Format format;
+	PixelFormat format;
 
 	bool operator==(const TransientRenderTargetDesc& other) const = default;
 };
@@ -579,7 +579,7 @@ private:
 
 static std::unordered_map<TransientRenderTargetDesc, std::unordered_set<std::shared_ptr<TransientRenderTarget>>> gTransientRenderTargets;
 
-RenderTarget* skygfx::AcquireTransientRenderTarget(uint32_t width, uint32_t height, Format format)
+RenderTarget* skygfx::AcquireTransientRenderTarget(uint32_t width, uint32_t height, PixelFormat format)
 {
 	auto desc = TransientRenderTargetDesc(width, height, format);
 
@@ -676,7 +676,7 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 	gSize = { width, height };
 	gRenderTargetSize.reset();
 	gBackendType = type;
-	gBackbufferFormat = Format::Byte4;
+	gBackbufferFormat = PixelFormat::RGBA8UNorm;
 	gDrawcalls = 0;
 
 	if (features.contains(Feature::Raytracing))
@@ -749,7 +749,7 @@ void skygfx::SetRenderTarget(const std::vector<const RenderTarget*>& value)
 	if (value.empty())
 	{
 		gRenderTargetSize.reset();
-		gBackbufferFormat = Format::Byte4;
+		gBackbufferFormat = PixelFormat::RGBA8UNorm;
 	}
 	else
 	{
@@ -987,7 +987,7 @@ uint32_t skygfx::GetBackbufferHeight()
 	return gRenderTargetSize.value_or(gSize).y;
 }
 
-Format skygfx::GetBackbufferFormat()
+PixelFormat skygfx::GetBackbufferFormat()
 {
 	return gBackbufferFormat;
 }

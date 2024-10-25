@@ -124,37 +124,60 @@ void FlushErrors()
 	}
 }
 
-static const std::unordered_map<Format, GLint> SizeMap = {
-	{ Format::Float1, 1 },
-	{ Format::Float2, 2 },
-	{ Format::Float3, 3 },
-	{ Format::Float4, 4 },
-	{ Format::Byte1, 1 },
-	{ Format::Byte2, 2 },
-	{ Format::Byte3, 3 },
-	{ Format::Byte4, 4 }
+static const std::unordered_map<VertexFormat, GLint> VertexFormatSizeMap = {
+	{ VertexFormat::Float1, 1 },
+	{ VertexFormat::Float2, 2 },
+	{ VertexFormat::Float3, 3 },
+	{ VertexFormat::Float4, 4 },
+	{ VertexFormat::UChar1, 1 },
+	{ VertexFormat::UChar2, 2 },
+	{ VertexFormat::UChar3, 3 },
+	{ VertexFormat::UChar4, 4 },
+	{ VertexFormat::UChar1Normalized, 1 },
+	{ VertexFormat::UChar2Normalized, 2 },
+	{ VertexFormat::UChar3Normalized, 3 },
+	{ VertexFormat::UChar4Normalized, 4 }
 };
 
-static const std::unordered_map<Format, GLenum> FormatTypeMap = {
-	{ Format::Float1, GL_FLOAT },
-	{ Format::Float2, GL_FLOAT },
-	{ Format::Float3, GL_FLOAT },
-	{ Format::Float4, GL_FLOAT },
-	{ Format::Byte1, GL_UNSIGNED_BYTE },
-	{ Format::Byte2, GL_UNSIGNED_BYTE },
-	{ Format::Byte3, GL_UNSIGNED_BYTE },
-	{ Format::Byte4, GL_UNSIGNED_BYTE }
+static const std::unordered_map<VertexFormat, GLint> VertexFormatTypeMap = {
+	{ VertexFormat::Float1, GL_FLOAT },
+	{ VertexFormat::Float2, GL_FLOAT },
+	{ VertexFormat::Float3, GL_FLOAT },
+	{ VertexFormat::Float4, GL_FLOAT },
+	{ VertexFormat::UChar1, GL_UNSIGNED_BYTE },
+	{ VertexFormat::UChar2, GL_UNSIGNED_BYTE },
+	{ VertexFormat::UChar3, GL_UNSIGNED_BYTE },
+	{ VertexFormat::UChar4, GL_UNSIGNED_BYTE },
+	{ VertexFormat::UChar1Normalized, GL_UNSIGNED_BYTE },
+	{ VertexFormat::UChar2Normalized, GL_UNSIGNED_BYTE },
+	{ VertexFormat::UChar3Normalized, GL_UNSIGNED_BYTE },
+	{ VertexFormat::UChar4Normalized, GL_UNSIGNED_BYTE }
 };
 
-static const std::unordered_map<Format, GLboolean> NormalizeMap = {
-	{ Format::Float1, GL_FALSE },
-	{ Format::Float2, GL_FALSE },
-	{ Format::Float3, GL_FALSE },
-	{ Format::Float4, GL_FALSE },
-	{ Format::Byte1, GL_TRUE },
-	{ Format::Byte2, GL_TRUE },
-	{ Format::Byte3, GL_TRUE },
-	{ Format::Byte4, GL_TRUE }
+static const std::unordered_map<PixelFormat, GLenum> PixelFormatTypeMap = {
+	{ PixelFormat::R32Float, GL_FLOAT },
+	{ PixelFormat::RG32Float, GL_FLOAT },
+	{ PixelFormat::RGB32Float, GL_FLOAT },
+	{ PixelFormat::RGBA32Float, GL_FLOAT },
+	{ PixelFormat::R8UNorm, GL_UNSIGNED_BYTE },
+	{ PixelFormat::RG8UNorm, GL_UNSIGNED_BYTE },
+	{ PixelFormat::RGB8UNorm, GL_UNSIGNED_BYTE },
+	{ PixelFormat::RGBA8UNorm, GL_UNSIGNED_BYTE },
+};
+
+static const std::unordered_map<VertexFormat, GLboolean> VertexFormatNormalizeMap = {
+	{ VertexFormat::Float1, GL_FALSE },
+	{ VertexFormat::Float2, GL_FALSE },
+	{ VertexFormat::Float3, GL_FALSE },
+	{ VertexFormat::Float4, GL_FALSE },
+	{ VertexFormat::UChar1, GL_FALSE },
+	{ VertexFormat::UChar2, GL_FALSE },
+	{ VertexFormat::UChar3, GL_FALSE },
+	{ VertexFormat::UChar4, GL_FALSE },
+	{ VertexFormat::UChar1Normalized, GL_TRUE },
+	{ VertexFormat::UChar2Normalized, GL_TRUE },
+	{ VertexFormat::UChar3Normalized, GL_TRUE },
+	{ VertexFormat::UChar4Normalized, GL_TRUE }
 };
 
 static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
@@ -168,35 +191,35 @@ static const std::unordered_map<ComparisonFunc, GLenum> ComparisonFuncMap = {
 	{ ComparisonFunc::GreaterEqual, GL_GEQUAL }
 };
 
-static const std::unordered_map<Format, GLenum> TextureInternalFormatMap = {
+static const std::unordered_map<PixelFormat, GLenum> TextureInternalFormatMap = {
 #if defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	// webgl and gles in ios devices cannot correctly handle 32-bit floating textures
 	// yes, we force webgl to use 16-bit floating textures for all platforms because of ios
-	{ Format::Float1, GL_R16F },
-	{ Format::Float2, GL_RG16F },
-	{ Format::Float3, GL_RGB16F },
-	{ Format::Float4, GL_RGBA16F },
+	{ Format::R32Float, GL_R16F },
+	{ Format::RG32Float, GL_RG16F },
+	{ Format::RGB32Float, GL_RGB16F },
+	{ Format::RGBA32Float, GL_RGBA16F },
 #else
-	{ Format::Float1, GL_R32F },
-	{ Format::Float2, GL_RG32F },
-	{ Format::Float3, GL_RGB32F },
-	{ Format::Float4, GL_RGBA32F },
+	{ PixelFormat::R32Float, GL_R32F },
+	{ PixelFormat::RG32Float, GL_RG32F },
+	{ PixelFormat::RGB32Float, GL_RGB32F },
+	{ PixelFormat::RGBA32Float, GL_RGBA32F },
 #endif
-	{ Format::Byte1, GL_R8 },
-	{ Format::Byte2, GL_RG8 },
-	{ Format::Byte3, GL_RGB8 },
-	{ Format::Byte4, GL_RGBA8 }
+	{ PixelFormat::R8UNorm, GL_R8 },
+	{ PixelFormat::RG8UNorm, GL_RG8 },
+	{ PixelFormat::RGB8UNorm, GL_RGB8 },
+	{ PixelFormat::RGBA8UNorm, GL_RGBA8 }
 };
 
-static const std::unordered_map<Format, GLenum> TextureFormatMap = {
-	{ Format::Float1, GL_RED },
-	{ Format::Float2, GL_RG },
-	{ Format::Float3, GL_RGB },
-	{ Format::Float4, GL_RGBA },
-	{ Format::Byte1, GL_RED },
-	{ Format::Byte2, GL_RG },
-	{ Format::Byte3, GL_RGB },
-	{ Format::Byte4, GL_RGBA }
+static const std::unordered_map<PixelFormat, GLenum> TextureFormatMap = {
+	{ PixelFormat::R32Float, GL_RED },
+	{ PixelFormat::RG32Float, GL_RG },
+	{ PixelFormat::RGB32Float, GL_RGB },
+	{ PixelFormat::RGBA32Float, GL_RGBA },
+	{ PixelFormat::R8UNorm, GL_RED },
+	{ PixelFormat::RG8UNorm, GL_RG },
+	{ PixelFormat::RGB8UNorm, GL_RGB },
+	{ PixelFormat::RGBA8UNorm, GL_RGBA },
 };
 
 class ShaderGL
@@ -393,10 +416,10 @@ private:
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
 	uint32_t mMipCount = 0;
-	Format mFormat;
+	PixelFormat mFormat;
 
 public:
-	TextureGL(uint32_t width, uint32_t height, Format format, uint32_t mip_count) :
+	TextureGL(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count) :
 		mWidth(width),
 		mHeight(height),
 		mFormat(format),
@@ -406,7 +429,7 @@ public:
 
 		auto internal_format = TextureInternalFormatMap.at(mFormat);
 		auto texture_format = TextureFormatMap.at(mFormat);
-		auto format_type = FormatTypeMap.at(mFormat);
+		auto format_type = PixelFormatTypeMap.at(mFormat);
 		auto binding = ScopedBind(mTexture);
 
 		for (uint32_t i = 0; i < mip_count; i++)
@@ -423,12 +446,12 @@ public:
 		glDeleteTextures(1, &mTexture);
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, const void* memory,
+	void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		auto channels_count = GetFormatChannelsCount(format);
 		auto channel_size = GetFormatChannelSize(format);
-		auto format_type = FormatTypeMap.at(format);
+		auto format_type = PixelFormatTypeMap.at(format);
 		auto texture_format = TextureFormatMap.at(format);
 
 		auto row_size = width * channels_count * channel_size;
@@ -454,7 +477,7 @@ public:
 	{
 		auto channels_count = GetFormatChannelsCount(mFormat);
 		auto channel_size = GetFormatChannelSize(mFormat);
-		auto format_type = FormatTypeMap.at(mFormat);
+		auto format_type = PixelFormatTypeMap.at(mFormat);
 		auto texture_format = TextureFormatMap.at(mFormat);
 		auto binding = ScopedBind(mTexture);
 
@@ -704,7 +727,7 @@ struct ContextGL
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
-	Format getBackbufferFormat();
+	PixelFormat getBackbufferFormat();
 };
 
 static ContextGL* gContext = nullptr;
@@ -719,16 +742,13 @@ uint32_t ContextGL::getBackbufferHeight()
 	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getHeight() : height;
 }
 
-Format ContextGL::getBackbufferFormat()
+PixelFormat ContextGL::getBackbufferFormat()
 {
-	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : Format::Byte4;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : PixelFormat::RGBA8UNorm;
 }
 
 static void EnsureGraphicsState(bool draw_indexed)
 {
-	assert(gContext->shader);
-	//assert(gContext->vertex_buffer);
-
 	if (gContext->shader_dirty)
 	{
 		gContext->shader->apply();
@@ -763,9 +783,9 @@ static void EnsureGraphicsState(bool draw_indexed)
 				active_locations.insert(location);
 
 				auto index = (GLuint)location;
-				auto size = (GLint)SizeMap.at(attribute.format);
-				auto type = (GLenum)FormatTypeMap.at(attribute.format);
-				auto normalized = (GLboolean)NormalizeMap.at(attribute.format);
+				auto size = (GLint)VertexFormatSizeMap.at(attribute.format);
+				auto type = (GLenum)VertexFormatTypeMap.at(attribute.format);
+				auto normalized = (GLboolean)VertexFormatNormalizeMap.at(attribute.format);
 				auto pointer = (void*)attribute.offset;
 				glVertexAttribPointer(index, size, type, normalized, stride, pointer);
 				glVertexAttribDivisor(index, input_layout.rate == InputLayout::Rate::Vertex ? 0 : 1);
@@ -1449,14 +1469,14 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, gContext->pixel_buffer);
 	glBufferData(GL_PIXEL_PACK_BUFFER, width * height * channels_count * channel_size, NULL, GL_STATIC_READ);
-	glReadPixels(x, y, width, height, TextureFormatMap.at(format), FormatTypeMap.at(format), 0);
+	glReadPixels(x, y, width, height, TextureFormatMap.at(format), PixelFormatTypeMap.at(format), 0);
 	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
 	auto binding = TextureGL::ScopedBind(dst_texture->getGLTexture());
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gContext->pixel_buffer);
 
 	glTexImage2D(GL_TEXTURE_2D, 0, TextureInternalFormatMap.at(format), width, height, 0,
-		TextureFormatMap.at(format), FormatTypeMap.at(format), NULL);
+		TextureFormatMap.at(format), PixelFormatTypeMap.at(format), NULL);
 
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
@@ -1476,14 +1496,14 @@ void BackendGL::present()
 	gContext->execute_after_present.flush();
 }
 
-TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, Format format,
+TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, PixelFormat format,
 	uint32_t mip_count)
 {
 	auto texture = new TextureGL(width, height, format, mip_count);
 	return (TextureHandle*)texture;
 }
 
-void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format,
 	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureGL*)handle;

@@ -294,26 +294,41 @@ static void SetImageMemoryBarrier(const vk::raii::CommandBuffer& cmdbuf, vk::Ima
 static void EnsureMemoryState(const vk::raii::CommandBuffer& cmdbuf, vk::PipelineStageFlags2 stage);
 static void OneTimeSubmit(std::function<void(const vk::raii::CommandBuffer&)> func);
 
-static const std::unordered_map<Format, vk::Format> FormatMap = {
-	{ Format::Float1, vk::Format::eR32Sfloat },
-	{ Format::Float2, vk::Format::eR32G32Sfloat },
-	{ Format::Float3, vk::Format::eR32G32B32Sfloat },
-	{ Format::Float4, vk::Format::eR32G32B32A32Sfloat },
-	{ Format::Byte1, vk::Format::eR8Unorm },
-	{ Format::Byte2, vk::Format::eR8G8Unorm },
-	{ Format::Byte3, vk::Format::eR8G8B8Unorm },
-	{ Format::Byte4, vk::Format::eR8G8B8A8Unorm }
+static const std::unordered_map<VertexFormat, vk::Format> VertexFormatMap = {
+	{ VertexFormat::Float1, vk::Format::eR32Sfloat },
+	{ VertexFormat::Float2, vk::Format::eR32G32Sfloat },
+	{ VertexFormat::Float3, vk::Format::eR32G32B32Sfloat },
+	{ VertexFormat::Float4, vk::Format::eR32G32B32A32Sfloat },
+	{ VertexFormat::UChar1Normalized, vk::Format::eR8Unorm },
+	{ VertexFormat::UChar2Normalized, vk::Format::eR8G8Unorm },
+	{ VertexFormat::UChar3Normalized, vk::Format::eR8G8B8Unorm },
+	{ VertexFormat::UChar4Normalized, vk::Format::eR8G8B8A8Unorm },
+	{ VertexFormat::UChar1, vk::Format::eR8Uint },
+	{ VertexFormat::UChar2, vk::Format::eR8G8Uint },
+	{ VertexFormat::UChar3, vk::Format::eR8G8B8Uint },
+	{ VertexFormat::UChar4, vk::Format::eR8G8B8A8Uint }
 };
 
-static const std::unordered_map<vk::Format, Format> ReversedFormatMap = {
-	{ vk::Format::eR32Sfloat, Format::Float1 },
-	{ vk::Format::eR32G32Sfloat, Format::Float2 },
-	{ vk::Format::eR32G32B32Sfloat, Format::Float3 },
-	{ vk::Format::eR32G32B32A32Sfloat, Format::Float4 },
-	{ vk::Format::eR8Unorm, Format::Byte1 },
-	{ vk::Format::eR8G8Unorm, Format::Byte2 },
-	{ vk::Format::eR8G8B8Unorm, Format::Byte3 },
-	{ vk::Format::eR8G8B8A8Unorm, Format::Byte4 }
+static const std::unordered_map<PixelFormat, vk::Format> PixelFormatMap = {
+	{ PixelFormat::R32Float, vk::Format::eR32Sfloat },
+	{ PixelFormat::RG32Float, vk::Format::eR32G32Sfloat },
+	{ PixelFormat::RGB32Float, vk::Format::eR32G32B32Sfloat },
+	{ PixelFormat::RGBA32Float, vk::Format::eR32G32B32A32Sfloat },
+	{ PixelFormat::R8UNorm, vk::Format::eR8Unorm },
+	{ PixelFormat::RG8UNorm, vk::Format::eR8G8Unorm },
+	{ PixelFormat::RGB8UNorm, vk::Format::eR8G8B8Unorm },
+	{ PixelFormat::RGBA8UNorm, vk::Format::eR8G8B8A8Unorm },
+};
+
+static const std::unordered_map<vk::Format, PixelFormat> ReversedPixelFormatMap = {
+	{ vk::Format::eR32Sfloat, PixelFormat::R32Float },
+	{ vk::Format::eR32G32Sfloat, PixelFormat::RG32Float },
+	{ vk::Format::eR32G32B32Sfloat, PixelFormat::RGB32Float },
+	{ vk::Format::eR32G32B32A32Sfloat, PixelFormat::RGBA32Float },
+	{ vk::Format::eR8Unorm, PixelFormat::R8UNorm },
+	{ vk::Format::eR8G8Unorm, PixelFormat::RG8UNorm },
+	{ vk::Format::eR8G8B8Unorm, PixelFormat::RGB8UNorm },
+	{ vk::Format::eR8G8B8A8Unorm, PixelFormat::RGBA8UNorm }
 };
 
 const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
@@ -548,7 +563,7 @@ public:
 			DestroyStaging(std::move(mDeviceMemory.value()));
 	}
 
-	void write(uint32_t width, uint32_t height, Format format, const void* memory,
+	void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		EnsureRenderPassDeactivated();
@@ -591,7 +606,7 @@ public:
 		gContext->queue.submit(submit_info);
 		gContext->queue.waitIdle();
 
-		auto _format = ReversedFormatMap.at(mFormat);
+		auto _format = ReversedPixelFormatMap.at(mFormat);
 		auto channels_count = GetFormatChannelsCount(_format);
 		auto channel_size = GetFormatChannelSize(_format);
 		auto size = width * height * channels_count * channel_size;
@@ -1031,7 +1046,7 @@ uint32_t ContextVK::getBackbufferHeight()
 vk::Format ContextVK::getBackbufferFormat()
 {
 	// TODO: wtf when mrt
-	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : FormatMap.at(Format::Byte4); //gContext->surface_format.format;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : PixelFormatMap.at(PixelFormat::RGBA8UNorm); //gContext->surface_format.format;
 }
 
 static void BeginRenderPass()
@@ -1626,7 +1641,7 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 			auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
 				.setBinding((uint32_t)i)
 				.setLocation(location)
-				.setFormat(FormatMap.at(attribute.format))
+				.setFormat(VertexFormatMap.at(attribute.format))
 				.setOffset((uint32_t)attribute.offset);
 
 			vertex_input_attribute_descriptions.push_back(vertex_input_attribute_description);
@@ -2859,15 +2874,15 @@ void BackendVK::present()
 	Begin();
 }
 
-TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, Format format,
+TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, PixelFormat format,
 	uint32_t mip_count)
 {
-	auto texture = new TextureVK(width, height, FormatMap.at(format), mip_count);
+	auto texture = new TextureVK(width, height, PixelFormatMap.at(format), mip_count);
 	gContext->objects.insert(texture);
 	return (TextureHandle*)texture;
 }
 
-void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, Format format,
+void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format,
 	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureVK*)handle;

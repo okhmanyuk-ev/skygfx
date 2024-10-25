@@ -38,16 +38,32 @@ namespace skygfx
 		Raytracing
 	};
 
-	enum class Format
+	enum class VertexFormat
 	{
 		Float1,
 		Float2,
 		Float3,
 		Float4,
-		Byte1,
-		Byte2,
-		Byte3,
-		Byte4
+		UChar1,
+		UChar2,
+		UChar3,
+		UChar4,
+		UChar1Normalized,
+		UChar2Normalized,
+		UChar3Normalized,
+		UChar4Normalized,
+	};
+
+	enum class PixelFormat
+	{
+		R32Float,
+		RG32Float,
+		RGB32Float,
+		RGBA32Float,
+		R8UNorm,
+		RG8UNorm,
+		RGB8UNorm,
+		RGBA8UNorm
 	};
 
 	enum class ShaderStage
@@ -83,12 +99,12 @@ namespace skygfx
 	class Texture : private noncopyable
 	{
 	public:
-		Texture(uint32_t width, uint32_t height, Format format, uint32_t mip_count);
-		Texture(uint32_t width, uint32_t height, Format format, const void* memory, bool generate_mips = false);
+		Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count);
+		Texture(uint32_t width, uint32_t height, PixelFormat format, const void* memory, bool generate_mips = false);
 		Texture(Texture&& other) noexcept;
 		virtual ~Texture();
 
-		void write(uint32_t width, uint32_t height, Format format, const void* memory,
+		void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
 			uint32_t mip_level = 0, uint32_t offset_x = 0, uint32_t offset_y = 0);
 		void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
 			uint32_t mip_level, void* dst_memory);
@@ -109,14 +125,14 @@ namespace skygfx
 		TextureHandle* mTextureHandle = nullptr;
 		uint32_t mWidth = 0;
 		uint32_t mHeight = 0;
-		Format mFormat;
+		PixelFormat mFormat;
 		uint32_t mMipCount = 0;
 	};
 
 	class RenderTarget : public Texture
 	{
 	public:
-		RenderTarget(uint32_t width, uint32_t height, Format format = Format::Float4);
+		RenderTarget(uint32_t width, uint32_t height, PixelFormat format = PixelFormat::RGBA32Float);
 		RenderTarget(RenderTarget&& other) noexcept;
 		~RenderTarget();
 
@@ -358,8 +374,8 @@ namespace skygfx
 	};
 
 	TopologyKind GetTopologyKind(Topology topology);
-	uint32_t GetFormatChannelsCount(Format format);
-	uint32_t GetFormatChannelSize(Format format);
+	uint32_t GetFormatChannelsCount(PixelFormat format);
+	uint32_t GetFormatChannelSize(PixelFormat format);
 	uint32_t GetMipCount(uint32_t width, uint32_t height);
 	uint32_t GetMipWidth(uint32_t base_width, uint32_t mip_level);
 	uint32_t GetMipHeight(uint32_t base_height, uint32_t mip_level);
@@ -384,16 +400,16 @@ namespace skygfx
 
 		struct Attribute
 		{
-			Attribute(Format format, size_t offset);
+			Attribute(VertexFormat format, size_t offset);
 
-			Format format;
+			VertexFormat format;
 			size_t offset;
 
 			bool operator==(const Attribute& other) const = default;
 		};
 
 		InputLayout(Rate rate, std::unordered_map<uint32_t, Attribute> attributes);
-		InputLayout(Rate rate, const std::vector<InputLayout::Attribute>& attributes);
+		InputLayout(Rate rate, const std::vector<Attribute>& attributes);
 
 		Rate rate;
 		std::unordered_map<uint32_t, Attribute> attributes;
@@ -650,7 +666,7 @@ namespace skygfx
 
 	uint32_t GetBackbufferWidth();
 	uint32_t GetBackbufferHeight();
-	Format GetBackbufferFormat();
+	PixelFormat GetBackbufferFormat();
 	std::vector<uint8_t> GetBackbufferPixels();
 
 	BackendType GetBackendType();
@@ -659,7 +675,7 @@ namespace skygfx
 	std::optional<BackendType> GetDefaultBackend(const std::unordered_set<Feature>& features = {});
 
 	RenderTarget* AcquireTransientRenderTarget(uint32_t width = GetBackbufferWidth(), uint32_t height = GetBackbufferHeight(),
-		Format format = Format::Float4);
+		PixelFormat format = PixelFormat::RGBA32Float);
 	void ReleaseTransientRenderTarget(RenderTarget* target);
 }
 
