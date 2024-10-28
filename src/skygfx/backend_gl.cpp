@@ -1415,7 +1415,20 @@ void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional
 		glClearStencil(stencil.value());
 	}
 
+	GLboolean depth_mask;
+	glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
+
+	if (!depth_mask)
+	{
+		glDepthMask(true);
+	}
+
 	glClear(flags);
+
+	if (!depth_mask)
+	{
+		glDepthMask(GL_FALSE);
+	}
 
 	if (scissor_was_enabled)
 	{
