@@ -276,39 +276,32 @@ public:
 		auto glsl_frag = skygfx::CompileSpirvToGlsl(fragment_shader_spirv, options.es, options.version,
 			options.enable_420pack_extension, options.force_flattened_io_blocks);
 
-		auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
-		auto v = glsl_vert.c_str();
-		glShaderSource(vertexShader, 1, &v, NULL);
-		glCompileShader(vertexShader);
+		auto throw_error = [](auto shader, auto get_length_func, auto get_info_log_func) {
+			GLint length = 0;
+			get_length_func(shader, GL_INFO_LOG_LENGTH, &length);
+			std::string str;
+			str.resize(length);
+			get_info_log_func(shader, length, &length, &str[0]);
+			throw std::runtime_error(str);
+		};
 
-		GLint isCompiled = 0;
-		glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &isCompiled);
-		if (isCompiled == GL_FALSE)
-		{
-			GLint maxLength = 0;
-			glGetShaderiv(vertexShader, GL_INFO_LOG_LENGTH, &maxLength);
-			std::string errorLog;
-			errorLog.resize(maxLength);
-			glGetShaderInfoLog(vertexShader, maxLength, &maxLength, &errorLog[0]);
-			throw std::runtime_error(errorLog);
-		}
+		auto compile_shader = [&](auto type, const std::string& glsl) {
+			auto shader = glCreateShader(type);
+			auto v = glsl.c_str();
+			glShaderSource(shader, 1, &v, NULL);
+			glCompileShader(shader);
 
-		auto fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-		auto f = glsl_frag.c_str();
-		glShaderSource(fragmentShader, 1, &f, NULL);
-		glCompileShader(fragmentShader);
+			GLint isCompiled = 0;
+			glGetShaderiv(shader, GL_COMPILE_STATUS, &isCompiled);
 
-		isCompiled = 0;
-		glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &isCompiled);
-		if (isCompiled == GL_FALSE)
-		{
-			GLint maxLength = 0;
-			glGetShaderiv(fragmentShader, GL_INFO_LOG_LENGTH, &maxLength);
-			std::string errorLog;
-			errorLog.resize(maxLength);
-			glGetShaderInfoLog(fragmentShader, maxLength, &maxLength, &errorLog[0]);
-			throw std::runtime_error(errorLog);
-		}
+			if (isCompiled == GL_FALSE)
+				throw_error(shader, glGetShaderiv, glGetShaderInfoLog);
+
+			return shader;
+		};
+
+		auto vertexShader = compile_shader(GL_VERTEX_SHADER, glsl_vert);
+		auto fragmentShader = compile_shader(GL_FRAGMENT_SHADER, glsl_frag);
 
 		mProgram = glCreateProgram();
 		glAttachShader(mProgram, vertexShader);
@@ -317,15 +310,9 @@ public:
 
 		GLint link_status = 0;
 		glGetProgramiv(mProgram, GL_LINK_STATUS, &link_status);
+
 		if (link_status == GL_FALSE)
-		{
-			GLint maxLength = 0;
-			glGetProgramiv(mProgram, GL_INFO_LOG_LENGTH, &maxLength);
-			std::string errorLog;
-			errorLog.resize(maxLength);
-			glGetProgramInfoLog(mProgram, maxLength, &maxLength, &errorLog[0]);
-			throw std::runtime_error(errorLog);
-		}
+			throw_error(mProgram, glGetProgramiv, glGetProgramInfoLog);
 
 		glDeleteShader(vertexShader);
 		glDeleteShader(fragmentShader);
