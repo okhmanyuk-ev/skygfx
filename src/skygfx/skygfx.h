@@ -46,11 +46,9 @@ namespace skygfx
 		Float4,
 		UChar1,
 		UChar2,
-		UChar3,
 		UChar4,
 		UChar1Normalized,
 		UChar2Normalized,
-		UChar3Normalized,
 		UChar4Normalized,
 	};
 
@@ -62,7 +60,6 @@ namespace skygfx
 		RGBA32Float,
 		R8UNorm,
 		RG8UNorm,
-		RGB8UNorm,
 		RGBA8UNorm
 	};
 

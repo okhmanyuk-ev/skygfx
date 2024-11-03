@@ -301,11 +301,9 @@ static const std::unordered_map<VertexFormat, vk::Format> VertexFormatMap = {
 	{ VertexFormat::Float4, vk::Format::eR32G32B32A32Sfloat },
 	{ VertexFormat::UChar1Normalized, vk::Format::eR8Unorm },
 	{ VertexFormat::UChar2Normalized, vk::Format::eR8G8Unorm },
-	{ VertexFormat::UChar3Normalized, vk::Format::eR8G8B8Unorm },
 	{ VertexFormat::UChar4Normalized, vk::Format::eR8G8B8A8Unorm },
 	{ VertexFormat::UChar1, vk::Format::eR8Uint },
 	{ VertexFormat::UChar2, vk::Format::eR8G8Uint },
-	{ VertexFormat::UChar3, vk::Format::eR8G8B8Uint },
 	{ VertexFormat::UChar4, vk::Format::eR8G8B8A8Uint }
 };
 
@@ -316,7 +314,6 @@ static const std::unordered_map<PixelFormat, vk::Format> PixelFormatMap = {
 	{ PixelFormat::RGBA32Float, vk::Format::eR32G32B32A32Sfloat },
 	{ PixelFormat::R8UNorm, vk::Format::eR8Unorm },
 	{ PixelFormat::RG8UNorm, vk::Format::eR8G8Unorm },
-	{ PixelFormat::RGB8UNorm, vk::Format::eR8G8B8Unorm },
 	{ PixelFormat::RGBA8UNorm, vk::Format::eR8G8B8A8Unorm },
 };
 
@@ -327,7 +324,6 @@ static const std::unordered_map<vk::Format, PixelFormat> ReversedPixelFormatMap 
 	{ vk::Format::eR32G32B32A32Sfloat, PixelFormat::RGBA32Float },
 	{ vk::Format::eR8Unorm, PixelFormat::R8UNorm },
 	{ vk::Format::eR8G8Unorm, PixelFormat::RG8UNorm },
-	{ vk::Format::eR8G8B8Unorm, PixelFormat::RGB8UNorm },
 	{ vk::Format::eR8G8B8A8Unorm, PixelFormat::RGBA8UNorm }
 };
 

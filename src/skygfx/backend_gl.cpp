@@ -131,11 +131,9 @@ static const std::unordered_map<VertexFormat, GLint> VertexFormatSizeMap = {
 	{ VertexFormat::Float4, 4 },
 	{ VertexFormat::UChar1, 1 },
 	{ VertexFormat::UChar2, 2 },
-	{ VertexFormat::UChar3, 3 },
 	{ VertexFormat::UChar4, 4 },
 	{ VertexFormat::UChar1Normalized, 1 },
 	{ VertexFormat::UChar2Normalized, 2 },
-	{ VertexFormat::UChar3Normalized, 3 },
 	{ VertexFormat::UChar4Normalized, 4 }
 };
 
@@ -146,11 +144,9 @@ static const std::unordered_map<VertexFormat, GLint> VertexFormatTypeMap = {
 	{ VertexFormat::Float4, GL_FLOAT },
 	{ VertexFormat::UChar1, GL_UNSIGNED_BYTE },
 	{ VertexFormat::UChar2, GL_UNSIGNED_BYTE },
-	{ VertexFormat::UChar3, GL_UNSIGNED_BYTE },
 	{ VertexFormat::UChar4, GL_UNSIGNED_BYTE },
 	{ VertexFormat::UChar1Normalized, GL_UNSIGNED_BYTE },
 	{ VertexFormat::UChar2Normalized, GL_UNSIGNED_BYTE },
-	{ VertexFormat::UChar3Normalized, GL_UNSIGNED_BYTE },
 	{ VertexFormat::UChar4Normalized, GL_UNSIGNED_BYTE }
 };
 
@@ -161,7 +157,6 @@ static const std::unordered_map<PixelFormat, GLenum> PixelFormatTypeMap = {
 	{ PixelFormat::RGBA32Float, GL_FLOAT },
 	{ PixelFormat::R8UNorm, GL_UNSIGNED_BYTE },
 	{ PixelFormat::RG8UNorm, GL_UNSIGNED_BYTE },
-	{ PixelFormat::RGB8UNorm, GL_UNSIGNED_BYTE },
 	{ PixelFormat::RGBA8UNorm, GL_UNSIGNED_BYTE },
 };
 
@@ -172,11 +167,9 @@ static const std::unordered_map<VertexFormat, GLboolean> VertexFormatNormalizeMa
 	{ VertexFormat::Float4, GL_FALSE },
 	{ VertexFormat::UChar1, GL_FALSE },
 	{ VertexFormat::UChar2, GL_FALSE },
-	{ VertexFormat::UChar3, GL_FALSE },
 	{ VertexFormat::UChar4, GL_FALSE },
 	{ VertexFormat::UChar1Normalized, GL_TRUE },
 	{ VertexFormat::UChar2Normalized, GL_TRUE },
-	{ VertexFormat::UChar3Normalized, GL_TRUE },
 	{ VertexFormat::UChar4Normalized, GL_TRUE }
 };
 
@@ -207,7 +200,6 @@ static const std::unordered_map<PixelFormat, GLenum> TextureInternalFormatMap = 
 #endif
 	{ PixelFormat::R8UNorm, GL_R8 },
 	{ PixelFormat::RG8UNorm, GL_RG8 },
-	{ PixelFormat::RGB8UNorm, GL_RGB8 },
 	{ PixelFormat::RGBA8UNorm, GL_RGBA8 }
 };
 
@@ -218,7 +210,6 @@ static const std::unordered_map<PixelFormat, GLenum> TextureFormatMap = {
 	{ PixelFormat::RGBA32Float, GL_RGBA },
 	{ PixelFormat::R8UNorm, GL_RED },
 	{ PixelFormat::RG8UNorm, GL_RG },
-	{ PixelFormat::RGB8UNorm, GL_RGB },
 	{ PixelFormat::RGBA8UNorm, GL_RGBA },
 };
 

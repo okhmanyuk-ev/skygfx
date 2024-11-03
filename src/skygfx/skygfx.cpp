@@ -457,7 +457,6 @@ uint32_t skygfx::GetFormatChannelsCount(PixelFormat format)
 		{ PixelFormat::RGBA32Float, 4 },
 		{ PixelFormat::R8UNorm, 1 },
 		{ PixelFormat::RG8UNorm, 2 },
-		{ PixelFormat::RGB8UNorm, 3 },
 		{ PixelFormat::RGBA8UNorm, 4 }
 	};
 	return FormatChannelsMap.at(format);
@@ -472,7 +471,6 @@ uint32_t skygfx::GetFormatChannelSize(PixelFormat format)
 		{ PixelFormat::RGBA32Float, 4 },
 		{ PixelFormat::R8UNorm, 1 },
 		{ PixelFormat::RG8UNorm, 1 },
-		{ PixelFormat::RGB8UNorm, 1 },
 		{ PixelFormat::RGBA8UNorm, 1 }
 	};
 	return FormatChannelSizeMap.at(format);

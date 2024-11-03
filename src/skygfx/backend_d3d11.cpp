@@ -120,11 +120,9 @@ static const std::unordered_map<VertexFormat, DXGI_FORMAT> VertexFormatMap = {
 	{ VertexFormat::Float4, DXGI_FORMAT_R32G32B32A32_FLOAT },
 	{ VertexFormat::UChar1Normalized, DXGI_FORMAT_R8_UNORM },
 	{ VertexFormat::UChar2Normalized, DXGI_FORMAT_R8G8_UNORM },
-	// { VertexFormat::UChar3Normalized, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: wtf
 	{ VertexFormat::UChar4Normalized, DXGI_FORMAT_R8G8B8A8_UNORM },
 	{ VertexFormat::UChar1, DXGI_FORMAT_R8_UINT },
 	{ VertexFormat::UChar2, DXGI_FORMAT_R8G8_UINT },
-	// { VertexFormat::UChar3, DXGI_FORMAT_R8G8B8_UINT }, // TODO: wtf
 	{ VertexFormat::UChar4, DXGI_FORMAT_R8G8B8A8_UINT },
 };
 
@@ -135,7 +133,6 @@ static const std::unordered_map<PixelFormat, DXGI_FORMAT> PixelFormatMap = {
 	{ PixelFormat::RGBA32Float, DXGI_FORMAT_R32G32B32A32_FLOAT },
 	{ PixelFormat::R8UNorm, DXGI_FORMAT_R8_UNORM },
 	{ PixelFormat::RG8UNorm, DXGI_FORMAT_R8G8_UNORM },
-	//	{ PixelFormat::RGB8UNorm, DXGI_FORMAT_R8G8B8_UNORM }, // TODO: wtf
 	{ PixelFormat::RGBA8UNorm, DXGI_FORMAT_R8G8B8A8_UNORM }
 };
 
