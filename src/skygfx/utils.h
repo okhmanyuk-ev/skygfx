@@ -111,6 +111,8 @@ namespace skygfx::utils
 		{
 			struct alignas(16) DirectionalLight : BaseDirectionalLightEffect
 			{
+				using BaseDirectionalLightEffect::BaseDirectionalLightEffect;
+
 				static const std::string VertexShaderCode;
 				static const std::string FragmentShaderCode;
 				static const std::vector<std::string> Defines;
@@ -118,6 +120,8 @@ namespace skygfx::utils
 
 			struct alignas(16) PointLight : BasePointLightEffect
 			{
+				using BasePointLightEffect::BasePointLightEffect;
+
 				static const std::string VertexShaderCode;
 				static const std::string FragmentShaderCode;
 				static const std::vector<std::string> Defines;
@@ -128,6 +132,8 @@ namespace skygfx::utils
 		{
 			struct alignas(16) DirectionalLight : BaseDirectionalLightEffect
 			{
+				using BaseDirectionalLightEffect::BaseDirectionalLightEffect;
+
 				static const std::string VertexShaderCode;
 				static const std::string FragmentShaderCode;
 				static const std::vector<std::string> Defines;
@@ -135,6 +141,8 @@ namespace skygfx::utils
 
 			struct alignas(16) PointLight : BasePointLightEffect
 			{
+				using BasePointLightEffect::BasePointLightEffect;
+
 				static const std::string VertexShaderCode;
 				static const std::string FragmentShaderCode;
 				static const std::vector<std::string> Defines;
