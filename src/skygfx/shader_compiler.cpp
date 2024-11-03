@@ -249,12 +249,12 @@ std::string skygfx::CompileSpirvToMsl(const std::vector<uint32_t>& spirv)
 
 ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 {
-	static const std::unordered_map<SpvReflectDescriptorType, ShaderReflection::Descriptor::Type> DescriptorTypeMap = {
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ShaderReflection::Descriptor::Type::CombinedImageSampler },
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ShaderReflection::Descriptor::Type::UniformBuffer },
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE, ShaderReflection::Descriptor::Type::StorageImage },
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, ShaderReflection::Descriptor::Type::AccelerationStructure },
-		{ SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShaderReflection::Descriptor::Type::StorageBuffer }
+	static const std::unordered_map<SpvReflectDescriptorType, ShaderReflection::DescriptorType> DescriptorTypeMap = {
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, ShaderReflection::DescriptorType::CombinedImageSampler },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER, ShaderReflection::DescriptorType::UniformBuffer },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE, ShaderReflection::DescriptorType::StorageImage },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, ShaderReflection::DescriptorType::AccelerationStructure },
+		{ SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER, ShaderReflection::DescriptorType::StorageBuffer }
 	};
 
 	static const std::unordered_map<SpvReflectShaderStageFlagBits, ShaderStage> StageMap = {
@@ -295,13 +295,13 @@ ShaderReflection skygfx::MakeSpirvReflection(const std::vector<uint32_t>& spirv)
 		auto binding = descriptor_binding->binding;
 		auto type = DescriptorTypeMap.at(descriptor_binding->descriptor_type);
 
-		assert(!result.descriptor_bindings.contains(binding));
+		auto& typed_bindings = result.typed_descriptor_bindings[type];
+		assert(!typed_bindings.contains(binding));
 
-		auto& descriptor = result.descriptor_bindings[binding];
-		descriptor.type = type;
+		auto& descriptor = typed_bindings[binding];
 		descriptor.name = descriptor_binding->name;
 
-		if (type == ShaderReflection::Descriptor::Type::UniformBuffer)
+		if (type == ShaderReflection::DescriptorType::UniformBuffer)
 			descriptor.type_name = descriptor_binding->block.type_description->type_name;
 	}
 

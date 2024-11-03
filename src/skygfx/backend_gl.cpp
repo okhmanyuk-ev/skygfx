@@ -328,11 +328,13 @@ public:
 		{
 			for (const auto& reflection : { mVertRefl, mFragRefl })
 			{
-				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
+				if (!reflection.typed_descriptor_bindings.contains(ShaderReflection::DescriptorType::UniformBuffer))
+					continue;
+
+				const auto& descriptor_bindings = reflection.typed_descriptor_bindings.at(ShaderReflection::DescriptorType::UniformBuffer);
+
+				for (const auto& [binding, descriptor] : descriptor_bindings)
 				{
-					if (descriptor.type != ShaderReflection::Descriptor::Type::UniformBuffer)
-						continue;
-					
 					auto block_index = glGetUniformBlockIndex(mProgram, descriptor.type_name.c_str());
 					glUniformBlockBinding(mProgram, block_index, binding);
 				}
@@ -357,11 +359,13 @@ public:
 		{
 			for (const auto& reflection : { mVertRefl, mFragRefl }) 
 			{
-				for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
+				if (!reflection.typed_descriptor_bindings.contains(ShaderReflection::DescriptorType::CombinedImageSampler))
+					continue;
+
+				const auto& descriptor_bindings = reflection.typed_descriptor_bindings.at(ShaderReflection::DescriptorType::CombinedImageSampler);
+
+				for (const auto& [binding, descriptor] : descriptor_bindings)
 				{
-					if (descriptor.type != ShaderReflection::Descriptor::Type::CombinedImageSampler)
-						continue;
-	
 					auto location = glGetUniformLocation(mProgram, descriptor.name.c_str());
 					glUniform1i(location, binding);
 				}

@@ -350,12 +350,12 @@ const static std::unordered_map<ShaderStage, vk::ShaderStageFlagBits> ShaderStag
 	{ ShaderStage::ClosestHit, vk::ShaderStageFlagBits::eClosestHitKHR }
 };
 
-const static std::unordered_map<ShaderReflection::Descriptor::Type, vk::DescriptorType> ShaderTypeMap = {
-	{ ShaderReflection::Descriptor::Type::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
-	{ ShaderReflection::Descriptor::Type::UniformBuffer, vk::DescriptorType::eUniformBuffer },
-	{ ShaderReflection::Descriptor::Type::StorageImage, vk::DescriptorType::eStorageImage },
-	{ ShaderReflection::Descriptor::Type::AccelerationStructure, vk::DescriptorType::eAccelerationStructureKHR },
-	{ ShaderReflection::Descriptor::Type::StorageBuffer, vk::DescriptorType::eStorageBuffer }
+const static std::unordered_map<ShaderReflection::DescriptorType, vk::DescriptorType> ShaderTypeMap = {
+	{ ShaderReflection::DescriptorType::CombinedImageSampler, vk::DescriptorType::eCombinedImageSampler },
+	{ ShaderReflection::DescriptorType::UniformBuffer, vk::DescriptorType::eUniformBuffer },
+	{ ShaderReflection::DescriptorType::StorageImage, vk::DescriptorType::eStorageImage },
+	{ ShaderReflection::DescriptorType::AccelerationStructure, vk::DescriptorType::eAccelerationStructureKHR },
+	{ ShaderReflection::DescriptorType::StorageBuffer, vk::DescriptorType::eStorageBuffer }
 };
 
 std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<vk::DescriptorSetLayoutBinding>> CreatePipelineLayout(
@@ -367,33 +367,35 @@ std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<
 	{
 		auto reflection = MakeSpirvReflection(spirv);
 
-		for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
+		for (const auto& [type, descriptor_bindings] : reflection.typed_descriptor_bindings)
 		{
-			bool overwritten = false;
-
-			for (auto& _binding : required_descriptor_bindings)
+			for (const auto& [binding, descriptor] : descriptor_bindings)
 			{
-				if (_binding.binding != binding)
+				bool overwritten = false;
+
+				for (auto& _binding : required_descriptor_bindings)
+				{
+					if (_binding.binding != binding)
+						continue;
+
+					_binding.stageFlags |= ShaderStageMap.at(reflection.stage);
+					overwritten = true;
+					break;
+				}
+
+				if (overwritten)
 					continue;
 
-				_binding.stageFlags |= ShaderStageMap.at(reflection.stage);
-				overwritten = true;
-				break;
+				auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding()
+					.setDescriptorType(ShaderTypeMap.at(type))
+					.setDescriptorCount(1)
+					.setBinding(binding)
+					.setStageFlags(ShaderStageMap.at(reflection.stage));
+
+				required_descriptor_bindings.push_back(descriptor_set_layout_binding);
 			}
-
-			if (overwritten)
-				continue;
-
-			auto descriptor_set_layout_binding = vk::DescriptorSetLayoutBinding()
-				.setDescriptorType(ShaderTypeMap.at(descriptor.type))
-				.setDescriptorCount(1)
-				.setBinding(binding)
-				.setStageFlags(ShaderStageMap.at(reflection.stage));
-
-			required_descriptor_bindings.push_back(descriptor_set_layout_binding);
 		}
 	}
-
 	auto descriptor_set_layout_create_info = vk::DescriptorSetLayoutCreateInfo()
 		.setFlags(vk::DescriptorSetLayoutCreateFlagBits::ePushDescriptorKHR)
 		.setBindings(required_descriptor_bindings);

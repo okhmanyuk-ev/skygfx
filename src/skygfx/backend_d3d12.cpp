@@ -235,14 +235,14 @@ class ShaderD3D12
 {
 public:
 	const auto& getRootSignature() const { return mRootSignature; }
-	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
+	const auto& getRequiredTypedDescriptorBindings() const { return mRequiredTypedDescriptorBindings; }
 	const auto& getBindingToRootIndexMap() const { return mBindingToRootIndexMap; }
 	const auto& getVertexShaderBlob() const { return mVertexShaderBlob; }
 	const auto& getPixelShaderBlob() const { return mPixelShaderBlob; }
 
 private:
 	ComPtr<ID3D12RootSignature> mRootSignature;
-	std::unordered_map<uint32_t, ShaderReflection::Descriptor> mRequiredDescriptorBindings;
+	std::unordered_map< ShaderReflection::DescriptorType, std::unordered_map<uint32_t, ShaderReflection::Descriptor>> mRequiredTypedDescriptorBindings;
 	std::unordered_map<ShaderStage, std::unordered_map<uint32_t/*set*/, std::unordered_set<uint32_t>/*bindings*/>> mRequiredDescriptorSets;
 	std::unordered_map<uint32_t, uint32_t> mBindingToRootIndexMap;
 	ComPtr<ID3DBlob> mVertexShaderBlob;
@@ -292,14 +292,17 @@ public:
 
 		for (const auto& reflection : { vertex_shader_reflection, fragment_shader_reflection })
 		{
-			for (const auto& [binding, descriptor] : reflection.descriptor_bindings)
+			for (const auto& [type, descriptor_bindings] : reflection.typed_descriptor_bindings)
 			{
-				if (mRequiredDescriptorBindings.contains(binding))
-					continue;
+				for (const auto& [binding, descriptor] : descriptor_bindings)
+				{
+					auto& required_descriptor_bindings = mRequiredTypedDescriptorBindings[type];
+					if (required_descriptor_bindings.contains(binding))
+						continue;
 
-				mRequiredDescriptorBindings.insert({ binding, descriptor });
+					required_descriptor_bindings[binding] = descriptor;
+				}
 			}
-
 			for (const auto& [set, bindings] : reflection.descriptor_sets)
 			{
 				mRequiredDescriptorSets[reflection.stage][set] = bindings;
@@ -311,30 +314,33 @@ public:
 			std::vector<D3D12_STATIC_SAMPLER_DESC> static_samplers;
 			std::vector<CD3DX12_DESCRIPTOR_RANGE> ranges(32);
 
-			for (const auto& [binding, descriptor] : mRequiredDescriptorBindings)
+			for (const auto& [type, descriptor_bindings] : mRequiredTypedDescriptorBindings)
 			{
-				CD3DX12_ROOT_PARAMETER param;
-
-				if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
+				for (const auto& [binding, descriptor] : descriptor_bindings)
 				{
-					param.InitAsConstantBufferView(binding);
-				}
-				else if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
-				{
-					auto range = CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, binding);
-					ranges.push_back(range);
+					CD3DX12_ROOT_PARAMETER param;
 
-					param.InitAsDescriptorTable(1, &ranges[ranges.size() - 1], D3D12_SHADER_VISIBILITY_ALL);
+					if (type == ShaderReflection::DescriptorType::UniformBuffer)
+					{
+						param.InitAsConstantBufferView(binding);
+					}
+					else if (type == ShaderReflection::DescriptorType::CombinedImageSampler)
+					{
+						auto range = CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, binding);
+						ranges.push_back(range);
 
-					static_samplers.push_back(CD3DX12_STATIC_SAMPLER_DESC(binding, D3D12_FILTER_MIN_MAG_MIP_LINEAR));
-				}
-				else
-				{
-					assert(false);
-				}
+						param.InitAsDescriptorTable(1, &ranges[ranges.size() - 1], D3D12_SHADER_VISIBILITY_ALL);
 
-				mBindingToRootIndexMap.insert({ binding, (uint32_t)params.size() });
-				params.push_back(param);
+						static_samplers.push_back(CD3DX12_STATIC_SAMPLER_DESC(binding, D3D12_FILTER_MIN_MAG_MIP_LINEAR));
+					}
+					else
+					{
+						assert(false);
+					}
+
+					mBindingToRootIndexMap.insert({ binding, (uint32_t)params.size() });
+					params.push_back(param);
+				}
 			}
 
 			auto desc = CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC((UINT)params.size(), params.data(), (UINT)static_samplers.size(),
@@ -1016,27 +1022,29 @@ static void EnsureGraphicsState(bool draw_indexed)
 	gContext->cmdlist->SetGraphicsRootSignature(shader->getRootSignature().Get());
 	gContext->cmdlist->SetDescriptorHeaps(1, gContext->descriptor_heap.GetAddressOf());
 
-	const auto& required_descriptor_bindings = shader->getRequiredDescriptorBindings();
+	const auto& required_typed_descriptor_bindings = shader->getRequiredTypedDescriptorBindings();
 	const auto& binding_to_root_index_map = shader->getBindingToRootIndexMap();
 
-	for (const auto& [binding, descriptor] : required_descriptor_bindings)
+	for (const auto& [type, required_descriptor_bindings] : required_typed_descriptor_bindings)
 	{
-		auto root_index = binding_to_root_index_map.at(binding);
-
-		if (descriptor.type == ShaderReflection::Descriptor::Type::CombinedImageSampler)
+		for (const auto& [binding, descriptor] : required_descriptor_bindings)
 		{
-			const auto& texture = gContext->textures.at(binding);
-			texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-			gContext->cmdlist->SetGraphicsRootDescriptorTable(root_index, texture->getGpuDescriptorHandle());
-		}
-		else if (descriptor.type == ShaderReflection::Descriptor::Type::UniformBuffer)
-		{
-			auto uniform_buffer = gContext->uniform_buffers.at(binding);
-			gContext->cmdlist->SetGraphicsRootConstantBufferView(root_index, uniform_buffer->getD3D12Buffer()->GetGPUVirtualAddress());
-		}
-		else
-		{
-			assert(false);
+			auto root_index = binding_to_root_index_map.at(binding);
+			if (type == ShaderReflection::DescriptorType::CombinedImageSampler)
+			{
+				const auto& texture = gContext->textures.at(binding);
+				texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+				gContext->cmdlist->SetGraphicsRootDescriptorTable(root_index, texture->getGpuDescriptorHandle());
+			}
+			else if (type == ShaderReflection::DescriptorType::UniformBuffer)
+			{
+				auto uniform_buffer = gContext->uniform_buffers.at(binding);
+				gContext->cmdlist->SetGraphicsRootConstantBufferView(root_index, uniform_buffer->getD3D12Buffer()->GetGPUVirtualAddress());
+			}
+			else
+			{
+				assert(false);
+			}
 		}
 	}
 
