@@ -61,7 +61,7 @@ bool ClearRenderTarget(skygfx::BackendType backend, SavePixelsFunc save_pixels_f
 {
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
-	auto target = skygfx::RenderTarget(8, 8, skygfx::Format::Byte4);
+	auto target = skygfx::RenderTarget(8, 8, skygfx::PixelFormat::RGBA8UNorm);
 
 	glm::vec4 clear_color = { 0.0f, 1.0f, 0.0f, 1.0f };
 
@@ -115,7 +115,7 @@ bool TriangleRenderTarget(skygfx::BackendType backend, SavePixelsFunc save_pixel
 {
 	skygfx::Initialize(gNativeWindow, gWidth, gHeight, backend);
 
-	auto target = skygfx::RenderTarget(16, 16, skygfx::Format::Byte4);
+	auto target = skygfx::RenderTarget(16, 16, skygfx::PixelFormat::RGBA8UNorm);
 
 	skygfx::SetRenderTarget(target);
 	skygfx::Clear();

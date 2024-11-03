@@ -124,10 +124,10 @@ int main()
 	auto model_matrices_buffer = skygfx::VertexBuffer(model_matrices);
 
 	auto model_matrices_layout = skygfx::InputLayout(skygfx::InputLayout::Rate::Instance, {
-		{ 2, { skygfx::Format::Float4, 0 } },
-		{ 3, { skygfx::Format::Float4, 16 } },
-		{ 4, { skygfx::Format::Float4, 32 } },
-		{ 5, { skygfx::Format::Float4, 48 } }
+		{ 2, { skygfx::VertexFormat::Float4, 0 } },
+		{ 3, { skygfx::VertexFormat::Float4, 16 } },
+		{ 4, { skygfx::VertexFormat::Float4, 32 } },
+		{ 5, { skygfx::VertexFormat::Float4, 48 } }
 	});
 
 	auto yaw = 0.0f;

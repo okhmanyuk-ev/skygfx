@@ -115,7 +115,7 @@ int main()
 
 	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
 
-	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::Format::Byte4, tex_memory, true);
+	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::PixelFormat::RGBA8UNorm, tex_memory, true);
 
 	const auto yaw = 0.0f;
 	const auto pitch = glm::radians(-25.0f);

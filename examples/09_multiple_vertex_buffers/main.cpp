@@ -63,11 +63,11 @@ int main()
 	auto colors_buffer = skygfx::VertexBuffer(colors);
 
 	auto positions_layout = skygfx::InputLayout(skygfx::InputLayout::Rate::Vertex, {
-		{ 0, { skygfx::Format::Float3, 0 } } 
+		{ 0, { skygfx::VertexFormat::Float3, 0 } } 
 	});
 
 	auto colors_layout = skygfx::InputLayout(skygfx::InputLayout::Rate::Vertex, {
-		{ 1, { skygfx::Format::Float4, 0 } }
+		{ 1, { skygfx::VertexFormat::Float4, 0 } }
 	});
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);

@@ -66,7 +66,7 @@ int main()
 
 	auto [tex_width, tex_height, tex_memory] = utils::LoadTexture("assets/bricks.jpg");
 
-	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::Format::Byte4, tex_memory);
+	auto texture = skygfx::Texture(tex_width, tex_height, skygfx::PixelFormat::RGBA8UNorm, tex_memory);
 
 	skygfx::SetTopology(skygfx::Topology::TriangleList);
 	skygfx::SetShader(shader);
