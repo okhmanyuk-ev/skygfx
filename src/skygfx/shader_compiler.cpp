@@ -4,7 +4,6 @@
 #include <spirv_hlsl.hpp>
 #include <spirv_reflect.h>
 #include <spirv_msl.hpp>
-#include <format>
 
 using namespace skygfx;
 
@@ -208,7 +207,7 @@ std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool 
 			for (const auto& input : resources.stage_inputs)
 			{
 				auto location = compiler.get_decoration(input.id, spv::DecorationLocation);
-				compiler.set_name(input.id, std::format("varying_{}", location));
+				compiler.set_name(input.id, "varying_" + std::to_string(location));
 			}
 		}
 		else if (stage == spv::ExecutionModelVertex)
@@ -216,7 +215,7 @@ std::string skygfx::CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool 
 			for (const auto& output : resources.stage_outputs)
 			{
 				auto location = compiler.get_decoration(output.id, spv::DecorationLocation);
-				compiler.set_name(output.id, std::format("varying_{}", location));
+				compiler.set_name(output.id, "varying_" + std::to_string(location));
 			}
 		}
 	}
