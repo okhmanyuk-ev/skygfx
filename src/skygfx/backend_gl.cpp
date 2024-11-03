@@ -325,9 +325,7 @@ public:
 					if (!reflection.typed_descriptor_bindings.contains(type))
 						continue;
 
-					const auto& descriptor_bindings = reflection.typed_descriptor_bindings.at(type);
-
-					for (const auto& [binding, descriptor] : descriptor_bindings)
+					for (const auto& [binding, descriptor] : reflection.typed_descriptor_bindings.at(type))
 					{
 						callback(binding, descriptor);
 					}
@@ -337,7 +335,6 @@ public:
 				auto block_index = glGetUniformBlockIndex(mProgram, descriptor.type_name.c_str());
 				glUniformBlockBinding(mProgram, block_index, binding);
 			});
-
 			GLint prevProgram = 0;
 			glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
 			glUseProgram(mProgram);
