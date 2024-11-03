@@ -217,7 +217,6 @@ class ShaderGL
 {
 private:
 	GLuint mProgram;
-	//GLuint mVao;
 	ShaderReflection mVertRefl;
 	ShaderReflection mFragRefl;
 	
@@ -227,6 +226,9 @@ private:
 		bool enable_420pack_extension;
 		bool force_flattened_io_blocks;
 	} options;
+
+public:
+	auto getProgram() const { return mProgram; }
 
 public:
 	ShaderGL(const std::string& vertex_code, const std::string& fragment_code,
@@ -311,57 +313,45 @@ public:
 		mVertRefl = MakeSpirvReflection(vertex_shader_spirv);
 		mFragRefl = MakeSpirvReflection(fragment_shader_spirv);
 		
-		bool need_fix_uniform_bindings =
+		bool need_fix_bindings =
 			(options.es && options.version <= 300) ||
 			(!options.es && options.version < 420 && !options.enable_420pack_extension);
 
-		if (need_fix_uniform_bindings)
+		if (need_fix_bindings)
 		{
-			for (const auto& reflection : { mVertRefl, mFragRefl })
-			{
-				if (!reflection.typed_descriptor_bindings.contains(ShaderReflection::DescriptorType::UniformBuffer))
-					continue;
-
-				const auto& descriptor_bindings = reflection.typed_descriptor_bindings.at(ShaderReflection::DescriptorType::UniformBuffer);
-
-				for (const auto& [binding, descriptor] : descriptor_bindings)
+			auto for_each_descriptor_binding = [&](auto type, std::function<void(uint32_t binding, const ShaderReflection::Descriptor& descriptor)> callback){
+				for (const auto& reflection : { mVertRefl, mFragRefl })
 				{
-					auto block_index = glGetUniformBlockIndex(mProgram, descriptor.type_name.c_str());
-					glUniformBlockBinding(mProgram, block_index, binding);
-				}
+					if (!reflection.typed_descriptor_bindings.contains(type))
+						continue;
+
+					const auto& descriptor_bindings = reflection.typed_descriptor_bindings.at(type);
+
+					for (const auto& [binding, descriptor] : descriptor_bindings)
+					{
+						callback(binding, descriptor);
+					}
+				};
 			};
+			for_each_descriptor_binding(ShaderReflection::DescriptorType::UniformBuffer, [&](auto binding, const auto& descriptor){
+				auto block_index = glGetUniformBlockIndex(mProgram, descriptor.type_name.c_str());
+				glUniformBlockBinding(mProgram, block_index, binding);
+			});
+
+			GLint prevProgram = 0;
+			glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
+			glUseProgram(mProgram);
+			for_each_descriptor_binding(ShaderReflection::DescriptorType::CombinedImageSampler, [&](auto binding, const auto& descriptor){
+				auto location = glGetUniformLocation(mProgram, descriptor.name.c_str());
+				glUniform1i(location, binding);
+			});
+			glUseProgram(prevProgram);
 		}
 	}
 
 	~ShaderGL()
 	{
 		glDeleteProgram(mProgram);
-	}
-
-	void apply()
-	{
-		glUseProgram(mProgram);
-		
-		bool need_fix_texture_bindings =
-			(options.es && options.version <= 300) ||
-			(!options.es && options.version < 420 && !options.enable_420pack_extension);
-			
-		if (need_fix_texture_bindings)
-		{
-			for (const auto& reflection : { mVertRefl, mFragRefl }) 
-			{
-				if (!reflection.typed_descriptor_bindings.contains(ShaderReflection::DescriptorType::CombinedImageSampler))
-					continue;
-
-				const auto& descriptor_bindings = reflection.typed_descriptor_bindings.at(ShaderReflection::DescriptorType::CombinedImageSampler);
-
-				for (const auto& [binding, descriptor] : descriptor_bindings)
-				{
-					auto location = glGetUniformLocation(mProgram, descriptor.name.c_str());
-					glUniform1i(location, binding);
-				}
-			};
-		}
 	}
 };
 
@@ -733,7 +723,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 {
 	if (gContext->shader_dirty)
 	{
-		gContext->shader->apply();
+		glUseProgram(gContext->shader->getProgram());
 		gContext->vertex_array_dirty = true;
 		gContext->index_buffer_dirty = draw_indexed;
 		gContext->shader_dirty = false;
