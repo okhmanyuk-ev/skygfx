@@ -101,18 +101,20 @@ set_option(SKIP_GLSLANG_INSTALL ON)
 set_option(ENABLE_CTEST OFF)
 set_option(ENABLE_GLSLANG_BINARIES OFF)
 set_option(ENABLE_SPVREMAPPER OFF)
+set_option(ENABLE_OPT OFF)
 add_subdirectory(lib/glslang/glslang)
 target_include_directories(${PROJECT_NAME} PRIVATE lib/glslang)
 target_link_libraries(${PROJECT_NAME}
 	SPIRV
 	glslang
+	glslang-default-resource-limits
 )
 set_property(TARGET glslang PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
 set_property(TARGET GenericCodeGen PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
 set_property(TARGET MachineIndependent PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
-set_property(TARGET OGLCompiler PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
 set_property(TARGET OSDependent PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
 set_property(TARGET SPIRV PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
+set_property(TARGET glslang-default-resource-limits PROPERTY FOLDER ${LIBS_FOLDER}/glslang)
 
 # spirv-cross
 

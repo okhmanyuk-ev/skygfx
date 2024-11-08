@@ -26,40 +26,33 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **/
 
-#include "resource_limits_c.h"
-#include "ResourceLimits.h"
-#include <stdlib.h>
-#include <string.h>
-#include <string>
+#ifndef _STAND_ALONE_RESOURCE_LIMITS_C_INCLUDED_
+#define _STAND_ALONE_RESOURCE_LIMITS_C_INCLUDED_
 
-const glslang_resource_t* glslang_default_resource(void)
-{
-    return reinterpret_cast<const glslang_resource_t*>(&glslang::DefaultTBuiltInResource);
-}
+#include "../Include/glslang_c_interface.h"
+#include "../Include/visibility.h"
 
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
+#ifdef __cplusplus
+extern "C" {
 #endif
 
-const char* glslang_default_resource_string()
-{
-    std::string cpp_str = glslang::GetDefaultTBuiltInResourceString();
-    char* c_str = (char*)malloc(cpp_str.length() + 1);
-    strcpy(c_str, cpp_str.c_str());
-    return c_str;
-}
+// Returns a struct that can be use to create custom resource values.
+GLSLANG_EXPORT glslang_resource_t* glslang_resource(void);
 
-#if defined(__clang__) || defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
+// These are the default resources for TBuiltInResources, used for both
+//  - parsing this string for the case where the user didn't supply one,
+//  - dumping out a template for user construction of a config file.
+GLSLANG_EXPORT const glslang_resource_t* glslang_default_resource(void);
+
+// Returns the DefaultTBuiltInResource as a human-readable string.
+// NOTE: User is responsible for freeing this string.
+GLSLANG_EXPORT const char* glslang_default_resource_string();
+
+// Decodes the resource limits from |config| to |resources|.
+GLSLANG_EXPORT void glslang_decode_resource_limits(glslang_resource_t* resources, char* config);
+
+#ifdef __cplusplus
+}
 #endif
 
-void glslang_decode_resource_limits(glslang_resource_t* resources, char* config)
-{
-    glslang::DecodeResourceLimits(reinterpret_cast<TBuiltInResource*>(resources), config);
-}
+#endif // _STAND_ALONE_RESOURCE_LIMITS_C_INCLUDED_

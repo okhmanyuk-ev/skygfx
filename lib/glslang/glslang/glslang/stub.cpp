@@ -1,6 +1,5 @@
 //
-// Copyright (C) 2016 Google, Inc.
-//
+// Copyright (C) 2024 The Khronos Group Inc.
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -15,7 +14,7 @@
 //    disclaimer in the documentation and/or other materials provided
 //    with the distribution.
 //
-//    Neither the name of Google Inc. nor the names of its
+//    Neither the name of 3Dlabs Inc. Ltd. nor the names of its
 //    contributors may be used to endorse or promote products derived
 //    from this software without specific prior written permission.
 //
@@ -31,27 +30,8 @@
 // LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+//
 
-#ifndef _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_
-#define _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_
-
-#include <string>
-
-#include "../glslang/Include/ResourceLimits.h"
-
-namespace glslang {
-
-// These are the default resources for TBuiltInResources, used for both
-//  - parsing this string for the case where the user didn't supply one,
-//  - dumping out a template for user construction of a config file.
-extern const TBuiltInResource DefaultTBuiltInResource;
-
-// Returns the DefaultTBuiltInResource as a human-readable string.
-std::string GetDefaultTBuiltInResourceString();
-
-// Decodes the resource limits from |config| to |resources|.
-void DecodeResourceLimits(TBuiltInResource* resources, char* config);
-
-}  // end namespace glslang
-
-#endif  // _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_
+// This empty source file exists to support building stubbed versions of
+// deprecated libraries which have been integrated into the main glslang
+// library. It should be deleted once the stub libraries are fully removed.

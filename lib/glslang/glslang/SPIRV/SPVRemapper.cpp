@@ -36,13 +36,8 @@
 #include "SPVRemapper.h"
 #include "doc.h"
 
-#if !defined (use_cpp11)
-// ... not supported before C++11
-#else // defined (use_cpp11)
-
 #include <algorithm>
 #include <cassert>
-#include "../glslang/Include/Common.h"
 
 namespace spv {
 
@@ -684,6 +679,7 @@ namespace spv {
             case spv::OperandKernelEnqueueFlags:
             case spv::OperandKernelProfilingInfo:
             case spv::OperandCapability:
+            case spv::OperandCooperativeMatrixOperands:
                 ++word;
                 break;
 
@@ -1517,7 +1513,14 @@ namespace spv {
         spv.swap(in_spv);
     }
 
-} // namespace SPV
+    // remap from a memory image - legacy interface without white list
+    void spirvbin_t::remap(std::vector<std::uint32_t>& in_spv, std::uint32_t opts)
+    {
+      stripWhiteList.clear();
+      spv.swap(in_spv);
+      remap(opts);
+      spv.swap(in_spv);
+    }
 
-#endif // defined (use_cpp11)
+} // namespace SPV
 

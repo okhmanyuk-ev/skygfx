@@ -1,5 +1,6 @@
 //
-// Copyright (C) 2002-2005  3Dlabs Inc. Ltd.
+// Copyright (C) 2016 Google, Inc.
+//
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -14,7 +15,7 @@
 //    disclaimer in the documentation and/or other materials provided
 //    with the distribution.
 //
-//    Neither the name of 3Dlabs Inc. Ltd. nor the names of its
+//    Neither the name of Google Inc. nor the names of its
 //    contributors may be used to endorse or promote products derived
 //    from this software without specific prior written permission.
 //
@@ -30,45 +31,28 @@
 // LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
 // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
-//
 
-#include "InitializeDll.h"
+#ifndef _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_
+#define _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_
 
-#define STRICT
-#define VC_EXTRALEAN 1
-#include <windows.h>
-#include <assert.h>
+#include <string>
 
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
-{
-	switch (fdwReason)
-	{
-		case DLL_PROCESS_ATTACH:
+#include "../Include/ResourceLimits.h"
+#include "../Include/visibility.h"
 
-            if (! glslang::InitProcess())
-                return FALSE;
-            break;
-		case DLL_THREAD_ATTACH:
+// Return pointer to user-writable Resource to pass through API in
+// future-proof way.
+GLSLANG_EXPORT extern TBuiltInResource* GetResources();
 
-            if (! glslang::InitThread())
-                return FALSE;
-            break;
+// These are the default resources for TBuiltInResources, used for both
+//  - parsing this string for the case where the user didn't supply one,
+//  - dumping out a template for user construction of a config file.
+GLSLANG_EXPORT extern const TBuiltInResource* GetDefaultResources();
 
-		case DLL_THREAD_DETACH:
+// Returns the DefaultTBuiltInResource as a human-readable string.
+GLSLANG_EXPORT std::string GetDefaultTBuiltInResourceString();
 
-			if (! glslang::DetachThread())
-				return FALSE;
-			break;
+// Decodes the resource limits from |config| to |resources|.
+GLSLANG_EXPORT void DecodeResourceLimits(TBuiltInResource* resources, char* config);
 
-		case DLL_PROCESS_DETACH:
-
-			glslang::DetachProcess();
-			break;
-
-		default:
-			assert(0 && "DllMain(): Reason for calling DLL Main is unknown");
-			return FALSE;
-	}
-
-	return TRUE;
-}
+#endif  // _STAND_ALONE_RESOURCE_LIMITS_INCLUDED_

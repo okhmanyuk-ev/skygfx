@@ -26,29 +26,33 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **/
 
-#ifndef _STAND_ALONE_RESOURCE_LIMITS_C_INCLUDED_
-#define _STAND_ALONE_RESOURCE_LIMITS_C_INCLUDED_
+#define _CRT_SECURE_NO_WARNINGS
 
-#include "../glslang/Include/glslang_c_interface.h"
+#include "glslang/Public/resource_limits_c.h"
+#include "glslang/Public/ResourceLimits.h"
+#include <stdlib.h>
+#include <string.h>
+#include <string>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// These are the default resources for TBuiltInResources, used for both
-//  - parsing this string for the case where the user didn't supply one,
-//  - dumping out a template for user construction of a config file.
-const glslang_resource_t* glslang_default_resource(void);
-
-// Returns the DefaultTBuiltInResource as a human-readable string.
-// NOTE: User is responsible for freeing this string.
-const char* glslang_default_resource_string();
-
-// Decodes the resource limits from |config| to |resources|.
-void glslang_decode_resource_limits(glslang_resource_t* resources, char* config);
-
-#ifdef __cplusplus
+glslang_resource_t* glslang_resource(void)
+{
+    return reinterpret_cast<glslang_resource_t*>(GetResources());
 }
-#endif
 
-#endif // _STAND_ALONE_RESOURCE_LIMITS_C_INCLUDED_
+const glslang_resource_t* glslang_default_resource(void)
+{
+    return reinterpret_cast<const glslang_resource_t*>(GetDefaultResources());
+}
+
+const char* glslang_default_resource_string()
+{
+    std::string cpp_str = GetDefaultTBuiltInResourceString();
+    char* c_str = (char*)malloc(cpp_str.length() + 1);
+    strncpy(c_str, cpp_str.c_str(), cpp_str.length() + 1);
+    return c_str;
+}
+
+void glslang_decode_resource_limits(glslang_resource_t* resources, char* config)
+{
+    DecodeResourceLimits(reinterpret_cast<TBuiltInResource*>(resources), config);
+}
