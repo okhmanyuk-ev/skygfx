@@ -1605,6 +1605,15 @@ void utils::MeshBuilder::end()
 	AddIndicesForVertexArray(mMode.value(), mTopology.value(), mVertexStart, (uint32_t)mVertices.size(), mIndices);
 }
 
+void utils::MeshBuilder::addPrimitive(Mode mode, std::vector<Mesh::Vertex> vertices,
+	std::function<void()> onFlush)
+{
+	begin(mode, onFlush);
+	mVertices.insert(mVertices.end(), std::make_move_iterator(vertices.begin()),
+		std::make_move_iterator(vertices.end()));
+	end();
+}
+
 void utils::MeshBuilder::setToMesh(Mesh& mesh)
 {
 	if (mBegan)
@@ -1614,31 +1623,43 @@ void utils::MeshBuilder::setToMesh(Mesh& mesh)
 	mesh.setIndices(mIndices);
 }
 
-void utils::Scratch::begin(MeshBuilder::Mode mode, const State& state)
+//void utils::Scratch::begin(MeshBuilder::Mode mode, const State& state)
+//{
+//	if (!mMeshBuilder.getVertices().empty() && mState != state)
+//		pushCommand();
+//
+//	mMeshBuilder.begin(mode, [&] {
+//		pushCommand();
+//	});
+//
+//	mState = state;
+//}
+//
+//void utils::Scratch::begin(MeshBuilder::Mode mode)
+//{
+//	begin(mode, {});
+//}
+//
+//void utils::Scratch::vertex(const Mesh::Vertex& value)
+//{
+//	mMeshBuilder.vertex(value);
+//}
+//
+//void utils::Scratch::end()
+//{
+//	mMeshBuilder.end();
+//}
+
+void utils::Scratch::addPrimitive(MeshBuilder::Mode mode, const State& state,
+	std::vector<Mesh::Vertex> vertices)
 {
 	if (!mMeshBuilder.getVertices().empty() && mState != state)
 		pushCommand();
-
-	mMeshBuilder.begin(mode, [&] {
+	mMeshBuilder.addPrimitive(mode, std::move(vertices), [&] {
 		pushCommand();
 	});
 
 	mState = state;
-}
-
-void utils::Scratch::begin(MeshBuilder::Mode mode)
-{
-	begin(mode, {});
-}
-
-void utils::Scratch::vertex(const Mesh::Vertex& value)
-{
-	mMeshBuilder.vertex(value);
-}
-
-void utils::Scratch::end()
-{
-	mMeshBuilder.end();
 }
 
 void utils::Scratch::flush(bool sort_textures)

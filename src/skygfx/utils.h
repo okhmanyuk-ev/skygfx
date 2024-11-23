@@ -687,9 +687,13 @@ namespace skygfx::utils
 
 	public:
 		void reset();
+	private:
 		void begin(Mode mode, std::function<void()> onFlush = nullptr);
 		void vertex(const Mesh::Vertex& value);
 		void end();
+	public:
+		void addPrimitive(Mode mode, std::vector<Mesh::Vertex> vertices,
+			std::function<void()> onFlush = nullptr);
 		void setToMesh(Mesh& mesh);
 
 	public:
@@ -735,10 +739,11 @@ namespace skygfx::utils
 		};
 
 	public:
-		void begin(MeshBuilder::Mode mode, const State& state);
-		void begin(MeshBuilder::Mode mode);
-		void vertex(const Mesh::Vertex& value);
-		void end();
+	//	void begin(MeshBuilder::Mode mode, const State& state);
+	//	void begin(MeshBuilder::Mode mode);
+	//	void vertex(const Mesh::Vertex& value);
+	//	void end();
+		void addPrimitive(MeshBuilder::Mode mode, const State& state, std::vector<Mesh::Vertex> vertices);
 		void flush(bool sort_textures = false);
 		bool isBegan() const;
 
