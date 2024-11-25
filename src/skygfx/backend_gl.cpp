@@ -441,34 +441,6 @@ public:
 			texture_format, format_type, flipped_image.data());
 	}
 
-	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-		uint32_t mip_level, void* dst_memory)
-	{
-		auto channels_count = GetFormatChannelsCount(mFormat);
-		auto channel_size = GetFormatChannelSize(mFormat);
-		auto format_type = PixelFormatTypeMap.at(mFormat);
-		auto texture_format = TextureFormatMap.at(mFormat);
-		auto binding = ScopedBind(mTexture);
-
-#if !defined(SKYGFX_PLATFORM_IOS) & !defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-		glGetTexImage(GL_TEXTURE_2D, mip_level, texture_format, format_type, dst_memory);
-#else
-		std::cout << "warning: cannot read to cpu memory" << std::endl;
-#endif
-
-		auto row_size = width * channels_count * channel_size;
-		auto temp_row = std::vector<uint8_t>(row_size);
-
-		for (uint32_t i = 0; i < uint32_t(height / 2); i++)
-		{
-			auto src = (void*)(size_t(dst_memory) + (i * row_size));
-			auto dst = (void*)(size_t(dst_memory) + ((height - i - 1) * row_size));
-			memcpy(temp_row.data(), src, row_size);
-			memcpy(src, dst, row_size);
-			memcpy(dst, temp_row.data(), row_size);
-		}
-	}
-
 	void generateMips()
 	{
 		auto binding = ScopedBind(mTexture);
@@ -1490,13 +1462,6 @@ void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32
 {
 	auto texture = (TextureGL*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
-}
-
-void BackendGL::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level, void* dst_memory)
-{
-	auto texture = (TextureGL*)handle;
-	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
 }
 
 void BackendGL::generateMips(TextureHandle* handle)

@@ -29,8 +29,8 @@ set_property(TARGET update_mappings PROPERTY FOLDER ${LIBS_FOLDER}/glfw)
 
 # imgui
 
-file(GLOB IMGUI_SRC 
-	lib/imgui/*.cpp 
+file(GLOB IMGUI_SRC
+	lib/imgui/*.cpp
 	lib/imgui/*.h
 	utils/imgui_helper.cpp
 	lib/imgui/backends/imgui_impl_glfw.cpp
@@ -42,12 +42,6 @@ target_include_directories(imgui PUBLIC
 )
 target_link_libraries(imgui skygfx glfw)
 set_property(TARGET imgui PROPERTY FOLDER ${LIBS_FOLDER})
-
-# 00 - tests
-
-add_executable(00_tests 00_tests/main.cpp)
-target_link_libraries(00_tests glfw skygfx)
-target_include_directories(00_tests PUBLIC lib/stb)
 
 # 01 - triangle
 

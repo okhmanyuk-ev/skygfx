@@ -592,57 +592,6 @@ public:
 		DestroyStaging(std::move(upload_buffer_memory));
 	}
 
-	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-		uint32_t mip_level, void* dst_memory)
-	{
-		EnsureRenderPassDeactivated();
-		gContext->getCurrentFrame().command_buffer.end();
-
-		auto submit_info = vk::SubmitInfo()
-			.setCommandBuffers(*gContext->getCurrentFrame().command_buffer);
-
-		gContext->queue.submit(submit_info);
-		gContext->queue.waitIdle();
-
-		auto _format = ReversedPixelFormatMap.at(mFormat);
-		auto channels_count = GetFormatChannelsCount(_format);
-		auto channel_size = GetFormatChannelSize(_format);
-		auto size = width * height * channels_count * channel_size;
-
-		auto [staging_buffer, staging_buffer_memory] = CreateBuffer(size, vk::BufferUsageFlagBits::eTransferDst);
-
-		auto subresource = vk::ImageSubresourceLayers()
-			.setAspectMask(vk::ImageAspectFlagBits::eColor)
-			.setMipLevel(mip_level)
-			.setLayerCount(1);
-
-		auto region = vk::BufferImageCopy2()
-			.setImageSubresource(subresource)
-			.setBufferImageHeight(height)
-			.setBufferRowLength(0)
-			.setImageExtent({ width, height, 1 });
-
-		auto copy_image_to_buffer_info = vk::CopyImageToBufferInfo2()
-			.setSrcImage(getImage())
-			.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
-			.setDstBuffer(*staging_buffer)
-			.setRegions(region);
-
-		OneTimeSubmit([&](auto& cmdbuf) {
-			ensureState(cmdbuf, vk::ImageLayout::eTransferSrcOptimal);
-			cmdbuf.copyImageToBuffer2(copy_image_to_buffer_info);
-		});
-
-		auto ptr = staging_buffer_memory.mapMemory(0, size);
-		memcpy(dst_memory, ptr, size);
-		staging_buffer_memory.unmapMemory();
-
-		auto begin_info = vk::CommandBufferBeginInfo()
-			.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-
-		gContext->getCurrentFrame().command_buffer.begin(begin_info);
-	}
-
 	void generateMips()
 	{
 		ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
@@ -2885,13 +2834,6 @@ void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32
 {
 	auto texture = (TextureVK*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
-}
-
-void BackendVK::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level, void* dst_memory)
-{
-	auto texture = (TextureVK*)handle;
-	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
 }
 
 void BackendVK::generateMips(TextureHandle* handle)

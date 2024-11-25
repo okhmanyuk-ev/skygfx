@@ -47,8 +47,6 @@ namespace skygfx
 			uint32_t mip_count) override;
 		void writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format, const void* memory,
 			uint32_t mip_level, uint32_t offset_x, uint32_t offset_y) override;
-		void readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-			uint32_t mip_level, void* dst_memory) override;
 		void generateMips(TextureHandle* handle) override;
 		void destroyTexture(TextureHandle* handle) override;
 

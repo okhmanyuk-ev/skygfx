@@ -71,27 +71,6 @@ void Texture::write(uint32_t width, uint32_t height, PixelFormat format, const v
 	gBackend->writeTexturePixels(mTextureHandle, width, height, format, memory, mip_level, offset_x, offset_y);
 }
 
-void Texture::read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level, void* dst_memory)
-{
-	assert(width > 0);
-	assert(height > 0);
-	assert(pos_x + width <= GetMipWidth(mWidth, mip_level));
-	assert(pos_y + height <= GetMipHeight(mHeight, mip_level));
-	assert(mip_level < mMipCount);
-	gBackend->readTexturePixels(mTextureHandle, pos_x, pos_y, width, height, mip_level, dst_memory);
-}
-
-std::vector<uint8_t> Texture::read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level)
-{
-	auto channels_count = GetFormatChannelsCount(mFormat);
-	auto channel_size = GetFormatChannelSize(mFormat);
-	auto result = std::vector<uint8_t>(width * height * channels_count * channel_size);
-	read(pos_x, pos_y, width, height, mip_level, result.data());
-	return result;
-}
-
 void Texture::generateMips()
 {
 	gBackend->generateMips(mTextureHandle);
@@ -988,16 +967,6 @@ uint32_t skygfx::GetBackbufferHeight()
 PixelFormat skygfx::GetBackbufferFormat()
 {
 	return gBackbufferFormat;
-}
-
-std::vector<uint8_t> skygfx::GetBackbufferPixels()
-{
-	auto width = GetBackbufferWidth();
-	auto height = GetBackbufferHeight();
-	auto format = GetBackbufferFormat();
-	auto texture = Texture(width, height, format, 1);
-	ReadPixels({ 0, 0 }, { width, height }, texture);
-	return texture.read(0, 0, width, height, 0);
 }
 
 BackendType skygfx::GetBackendType()

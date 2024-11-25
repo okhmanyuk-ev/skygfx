@@ -257,12 +257,6 @@ public:
 			bytesPerRow:width * channels * channel_size];
 	}
 
-	void read(uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-		uint32_t mip_level, void* dst_memory)
-	{
-		// TODO: implement
-	}
-
 	void generateMips()
 	{
 		auto cmd = gContext->command_queue.commandBuffer;
@@ -1263,13 +1257,6 @@ void BackendMetal::writeTexturePixels(TextureHandle* handle, uint32_t width, uin
 {
 	auto texture = (TextureMetal*)handle;
 	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
-}
-
-void BackendMetal::readTexturePixels(TextureHandle* handle, uint32_t pos_x, uint32_t pos_y, uint32_t width, uint32_t height,
-	uint32_t mip_level, void* dst_memory)
-{
-	auto texture = (TextureMetal*)handle;
-	texture->read(pos_x, pos_y, width, height, mip_level, dst_memory);
 }
 
 void BackendMetal::generateMips(TextureHandle* handle)
