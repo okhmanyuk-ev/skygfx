@@ -27,9 +27,8 @@
 	#include <OpenGL/gl3.h>
 	#import <AppKit/AppKit.h>
 #elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-	#include <EGL/egl.h>
-	#include <EGL/eglext.h>
-	#include <EGL/eglplatform.h>
+	#include <emscripten/emscripten.h>
+	#include <emscripten/html5.h>
 	#include <GLES3/gl3.h>
 #endif
 
@@ -611,10 +610,7 @@ static GLKView* gGLKView = nullptr;
 NSOpenGLView* glView;
 NSOpenGLContext *glContext;
 #elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-EGLDisplay gEglDisplay;
-EGLSurface gEglSurface;
-EGLContext gEglContext;
-EGLConfig gEglConfig;
+EMSCRIPTEN_WEBGL_CONTEXT_HANDLE gWebglContext;
 #endif
 
 struct ContextGL
@@ -1043,27 +1039,24 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 		dispatch_sync(dispatch_get_main_queue(),set_view);
 	}
 #elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-	const EGLint attribs[] = {
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_BLUE_SIZE, 8,
-		EGL_GREEN_SIZE, 8,
-		EGL_RED_SIZE, 8,
-		EGL_DEPTH_SIZE, 24,
-		EGL_STENCIL_SIZE, 8,
-		EGL_NONE
-	};
-	const EGLint context_attribs[] = {
-		EGL_CONTEXT_CLIENT_VERSION, 3,
-		EGL_NONE
-	};
-	gEglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	eglInitialize(gEglDisplay, NULL, NULL);
-	EGLint num_configs;
-	eglChooseConfig(gEglDisplay, attribs, &gEglConfig, 1, &num_configs);
-	gEglSurface = eglCreateWindowSurface(gEglDisplay, gEglConfig, (EGLNativeWindowType)window, NULL);
-	gEglContext = eglCreateContext(gEglDisplay, gEglConfig, NULL, context_attribs);
-	eglMakeCurrent(gEglDisplay, gEglSurface, gEglSurface, gEglContext);
+	EmscriptenWebGLContextAttributes attr;
+	emscripten_webgl_init_context_attributes(&attr);
+	attr.alpha = EM_FALSE;
+	attr.depth = EM_TRUE;
+	attr.stencil = EM_TRUE;
+	attr.antialias = EM_FALSE;
+	attr.premultipliedAlpha = EM_TRUE;
+	attr.preserveDrawingBuffer = EM_FALSE;
+	attr.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE; // TODO: adapter
+	attr.failIfMajorPerformanceCaveat = EM_FALSE;
+	attr.enableExtensionsByDefault = EM_TRUE;
+	attr.explicitSwapControl = EM_FALSE;
+	attr.renderViaOffscreenBackBuffer = EM_FALSE;
+	attr.majorVersion = 2;
+	attr.minorVersion = 0;
+
+	gWebglContext = emscripten_webgl_create_context("#canvas", &attr);
+	emscripten_webgl_make_context_current(gWebglContext);
 #endif
 
 #ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
@@ -1097,6 +1090,8 @@ BackendGL::~BackendGL()
 	wglDeleteContext(WglContext);
 #elif defined(SKYGFX_PLATFORM_MACOS)
 	[glView release];
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+	emscripten_webgl_destroy_context(gWebglContext);
 #endif
 }
 
@@ -1472,8 +1467,6 @@ void BackendGL::present()
 	[gGLKView display];
 #elif defined(SKYGFX_PLATFORM_MACOS)
 	[glContext flushBuffer];
-#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
-	eglSwapBuffers(gEglDisplay, gEglSurface);
 #endif
 	gContext->execute_after_present.flush();
 }
