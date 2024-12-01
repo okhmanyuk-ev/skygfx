@@ -87,10 +87,10 @@ void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLen
 	if (SeverityMap.contains(severity))
 		severity_str = SeverityMap.at(severity);
 
-	std::cout << "[opengl debug] name: " << source_str << 
+	std::cout << "[opengl debug] name: " << source_str <<
 		", type: " << type_str <<
 		", id: " << id <<
-		", severity: " << severity_str << 
+		", severity: " << severity_str <<
 		", message: " << message << std::endl;
 }
 
@@ -219,7 +219,7 @@ private:
 	GLuint mProgram;
 	ShaderReflection mVertRefl;
 	ShaderReflection mFragRefl;
-	
+
 	struct {
 		bool es;
 		uint32_t version;
@@ -309,10 +309,10 @@ public:
 
 		glDeleteShader(vertexShader);
 		glDeleteShader(fragmentShader);
-		
+
 		mVertRefl = MakeSpirvReflection(vertex_shader_spirv);
 		mFragRefl = MakeSpirvReflection(fragment_shader_spirv);
-		
+
 		bool need_fix_bindings =
 			(options.es && options.version <= 300) ||
 			(!options.es && options.version < 420 && !options.enable_420pack_extension);
@@ -453,7 +453,7 @@ class RenderTargetGL
 public:
 	auto getGLFramebuffer() const { return mFramebuffer; }
 	auto getTexture() const { return mTexture; }
-	
+
 private:
 	GLuint mFramebuffer = 0;
 	GLuint mDepthStencilRenderbuffer = 0;
@@ -543,7 +543,7 @@ class IndexBufferGL : public BufferGL
 public:
 	auto getStride() const { return mStride; }
 	void setStride(size_t value) { mStride = value; }
-	
+
 private:
 	size_t mStride = 0;
 
@@ -946,7 +946,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	NSObject* nwh = (NSObject*)window;
 	NSView* contentView = nil;
 	NSWindow* nsWindow = nil;
-	
+
 	if ([nwh isKindOfClass:[NSView class]])
 	{
 		contentView = (NSView*)nwh;
@@ -968,15 +968,15 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 		NSOpenGLPFANoRecovery,    true,
 		0,                        0,
 	};
-	
+
 	auto pixel_format = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttribs];
-	
+
 	auto bounds = [contentView bounds];
-	
+
 	glView = [[NSOpenGLView alloc] initWithFrame:bounds pixelFormat:pixel_format];
-	
+
 	[pixel_format release];
-	
+
 	[glView setAutoresizingMask:(NSViewHeightSizable | NSViewWidthSizable | NSViewMinXMargin |
 		NSViewMaxXMargin | NSViewMinYMargin | NSViewMaxYMargin)];
 
@@ -991,23 +991,23 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	{
 		[nsWindow setContentView:glView];
 	}
-	
+
 	glContext = [glView openGLContext];
 
 	[glContext makeCurrentContext];
 
 	GLint interval = 0;
 	[glContext setValues:&interval forParameter:NSOpenGLContextParameterSwapInterval];
-	
+
 	// When initializing NSOpenGLView programmatically (as we are), this sometimes doesn't
 	// get hooked up properly (especially when there are existing window elements). This ensures
 	// we are valid. Otherwise, you'll probably get a GL_INVALID_FRAMEBUFFER_OPERATION when
 	// trying to glClear() for the first time.
-	
+
 	void (^set_view)(void) = ^(void) {
 		[glContext setView:glView];
 	};
-	
+
 	if([NSThread isMainThread])
 	{
 		set_view();
@@ -1066,7 +1066,7 @@ BackendGL::~BackendGL()
 {
 	delete gContext;
 	gContext = nullptr;
-	
+
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	wglDeleteContext(WglContext);
 #elif defined(SKYGFX_PLATFORM_MACOS)
@@ -1110,7 +1110,7 @@ void BackendGL::setViewport(std::optional<Viewport> viewport)
 }
 
 void BackendGL::setScissor(std::optional<Scissor> scissor)
-{		
+{
 	gContext->scissor = scissor;
 	gContext->scissor_dirty = true;
 }
@@ -1495,7 +1495,7 @@ void BackendGL::destroyRenderTarget(RenderTargetHandle* handle)
 	delete render_target;
 }
 
-ShaderHandle* BackendGL::createShader(const std::string& vertex_code, 
+ShaderHandle* BackendGL::createShader(const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
 	auto shader = new ShaderGL(vertex_code, fragment_code, defines);
