@@ -93,7 +93,6 @@ void GLAPIENTRY DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLen
 		", severity: " << severity_str << 
 		", message: " << message << std::endl;
 }
-#endif
 
 void FlushErrors()
 {
@@ -123,6 +122,7 @@ void FlushErrors()
 		std::cout << "[opengl] error: " << name << " (" << error << ")" << std::endl;
 	}
 }
+#endif
 
 static const std::unordered_map<VertexFormat, GLint> VertexFormatSizeMap = {
 	{ VertexFormat::Float1, 1 },
@@ -476,8 +476,10 @@ public:
 		glBindFramebuffer(GL_FRAMEBUFFER, mFramebuffer);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mDepthStencilRenderbuffer);
 
+#ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
 		auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		assert(status == GL_FRAMEBUFFER_COMPLETE);
+#endif
 
 		glBindFramebuffer(GL_FRAMEBUFFER, last_fbo);
 		glBindRenderbuffer(GL_RENDERBUFFER, last_rbo);
@@ -1152,8 +1154,10 @@ void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count
 			render_targets.at(i)->getTexture()->getGLTexture(), 0);
 	}
 
+#ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
 	auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	assert(status == GL_FRAMEBUFFER_COMPLETE);
+#endif
 
 	glDrawBuffers((GLsizei)render_targets.size(), gContext->draw_buffers.data());
 
@@ -1437,7 +1441,9 @@ void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 
 void BackendGL::present()
 {
+#ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
 	FlushErrors();
+#endif
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 	SwapBuffers(gHDC);
 #elif defined(SKYGFX_PLATFORM_IOS)
