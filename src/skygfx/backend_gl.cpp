@@ -659,6 +659,7 @@ struct ContextGL
 	std::optional<Scissor> scissor;
 	FrontFace front_face = FrontFace::Clockwise;
 	std::vector<InputLayout> input_layouts;
+	std::optional<DepthMode> depth_mode;
 
 	bool shader_dirty = false;
 	bool vertex_array_dirty = false;
@@ -667,6 +668,7 @@ struct ContextGL
 	bool scissor_dirty = true;
 	bool sampler_state_dirty = true;
 	bool front_face_dirty = true;
+	bool depth_mode_dirty = true;
 
 	uint32_t getBackbufferWidth();
 	uint32_t getBackbufferHeight();
@@ -688,6 +690,51 @@ uint32_t ContextGL::getBackbufferHeight()
 PixelFormat ContextGL::getBackbufferFormat()
 {
 	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : PixelFormat::RGBA8UNorm;
+}
+
+static void EnsureScissor()
+{
+	if (!gContext->scissor_dirty)
+		return;
+
+	gContext->scissor_dirty = false;
+
+	const auto& scissor = gContext->scissor;
+
+	if (!scissor.has_value())
+	{
+		glDisable(GL_SCISSOR_TEST);
+		return;
+	}
+
+	glEnable(GL_SCISSOR_TEST);
+
+	auto x = (GLint)glm::round(scissor->position.x);
+	auto y = (GLint)glm::round(gContext->height - scissor->position.y - scissor->size.y); // TODO: need different calculations when render target
+	auto width = (GLint)glm::round(scissor->size.x);
+	auto height = (GLint)glm::round(scissor->size.y);
+	glScissor(x, y, width, height);
+}
+
+static void EnsureDepthMode()
+{
+	if (!gContext->depth_mode_dirty)
+		return;
+
+	gContext->depth_mode_dirty = false;
+
+	const auto& depth_mode = gContext->depth_mode;
+
+	if (!depth_mode.has_value())
+	{
+		glDisable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		return;
+	}
+
+	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(ComparisonFuncMap.at(depth_mode->func));
+	glDepthMask(depth_mode->write_mask);
 }
 
 static void EnsureGraphicsState(bool draw_indexed)
@@ -840,26 +887,8 @@ static void EnsureGraphicsState(bool draw_indexed)
 #endif
 	}
 
-	if (gContext->scissor_dirty)
-	{
-		gContext->scissor_dirty = false;
-
-		if (gContext->scissor.has_value())
-		{
-			auto value = gContext->scissor.value();
-
-			glEnable(GL_SCISSOR_TEST);
-			glScissor(
-				(GLint)glm::round(value.position.x),
-				(GLint)glm::round(gContext->height - value.position.y - value.size.y), // TODO: need different calculations when render target
-				(GLint)glm::round(value.size.x),
-				(GLint)glm::round(value.size.y));
-		}
-		else
-		{
-			glDisable(GL_SCISSOR_TEST);
-		}
-	}
+	EnsureScissor();
+	EnsureDepthMode();
 }
 
 BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adapter)
@@ -1242,16 +1271,8 @@ void BackendGL::setBlendMode(const std::optional<BlendMode>& blend_mode)
 
 void BackendGL::setDepthMode(const std::optional<DepthMode>& depth_mode)
 {
-	if (!depth_mode.has_value())
-	{
-		glDisable(GL_DEPTH_TEST);
-		glDepthMask(true);
-		return;
-	}
-
-	glEnable(GL_DEPTH_TEST);
-	glDepthFunc(ComparisonFuncMap.at(depth_mode.value().func));
-	glDepthMask(depth_mode.value().write_mask);
+	gContext->depth_mode = depth_mode;
+	gContext->depth_mode_dirty = true;
 }
 
 void BackendGL::setStencilMode(const std::optional<StencilMode>& stencil_mode)
@@ -1332,12 +1353,17 @@ void BackendGL::setDepthBias(const std::optional<DepthBias> depth_bias)
 void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional<float>& depth,
 	const std::optional<uint8_t>& stencil)
 {
-	auto scissor_was_enabled = glIsEnabled(GL_SCISSOR_TEST);
+	EnsureScissor();
+	EnsureDepthMode();
 
-	if (scissor_was_enabled)
-	{
+	auto scissor_enabled = gContext->scissor.has_value();
+	auto depth_mask_disabled = gContext->depth_mode && !gContext->depth_mode->write_mask;
+
+	if (scissor_enabled)
 		glDisable(GL_SCISSOR_TEST);
-	}
+
+	if (depth_mask_disabled)
+		glDepthMask(GL_TRUE);
 
 	GLbitfield flags = 0;
 
@@ -1360,25 +1386,13 @@ void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional
 		glClearStencil(stencil.value());
 	}
 
-	GLboolean depth_mask;
-	glGetBooleanv(GL_DEPTH_WRITEMASK, &depth_mask);
-
-	if (!depth_mask)
-	{
-		glDepthMask(true);
-	}
-
 	glClear(flags);
 
-	if (!depth_mask)
-	{
+	if (depth_mask_disabled)
 		glDepthMask(GL_FALSE);
-	}
 
-	if (scissor_was_enabled)
-	{
+	if (scissor_enabled)
 		glEnable(GL_SCISSOR_TEST);
-	}
 }
 
 void BackendGL::draw(uint32_t vertex_count, uint32_t vertex_offset, uint32_t instance_count)
