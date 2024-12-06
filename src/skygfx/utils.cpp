@@ -472,38 +472,31 @@ float getKarisWeight(const vec3 box4x4)
 vec3 downsample13tap(sampler2D srcSampler, const vec2 centerUV)
 {
 	const vec2 pixelSize = vec2(1.0) / textureSize(srcSampler, 0);
-	const vec3 taps[] = {
-		getSample(srcSampler, centerUV + vec2(-2,-2) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 0,-2) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 2,-2) * pixelSize),
-
-		getSample(srcSampler, centerUV + vec2(-1,-1) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 1,-1) * pixelSize),
-
-		getSample(srcSampler, centerUV + vec2(-2, 0) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 0, 0) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 2, 0) * pixelSize),
-
-		getSample(srcSampler, centerUV + vec2(-1, 1) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 1, 1) * pixelSize),
-
-		getSample(srcSampler, centerUV + vec2(-2, 2) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 0, 2) * pixelSize),
-		getSample(srcSampler, centerUV + vec2( 2, 2) * pixelSize),
-	};
+	vec3 taps[13];
+	taps[0] = getSample(srcSampler, centerUV + vec2(-2,-2) * pixelSize);
+	taps[1] = getSample(srcSampler, centerUV + vec2( 0,-2) * pixelSize);
+	taps[2] = getSample(srcSampler, centerUV + vec2( 2,-2) * pixelSize);
+	taps[3] = getSample(srcSampler, centerUV + vec2(-1,-1) * pixelSize);
+	taps[4] = getSample(srcSampler, centerUV + vec2( 1,-1) * pixelSize);
+	taps[5] = getSample(srcSampler, centerUV + vec2(-2, 0) * pixelSize);
+	taps[6] = getSample(srcSampler, centerUV + vec2( 0, 0) * pixelSize);
+	taps[7] = getSample(srcSampler, centerUV + vec2( 2, 0) * pixelSize);
+	taps[8] = getSample(srcSampler, centerUV + vec2(-1, 1) * pixelSize);
+	taps[9] = getSample(srcSampler, centerUV + vec2( 1, 1) * pixelSize);
+	taps[10] = getSample(srcSampler, centerUV + vec2(-2, 2) * pixelSize);
+	taps[11] = getSample(srcSampler, centerUV + vec2( 0, 2) * pixelSize);
+	taps[12] = getSample(srcSampler, centerUV + vec2( 2, 2) * pixelSize);
 
 	// on the first downsample use Karis average
 
 	if (downsample.step_number == 0)
 	{
-		const vec3 box[] =
-		{
-			0.25 * (taps[3] + taps[4] + taps[8]  + taps[9]), 
-			0.25 * (taps[0] + taps[1] + taps[5]  + taps[6]), 
-			0.25 * (taps[1] + taps[2] + taps[6]  + taps[7]), 
-			0.25 * (taps[5] + taps[6] + taps[10] + taps[11]), 
-			0.25 * (taps[6] + taps[7] + taps[11] + taps[12]), 
-		};
+		vec3 box[5];
+		box[0] = 0.25 * (taps[3] + taps[4] + taps[8]  + taps[9]);
+		box[1] = 0.25 * (taps[0] + taps[1] + taps[5]  + taps[6]);
+		box[2] = 0.25 * (taps[1] + taps[2] + taps[6]  + taps[7]);
+		box[3] = 0.25 * (taps[5] + taps[6] + taps[10] + taps[11]);
+		box[4] = 0.25 * (taps[6] + taps[7] + taps[11] + taps[12]);
 
 		// weight by partial Karis average to reduce fireflies
 		return 
