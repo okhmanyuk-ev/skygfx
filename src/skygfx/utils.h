@@ -269,8 +269,25 @@ namespace skygfx::utils
 
 	using Camera = std::variant<OrthogonalCamera, PerspectiveCamera>;
 
-	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeCameraMatrices(const OrthogonalCamera& camera);
-	std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> MakeCameraMatrices(const PerspectiveCamera& camera);
+	struct PerspectiveVectors
+	{
+		PerspectiveVectors(glm::vec3 front, glm::vec3 right, glm::vec3 up);
+		glm::vec3 front;
+		glm::vec3 right;
+		glm::vec3 up;
+	};
+
+	PerspectiveVectors MakePerspectiveCameraVectors(const PerspectiveCamera& camera);
+
+	struct CameraMatrices
+	{
+		CameraMatrices(glm::mat4 projection, glm::mat4 view);
+		glm::mat4 projection;
+		glm::mat4 view;
+	};
+
+	CameraMatrices MakeCameraMatrices(const OrthogonalCamera& camera);
+	CameraMatrices MakeCameraMatrices(const PerspectiveCamera& camera);
 
 	struct Context
 	{

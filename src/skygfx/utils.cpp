@@ -667,17 +667,14 @@ utils::effects::BrightFilter::BrightFilter(float _threshold) :
 {
 }
 
-std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const OrthogonalCamera& camera)
+utils::PerspectiveVectors::PerspectiveVectors(glm::vec3 _front, glm::vec3 _right, glm::vec3 _up) :
+	front(_front),
+	right(_right),
+	up(_up)
 {
-	auto width = (float)camera.width.value_or(GetBackbufferWidth());
-	auto height = (float)camera.height.value_or(GetBackbufferHeight());
-	auto proj = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f);
-	auto view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
-		glm::vec3(0.0f, 1.0f, 0.0f));
-	return { proj, view };
 }
 
-std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const PerspectiveCamera& camera)
+utils::PerspectiveVectors utils::MakePerspectiveCameraVectors(const PerspectiveCamera& camera)
 {
 	auto sin_yaw = glm::sin(camera.yaw);
 	auto sin_pitch = glm::sin(camera.pitch);
@@ -689,13 +686,35 @@ std::tuple<glm::mat4/*proj*/, glm::mat4/*view*/> utils::MakeCameraMatrices(const
 	auto right = glm::normalize(glm::cross(front, camera.world_up));
 	auto up = glm::normalize(glm::cross(right, front));
 
+	return PerspectiveVectors(front, right, up);
+}
+
+utils::CameraMatrices::CameraMatrices(glm::mat4 _projection, glm::mat4 _view) :
+	projection(_projection),
+	view(_view)
+{
+}
+
+utils::CameraMatrices utils::MakeCameraMatrices(const OrthogonalCamera& camera)
+{
+	auto width = (float)camera.width.value_or(GetBackbufferWidth());
+	auto height = (float)camera.height.value_or(GetBackbufferHeight());
+	auto proj = glm::orthoLH(0.0f, width, height, 0.0f, -1.0f, 1.0f);
+	auto view = glm::lookAtLH(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	return CameraMatrices(proj, view);
+}
+
+utils::CameraMatrices utils::MakeCameraMatrices(const PerspectiveCamera& camera)
+{
+	auto vectors = MakePerspectiveCameraVectors(camera);
+
 	auto width = (float)camera.width.value_or(GetBackbufferWidth());
 	auto height = (float)camera.height.value_or(GetBackbufferHeight());
 
 	auto proj = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane);
-	auto view = glm::lookAtRH(camera.position, camera.position + front, up);
+	auto view = glm::lookAtRH(camera.position, camera.position + vectors.front, vectors.up);
 
-	return { proj, view };
+	return CameraMatrices(proj, view);
 }
 
 void utils::ClearContext()
@@ -1008,13 +1027,12 @@ void utils::ExecuteCommands(const std::vector<Command>& cmds)
 				settings_dirty = true;
 			},
 			[&](const commands::SetCamera& cmd) {
-				std::tie(settings.projection, settings.view, settings.eye_position) = std::visit(cases{
-					[&](const OrthogonalCamera& camera) {
-						return std::tuple_cat(MakeCameraMatrices(camera), std::make_tuple(glm::vec3{ 0.0f, 0.0f, 0.0f }));
-					},
-					[&](const PerspectiveCamera& camera) {
-						return std::tuple_cat(MakeCameraMatrices(camera), std::make_tuple(camera.position));
-					},
+				auto matrices = std::visit(cases{ [](const auto& camera) { return MakeCameraMatrices(camera); } }, cmd.camera);
+				settings.projection = matrices.projection;
+				settings.view = matrices.view;
+				settings.eye_position = std::visit(cases{
+					[&](const OrthogonalCamera& camera) { return glm::vec3{ 0.0f, 0.0f, 0.0f }; },
+					[&](const PerspectiveCamera& camera) { return camera.position; },
 				}, cmd.camera);
 				settings_dirty = true;
 			},
