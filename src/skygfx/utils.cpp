@@ -1263,6 +1263,7 @@ void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float br
 std::vector<utils::Command> utils::Model::Draw(const Model& model, bool use_color_texture, bool use_normal_texture)
 {
 	return {
+		commands::SetTopology(model.topology),
 		commands::SetColorTexture(use_color_texture ? model.color_texture : nullptr),
 		commands::SetNormalTexture(use_normal_texture ? model.normal_texture : nullptr),
 		commands::SetMesh(model.mesh),

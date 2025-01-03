@@ -604,6 +604,7 @@ namespace skygfx::utils
 
 	struct Model
 	{
+		Topology topology = Topology::TriangleList;
 		Mesh* mesh = nullptr;
 		Texture* color_texture = nullptr;
 		Texture* normal_texture = nullptr;
