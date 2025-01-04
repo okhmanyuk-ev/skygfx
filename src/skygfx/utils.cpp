@@ -711,7 +711,7 @@ utils::CameraMatrices utils::MakeCameraMatrices(const PerspectiveCamera& camera)
 	auto width = (float)camera.width.value_or(GetBackbufferWidth());
 	auto height = (float)camera.height.value_or(GetBackbufferHeight());
 
-	auto proj = glm::perspectiveFov(camera.fov, width, height, camera.near_plane, camera.far_plane);
+	auto proj = glm::perspectiveFov(glm::radians(camera.fov), width, height, camera.near_plane, camera.far_plane);
 	auto view = glm::lookAtRH(camera.position, camera.position + vectors.front, vectors.up);
 
 	return CameraMatrices(proj, view);
