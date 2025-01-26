@@ -18,7 +18,12 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 		{ ShaderStage::ClosestHit, EShLangClosestHit }
 	};
 
-	glslang::InitializeProcess();
+	static bool inited = false;
+	if (!inited)
+	{
+		glslang::InitializeProcess();
+		inited = true;
+	}
 	
 	auto _stage = StageMap.at(stage);
 	glslang::TShader shader(_stage);
@@ -57,7 +62,6 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 
 	std::vector<uint32_t> result;
 	glslang::GlslangToSpv(*intermediate, result);
-	glslang::FinalizeProcess();
 
 	return result;
 }
