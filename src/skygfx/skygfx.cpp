@@ -820,6 +820,11 @@ void skygfx::SetSampler(Sampler value)
 	gBackend->setSampler(value);
 }
 
+void skygfx::SetAnisotropyLevel(AnisotropyLevel value)
+{
+	gBackend->setAnisotropyLevel(value);
+}
+
 void skygfx::SetTextureAddress(TextureAddress value)
 {
 	gBackend->setTextureAddress(value);

@@ -1280,6 +1280,10 @@ void BackendD3D12::setSampler(Sampler value)
 {
 }
 
+void BackendD3D12::setAnisotropyLevel(AnisotropyLevel value)
+{
+}
+
 void BackendD3D12::setTextureAddress(TextureAddress value)
 {
 }

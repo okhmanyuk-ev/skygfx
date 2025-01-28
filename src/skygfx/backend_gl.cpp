@@ -40,6 +40,10 @@ extern "C" {
 }
 #endif
 
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#endif
+
 using namespace skygfx;
 
 #ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
@@ -567,13 +571,15 @@ struct SamplerStateGL
 {
 	Sampler sampler = Sampler::Linear;
 	TextureAddress texture_address = TextureAddress::Clamp;
+	AnisotropyLevel anisotropy_level = AnisotropyLevel::None;
 
 	bool operator==(const SamplerStateGL& other) const = default;
 };
 
 SKYGFX_MAKE_HASHABLE(SamplerStateGL,
 	t.sampler,
-	t.texture_address
+	t.texture_address,
+	t.anisotropy_level
 );
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
@@ -631,6 +637,10 @@ struct ContextGL
 
 	uint32_t width = 0;
 	uint32_t height = 0;
+
+#ifdef EMSCRIPTEN
+	bool has_anisotropy_extension = false;
+#endif
 
 	ExecuteList execute_after_present;
 
@@ -833,10 +843,24 @@ static void EnsureGraphicsState(bool draw_indexed)
 				GLuint sampler_object;
 				glGenSamplers(1, &sampler_object);
 
+				static const std::unordered_map<AnisotropyLevel, GLfloat> AnisotropyLevelMap = {
+					{ AnisotropyLevel::None, 1.0f },
+					{ AnisotropyLevel::X2, 2.0f },
+					{ AnisotropyLevel::X4, 4.0f },
+					{ AnisotropyLevel::X8, 8.0f },
+					{ AnisotropyLevel::X16, 16.0f },
+				};
+
 				glSamplerParameteri(sampler_object, GL_TEXTURE_MIN_FILTER, SamplerMap.at(value.sampler).at(sampler_type));
 				glSamplerParameteri(sampler_object, GL_TEXTURE_MAG_FILTER, SamplerMap.at(value.sampler).at(ContextGL::SamplerType::NoMipmap));
 				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_S, TextureAddressMap.at(value.texture_address));
 				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_T, TextureAddressMap.at(value.texture_address));
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+				if (gContext->has_anisotropy_extension)
+					glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY_EXT, AnisotropyLevelMap.at(value.anisotropy_level));
+#else
+				glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY, AnisotropyLevelMap.at(value.anisotropy_level));
+#endif
 
 				sampler_state_map.insert({ sampler_type, sampler_object });
 			}
@@ -1078,10 +1102,12 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 
 	GLint num_extensions;
 	glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
+	std::unordered_set<std::string> extensions;
 
 	for (GLint i = 0; i < num_extensions; i++)
 	{
 		auto extension = glGetStringi(GL_EXTENSIONS, i);
+		extensions.insert((const char*)extension);
 	//	std::cout << extension << std::endl;
 	}
 
@@ -1089,6 +1115,10 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 
 	gContext->width = width;
 	gContext->height = height;
+
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+	gContext->has_anisotropy_extension = extensions.contains("GL_EXT_texture_filter_anisotropic");
+#endif
 }
 
 BackendGL::~BackendGL()
@@ -1323,6 +1353,12 @@ void BackendGL::setCullMode(CullMode cull_mode)
 void BackendGL::setSampler(Sampler value)
 {
 	gContext->sampler_state.sampler = value;
+	gContext->sampler_state_dirty = true;
+}
+
+void BackendGL::setAnisotropyLevel(AnisotropyLevel value)
+{
+	gContext->sampler_state.anisotropy_level = value;
 	gContext->sampler_state_dirty = true;
 }
 

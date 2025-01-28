@@ -30,6 +30,7 @@ namespace skygfx
 		void setStencilMode(const std::optional<StencilMode>& stencil_mode) override;
 		void setCullMode(CullMode cull_mode) override;
 		void setSampler(Sampler value) override;
+		void setAnisotropyLevel(AnisotropyLevel value) override;
 		void setTextureAddress(TextureAddress value) override;
 		void setFrontFace(FrontFace value) override;
 		void setDepthBias(const std::optional<DepthBias> depth_bias) override;

@@ -53,6 +53,7 @@ SKYGFX_MAKE_HASHABLE(RaytracingPipelineStateVK,
 struct SamplerStateVK
 {
 	Sampler sampler = Sampler::Linear;
+	AnisotropyLevel anisotropy_level = AnisotropyLevel::None;
 	TextureAddress texture_address = TextureAddress::Clamp;
 
 	bool operator==(const SamplerStateVK& other) const = default;
@@ -60,6 +61,7 @@ struct SamplerStateVK
 
 SKYGFX_MAKE_HASHABLE(SamplerStateVK,
 	t.sampler,
+	t.anisotropy_level,
 	t.texture_address
 );
 
@@ -1289,6 +1291,14 @@ static vk::raii::Sampler CreateSamplerState(const SamplerStateVK& sampler_state)
 		{ TextureAddress::MirrorWrap, vk::SamplerAddressMode::eMirrorClampToEdge },
 	};
 
+	static const std::unordered_map<AnisotropyLevel, float> AnisotropyLevelMap = {
+		{ AnisotropyLevel::None, 0.0f },
+		{ AnisotropyLevel::X2, 2.0f },
+		{ AnisotropyLevel::X4, 4.0f },
+		{ AnisotropyLevel::X8, 8.0f },
+		{ AnisotropyLevel::X16, 16.0f },
+	};
+
 	auto sampler_create_info = vk::SamplerCreateInfo()
 		.setMagFilter(FilterMap.at(sampler_state.sampler))
 		.setMinFilter(FilterMap.at(sampler_state.sampler))
@@ -1298,7 +1308,8 @@ static vk::raii::Sampler CreateSamplerState(const SamplerStateVK& sampler_state)
 		.setAddressModeW(AddressModeMap.at(sampler_state.texture_address))
 		.setMinLod(-1000)
 		.setMaxLod(1000)
-		.setMaxAnisotropy(1.0f);
+		.setAnisotropyEnable(sampler_state.anisotropy_level != AnisotropyLevel::None)
+		.setMaxAnisotropy(AnisotropyLevelMap.at(sampler_state.anisotropy_level));
 
 	return gContext->device.createSampler(sampler_create_info);
 }
@@ -2654,6 +2665,11 @@ void BackendVK::setCullMode(CullMode cull_mode)
 void BackendVK::setSampler(Sampler value)
 {
 	gContext->sampler_state.sampler = value;
+}
+
+void BackendVK::setAnisotropyLevel(AnisotropyLevel value)
+{
+	gContext->sampler_state.anisotropy_level = value;
 }
 
 void BackendVK::setTextureAddress(TextureAddress value)

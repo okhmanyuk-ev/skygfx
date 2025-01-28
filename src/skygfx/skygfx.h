@@ -543,6 +543,15 @@ namespace skygfx
 		Nearest
 	};
 
+	enum class AnisotropyLevel
+	{
+		None,
+		X2,
+		X4,
+		X8,
+		X16
+	};
+
 	enum class TextureAddress
 	{
 		Wrap, // Texels outside range will form the tile at every integer junction.		
@@ -602,6 +611,7 @@ namespace skygfx
 	void SetStencilMode(const std::optional<StencilMode>& stencil_mode);
 	void SetCullMode(CullMode cull_mode);
 	void SetSampler(Sampler value);
+	void SetAnisotropyLevel(AnisotropyLevel value);
 	void SetTextureAddress(TextureAddress value);
 	void SetFrontFace(FrontFace value);
 	void SetDepthBias(const std::optional<DepthBias> depth_bias);

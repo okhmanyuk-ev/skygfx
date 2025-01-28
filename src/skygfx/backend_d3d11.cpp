@@ -56,6 +56,7 @@ SKYGFX_MAKE_HASHABLE(RasterizerStateD3D11,
 struct SamplerStateD3D11
 {
 	Sampler sampler = Sampler::Linear;
+	AnisotropyLevel anisotropy_level = AnisotropyLevel::None;
 	TextureAddress texture_address = TextureAddress::Clamp;
 
 	bool operator==(const SamplerStateD3D11& other) const = default;
@@ -63,6 +64,7 @@ struct SamplerStateD3D11
 
 SKYGFX_MAKE_HASHABLE(SamplerStateD3D11,
 	t.sampler,
+	t.anisotropy_level,
 	t.texture_address
 );
 
@@ -551,7 +553,6 @@ static void EnsureSamplerState()
 
 	if (!gContext->sampler_states.contains(value))
 	{
-		// TODO: see D3D11_ENCODE_BASIC_FILTER
 
 		const static std::unordered_map<Sampler, D3D11_FILTER> SamplerMap = {
 			{ Sampler::Linear, D3D11_FILTER_MIN_MAG_MIP_LINEAR },
@@ -564,8 +565,17 @@ static void EnsureSamplerState()
 			{ TextureAddress::MirrorWrap, D3D11_TEXTURE_ADDRESS_MIRROR }
 		};
 
+		static const std::unordered_map<AnisotropyLevel, UINT> AnisotropyLevelMap = {
+			{ AnisotropyLevel::None, 0 },
+			{ AnisotropyLevel::X2, 2 },
+			{ AnisotropyLevel::X4, 4 },
+			{ AnisotropyLevel::X8, 8 },
+			{ AnisotropyLevel::X16, 16 },
+		};
+
 		auto desc = CD3D11_SAMPLER_DESC(D3D11_DEFAULT);
-		desc.Filter = SamplerMap.at(value.sampler);
+		desc.Filter = value.anisotropy_level == AnisotropyLevel::None ? SamplerMap.at(value.sampler) : D3D11_FILTER_ANISOTROPIC;
+		desc.MaxAnisotropy = AnisotropyLevelMap.at(value.anisotropy_level);
 		desc.AddressU = TextureAddressMap.at(value.texture_address);
 		desc.AddressV = TextureAddressMap.at(value.texture_address);
 		desc.AddressW = TextureAddressMap.at(value.texture_address);
@@ -934,6 +944,12 @@ void BackendD3D11::setCullMode(CullMode cull_mode)
 void BackendD3D11::setSampler(Sampler value)
 {
 	gContext->sampler_state.sampler = value;
+	gContext->sampler_state_dirty = true;
+}
+
+void BackendD3D11::setAnisotropyLevel(AnisotropyLevel value)
+{
+	gContext->sampler_state.anisotropy_level = value;
 	gContext->sampler_state_dirty = true;
 }
 

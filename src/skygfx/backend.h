@@ -27,6 +27,7 @@ namespace skygfx
 		virtual void setStencilMode(const std::optional<StencilMode>& stencil_mode) = 0;
 		virtual void setCullMode(CullMode cull_mode) = 0;
 		virtual void setSampler(Sampler value) = 0;
+		virtual void setAnisotropyLevel(AnisotropyLevel value) = 0;
 		virtual void setTextureAddress(TextureAddress value) = 0;
 		virtual void setFrontFace(FrontFace value) = 0;
 		virtual void setDepthBias(const std::optional<DepthBias> depth_bias) = 0;
