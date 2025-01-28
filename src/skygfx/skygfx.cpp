@@ -38,7 +38,7 @@ Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t m
 Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, const void* memory, bool generate_mips) :
 	Texture(width, height, format, generate_mips ? GetMipCount(width, height) : 1)
 {
-	write(width, height, format, memory);
+	write(width, height, memory);
 
 	if (generate_mips)
 		generateMips();
@@ -59,8 +59,8 @@ Texture::~Texture()
 		gBackend->destroyTexture(mTextureHandle);
 }
 
-void Texture::write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
-	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void Texture::write(uint32_t width, uint32_t height, const void* memory, uint32_t mip_level,
+	uint32_t offset_x, uint32_t offset_y)
 {
 	assert(width > 0);
 	assert(height > 0);
@@ -68,7 +68,7 @@ void Texture::write(uint32_t width, uint32_t height, PixelFormat format, const v
 	assert(offset_y + height <= GetMipHeight(mHeight, mip_level));
 	assert(mip_level < mMipCount);
 	assert(memory != nullptr);
-	gBackend->writeTexturePixels(mTextureHandle, width, height, format, memory, mip_level, offset_x, offset_y);
+	gBackend->writeTexturePixels(mTextureHandle, width, height, memory, mip_level, offset_x, offset_y);
 }
 
 void Texture::generateMips()

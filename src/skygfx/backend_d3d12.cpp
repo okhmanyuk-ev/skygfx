@@ -410,7 +410,7 @@ public:
 		DestroyStaging(mTexture);
 	}
 
-	void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
+	void write(uint32_t width, uint32_t height, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		auto upload_size = GetRequiredIntermediateSize(mTexture.Get(), mip_level, 1);
@@ -422,8 +422,8 @@ public:
 		gContext->device->CreateCommittedResource(&upload_prop, D3D12_HEAP_FLAG_NONE, &upload_desc,
 			D3D12_RESOURCE_STATE_GENERIC_READ, NULL, IID_PPV_ARGS(upload_buffer.GetAddressOf()));
 
-		auto channels = GetFormatChannelsCount(format);
-		auto channel_size = GetFormatChannelSize(format);
+		auto channels = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
 
 		D3D12_SUBRESOURCE_DATA subersource_data = {};
 		subersource_data.pData = memory;
@@ -1448,11 +1448,11 @@ TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Pixe
 	return (TextureHandle*)texture;
 }
 
-void BackendD3D12::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format,
-	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendD3D12::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, const void* memory,
+	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureD3D12*)handle;
-	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+	texture->write(width, height, memory, mip_level, offset_x, offset_y);
 }
 
 void BackendD3D12::generateMips(TextureHandle* handle)

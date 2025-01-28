@@ -419,13 +419,13 @@ public:
 		glDeleteTextures(1, &mTexture);
 	}
 
-	void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
+	void write(uint32_t width, uint32_t height, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
-		auto channels_count = GetFormatChannelsCount(format);
-		auto channel_size = GetFormatChannelSize(format);
-		auto format_type = PixelFormatTypeMap.at(format);
-		auto texture_format = TextureFormatMap.at(format);
+		auto channels_count = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
+		auto format_type = PixelFormatTypeMap.at(mFormat);
+		auto texture_format = TextureFormatMap.at(mFormat);
 
 		auto row_size = width * channels_count * channel_size;
 		auto image_size = height * row_size;
@@ -1513,11 +1513,11 @@ TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, PixelFo
 	return (TextureHandle*)texture;
 }
 
-void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format,
-	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, const void* memory,
+	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureGL*)handle;
-	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+	texture->write(width, height, memory, mip_level, offset_x, offset_y);
 }
 
 void BackendGL::generateMips(TextureHandle* handle)

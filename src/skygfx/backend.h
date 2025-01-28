@@ -43,7 +43,7 @@ namespace skygfx
 
 		virtual TextureHandle* createTexture(uint32_t width, uint32_t height, PixelFormat format,
 			uint32_t mip_count) = 0;
-		virtual void writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format, const void* memory,
+		virtual void writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, const void* memory,
 			uint32_t mip_level, uint32_t offset_x, uint32_t offset_y) = 0;
 		virtual void generateMips(TextureHandle* handle) = 0;
 		virtual void destroyTexture(TextureHandle* handle) = 0;

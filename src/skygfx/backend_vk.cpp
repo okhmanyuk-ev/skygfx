@@ -563,11 +563,12 @@ public:
 			DestroyStaging(std::move(mDeviceMemory.value()));
 	}
 
-	void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
+	void write(uint32_t width, uint32_t height, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
 		EnsureRenderPassDeactivated();
 
+		auto format = ReversedPixelFormatMap.at(mFormat);
 		auto channels = GetFormatChannelsCount(format);
 		auto channel_size = GetFormatChannelSize(format);
 		auto size = width * height * channels * channel_size;
@@ -2845,11 +2846,11 @@ TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, PixelFo
 	return (TextureHandle*)texture;
 }
 
-void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format,
-	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendVK::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, const void* memory,
+	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureVK*)handle;
-	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+	texture->write(width, height, memory, mip_level, offset_x, offset_y);
 }
 
 void BackendVK::generateMips(TextureHandle* handle)

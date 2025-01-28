@@ -242,11 +242,10 @@ public:
 	{
 	}
 
-	void write(uint32_t width, uint32_t height, PixelFormat format, const void* memory,
-		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+	void write(uint32_t width, uint32_t height, const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
-		auto channels = GetFormatChannelsCount(format);
-		auto channel_size = GetFormatChannelSize(format);
+		auto channels = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
 		auto mem_pitch = width * channels * channel_size;
 		auto mem_slice_pitch = width * height * channels * channel_size;
 		auto dst_box = CD3D11_BOX(offset_x, offset_y, 0, offset_x + width, offset_y + height, 1);
@@ -1091,11 +1090,11 @@ TextureHandle* BackendD3D11::createTexture(uint32_t width, uint32_t height, Pixe
 	return (TextureHandle*)texture;
 }
 
-void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, PixelFormat format,
-	const void* memory, uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
+void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, const void* memory,
+	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
 	auto texture = (TextureD3D11*)handle;
-	texture->write(width, height, format, memory, mip_level, offset_x, offset_y);
+	texture->write(width, height, memory, mip_level, offset_x, offset_y);
 }
 
 void BackendD3D11::generateMips(TextureHandle* handle)
