@@ -1076,14 +1076,14 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	glDebugMessageCallback(DebugMessageCallback, nullptr);
 #endif
 
-    GLint num_extensions;
-    glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
+	GLint num_extensions;
+	glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
 
-    for (GLint i = 0; i < num_extensions; i++)
-    {
-        auto extension = glGetStringi(GL_EXTENSIONS, i);
+	for (GLint i = 0; i < num_extensions; i++)
+	{
+		auto extension = glGetStringi(GL_EXTENSIONS, i);
 	//	std::cout << extension << std::endl;
-    }
+	}
 
 	gContext = new ContextGL();
 
