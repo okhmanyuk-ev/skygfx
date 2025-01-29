@@ -864,9 +864,10 @@ void skygfx::DrawIndexed(uint32_t index_count, uint32_t index_offset, uint32_t i
 	gDrawcalls++;
 }
 
-void skygfx::ReadPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Texture& dst_texture)
+void skygfx::CopyBackbufferToTexture(Texture& dst_texture, const glm::i32vec2& size, const glm::i32vec2& src_pos,
+	const glm::i32vec2& dst_pos)
 {
-	gBackend->readPixels(pos, size, dst_texture);
+	gBackend->copyBackbufferToTexture(src_pos, size, dst_pos, dst_texture);
 }
 
 void skygfx::DispatchRays(uint32_t width, uint32_t height, uint32_t depth)
