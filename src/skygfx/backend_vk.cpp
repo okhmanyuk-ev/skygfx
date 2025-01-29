@@ -2814,24 +2814,20 @@ void BackendVK::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_
 	gContext->getCurrentFrame().command_buffer.drawIndexed(index_count, instance_count, index_offset, 0, 0);
 }
 
-void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
+void BackendVK::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::i32vec2& size, const glm::i32vec2& dst_pos,
+	TextureHandle* dst_texture_handle)
 {
-	auto dst_texture = (TextureVK*)dst_texture_handle;
-	auto dst_format = gContext->getBackbufferFormat();
-
-	assert(dst_texture->getWidth() == size.x);
-	assert(dst_texture->getHeight() == size.y);
-	assert(dst_texture->getFormat() == dst_format);
-
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	EnsureRenderPassDeactivated();
+	auto dst_texture = (TextureVK*)dst_texture_handle;
+	auto dst_format = gContext->getBackbufferFormat();
 
-	auto pos_x = static_cast<int32_t>(pos.x);
-	auto pos_y = static_cast<int32_t>(pos.y);
-	auto width = static_cast<uint32_t>(size.x);
-	auto height = static_cast<uint32_t>(size.y);
+	assert(dst_texture->getWidth() >= static_cast<uint32_t>(dst_pos.x + size.x));
+	assert(dst_texture->getHeight() >= static_cast<uint32_t>(dst_pos.y + size.y));
+	assert(dst_texture->getFormat() == dst_format);
+
+	EnsureRenderPassDeactivated();
 
 	auto src_target = !gContext->render_targets.empty() ? gContext->render_targets.at(0) : gContext->getCurrentFrame().swapchain_target.get();
 	auto src_texture = src_target->getTexture();
@@ -2845,9 +2841,9 @@ void BackendVK::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, Te
 	auto region = vk::ImageCopy2()
 		.setSrcSubresource(subresource)
 		.setDstSubresource(subresource)
-		.setSrcOffset({ pos_x, pos_y, 0 })
-		.setDstOffset({ 0, 0, 0 })
-		.setExtent({ width, height, 1 });
+		.setSrcOffset({ src_pos.x, src_pos.y, 0 })
+		.setDstOffset({ dst_pos.x, dst_pos.y, 0 })
+		.setExtent({ static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y), 1 });
 
 	src_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
 	dst_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);

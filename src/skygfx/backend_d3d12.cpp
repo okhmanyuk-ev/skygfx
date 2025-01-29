@@ -1407,17 +1407,18 @@ void BackendD3D12::drawIndexed(uint32_t index_count, uint32_t index_offset, uint
 	gContext->cmdlist->DrawIndexedInstanced((UINT)index_count, (UINT)instance_count, (UINT)index_offset, 0, 0);
 }
 
-void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
+void BackendD3D12::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::i32vec2& size, const glm::i32vec2& dst_pos,
+	TextureHandle* dst_texture_handle)
 {
+	if (size.x <= 0 || size.y <= 0)
+		return;
+
 	auto dst_texture = (TextureD3D12*)dst_texture_handle;
 	auto format = gContext->getBackbufferFormat();
 
-	assert(dst_texture->getWidth() == size.x);
-	assert(dst_texture->getHeight() == size.y);
+	assert(dst_texture->getWidth() >= static_cast<uint32_t>(dst_pos.x + size.x));
+	assert(dst_texture->getHeight() >= static_cast<uint32_t>(dst_pos.y + size.y));
 	assert(dst_texture->getFormat() == format);
-
-	if (size.x <= 0 || size.y <= 0)
-		return;
 
 	auto src_texture = !gContext->render_targets.empty() ?
 		gContext->render_targets.at(0)->getTexture() :
@@ -1425,52 +1426,34 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 
 	auto desc = src_texture->getD3D12Texture()->GetDesc();
 
-	auto back_w = desc.Width;
-	auto back_h = desc.Height;
-
-	auto src_x = (UINT)pos.x;
-	auto src_y = (UINT)pos.y;
-	auto src_w = (UINT)size.x;
-	auto src_h = (UINT)size.y;
-
-	UINT dst_x = 0;
-	UINT dst_y = 0;
-
-	if (pos.x < 0)
-	{
-		src_x = 0;
-		if (-pos.x > size.x)
-			src_w = 0;
-		else
-			src_w += pos.x;
-
-		dst_x = -pos.x;
-	}
-
-	if (pos.y < 0)
-	{
-		src_y = 0;
-		if (-pos.y > size.y)
-			src_h = 0;
-		else
-			src_h += pos.y;
-
-		dst_y = -pos.y;
-	}
-
-	if (pos.y >= (int)back_h || pos.x >= (int)back_w)
+	if (src_pos.x >= (int)desc.Width || src_pos.y >= (int)desc.Height)
 		return;
 
-	src_w = glm::min(src_w, (UINT)back_w);
-	src_h = glm::min(src_h, (UINT)back_h);
+	auto src_x = src_pos.x;
+	auto src_y = src_pos.y;
+	auto src_w = size.x;
+	auto src_h = size.y;
+	auto dst_x = dst_pos.x;
+	auto dst_y = dst_pos.y;
 
-	D3D12_BOX box;
-	box.left = src_x;
-	box.right = src_x + src_w;
-	box.top = src_y;
-	box.bottom = src_y + src_h;
-	box.front = 0;
-	box.back = 1;
+	if (src_x < 0)
+	{
+		src_w = std::max(src_w + src_x, 0);
+		dst_x -= src_x;
+		src_x = 0;
+	}
+
+	if (src_y < 0)
+	{
+		src_h = std::max(src_h + src_y, 0);
+		dst_y -= src_y;
+		src_y = 0;
+	}
+
+	src_w = std::min(src_w, static_cast<int>(desc.Width) - src_x);
+	src_h = std::min(src_h, static_cast<int>(desc.Height) - src_y);
+
+	auto src_box = CD3DX12_BOX(src_x, src_y, 0, src_x + src_w, src_y + src_h, 1);
 
 	src_texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE);
 	dst_texture->ensureState(gContext->cmdlist.Get(), D3D12_RESOURCE_STATE_COPY_DEST);
@@ -1478,7 +1461,7 @@ void BackendD3D12::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	auto src_location = CD3DX12_TEXTURE_COPY_LOCATION(src_texture->getD3D12Texture().Get(), 0);
 	auto dst_location = CD3DX12_TEXTURE_COPY_LOCATION(dst_texture->getD3D12Texture().Get(), 0);
 
-	gContext->cmdlist->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &box);
+	gContext->cmdlist->CopyTextureRegion(&dst_location, dst_x, dst_y, 0, &src_location, &src_box);
 }
 
 void BackendD3D12::present()

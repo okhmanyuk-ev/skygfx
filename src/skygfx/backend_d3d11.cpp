@@ -1043,17 +1043,18 @@ void BackendD3D11::drawIndexed(uint32_t index_count, uint32_t index_offset, uint
 	gContext->context->DrawIndexedInstanced((UINT)index_count, (UINT)instance_count, (UINT)index_offset, 0, 0);
 }
 
-void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
+void BackendD3D11::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::i32vec2& size, const glm::i32vec2& dst_pos,
+	TextureHandle* dst_texture_handle)
 {
+	if (size.x <= 0 || size.y <= 0)
+		return;
+
 	auto dst_texture = (TextureD3D11*)dst_texture_handle;
 	auto format = gContext->getBackbufferFormat();
 
-	assert(dst_texture->getWidth() == size.x);
-	assert(dst_texture->getHeight() == size.y);
+	assert(dst_texture->getWidth() >= static_cast<uint32_t>(dst_pos.x + size.x));
+	assert(dst_texture->getHeight() >= static_cast<uint32_t>(dst_pos.y + size.y));
 	assert(dst_texture->getFormat() == format);
-
-	if (size.x <= 0 || size.y <= 0)
-		return;
 
 	auto target = gContext->render_targets.at(0);
 
@@ -1063,54 +1064,37 @@ void BackendD3D11::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size,
 	ComPtr<ID3D11Texture2D> rtv_texture;
 	rtv_resource.As(&rtv_texture);
 	
-	D3D11_TEXTURE2D_DESC desc = { 0 };
+	D3D11_TEXTURE2D_DESC desc;
 	rtv_texture->GetDesc(&desc);
-	auto back_w = desc.Width;
-	auto back_h = desc.Height;
+
+	if (src_pos.x >= (int)desc.Width || src_pos.y >= (int)desc.Height)
+		return;
 	
-	auto src_x = (UINT)pos.x;
-	auto src_y = (UINT)pos.y;
-	auto src_w = (UINT)size.x;
-	auto src_h = (UINT)size.y;
+	auto src_x = src_pos.x;
+	auto src_y = src_pos.y;
+	auto src_w = size.x;
+	auto src_h = size.y;
+	auto dst_x = dst_pos.x;
+	auto dst_y = dst_pos.y;
 
-	UINT dst_x = 0;
-	UINT dst_y = 0;
-
-	if (pos.x < 0)
+	if (src_x < 0)
 	{
+		src_w = std::max(src_w + src_x, 0);
+		dst_x -= src_x;
 		src_x = 0;
-		if (-pos.x > size.x)
-			src_w = 0;
-		else
-			src_w += pos.x;
-
-		dst_x = -pos.x;
 	}
 
-	if (pos.y < 0)
+	if (src_y < 0)
 	{
+		src_h = std::max(src_h + src_y, 0);
+		dst_y -= src_y;
 		src_y = 0;
-		if (-pos.y > size.y)
-			src_h = 0;
-		else
-			src_h += pos.y;
-
-		dst_y = -pos.y;
 	}
 
-	D3D11_BOX box;
-	box.left = src_x;
-	box.right = src_x + src_w;
-	box.top = src_y;
-	box.bottom = src_y + src_h;
-	box.front = 0;
-	box.back = 1;
+	auto src_box = CD3D11_BOX(src_x, src_y, 0, src_x + src_w, src_y + src_h, 1);
 
-	if (pos.y < (int)back_h && pos.x < (int)back_w)
-	{
-		gContext->context->CopySubresourceRegion(dst_texture->getD3D11Texture2D().Get(), 0, dst_x, dst_y, 0,
-			rtv_resource.Get(), 0, &box);
-	}
+	gContext->context->CopySubresourceRegion(dst_texture->getD3D11Texture2D().Get(), 0, dst_x, dst_y, 0,
+		rtv_resource.Get(), 0, &src_box);
 }
 
 void BackendD3D11::present()
