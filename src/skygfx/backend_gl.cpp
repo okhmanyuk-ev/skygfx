@@ -1501,40 +1501,24 @@ void BackendGL::drawIndexed(uint32_t index_count, uint32_t index_offset, uint32_
 	glDrawElementsInstanced(mode, count, type, indices, primcount);
 }
 
-void BackendGL::readPixels(const glm::i32vec2& pos, const glm::i32vec2& size, TextureHandle* dst_texture_handle)
+void BackendGL::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::i32vec2& size, const glm::i32vec2& dst_pos,
+	TextureHandle* dst_texture_handle)
 {
-	auto dst_texture = (TextureGL*)dst_texture_handle;
-	auto format = gContext->getBackbufferFormat();
-
-	assert(dst_texture->getWidth() == size.x);
-	assert(dst_texture->getHeight() == size.y);
-	assert(dst_texture->getFormat() == format);
-
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
+	auto dst_texture = reinterpret_cast<TextureGL*>(dst_texture_handle);
+	auto format = gContext->getBackbufferFormat();
 	auto backbuffer_height = gContext->getBackbufferHeight();
 
-	auto x = (GLint)pos.x;
-	auto y = (GLint)(backbuffer_height - pos.y - size.y);
-	auto width = (GLint)size.x;
-	auto height = (GLint)size.y;
+	assert(dst_texture->getWidth() >= static_cast<uint32_t>(dst_pos.x + size.x));
+	assert(dst_texture->getHeight() >= static_cast<uint32_t>(dst_pos.y + size.y));
+	assert(dst_texture->getFormat() == format);
 
-	auto channels_count = GetFormatChannelsCount(format);
-	auto channel_size = GetFormatChannelSize(format);
+	auto y = backbuffer_height - src_pos.y - size.y;
 
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, gContext->pixel_buffer);
-	glBufferData(GL_PIXEL_PACK_BUFFER, width * height * channels_count * channel_size, NULL, GL_STATIC_READ);
-	glReadPixels(x, y, width, height, TextureFormatMap.at(format), PixelFormatTypeMap.at(format), 0);
-	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-
-	auto binding = TextureGL::ScopedBind(dst_texture->getGLTexture());
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gContext->pixel_buffer);
-
-	glTexImage2D(GL_TEXTURE_2D, 0, TextureInternalFormatMap.at(format), width, height, 0,
-		TextureFormatMap.at(format), PixelFormatTypeMap.at(format), NULL);
-
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+	TextureGL::ScopedBind binding(dst_texture->getGLTexture());
+	glCopyTexSubImage2D(GL_TEXTURE_2D, 0, dst_pos.x, dst_pos.y, src_pos.x, y, size.x, size.y);
 }
 
 void BackendGL::present()
