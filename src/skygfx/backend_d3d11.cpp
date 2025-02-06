@@ -253,6 +253,41 @@ public:
 			mem_slice_pitch);
 	}
 
+	std::vector<uint8_t> read(uint32_t mip_level) const
+	{
+		auto mip_width = GetMipWidth(mWidth, mip_level);
+		auto mip_height = GetMipHeight(mHeight, mip_level);
+
+		CD3D11_TEXTURE2D_DESC staging_desc(PixelFormatMap.at(mFormat), mip_width, mip_height, 1, 1, 0, D3D11_USAGE_STAGING,
+			D3D11_CPU_ACCESS_READ);
+
+		ComPtr<ID3D11Texture2D> staging_texture;
+		gContext->device->CreateTexture2D(&staging_desc, nullptr, &staging_texture);
+
+		gContext->context->CopySubresourceRegion(staging_texture.Get(), 0, 0, 0, 0, mTexture2D.Get(), mip_level, nullptr);
+
+		D3D11_MAPPED_SUBRESOURCE mapped_resource;
+		gContext->context->Map(staging_texture.Get(), 0, D3D11_MAP_READ, 0, &mapped_resource);
+
+		auto channels_count = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
+		size_t row_size = mip_width * channels_count * channel_size;
+		std::vector<uint8_t> result(mip_height * row_size);
+
+		uint32_t row_pitch = mapped_resource.RowPitch;
+
+		for (uint32_t y = 0; y < mip_height; ++y)
+		{
+			auto src_row = static_cast<const uint8_t*>(mapped_resource.pData) + y * row_pitch;
+			auto dst_row = result.data() + y * row_size;
+			memcpy(dst_row, src_row, row_size);
+		}
+
+		gContext->context->Unmap(staging_texture.Get(), 0);
+
+		return result;
+	}
+
 	void generateMips()
 	{
 		gContext->context->GenerateMips(mShaderResourceView.Get());
@@ -1095,6 +1130,12 @@ void BackendD3D11::writeTexturePixels(TextureHandle* handle, uint32_t width, uin
 {
 	auto texture = (TextureD3D11*)handle;
 	texture->write(width, height, memory, mip_level, offset_x, offset_y);
+}
+
+std::vector<uint8_t> BackendD3D11::readTexturePixels(TextureHandle* handle, uint32_t mip_level)
+{
+	auto texture = (TextureD3D11*)handle;
+	return texture->read(mip_level);
 }
 
 void BackendD3D11::generateMips(TextureHandle* handle)

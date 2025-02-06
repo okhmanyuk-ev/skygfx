@@ -103,6 +103,7 @@ namespace skygfx
 
 		void write(uint32_t width, uint32_t height, const void* memory, uint32_t mip_level = 0,
 			uint32_t offset_x = 0, uint32_t offset_y = 0);
+		std::vector<uint8_t> read(uint32_t mip_level = 0);
 		void generateMips();
 
 		Texture& operator=(Texture&& other) noexcept;

@@ -412,6 +412,8 @@ public:
 			glTexImage2D(GL_TEXTURE_2D, i, internal_format, mip_width, mip_height, 0, texture_format,
 				format_type, NULL);
 		}
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip_count - 1);
 	}
 
 	~TextureGL()
@@ -443,6 +445,56 @@ public:
 
 		glTexSubImage2D(GL_TEXTURE_2D, mip_level, offset_x, (mip_height - height) - offset_y, width, height,
 			texture_format, format_type, flipped_image.data());
+	}
+
+	std::vector<uint8_t> read(uint32_t mip_level) const
+	{
+		GLuint fbo = 0;
+		glGenFramebuffers(1, &fbo);
+		
+		GLint old_fbo;
+		glGetIntegerv(GL_FRAMEBUFFER_BINDING, &old_fbo);
+		
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
+			GL_TEXTURE_2D, mTexture, mip_level);
+
+#ifdef SKYGFX_OPENGL_VALIDATION_ENABLED
+		auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+		assert(status == GL_FRAMEBUFFER_COMPLETE);
+#endif
+
+		auto mip_width = GetMipWidth(mWidth, mip_level);
+		auto mip_height = GetMipHeight(mHeight, mip_level);
+
+		auto texture_format = TextureFormatMap.at(mFormat);
+		auto format_type = PixelFormatTypeMap.at(mFormat);
+
+		auto channels_count = GetFormatChannelsCount(mFormat);
+		auto channel_size = GetFormatChannelSize(mFormat);
+		size_t row_size = mip_width * channels_count * channel_size;
+		size_t image_size = mip_height * row_size;
+
+		GLint pack_alignment;
+		glGetIntegerv(GL_PACK_ALIGNMENT, &pack_alignment);
+		glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+		std::vector<uint8_t> buffer(image_size);
+		glReadPixels(0, 0, mip_width, mip_height, texture_format, format_type, buffer.data());
+
+		std::vector<uint8_t> result(image_size);
+		for (uint32_t y = 0; y < mip_height; y++)
+		{
+			const auto* src_row = buffer.data() + (mip_height - 1 - y) * row_size;
+			auto* dst_row = result.data() + y * row_size;
+			memcpy(dst_row, src_row, row_size);
+		}
+
+		glPixelStorei(GL_PACK_ALIGNMENT, pack_alignment);
+		glBindFramebuffer(GL_FRAMEBUFFER, old_fbo);
+		glDeleteFramebuffers(1, &fbo);
+
+		return result;
 	}
 
 	void generateMips()
@@ -1518,6 +1570,12 @@ void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32
 {
 	auto texture = (TextureGL*)handle;
 	texture->write(width, height, memory, mip_level, offset_x, offset_y);
+}
+
+std::vector<uint8_t> BackendGL::readTexturePixels(TextureHandle* handle, uint32_t mip_level)
+{
+	auto texture = (TextureGL*)handle;
+	return texture->read(mip_level);
 }
 
 void BackendGL::generateMips(TextureHandle* handle)

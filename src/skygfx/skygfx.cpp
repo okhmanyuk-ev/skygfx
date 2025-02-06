@@ -71,6 +71,12 @@ void Texture::write(uint32_t width, uint32_t height, const void* memory, uint32_
 	gBackend->writeTexturePixels(mTextureHandle, width, height, memory, mip_level, offset_x, offset_y);
 }
 
+std::vector<uint8_t> Texture::read(uint32_t mip_level)
+{
+	assert(mip_level < mMipCount);
+	return gBackend->readTexturePixels(mTextureHandle, mip_level);
+}
+
 void Texture::generateMips()
 {
 	gBackend->generateMips(mTextureHandle);
