@@ -47,18 +47,18 @@ elseif(APPLE)
 		"-framework Foundation"
 		"-framework QuartzCore"
 	)
-	
+
 	set(OBJC_SOURCES
 		src/skygfx/backend_gl.cpp
 		src/skygfx/backend_mtl.cpp
 	)
 
 	set_source_files_properties(${OBJC_SOURCES} PROPERTIES COMPILE_FLAGS "-x objective-c++ -fembed-bitcode")
-	
+
 	if(IOS)
 		target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_IOS)
 		add_definitions(-DGLES_SILENCE_DEPRECATION)
-	
+
 		target_link_libraries(${PROJECT_NAME}
 			"-framework OpenGLES"
 			"-framework UIKit"
@@ -82,7 +82,7 @@ endif()
 
 if (NOT ANDROID AND NOT EMSCRIPTEN)
 	if (NOT TARGET glew)
-		file(GLOB GLEW_SRC 
+		file(GLOB GLEW_SRC
 			lib/glew/src/glew.c
 			lib/glew/include/GL/glew.h
 		)
@@ -140,8 +140,8 @@ set_property(TARGET spirv-cross-reflect PROPERTY FOLDER ${LIBS_FOLDER}/spirv-cro
 
 # spirv-reflect
 
-file(GLOB SPIRV_REFLECT_SRC 
-	lib/spirv-reflect/spirv_reflect.cpp 
+file(GLOB SPIRV_REFLECT_SRC
+	lib/spirv-reflect/spirv_reflect.cpp
 	lib/spirv-reflect/spirv_reflect.h
 )
 target_include_directories(${PROJECT_NAME} PUBLIC lib/spirv-reflect)
@@ -183,9 +183,9 @@ endif()
 
 # d3dx12
 
-if(WIN32)	
+if(WIN32)
 	file(GLOB D3DX12_SRC
-		lib/d3dx12/d3dx12/*.cpp 
+		lib/d3dx12/d3dx12/*.cpp
 		lib/d3dx12/d3dx12/*.h
 	)
 	add_library(d3dx12 STATIC ${D3DX12_SRC})
