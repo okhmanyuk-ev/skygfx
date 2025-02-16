@@ -356,6 +356,21 @@ public:
 	}
 };
 
+static std::vector<uint8_t> FlipPixels(const void* memory, uint32_t width, uint32_t height, uint32_t channels_count,
+	uint32_t channel_size)
+{
+	auto row_size = width * channels_count * channel_size;
+	auto image_size = height * row_size;
+	auto result = std::vector<uint8_t>(image_size);
+	for (uint32_t i = 0; i < height; i++)
+	{
+		auto src = (void*)(size_t(memory) + (size_t(i) * row_size));
+		auto dst = (void*)(size_t(result.data()) + (size_t(height - 1 - i) * row_size));
+		memcpy(dst, src, row_size);
+	}
+	return result;
+}
+
 class TextureGL
 {
 public:
@@ -428,18 +443,7 @@ public:
 		auto channel_size = GetFormatChannelSize(mFormat);
 		auto format_type = PixelFormatTypeMap.at(mFormat);
 		auto texture_format = TextureFormatMap.at(mFormat);
-
-		auto row_size = width * channels_count * channel_size;
-		auto image_size = height * row_size;
-		auto flipped_image = std::vector<uint8_t>(image_size);
-
-		for (uint32_t i = 0; i < height; i++)
-		{
-			auto src = (void*)(size_t(memory) + (size_t(i) * row_size));
-			auto dst = (void*)(size_t(flipped_image.data()) + (size_t(height - 1 - i) * row_size));
-			memcpy(dst, src, row_size);
-		}
-
+		auto flipped_image = FlipPixels(memory, width, height, channels_count, channel_size);
 		auto mip_height = GetMipHeight(mHeight, mip_level);
 		auto binding = ScopedBind(mTexture);
 
@@ -482,19 +486,11 @@ public:
 		std::vector<uint8_t> buffer(image_size);
 		glReadPixels(0, 0, mip_width, mip_height, texture_format, format_type, buffer.data());
 
-		std::vector<uint8_t> result(image_size);
-		for (uint32_t y = 0; y < mip_height; y++)
-		{
-			const auto* src_row = buffer.data() + (mip_height - 1 - y) * row_size;
-			auto* dst_row = result.data() + y * row_size;
-			memcpy(dst_row, src_row, row_size);
-		}
-
 		glPixelStorei(GL_PACK_ALIGNMENT, pack_alignment);
 		glBindFramebuffer(GL_FRAMEBUFFER, old_fbo);
 		glDeleteFramebuffers(1, &fbo);
 
-		return result;
+		return FlipPixels(buffer.data(), mip_width, mip_height, channels_count, channel_size);
 	}
 
 	void generateMips()
