@@ -569,8 +569,8 @@ public:
 	void write(const void* memory, size_t size)
 	{
 		glBindBuffer(mType, mBuffer);
-		//glBufferSubData(mType, 0, size, memory); // very slow on mac/ios
-		glBufferData(mType, size, memory, GL_DYNAMIC_DRAW);
+		glBufferSubData(mType, 0, size, memory); // very slow on mac/ios
+		//glBufferData(mType, size, memory, GL_DYNAMIC_DRAW); // throw GL_INVALID_OPERATION on emscripten
 	}
 };
 
