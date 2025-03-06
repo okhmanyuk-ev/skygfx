@@ -75,7 +75,7 @@ elseif(APPLE)
 elseif(EMSCRIPTEN)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_EMSCRIPTEN)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
-	target_link_options(${PROJECT_NAME} PUBLIC -sUSE_WEBGL2)
+	target_link_options(${PROJECT_NAME} PUBLIC -sFULL_ES3)
 endif()
 
 # glew
