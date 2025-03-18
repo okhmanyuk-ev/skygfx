@@ -60,6 +60,7 @@ namespace skygfx
 		RGBA32Float,
 		R8UNorm,
 		RG8UNorm,
+		RGB8UNorm,
 		RGBA8UNorm
 	};
 
