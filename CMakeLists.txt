@@ -193,3 +193,9 @@ if(WIN32)
 	target_link_libraries(${PROJECT_NAME} d3dx12)
 	set_property(TARGET d3dx12 PROPERTY FOLDER ${LIBS_FOLDER})
 endif()
+
+# examples
+
+if(NOT EMSCRIPTEN)
+	add_subdirectory(examples)
+endif()
