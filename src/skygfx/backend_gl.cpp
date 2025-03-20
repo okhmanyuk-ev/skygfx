@@ -903,11 +903,15 @@ static void EnsureGraphicsState(bool draw_indexed)
 				glSamplerParameteri(sampler_object, GL_TEXTURE_MAG_FILTER, SamplerMap.at(value.sampler).at(ContextGL::SamplerType::NoMipmap));
 				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_S, TextureAddressMap.at(value.texture_address));
 				glSamplerParameteri(sampler_object, GL_TEXTURE_WRAP_T, TextureAddressMap.at(value.texture_address));
+
+				// when we use nearest filtering we MUST disable anisotropy
+				auto anisotropy_level = AnisotropyLevelMap.at(value.sampler == Sampler::Nearest ? AnisotropyLevel::None : value.anisotropy_level);
+
 #if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 				if (gContext->has_anisotropy_extension)
-					glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY_EXT, AnisotropyLevelMap.at(value.anisotropy_level));
+					glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY_EXT, anisotropy_level);
 #else
-				glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY, AnisotropyLevelMap.at(value.anisotropy_level));
+				glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY, anisotropy_level);
 #endif
 
 				sampler_state_map.insert({ sampler_type, sampler_object });
