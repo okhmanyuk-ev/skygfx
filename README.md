@@ -14,18 +14,6 @@ add_subdirectory(skygfx)
 target_link_libraries(YOUR_TARGET skygfx)
 ```
 
-# Building Examples
-
-## Visual Studio
-1. Open the `examples` folder
-2. Execute `build.sh`
-3. The `build` folder will be created in a short time and the `.sln` file will be inside
-
-## Xcode
-1. Open terminal and go to the `examples` folder
-2. Run `sh build.sh` command 
-3. The `build` folder will be created in a short time and the `.xcodeproj` file will be inside
-
 # Examples
 <details>
 <summary>Examples</summary>
