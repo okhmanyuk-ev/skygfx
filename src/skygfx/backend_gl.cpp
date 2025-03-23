@@ -552,9 +552,10 @@ public:
 private:
 	GLuint mBuffer = 0;
 	GLenum mType = 0;
+	size_t mSize = 0;
 
 public:
-	BufferGL(size_t size, GLenum type) : mType(type)
+	BufferGL(size_t size, GLenum type) : mType(type), mSize(size)
 	{
 		glGenBuffers(1, &mBuffer);
 		glBindBuffer(type, mBuffer);
@@ -568,9 +569,26 @@ public:
 
 	void write(const void* memory, size_t size)
 	{
+		/*
+			Using glBufferSubData is ideal but not good because:
+			* glBufferSubData has poor performance on ios/mac browsers (and native apps)
+			* The "orphaning" technique being slow on win, though it works well on ios/mac
+			* glBufferData(mType, size, memory, GL_DYNAMIC_DRAW) causing a GL_INVALID_OPERATION error due to size mismatch
+			* glMapBufferRange (with GL_MAP_INVALIDATE_BUFFER_BIT) also slow on ios/mac
+
+			Solution:
+			* We allocate an additional buffer of size mSize to ensure data availability and safely pass it to glBufferData
+
+			Benefits:
+			* Fast performance on win/ios/mac
+			* No GL_INVALID_OPERATION errors
+		*/
+		assert(mSize >= size);
 		glBindBuffer(mType, mBuffer);
-		glBufferSubData(mType, 0, size, memory); // very slow on mac/ios
-		//glBufferData(mType, size, memory, GL_DYNAMIC_DRAW); // throw GL_INVALID_OPERATION on emscripten
+		auto buffer = new uint8_t[mSize];
+		memcpy(buffer, memory, size);
+		glBufferData(mType, mSize, buffer, GL_DYNAMIC_DRAW);
+		delete[] buffer;
 	}
 };
 
