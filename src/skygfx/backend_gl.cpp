@@ -920,11 +920,13 @@ static void EnsureGraphicsState(bool draw_indexed)
 				// when we use nearest filtering we MUST disable anisotropy
 				auto anisotropy_level = AnisotropyLevelMap.at(value.sampler == Sampler::Nearest ? AnisotropyLevel::None : value.anisotropy_level);
 
+#if !defined(LINUX)
 #if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 				if (gContext->has_anisotropy_extension)
 					glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY_EXT, anisotropy_level);
 #else
 				glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY, anisotropy_level);
+#endif
 #endif
 
 				sampler_state_map.insert({ sampler_type, sampler_object });
@@ -1181,7 +1183,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	gContext->width = width;
 	gContext->height = height;
 
-#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN) && !defined(LINUX)
 	gContext->has_anisotropy_extension = extensions.contains("GL_EXT_texture_filter_anisotropic");
 #endif
 }

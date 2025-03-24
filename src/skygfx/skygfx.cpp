@@ -21,7 +21,7 @@ static std::optional<IndexBuffer> gIndexBuffer;
 static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
 static std::unordered_map<uint32_t, StorageBuffer> gStorageBuffers;
 
-#ifdef LINUX
+#if defined(LINUX) && !defined(EMSCRIPTEN)
 namespace std {
 	template<class T, class U = T>
 	T exchange(T& obj, U&& new_value)
