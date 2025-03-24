@@ -21,6 +21,18 @@ static std::optional<IndexBuffer> gIndexBuffer;
 static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
 static std::unordered_map<uint32_t, StorageBuffer> gStorageBuffers;
 
+#ifdef LINUX
+namespace std {
+	template<class T, class U = T>
+	T exchange(T& obj, U&& new_value)
+	{
+		T old_value = std::move(obj);
+		obj = std::forward<U>(new_value);
+		return old_value;
+	}
+}
+#endif
+
 // texture
 
 Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count) :
