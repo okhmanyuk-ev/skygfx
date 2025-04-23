@@ -760,7 +760,7 @@ uint32_t ContextGL::getBackbufferHeight()
 
 PixelFormat ContextGL::getBackbufferFormat()
 {
-	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : PixelFormat::RGBA8UNorm;
+	return !render_targets.empty() ? render_targets.at(0)->getTexture()->getFormat() : PixelFormat::RGB8UNorm;
 }
 
 static void EnsureScissor()
@@ -998,7 +998,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	pfd.cColorBits = 24;
 	pfd.cDepthBits = 24;
 	pfd.cStencilBits = 8;
-	pfd.cAlphaBits = 8;
+	pfd.cAlphaBits = 0;
 
 	int nPixelFormat = ChoosePixelFormat(gHDC, &pfd);
 	SetPixelFormat(gHDC, nPixelFormat, &pfd);
@@ -1015,7 +1015,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 		WGL_PIXEL_TYPE_ARB, WGL_TYPE_RGBA_ARB,
 		WGL_ACCELERATION_ARB, WGL_FULL_ACCELERATION_ARB,
 		WGL_COLOR_BITS_ARB, 32,
-		WGL_ALPHA_BITS_ARB, 8,
+		WGL_ALPHA_BITS_ARB, 0,
 		WGL_DEPTH_BITS_ARB, 24,
 		WGL_STENCIL_BITS_ARB, 8,
 		WGL_SAMPLE_BUFFERS_ARB, GL_TRUE,
