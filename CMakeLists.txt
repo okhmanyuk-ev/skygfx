@@ -76,6 +76,11 @@ elseif(EMSCRIPTEN)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_EMSCRIPTEN)
 	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
 	target_link_options(${PROJECT_NAME} PUBLIC -sFULL_ES3)
+elseif(LINUX)
+	add_definitions(-DLINUX)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_PLATFORM_LINUX)
+	target_compile_definitions(${PROJECT_NAME} PRIVATE -DSKYGFX_HAS_OPENGL)
+	target_link_libraries(${PROJECT_NAME} GLESv2 EGL)
 endif()
 
 # glew
