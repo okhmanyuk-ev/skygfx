@@ -1,7 +1,7 @@
 # sky-gfx - Lightweight rendering library
 
 # Features
-- Supported platforms: Windows, Mac, iOS, Emscripten
+- Supported platforms: Windows, Mac, iOS, Emscripten, Linux (X11)
 - Supported graphic backends: OpenGL(ES), D3D11, D3D12(wip), Vulkan, Metal(wip)
 - GLSL shaders for any backend via SPIRV-Cross
 - Choosing backend API in runtime, no compilation definitions
