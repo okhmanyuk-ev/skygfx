@@ -9,6 +9,8 @@
 	#define GLFW_EXPOSE_NATIVE_WIN32
 #elif defined(__APPLE__)
 	#define GLFW_EXPOSE_NATIVE_COCOA
+#elif defined(LINUX)
+	#define GLFW_EXPOSE_NATIVE_X11
 #endif
 #include <GLFW/glfw3native.h>
 
@@ -67,6 +69,8 @@ namespace utils
 		return glfwGetWin32Window(window);
 #elif defined(GLFW_EXPOSE_NATIVE_COCOA)
 		return glfwGetCocoaWindow(window);
+#elif defined(GLFW_EXPOSE_NATIVE_X11)
+		return (void*) glfwGetX11Window(window);
 #endif
 	}
 
