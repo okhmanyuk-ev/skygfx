@@ -2,6 +2,11 @@
 #include <skygfx/vertex.h>
 #include "../utils/utils.h"
 
+#if defined(LINUX) && defined(None)
+// Undefine X11 macro that conflicts with CullMode::None
+#undef None
+#endif
+
 const std::string triangle_vertex_shader_code = R"(
 #version 450 core
 

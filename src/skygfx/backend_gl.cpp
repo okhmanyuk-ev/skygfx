@@ -26,7 +26,7 @@
 	#include <OpenGL/OpenGL.h>
 	#include <OpenGL/gl3.h>
 	#import <AppKit/AppKit.h>
-#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 	#include <EGL/egl.h>
 	#include <EGL/eglext.h>
 	#include <EGL/eglplatform.h>
@@ -40,7 +40,7 @@ extern "C" {
 }
 #endif
 
-#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 #define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
 #endif
 
@@ -260,7 +260,7 @@ public:
 		options.version = 410;
 		options.enable_420pack_extension = false;
 		options.force_flattened_io_blocks = true;
-#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 		options.es = true;
 		options.version = 300;
 		options.enable_420pack_extension = false;
@@ -648,7 +648,7 @@ static GLKView* gGLKView = nullptr;
 #elif defined(SKYGFX_PLATFORM_MACOS)
 NSOpenGLView* glView;
 NSOpenGLContext *glContext;
-#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 EGLDisplay gEglDisplay;
 EGLSurface gEglSurface;
 EGLContext gEglContext;
@@ -696,7 +696,7 @@ struct ContextGL
 	uint32_t width = 0;
 	uint32_t height = 0;
 
-#ifdef EMSCRIPTEN
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 	bool has_anisotropy_extension = false;
 #endif
 
@@ -917,7 +917,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 				// when we use nearest filtering we MUST disable anisotropy
 				auto anisotropy_level = AnisotropyLevelMap.at(value.sampler == Sampler::Nearest ? AnisotropyLevel::None : value.anisotropy_level);
 
-#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 				if (gContext->has_anisotropy_extension)
 					glSamplerParameterf(sampler_object, GL_TEXTURE_MAX_ANISOTROPY_EXT, anisotropy_level);
 #else
@@ -968,7 +968,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 #if defined(SKYGFX_PLATFORM_WINDOWS)
 		glDepthRange((GLclampd)viewport.min_depth, (GLclampd)viewport.max_depth);
-#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#elif defined(SKYGFX_PLATFORM_IOS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 		glDepthRangef((GLfloat)viewport.min_depth, (GLfloat)viewport.max_depth);
 #endif
 	}
@@ -1131,7 +1131,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	{
 		dispatch_sync(dispatch_get_main_queue(),set_view);
 	}
-#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 	const EGLint attribs[] = {
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
@@ -1179,7 +1179,7 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 	gContext->width = width;
 	gContext->height = height;
 
-#if defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#if defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 	gContext->has_anisotropy_extension = extensions.contains("GL_EXT_texture_filter_anisotropic");
 #endif
 }
@@ -1248,7 +1248,7 @@ void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count
 {
 	if (count == 0)
 	{
-#if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 #elif defined(SKYGFX_PLATFORM_IOS)
 		[gGLKView bindDrawable];
@@ -1547,7 +1547,7 @@ void BackendGL::present()
 	[gGLKView display];
 #elif defined(SKYGFX_PLATFORM_MACOS)
 	[glContext flushBuffer];
-#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
+#elif defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 	eglSwapBuffers(gEglDisplay, gEglSurface);
 #endif
 	gContext->execute_after_present.flush();
