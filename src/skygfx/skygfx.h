@@ -61,7 +61,10 @@ namespace skygfx
 		R8UNorm,
 		RG8UNorm,
 		RGB8UNorm,
-		RGBA8UNorm
+		RGBA8UNorm,
+		DXT1,
+		DXT3,
+		DXT5
 	};
 
 	enum class ShaderStage

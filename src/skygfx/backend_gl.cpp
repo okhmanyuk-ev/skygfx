@@ -2,7 +2,7 @@
 
 #ifdef SKYGFX_HAS_OPENGL
 
-//#define SKYGFX_OPENGL_VALIDATION_ENABLED
+#define SKYGFX_OPENGL_VALIDATION_ENABLED
 
 #include <unordered_map>
 #include <unordered_set>
@@ -163,6 +163,10 @@ static const std::unordered_map<PixelFormat, GLenum> PixelFormatTypeMap = {
 	{ PixelFormat::RG8UNorm, GL_UNSIGNED_BYTE },
 	{ PixelFormat::RGB8UNorm, GL_UNSIGNED_BYTE },
 	{ PixelFormat::RGBA8UNorm, GL_UNSIGNED_BYTE },
+    // Add DXT formats - they don't use a pixel type in the same way
+    { PixelFormat::DXT1, 0 },
+    { PixelFormat::DXT3, 0 },
+    { PixelFormat::DXT5, 0 }
 };
 
 static const std::unordered_map<VertexFormat, GLboolean> VertexFormatNormalizeMap = {
@@ -206,7 +210,10 @@ static const std::unordered_map<PixelFormat, GLenum> TextureInternalFormatMap = 
 	{ PixelFormat::R8UNorm, GL_R8 },
 	{ PixelFormat::RG8UNorm, GL_RG8 },
 	{ PixelFormat::RGB8UNorm, GL_RGB8 },
-	{ PixelFormat::RGBA8UNorm, GL_RGBA8 }
+	{ PixelFormat::RGBA8UNorm, GL_RGBA8 },
+    { PixelFormat::DXT1, GL_COMPRESSED_RGB_S3TC_DXT1_EXT },
+    { PixelFormat::DXT3, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT },
+    { PixelFormat::DXT5, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT }
 };
 
 static const std::unordered_map<PixelFormat, GLenum> TextureFormatMap = {
@@ -218,7 +225,20 @@ static const std::unordered_map<PixelFormat, GLenum> TextureFormatMap = {
 	{ PixelFormat::RG8UNorm, GL_RG },
 	{ PixelFormat::RGB8UNorm, GL_RGB },
 	{ PixelFormat::RGBA8UNorm, GL_RGBA },
+    // Compressed formats don't have a direct format mapping for uploads
+    { PixelFormat::DXT1, 0 },
+    { PixelFormat::DXT3, 0 },
+    { PixelFormat::DXT5, 0 }
 };
+
+// Helper function to calculate DXT compressed texture size
+static inline uint32_t CalculateDXTSize(uint32_t width, uint32_t height, PixelFormat format)
+{
+    uint32_t blockSize = (format == PixelFormat::DXT1) ? 8 : 16; // DXT1 = 8 bytes per block, DXT3/5 = 16 bytes
+    uint32_t blockCountX = (width + 3) / 4; // 4x4 blocks
+    uint32_t blockCountY = (height + 3) / 4;
+    return blockCountX * blockCountY * blockSize;
+}
 
 class ShaderGL
 {
@@ -401,13 +421,18 @@ public:
 	auto getHeight() const { return mHeight; }
 	auto getFormat() const { return mFormat; }
 	auto getMipCount() const { return mMipCount; }
-
+    bool isCompressedFormat() const {
+        return mFormat == PixelFormat::DXT1 || 
+               mFormat == PixelFormat::DXT3 || 
+               mFormat == PixelFormat::DXT5;
+    }
 private:
 	GLuint mTexture = 0;
 	uint32_t mWidth = 0;
 	uint32_t mHeight = 0;
 	uint32_t mMipCount = 0;
 	PixelFormat mFormat;
+	std::unordered_map</*mip_level*/uint32_t, std::vector<uint8_t>> mCompressedPixels;
 
 public:
 	TextureGL(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count) :
@@ -417,20 +442,30 @@ public:
 		mMipCount(mip_count)
 	{
 		glGenTextures(1, &mTexture);
-
 		auto internal_format = TextureInternalFormatMap.at(mFormat);
-		auto texture_format = TextureFormatMap.at(mFormat);
-		auto format_type = PixelFormatTypeMap.at(mFormat);
-		auto binding = ScopedBind(mTexture);
-
-		for (uint32_t i = 0; i < mip_count; i++)
-		{
-			auto mip_width = GetMipWidth(width, i);
-			auto mip_height = GetMipHeight(height, i);
-			glTexImage2D(GL_TEXTURE_2D, i, internal_format, mip_width, mip_height, 0, texture_format,
-				format_type, NULL);
-		}
-
+		auto binding_scope = ScopedBind(mTexture);
+        
+        if (isCompressedFormat()) {
+            for (uint32_t i = 0; i < mip_count; i++) {
+                auto mip_width = GetMipWidth(width, i);
+                auto mip_height = GetMipHeight(height, i);
+                uint32_t mip_size = CalculateDXTSize(mip_width, mip_height, mFormat);
+                
+                glCompressedTexImage2D(GL_TEXTURE_2D, i, internal_format, 
+                    mip_width, mip_height, 0, mip_size, nullptr);
+            }
+        } else {
+            auto texture_format = TextureFormatMap.at(mFormat);
+            auto format_type = PixelFormatTypeMap.at(mFormat);
+            
+            for (uint32_t i = 0; i < mip_count; i++) {
+                auto mip_width = GetMipWidth(width, i);
+                auto mip_height = GetMipHeight(height, i);
+                glTexImage2D(GL_TEXTURE_2D, i, internal_format, mip_width, mip_height, 0, texture_format,
+                    format_type, NULL);
+            }
+        }
+        
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip_count - 1);
 	}
 
@@ -442,20 +477,48 @@ public:
 	void write(uint32_t width, uint32_t height, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 	{
-		auto channels_count = GetFormatChannelsCount(mFormat);
-		auto channel_size = GetFormatChannelSize(mFormat);
-		auto format_type = PixelFormatTypeMap.at(mFormat);
-		auto texture_format = TextureFormatMap.at(mFormat);
-		auto flipped_image = FlipPixels(memory, width, height, channels_count, channel_size);
-		auto mip_height = GetMipHeight(mHeight, mip_level);
-		auto binding = ScopedBind(mTexture);
+        auto binding = ScopedBind(mTexture);
+        
+        if (isCompressedFormat()) {
+            // For compressed textures, we use glCompressedTexSubImage2D
+            uint32_t mip_width = GetMipWidth(mWidth, mip_level);
+            uint32_t mip_height = GetMipHeight(mHeight, mip_level);
+            uint32_t block_size = (mFormat == PixelFormat::DXT1) ? 8 : 16;
+            uint32_t block_count_x = (width + 3) / 4;
+            uint32_t block_count_y = (height + 3) / 4;
+            uint32_t data_size = block_count_x * block_count_y * block_size;
+        
+			mCompressedPixels[mip_level].resize(data_size);
+			memcpy(mCompressedPixels[mip_level].data(), memory, data_size);
 
-		glTexSubImage2D(GL_TEXTURE_2D, mip_level, offset_x, (mip_height - height) - offset_y, width, height,
-			texture_format, format_type, flipped_image.data());
+            // Calculate offset in blocks
+            uint32_t offset_block_x = offset_x / 4;
+            uint32_t offset_block_y = (mip_height - height - offset_y) / 4;
+            
+            glCompressedTexSubImage2D(GL_TEXTURE_2D, mip_level, 
+                offset_block_x * 4, offset_block_y * 4, 
+                width, height,
+                TextureInternalFormatMap.at(mFormat),
+                data_size, memory);
+        } else {
+            auto channels_count = GetFormatChannelsCount(mFormat);
+            auto channel_size = GetFormatChannelSize(mFormat);
+            auto format_type = PixelFormatTypeMap.at(mFormat);
+            auto texture_format = TextureFormatMap.at(mFormat);
+            auto flipped_image = FlipPixels(memory, width, height, channels_count, channel_size);
+            auto mip_height = GetMipHeight(mHeight, mip_level);
+            
+            glTexSubImage2D(GL_TEXTURE_2D, mip_level, offset_x, (mip_height - height) - offset_y, width, height,
+                texture_format, format_type, flipped_image.data());
+        }
 	}
 
 	std::vector<uint8_t> read(uint32_t mip_level) const
 	{
+        if (isCompressedFormat()) {
+            return mCompressedPixels.at(mip_level);
+        }
+        
 		GLuint fbo = 0;
 		glGenFramebuffers(1, &fbo);
 		
@@ -498,6 +561,11 @@ public:
 
 	void generateMips()
 	{
+        // Don't generate mipmaps for compressed textures - they should be precomputed
+        if (isCompressedFormat()) {
+            return;
+        }
+        
 		auto binding = ScopedBind(mTexture);
 		glGenerateMipmap(GL_TEXTURE_2D);
 	}
@@ -517,6 +585,9 @@ private:
 public:
 	RenderTargetGL(TextureGL* texture) : mTexture(texture)
 	{
+        // Render targets can't use compressed formats
+        assert(!texture->isCompressedFormat());
+        
 		GLint last_fbo;
 		GLint last_rbo;
 
@@ -702,7 +773,7 @@ struct ContextGL
 #if defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 	bool has_anisotropy_extension = false;
 #endif
-
+    bool has_s3tc_extension = false; // Flag to track if S3TC is supported
 	ExecuteList execute_after_present;
 
 	std::unordered_map<uint32_t, TextureGL*> textures;
@@ -1184,6 +1255,16 @@ BackendGL::BackendGL(void* window, uint32_t width, uint32_t height, Adapter adap
 #if defined(SKYGFX_PLATFORM_EMSCRIPTEN) | defined(SKYGFX_PLATFORM_LINUX)
 	gContext->has_anisotropy_extension = extensions.contains("GL_EXT_texture_filter_anisotropic");
 #endif
+    // Check for S3TC texture compression extension
+    gContext->has_s3tc_extension = extensions.contains("GL_EXT_texture_compression_s3tc") ||
+                                  extensions.contains("GL_ARB_texture_compression") ||
+                                  extensions.contains("GL_OES_compressed_ETC1_RGB8_texture");
+    
+    // On platforms that don't support S3TC natively, we might need to use fallbacks
+    // This is just a warning - we'll still allow creating the textures but they'll fail at runtime if not supported
+    if (!gContext->has_s3tc_extension) {
+        std::cerr << "[warning] S3TC texture compression not supported by this OpenGL implementation" << std::endl;
+    }
 }
 
 BackendGL::~BackendGL()
@@ -1531,7 +1612,8 @@ void BackendGL::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::
 	assert(dst_texture->getWidth() >= static_cast<uint32_t>(dst_pos.x + size.x));
 	assert(dst_texture->getHeight() >= static_cast<uint32_t>(dst_pos.y + size.y));
 	assert(dst_texture->getFormat() == format);
-
+    // Don't allow copying to compressed textures
+    assert(!dst_texture->isCompressedFormat());
 	auto y = backbuffer_height - src_pos.y - size.y;
 
 	TextureGL::ScopedBind binding(dst_texture->getGLTexture());
@@ -1558,6 +1640,14 @@ void BackendGL::present()
 TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, PixelFormat format,
 	uint32_t mip_count)
 {
+    // Check if we're creating a compressed texture but the extension isn't supported
+    if ((format == PixelFormat::DXT1 || format == PixelFormat::DXT3 || format == PixelFormat::DXT5) && 
+        !gContext->has_s3tc_extension) {
+        // Fallback to uncompressed format
+        std::cerr << "[warning] Creating DXT texture but S3TC extension not supported. Using RGBA8 instead." << std::endl;
+        format = PixelFormat::RGBA8UNorm;
+    }
+    
 	auto texture = new TextureGL(width, height, format, mip_count);
 	return (TextureHandle*)texture;
 }
