@@ -159,6 +159,7 @@ if (NOT TARGET glm)
 	target_compile_definitions(${PROJECT_NAME} PUBLIC -DGLM_ENABLE_EXPERIMENTAL)
 	target_include_directories(${PROJECT_NAME} PUBLIC lib/glm)
 	target_compile_definitions(glm INTERFACE -D_CRT_SECURE_NO_WARNINGS)
+	set_property(TARGET glm PROPERTY FOLDER ${LIBS_FOLDER})
 endif()
 target_link_libraries(${PROJECT_NAME} glm)
 
