@@ -2,7 +2,6 @@
 
 #include <skygfx/skygfx.h>
 #include <skygfx/utils.h>
-#include <GLFW/glfw3.h>
 
 class ImguiHelper : skygfx::noncopyable
 {

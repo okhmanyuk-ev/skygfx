@@ -29,16 +29,25 @@ if(NOT TARGET imgui)
 	file(GLOB IMGUI_SRC
 		lib/imgui/*.cpp
 		lib/imgui/*.h
-		utils/imgui_helper.cpp
-		lib/imgui/backends/imgui_impl_glfw.cpp
 	)
 	add_library(imgui STATIC ${IMGUI_SRC})
 	target_include_directories(imgui PUBLIC
 		lib/imgui
-		lib/imgui/backends
 	)
 	set_property(TARGET imgui PROPERTY FOLDER ${LIBS_FOLDER})
 endif()
+
+# imgui_helper
+
+add_library(imgui_helper STATIC
+	utils/imgui_helper.cpp
+	lib/imgui/backends/imgui_impl_glfw.cpp
+)
+target_include_directories(imgui_helper PUBLIC
+	lib/imgui/backends
+)
+target_link_libraries(imgui_helper imgui skygfx glfw)
+set_property(TARGET imgui_helper PROPERTY FOLDER ${LIBS_FOLDER})
 
 # 01 - triangle
 
@@ -115,13 +124,13 @@ set_property(TARGET 10_instancing PROPERTY FOLDER ${EXAMPLES_FOLDER})
 # 11 - imgui
 
 add_executable(11_imgui 11_imgui/main.cpp)
-target_link_libraries(11_imgui glfw skygfx imgui)
+target_link_libraries(11_imgui glfw skygfx imgui_helper)
 set_property(TARGET 11_imgui PROPERTY FOLDER ${EXAMPLES_FOLDER})
 
 # 12 - bloom
 
 add_executable(12_bloom 12_bloom/main.cpp ${RESOURCES})
-target_link_libraries(12_bloom glfw skygfx imgui)
+target_link_libraries(12_bloom glfw skygfx imgui_helper)
 target_include_directories(12_bloom PUBLIC lib/stb)
 set_target_properties(12_bloom PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(12_bloom PROPERTIES RESOURCE ${RESOURCES})
@@ -136,7 +145,7 @@ set_property(TARGET 13_raytraced_triangle PROPERTY FOLDER ${EXAMPLES_FOLDER})
 # 14 - raytraced cube
 
 add_executable(14_raytraced_cube 14_raytraced_cube/main.cpp ${RESOURCES})
-target_link_libraries(14_raytraced_cube glfw skygfx imgui)
+target_link_libraries(14_raytraced_cube glfw skygfx)
 target_include_directories(14_raytraced_cube PUBLIC lib/stb)
 set_target_properties(14_raytraced_cube PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(14_raytraced_cube PROPERTIES RESOURCE ${RESOURCES})
@@ -145,7 +154,7 @@ set_property(TARGET 14_raytraced_cube PROPERTY FOLDER ${EXAMPLES_FOLDER})
 # 15 - raytraced shadows
 
 add_executable(15_raytraced_shadows 15_raytraced_shadows/main.cpp ${RESOURCES})
-target_link_libraries(15_raytraced_shadows glfw skygfx imgui)
+target_link_libraries(15_raytraced_shadows glfw skygfx)
 target_include_directories(15_raytraced_shadows PUBLIC lib/stb)
 set_target_properties(15_raytraced_shadows PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(15_raytraced_shadows PROPERTIES RESOURCE ${RESOURCES})
