@@ -728,6 +728,7 @@ struct ContextGL
 	FrontFace front_face = FrontFace::Clockwise;
 	std::vector<InputLayout> input_layouts;
 	std::optional<DepthMode> depth_mode;
+	ColorMask color_mask;
 
 	bool shader_dirty = false;
 	bool vertex_array_dirty = false;
@@ -1360,6 +1361,7 @@ void BackendGL::setBlendMode(const std::optional<BlendMode>& blend_mode)
 	glBlendFuncSeparate(BlendMap.at(blend.color_src), BlendMap.at(blend.color_dst),
 		BlendMap.at(blend.alpha_src), BlendMap.at(blend.alpha_dst));
 	glColorMask(blend.color_mask.red, blend.color_mask.green, blend.color_mask.blue, blend.color_mask.alpha);
+	gContext->color_mask = blend.color_mask;
 }
 
 void BackendGL::setDepthMode(const std::optional<DepthMode>& depth_mode)
@@ -1471,6 +1473,7 @@ void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional
 		flags |= GL_COLOR_BUFFER_BIT;
 		auto _color = color.value();
 		glClearColor(_color.r, _color.g, _color.b, _color.a);
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	}
 
 	if (depth.has_value())
@@ -1486,6 +1489,9 @@ void BackendGL::clear(const std::optional<glm::vec4>& color, const std::optional
 	}
 
 	glClear(flags);
+
+	if (color.has_value())
+		glColorMask(gContext->color_mask.red, gContext->color_mask.green, gContext->color_mask.blue, gContext->color_mask.alpha);
 
 	if (depth_mask_disabled)
 		glDepthMask(GL_FALSE);
