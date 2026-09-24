@@ -14,7 +14,7 @@ jobs:
     name: "Build ${{ matrix.platform }}"
     strategy:
       matrix:
-        platform: [windows-latest, ubuntu-20.04, ubuntu-22.04, macos-latest]
+        platform: [windows-latest, ubuntu-24.04, ubuntu-22.04, macos-15]
     env:
       PARALLEL: -j 2
 
@@ -59,7 +59,7 @@ jobs:
           cmake --build . --config Release --parallel 4
           cmake --build . --config Release --target install
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-binaries
           path: build/output
@@ -69,6 +69,8 @@ jobs:
         run: ctest --verbose -C Release
 
   build-mobile:
+    # iOS is 10x expensive to run on GitHub machines, so only run if we know something else passed as well
+    needs: build
     name: "Build ${{ matrix.sdk }}"
     strategy:
       matrix:
@@ -88,7 +90,7 @@ jobs:
     env:
       PARALLEL: -j 2
 
-    runs-on: "macos-latest"
+    runs-on: "macos-15"
     steps:
       - uses: actions/checkout@v3
 
@@ -129,7 +131,7 @@ jobs:
           cmake --build . --config Release --parallel 4
           cmake --build . --config Release --target install
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.sdk }}-binaries
           path: build/output

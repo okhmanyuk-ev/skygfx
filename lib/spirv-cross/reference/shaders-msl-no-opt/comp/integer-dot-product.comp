@@ -36,10 +36,10 @@ struct InOut
     int result;
 };
 
-kernel void main0(device void* spvBufferAliasSet0Binding1 [[buffer(0)]])
+kernel void main0(const device void* spvBufferAliasSet0Binding1 [[buffer(0)]])
 {
-    device auto& comp3 = *(device InOut3*)spvBufferAliasSet0Binding1;
-    device auto& comp2 = *(device InOut2*)spvBufferAliasSet0Binding1;
+    const device auto& comp3 = *(const device InOut3*)spvBufferAliasSet0Binding1;
+    const device auto& comp2 = *(const device InOut2*)spvBufferAliasSet0Binding1;
     int sdot_int = reduce_add(int4(short4(comp3.x)) * int4(short4(comp3.y)));
     uint sdot_uint = reduce_add(uint4(short4(comp3.x)) * uint4(short4(comp3.y)));
     uint udot_uint = reduce_add(uint4(comp3.x) * uint4(comp3.y));
@@ -57,9 +57,10 @@ kernel void main0(device void* spvBufferAliasSet0Binding1 [[buffer(0)]])
     uint supdot32 = reduce_add(uint4(as_type<char4>(comp2.x)) * uint4(as_type<uchar4>(comp2.y)));
     int supdoti32 = reduce_add(int4(as_type<char4>(comp2.x)) * int4(as_type<uchar4>(comp2.y)));
     int sdotaddsat_int = int(addsat(reduce_add(int4(short4(comp3.x)) * int4(short4(comp3.y))), comp3.acc));
-    uint sdotaddsat_uint = uint(addsat(reduce_add(int4(short4(comp3.x)) * int4(short4(comp3.y))), comp3.acc));
+    uint sdotaddsat_uint = uint(addsat(reduce_add(int4(short4(comp3.x)) * int4(short4(comp3.y))), int(uint(comp3.acc))));
     uint udotaddsat_uint = uint(addsat(reduce_add(uint4(comp3.x) * uint4(comp3.y)), uint(comp3.acc)));
     int sudotaddsat_int = int(addsat(reduce_add(int4(short4(comp3.x)) * int4(comp3.y)), comp3.acc));
-    uint sudotaddsat_uint = uint(addsat(reduce_add(int4(short4(comp3.x)) * int4(comp3.y)), comp3.acc));
+    uint sudotaddsat_uint = uint(addsat(reduce_add(int4(short4(comp3.x)) * int4(comp3.y)), int(uint(comp3.acc))));
+    uint udotaddsat_pack = uint(addsat(reduce_add(uint4(as_type<uchar4>(comp2.x)) * uint4(as_type<uchar4>(comp2.y))), uint(comp3.acc)));
 }
 

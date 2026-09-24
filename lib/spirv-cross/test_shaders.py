@@ -116,24 +116,11 @@ def print_msl_compiler_version():
     except subprocess.CalledProcessError:
         pass
 
-def msl_compiler_supports_version(version):
-    try:
-        if platform.system() == 'Darwin':
-            subprocess.check_call(['xcrun', '--sdk', 'macosx', 'metal', '-x', 'metal', version, '-'],
-                stdin = subprocess.DEVNULL, stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL)
-            print('Current SDK supports MSL {0}. Enabling validation for MSL {0} shaders.'.format(version))
-        else:
-            print('Running on {}, assuming {} is supported.'.format(platform.system(), version))
-        # If we're running on non-macOS system, assume it's supported.
-        return True
-    except OSError as e:
-        print('Failed to check if MSL {} is not supported. It probably is not.'.format(version))
-        return False
-    except subprocess.CalledProcessError:
-        print('Current SDK does NOT support MSL {0}. Disabling validation for MSL {0} shaders.'.format(version))
-        return False
-
 def path_to_msl_standard(shader):
+    if '.msl4.' in shader:
+        return '-std=metal4.0'
+    if '.msl32.' in shader:
+        return '-std=metal3.2'
     if '.msl31.' in shader:
         return '-std=metal3.1'
     elif '.msl3.' in shader:
@@ -172,7 +159,11 @@ def path_to_msl_standard(shader):
             return '-std=macos-metal1.2'
 
 def path_to_msl_standard_cli(shader):
-    if '.msl31.' in shader:
+    if '.msl4.' in shader:
+        return '40000'
+    elif '.msl32.' in shader:
+        return '30200'
+    elif '.msl31.' in shader:
         return '30100'
     elif '.msl3.' in shader:
         return '30000'
@@ -194,6 +185,13 @@ def path_to_msl_standard_cli(shader):
 ignore_win_metal_tool = False
 def validate_shader_msl(shader, opt):
     msl_path = reference_path(shader[0], shader[1], opt)
+
+    # The 4.0 compiler for Windows is outdated and broken, so we cannot rely on version checks either.
+    cli_standard = path_to_msl_standard_cli(msl_path)
+    ci_supports_version = int(cli_standard) <= 30200
+    if not ci_supports_version:
+        return
+
     global ignore_win_metal_tool
     try:
         if '.ios.' in msl_path:
@@ -205,10 +203,8 @@ def validate_shader_msl(shader, opt):
             subprocess.check_call(['xcrun', '--sdk', msl_os, 'metal', '-x', 'metal', path_to_msl_standard(msl_path), '-Werror', '-Wno-unused-variable', msl_path])
             print('Compiled Metal shader: ' + msl_path)   # display after so xcrun FNF is silent
         elif not ignore_win_metal_tool:
-            # Use Metal Windows toolkit to test on Linux (Wine) and Windows. Running offline tool on Linux gets weird.
-            # Normal winepath doesn't work, it must be Z:/abspath *exactly* for some bizarre reason.
-            target_path = msl_path if platform.system == 'Windows' else ('Z:' + os.path.abspath(msl_path))
-            subprocess.check_call(['metal', '-x', 'metal', path_to_msl_standard(msl_path), '-Werror', '-Wno-unused-variable', target_path])
+            # Use Metal Windows toolkit to test on Linux (Wine) and Windows.
+            subprocess.check_call(['metal', '-x', 'metal', path_to_msl_standard(msl_path), '-Werror', '-Wno-unused-variable', msl_path])
 
     except OSError as oe:
         if (oe.errno != errno.ENOENT):   # Ignore xcrun or metal not found error
@@ -228,7 +224,7 @@ def cross_compile_msl(shader, spirv, opt, iterations, paths):
 
     if spirv_16:
         spirv_env = 'spv1.6'
-        glslang_env = 'spirv1.6'
+        glslang_env = 'vulkan1.3'
     elif spirv_14:
         spirv_env = 'vulkan1.1spv1.4'
         glslang_env = 'spirv1.4'
@@ -241,7 +237,12 @@ def cross_compile_msl(shader, spirv, opt, iterations, paths):
     if spirv:
         subprocess.check_call(spirv_cmd)
     else:
-        subprocess.check_call([paths.glslang, '--amb' ,'--target-env', glslang_env, '-V', '-o', spirv_path, shader])
+        glslang_cmd = [paths.glslang, '--amb' ,'--target-env', glslang_env, '-V', '-o', spirv_path, shader]
+        if '.g.' in shader:
+            glslang_cmd.append('-g')
+        if '.gV.' in shader:
+            glslang_cmd.append('-gV')
+        subprocess.check_call(glslang_cmd)
 
     if opt and (not shader_is_invalid_spirv(shader)):
         if '.graphics-robust-access.' in shader:
@@ -378,6 +379,12 @@ def cross_compile_msl(shader, spirv, opt, iterations, paths):
         msl_args.append('--msl-check-discarded-frag-stores')
     if '.force-frag-with-side-effects-execution.' in shader:
         msl_args.append('--msl-force-frag-with-side-effects-execution')
+    if '.emulate-reversed-depth-viewport.' in shader:
+        msl_args.append('--msl-emulate-reversed-depth-viewport')
+    if '.emulate-depth-clip-enable.' in shader:
+        msl_args.append('--msl-emulate-depth-clip-enable')
+    if '.fixup-clipspace.' in shader:
+        msl_args.append('--fixup-clipspace')
     if '.lod-as-grad.' in shader:
         msl_args.append('--msl-sample-dref-lod-array-as-grad')
     if '.agx-cube-grad.' in shader:
@@ -409,6 +416,13 @@ def cross_compile_msl(shader, spirv, opt, iterations, paths):
         msl_args.append('ClipDistance')
     if '.relax-nan.' in shader:
         msl_args.append('--relax-nan-checks')
+    if '.auto-disable-rasterization.' in shader:
+        msl_args.append('--msl-auto-disable-rasterization')
+    if '.disable-rasterization.' in shader:
+        msl_args.append('--msl-disable-rasterization')
+    if '.default-point-size.' in shader:
+        msl_args.append('--msl-default-point-size')
+        msl_args.append('1.0')
 
     subprocess.check_call(msl_args)
 
@@ -430,6 +444,8 @@ def shader_model_hlsl(shader):
             return '-Tps_5_1'
     elif '.comp' in shader:
         return '-Tcs_5_1'
+    elif '.geom' in shader:
+        return '-Tgs_5_1'
     elif '.mesh' in shader:
         return '-Tms_6_5'
     elif '.task' in shader:
@@ -460,6 +476,11 @@ def validate_shader_hlsl(shader, force_no_external_validation, paths):
         test_glslang = False
     if '.task' in shader or '.mesh' in shader:
         test_glslang = False
+    if shader_is_library(shader):
+        # Library HLSL output has no entry point; glslangValidator's -e main
+        # would fail. Skip the round-trip — the output is meant to be
+        # included by HLSL/GLSL source rather than compiled standalone.
+        test_glslang = False
 
     hlsl_args = [paths.glslang, '--amb', '-e', 'main', '-D', '--target-env', 'vulkan1.1', '-V', shader]
     if '.sm30.' in shader:
@@ -468,12 +489,16 @@ def validate_shader_hlsl(shader, force_no_external_validation, paths):
     if test_glslang:
         subprocess.check_call(hlsl_args)
 
+    # FXC cannot compile shaders above shader model 5
+    shader_model = shader_model_hlsl(shader)
+    is_valid_fxc_shader_model = shader_model and len(shader_model) >= 3 and int(shader_model[-3]) <= 5
+
     is_no_fxc = '.nofxc.' in shader
     global ignore_fxc
-    if (not ignore_fxc) and (not force_no_external_validation) and (not is_no_fxc):
+    if (not ignore_fxc) and (not force_no_external_validation) and (not is_no_fxc) and is_valid_fxc_shader_model:
         try:
             win_path = shader_to_win_path(shader)
-            args = ['fxc', '-nologo', shader_model_hlsl(shader), win_path]
+            args = ['fxc', '-nologo', shader_model, win_path]
             if '.nonuniformresource.' in shader:
                 args.append('/enable_unbounded_descriptor_tables')
             subprocess.check_call(args)
@@ -498,6 +523,8 @@ def shader_to_sm(shader):
         return '60'
     elif '.sm68.' in shader:
         return '68'
+    elif '.sm64.' in shader:
+        return '64'
     elif '.sm51.' in shader:
         return '51'
     elif '.sm30.' in shader:
@@ -512,9 +539,14 @@ def cross_compile_hlsl(shader, spirv, opt, force_no_external_validation, iterati
     spirv_16 = '.spv16.' in shader
     spirv_14 = '.spv14.' in shader
 
-    if spirv_16:
+    if shader_is_library(shader):
+        # Library modules use the Linkage capability, which is rejected
+        # by Vulkan target envs. Use a universal/spv target instead.
+        spirv_env = 'spv1.5'
+        glslang_env = 'spirv1.5'
+    elif spirv_16:
         spirv_env = 'spv1.6'
-        glslang_env = 'spirv1.6'
+        glslang_env = 'vulkan1.3'
     elif spirv_14:
         spirv_env = 'vulkan1.1spv1.4'
         glslang_env = 'spirv1.4'
@@ -527,7 +559,12 @@ def cross_compile_hlsl(shader, spirv, opt, force_no_external_validation, iterati
     if spirv:
         subprocess.check_call(spirv_cmd)
     else:
-        subprocess.check_call([paths.glslang, '--amb', '--target-env', glslang_env, '-V', '-o', spirv_path, shader])
+        glslang_cmd = [paths.glslang, '--amb', '--target-env', glslang_env, '-V', '-o', spirv_path, shader]
+        if '.g.' in shader:
+            glslang_cmd.append('-g')
+        if '.gV.' in shader:
+            glslang_cmd.append('-gV')
+        subprocess.check_call(glslang_cmd)
 
     if opt and (not shader_is_invalid_spirv(hlsl_path)):
         subprocess.check_call([paths.spirv_opt, '--skip-validation', '-O', '-o', spirv_path, spirv_path])
@@ -536,7 +573,13 @@ def cross_compile_hlsl(shader, spirv, opt, force_no_external_validation, iterati
 
     sm = shader_to_sm(shader)
 
-    hlsl_args = [spirv_cross_path, '--entry', 'main', '--output', hlsl_path, spirv_path, '--hlsl-enable-compat', '--hlsl', '--shader-model', sm, '--iterations', str(iterations)]
+    # Library SPIR-V modules have no OpEntryPoint. Skip the --entry flag for those so spirv-cross does not try to
+    # select an entry point that does not exist.
+    is_library = shader_is_library(shader)
+    hlsl_args = [spirv_cross_path]
+    if not is_library:
+        hlsl_args += ['--entry', 'main']
+    hlsl_args += ['--output', hlsl_path, spirv_path, '--hlsl-enable-compat', '--hlsl', '--shader-model', sm, '--iterations', str(iterations)]
     if '.line.' in shader:
         hlsl_args.append('--emit-line-directives')
     if '.flatten.' in shader:
@@ -557,6 +600,8 @@ def cross_compile_hlsl(shader, spirv, opt, force_no_external_validation, iterati
         hlsl_args.append('--hlsl-preserve-structured-buffers')
     if '.flip-vert-y.' in shader:
         hlsl_args.append('--flip-vert-y')
+    if '.user-semantic.' in shader:
+        hlsl_args.append('--hlsl-user-semantic')
 
     subprocess.check_call(hlsl_args)
 
@@ -589,11 +634,30 @@ def cross_compile_reflect(shader, spirv, opt, iterations, paths):
 
 def validate_shader(shader, vulkan, paths):
     if vulkan:
+        spirv_16 = '.spv16.' in shader
         spirv_14 = '.spv14.' in shader
-        glslang_env = 'spirv1.4' if spirv_14 else 'vulkan1.1'
+        glslang_env = 'vulkan1.3' if spirv_16 else ('spirv1.4' if spirv_14 else 'vulkan1.1')
         subprocess.check_call([paths.glslang, '--amb', '--target-env', glslang_env, '-V', shader])
     else:
         subprocess.check_call([paths.glslang, shader])
+
+def validate_library_glsl(library_path, paths):
+    # Library GLSL output has no #version directive and no main(), since it is meant to be #include'd by GLSL 
+    # source. Validate it by writing a minimal wrapper translation unit alongside it that does the include via 
+    # the GL_GOOGLE_include_directive and runs glslang on the wrapper. Note, `-V` is required because glslang 
+    # only processes GL_GOOGLE_include_directive under Vulkan semantics.
+    library_dir = os.path.dirname(library_path)
+    library_name = os.path.basename(library_path)
+    fd, wrapper_path = tempfile.mkstemp(suffix = '.frag', dir = library_dir)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write('#version 450\n')
+            f.write('#extension GL_GOOGLE_include_directive : require\n')
+            f.write('#include "' + library_name + '"\n')
+            f.write('void main() {}\n')
+        subprocess.check_call([paths.glslang, '-V', wrapper_path])
+    finally:
+        remove_file(wrapper_path)
 
 def cross_compile(shader, vulkan, spirv, invalid_spirv, eliminate, is_legacy, force_es, flatten_ubo, sso, flatten_dim, opt, push_ubo, iterations, paths):
     spirv_path = create_temporary()
@@ -601,9 +665,15 @@ def cross_compile(shader, vulkan, spirv, invalid_spirv, eliminate, is_legacy, fo
 
     spirv_16 = '.spv16.' in shader
     spirv_14 = '.spv14.' in shader
-    if spirv_16:
+    is_library = shader_is_library(shader)
+    if is_library:
+        # Library modules use the Linkage capability, which is rejected by
+        # Vulkan target envs. Use a universal/spv target instead.
+        spirv_env = 'spv1.5'
+        glslang_env = 'spirv1.5'
+    elif spirv_16:
         spirv_env = 'spv1.6'
-        glslang_env = 'spirv1.6'
+        glslang_env = 'vulkan1.3'
     elif spirv_14:
         spirv_env = 'vulkan1.1spv1.4'
         glslang_env = 'spirv1.4'
@@ -666,21 +736,33 @@ def cross_compile(shader, vulkan, spirv, invalid_spirv, eliminate, is_legacy, fo
         extra_args += ['--glsl-force-flattened-io-blocks']
     if '.relax-nan.' in shader:
         extra_args.append('--relax-nan-checks')
+    if '.heap-legacy-mapping.' in shader:
+        extra_args += ['--glsl-descriptor-heap-set-binding', '1', '2']
 
     spirv_cross_path = paths.spirv_cross
 
+    # Library SPIR-V modules have no OpEntryPoint. skip the --entry flag for those so spirv-cross does not try to
+    # select an entry point that does not exist.
+    entry_arg = [] if is_library else ['--entry', 'main']
+
     # A shader might not be possible to make valid GLSL from, skip validation for this case.
     if (not ('nocompat' in glsl_path)) or (not vulkan):
-        subprocess.check_call([spirv_cross_path, '--entry', 'main', '--output', glsl_path, spirv_path] + extra_args)
+        subprocess.check_call([spirv_cross_path] + entry_arg + ['--output', glsl_path, spirv_path] + extra_args)
         if not 'nocompat' in glsl_path:
-            validate_shader(glsl_path, False, paths)
+            if is_library:
+                validate_library_glsl(glsl_path, paths)
+            else:
+                validate_shader(glsl_path, False, paths)
     else:
         remove_file(glsl_path)
         glsl_path = None
 
     if (vulkan or spirv) and (not is_legacy):
-        subprocess.check_call([spirv_cross_path, '--entry', 'main', '-V', '--output', vulkan_glsl_path, spirv_path] + extra_args)
-        validate_shader(vulkan_glsl_path, True, paths)
+        subprocess.check_call([spirv_cross_path] + entry_arg + ['-V', '--output', vulkan_glsl_path, spirv_path] + extra_args)
+        if is_library:
+            validate_library_glsl(vulkan_glsl_path, paths)
+        else:
+            validate_shader(vulkan_glsl_path, True, paths)
         # SPIR-V shaders might just want to validate Vulkan GLSL output, we don't always care about the output.
         if not vulkan:
             remove_file(vulkan_glsl_path)
@@ -825,6 +907,12 @@ def shader_is_eliminate_dead_variables(shader):
 def shader_is_spirv(shader):
     return '.asm.' in shader
 
+def shader_is_library(shader):
+    # SPIR-V library module: no OpEntryPoint, exports declared via
+    # OpDecorate ... LinkageAttributes ... Export. Recognised by the
+    # `.lib` filename suffix (e.g. foo.asm.lib).
+    return shader.endswith('.lib')
+
 def shader_is_invalid_spirv(shader):
     return '.invalid.' in shader
 
@@ -905,23 +993,7 @@ def test_shader_msl(stats, shader, args, paths):
     # executable from Xcode using args: `--msl --entry main --output msl_path spirv_path`.
 #    print('SPRIV shader: ' + spirv)
 
-    shader_is_msl22 = '.msl22.' in joined_path
-    shader_is_msl23 = '.msl23.' in joined_path
-    shader_is_msl24 = '.msl24.' in joined_path
-    shader_is_msl30 = '.msl3.' in joined_path
-    shader_is_msl31 = '.msl31.' in joined_path
-    skip_validation = (shader_is_msl22 and (not args.msl22)) or \
-        (shader_is_msl23 and (not args.msl23)) or \
-        (shader_is_msl24 and (not args.msl24)) or \
-        (shader_is_msl30 and (not args.msl30)) or \
-        (shader_is_msl31 and (not args.msl31))
-
-    if skip_validation:
-        print('Skipping validation for {} due to lack of toolchain support.'.format(joined_path))
-
-    if '.invalid.' in joined_path:
-        skip_validation = True
-
+    skip_validation = '.invalid.' in joined_path
     if (not args.force_no_external_validation) and (not skip_validation):
         validate_shader_msl(shader, args.opt)
 
@@ -929,6 +1001,10 @@ def test_shader_msl(stats, shader, args, paths):
 
 def test_shader_hlsl(stats, shader, args, paths):
     joined_path = os.path.join(shader[0], shader[1])
+
+    if os.path.splitext(joined_path)[1] == '.hlsl':
+        return
+
     print('Testing HLSL shader:', joined_path)
     is_spirv = shader_is_spirv(shader[1])
     noopt = shader_is_noopt(shader[1])
@@ -1068,18 +1144,8 @@ def main():
         sys.stderr.write('Parallel execution is disabled when using the flags --update, --malisc or --force-no-external-validation\n')
         args.parallel = False
 
-    args.msl22 = False
-    args.msl23 = False
-    args.msl24 = False
-    args.msl30 = False
-    args.msl31 = False
     if args.msl:
         print_msl_compiler_version()
-        args.msl22 = msl_compiler_supports_version('-std=macos-metal2.2')
-        args.msl23 = msl_compiler_supports_version('-std=macos-metal2.3')
-        args.msl24 = msl_compiler_supports_version('-std=macos-metal2.4')
-        args.msl30 = msl_compiler_supports_version('-std=metal3.0')
-        args.msl31 = msl_compiler_supports_version('-std=metal3.1')
 
     backend = 'glsl'
     if (args.msl or args.metal):

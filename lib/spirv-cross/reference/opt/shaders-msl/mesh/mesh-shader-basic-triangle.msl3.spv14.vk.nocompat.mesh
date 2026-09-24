@@ -159,7 +159,6 @@ void _4(threadgroup spvUnsafeArray<gl_MeshPerVertexEXT, 24>& gl_MeshVerticesEXT,
     threadgroup spvUnsafeArray<BlockOutPrim, 22> prim_outputs;
     threadgroup spvUnsafeArray<uint3, 22> gl_PrimitiveTriangleIndicesEXT;
     threadgroup spvUnsafeArray<gl_MeshPerPrimitiveEXT, 22> gl_MeshPrimitivesEXT;
-    threadgroup spvUnsafeArray<float, 16> shared_float;
     if (gl_LocalInvocationIndex == 0) spvMeshSizes.y = 0u;
     _4(gl_MeshVerticesEXT, gl_LocalInvocationIndex, gl_GlobalInvocationID, vOut, outputs, vPrim, gl_WorkGroupID, prim_outputs, payload, gl_PrimitiveTriangleIndicesEXT, gl_MeshPrimitivesEXT, spvMeshSizes);
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -168,7 +167,7 @@ void _4(threadgroup spvUnsafeArray<gl_MeshPerVertexEXT, 24>& gl_MeshVerticesEXT,
         return;
     }
     spvMesh.set_primitive_count(spvMeshSizes.y);
-    const uint spvThreadCount = (gl_WorkGroupSize.x * gl_WorkGroupSize.y * gl_WorkGroupSize.z);
+    const uint spvThreadCount [[maybe_unused]] = (gl_WorkGroupSize.x * gl_WorkGroupSize.y * gl_WorkGroupSize.z);
     const uint spvVI = gl_LocalInvocationIndex;
     if (gl_LocalInvocationIndex < spvMeshSizes.x)
     {
@@ -177,6 +176,7 @@ void _4(threadgroup spvUnsafeArray<gl_MeshPerVertexEXT, 24>& gl_MeshVerticesEXT,
         spvV.gl_PointSize = gl_MeshVerticesEXT[spvVI].gl_PointSize;
         spvV.gl_ClipDistance[0] = gl_MeshVerticesEXT[spvVI].gl_ClipDistance[0];
         spvV.gl_ClipDistance_0 = gl_MeshVerticesEXT[spvVI].gl_ClipDistance[0];
+        spvV.vOut = vOut[spvVI];
         spvV.outputs_a = outputs[spvVI].a;
         spvV.outputs_b = outputs[spvVI].b;
         spvMesh.set_vertex(spvVI, spvV);
