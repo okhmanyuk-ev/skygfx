@@ -696,7 +696,7 @@ struct ContextGL
 	uint32_t width = 0;
 	uint32_t height = 0;
 
-#ifdef EMSCRIPTEN
+#ifdef SKYGFX_PLATFORM_EMSCRIPTEN
 	bool has_anisotropy_extension = false;
 #endif
 
