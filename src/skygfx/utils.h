@@ -611,11 +611,11 @@ namespace skygfx::utils
 
 		void Blit(Texture* src, RenderTarget* dst, const BlitOptions& options = {});
 
-		void GaussianBlur(RenderTarget* src, RenderTarget* dst = nullptr);
-		void Grayscale(RenderTarget* src, RenderTarget* dst = nullptr, float intensity = 1.0f);
-		void Bloom(RenderTarget* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
+		void GaussianBlur(Texture* src, RenderTarget* dst = nullptr);
+		void Grayscale(Texture* src, RenderTarget* dst = nullptr, float intensity = 1.0f);
+		void Bloom(Texture* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
-		void BloomGaussian(RenderTarget* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
+		void BloomGaussian(Texture* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
 	}
 

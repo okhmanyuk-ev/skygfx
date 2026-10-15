@@ -1134,7 +1134,7 @@ void utils::passes::Blit(Texture* src, RenderTarget* dst, const BlitOptions& opt
 	ExecuteRenderPass(render_pass);
 }
 
-void utils::passes::GaussianBlur(RenderTarget* src, RenderTarget* dst)
+void utils::passes::GaussianBlur(Texture* src, RenderTarget* dst)
 {
 	auto blur_target = AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
 	Blit(src, blur_target, {
@@ -1149,7 +1149,7 @@ void utils::passes::GaussianBlur(RenderTarget* src, RenderTarget* dst)
 	ReleaseTransientRenderTarget(blur_target);
 }
 
-void utils::passes::Grayscale(RenderTarget* src, RenderTarget* dst, float intensity)
+void utils::passes::Grayscale(Texture* src, RenderTarget* dst, float intensity)
 {
 	Blit(src, dst, {
 		.effect = effects::Grayscale{ intensity }
@@ -1157,7 +1157,7 @@ void utils::passes::Grayscale(RenderTarget* src, RenderTarget* dst, float intens
 	ViewStage("grayscale", dst);
 }
 
-void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_threshold, float intensity)
+void utils::passes::Bloom(Texture* src, RenderTarget* dst, float bright_threshold, float intensity)
 {
 	Blit(src, dst);
 
@@ -1240,7 +1240,7 @@ void utils::passes::Bloom(RenderTarget* src, RenderTarget* dst, float bright_thr
 	}
 }
 
-void utils::passes::BloomGaussian(RenderTarget* src, RenderTarget* dst, float bright_threshold,
+void utils::passes::BloomGaussian(Texture* src, RenderTarget* dst, float bright_threshold,
 	float intensity)
 {
 	Blit(src, dst);
