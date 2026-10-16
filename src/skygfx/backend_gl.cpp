@@ -1330,6 +1330,8 @@ void BackendGL::setBlendMode(const std::optional<BlendMode>& blend_mode)
 	if (!blend_mode.has_value())
 	{
 		glDisable(GL_BLEND);
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		gContext->color_mask = ColorMask{};
 		return;
 	}
 
