@@ -6,11 +6,13 @@
 
 #include "shader_compiler.h"
 #include <stdexcept>
+#include <algorithm>
 #include <vector>
 #include <unordered_map>
 
 #include <d3dcompiler.h>
 #include <d3d11.h>
+#include <d3d11shader.h>
 #include <dxgi1_6.h>
 
 #pragma comment(lib, "d3d11")
@@ -81,6 +83,7 @@ struct ContextD3D11
 	RenderTargetD3D11* main_render_target = nullptr;
 	std::vector<RenderTargetD3D11*> render_targets;
 	ShaderD3D11* shader = nullptr;
+	ComPtr<ID3D11Buffer> default_vertex_buffer;
 	std::vector<InputLayout> input_layouts;
 	
 	std::unordered_map<DepthStencilStateD3D11, ComPtr<ID3D11DepthStencilState>> depth_stencil_states;
@@ -114,6 +117,8 @@ struct ContextD3D11
 };
 
 static ContextD3D11* gContext = nullptr;
+
+static constexpr UINT DefaultVertexBufferSlot = D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT - 1;
 
 static const std::unordered_map<VertexFormat, DXGI_FORMAT> VertexFormatMap = {
 	{ VertexFormat::Float1, DXGI_FORMAT_R32_FLOAT },
@@ -149,9 +154,11 @@ public:
 	const auto& getD3D11PixelShader() const { return mPixelShader; }
 	auto& getInputLayoutCache() { return mInputLayoutCache; }
 	const auto& getVertexShaderBlob() const { return mVertexShaderBlob; }
+	const auto& getVertexInputs() const { return mVertexInputs; }
 
 private:
 	ComPtr<ID3D11VertexShader> mVertexShader;
+	std::unordered_map<UINT, D3D_REGISTER_COMPONENT_TYPE> mVertexInputs; // semantic index, type
 	ComPtr<ID3D11PixelShader> mPixelShader;
 	std::unordered_map<std::vector<InputLayout>, ComPtr<ID3D11InputLayout>> mInputLayoutCache;
 	ComPtr<ID3DBlob> mVertexShaderBlob; // for input layout
@@ -197,6 +204,24 @@ public:
 		
 		gContext->device->CreatePixelShader(pixel_shader_blob->GetBufferPointer(), pixel_shader_blob->GetBufferSize(),
 			NULL, mPixelShader.GetAddressOf());
+
+		ComPtr<ID3D11ShaderReflection> reflection;
+		D3DReflect(mVertexShaderBlob->GetBufferPointer(), mVertexShaderBlob->GetBufferSize(),
+			IID_PPV_ARGS(reflection.GetAddressOf()));
+
+		D3D11_SHADER_DESC shader_desc;
+		reflection->GetDesc(&shader_desc);
+
+		for (UINT i = 0; i < shader_desc.InputParameters; i++)
+		{
+			D3D11_SIGNATURE_PARAMETER_DESC param_desc;
+			reflection->GetInputParameterDesc(i, &param_desc);
+
+			if (param_desc.SystemValueType != D3D_NAME_UNDEFINED)
+				continue;
+
+			mVertexInputs.insert({ param_desc.SemanticIndex, param_desc.ComponentType });
+		}
 	}
 };
 
@@ -471,6 +496,35 @@ static void EnsureInputLayout()
 					.InstanceDataStepRate = (UINT)(input_layout.rate == InputLayout::Rate::Vertex ? 0 : 1)
 				});
 			}
+		}
+
+		// like opengl, feed (0, 0, 0, 1) to the shader inputs missing from the layout
+		for (const auto& [semantic_index, component_type] : gContext->shader->getVertexInputs())
+		{
+			auto provided = std::ranges::any_of(input_elements, [&](const auto& element) {
+				return element.SemanticIndex == semantic_index;
+			});
+
+			if (provided)
+				continue;
+
+			static const std::unordered_map<D3D_REGISTER_COMPONENT_TYPE, std::pair<DXGI_FORMAT, UINT>> DefaultFormatMap = {
+				{ D3D_REGISTER_COMPONENT_FLOAT32, { DXGI_FORMAT_R32G32B32A32_FLOAT, 0 } },
+				{ D3D_REGISTER_COMPONENT_UINT32, { DXGI_FORMAT_R32G32B32A32_UINT, 16 } },
+				{ D3D_REGISTER_COMPONENT_SINT32, { DXGI_FORMAT_R32G32B32A32_SINT, 32 } },
+			};
+
+			const auto& [format, offset] = DefaultFormatMap.at(component_type);
+
+			input_elements.push_back(D3D11_INPUT_ELEMENT_DESC{
+				.SemanticName = "TEXCOORD",
+				.SemanticIndex = semantic_index,
+				.Format = format,
+				.InputSlot = DefaultVertexBufferSlot,
+				.AlignedByteOffset = offset,
+				.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA,
+				.InstanceDataStepRate = 0
+			});
 		}
 
 		gContext->device->CreateInputLayout(input_elements.data(), (UINT)input_elements.size(),
@@ -786,6 +840,24 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height, Adapte
 	info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_MESSAGE, true);
 	info_queue->SetBreakOnSeverity(D3D11_MESSAGE_SEVERITY_WARNING, true);
 #endif
+
+	const float default_float[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	const uint32_t default_int[4] = { 0, 0, 0, 1 };
+
+	uint8_t default_vertex[48];
+	memcpy(default_vertex, default_float, 16);
+	memcpy(default_vertex + 16, default_int, 16);
+	memcpy(default_vertex + 32, default_int, 16);
+
+	auto default_vertex_desc = CD3D11_BUFFER_DESC(sizeof(default_vertex), D3D11_BIND_VERTEX_BUFFER, D3D11_USAGE_IMMUTABLE);
+	auto default_vertex_data = D3D11_SUBRESOURCE_DATA{ .pSysMem = default_vertex };
+	gContext->device->CreateBuffer(&default_vertex_desc, &default_vertex_data, gContext->default_vertex_buffer.GetAddressOf());
+
+	// zero stride makes every vertex read the same defaults
+	UINT default_vertex_stride = 0;
+	UINT default_vertex_offset = 0;
+	gContext->context->IASetVertexBuffers(DefaultVertexBufferSlot, 1, gContext->default_vertex_buffer.GetAddressOf(),
+		&default_vertex_stride, &default_vertex_offset);
 
 	CreateMainRenderTarget(width, height);
 	setRenderTarget(nullptr, 0);
