@@ -75,6 +75,11 @@ std::string skygfx::CompileSpirvToHlsl(const std::vector<uint32_t>& spirv, uint3
 	options.flatten_matrix_vertex_input_semantics = true;
 	compiler.set_hlsl_options(options);
 
+	// shaders are written for opengl clip space depth [-w, w], d3d expects [0, w]
+	auto common_options = compiler.get_common_options();
+	common_options.vertex.fixup_clipspace = true;
+	compiler.set_common_options(common_options);
+
 	return compiler.compile();
 }
 
