@@ -6,7 +6,9 @@
 
 #include "shader_compiler.h"
 #include <vulkan/vulkan_raii.hpp>
+#include <spirv_reflect.h>
 #include <iostream>
+#include <algorithm>
 
 using namespace skygfx;
 
@@ -95,6 +97,7 @@ struct ContextVK
 	constexpr static vk::Format DefaultDepthStencilFormat = vk::Format::eD32SfloatS8Uint;
 
 	bool working = false;
+	VertexBufferVK* default_vertex_buffer = nullptr;
 
 	uint32_t width = 0;
 	uint32_t height = 0;
@@ -360,6 +363,37 @@ const static std::unordered_map<ShaderReflection::DescriptorType, vk::Descriptor
 // vulkan has one per descriptor set, so textures are moved past the uniform buffers
 static constexpr uint32_t TextureBindingOffset = 32;
 
+// like opengl, shader inputs missing from the input layout read (0, 0, 0, 1) from this binding
+static constexpr uint32_t DefaultVertexBufferBinding = 15;
+
+static std::unordered_map<uint32_t, vk::Format> GetVertexInputs(const std::vector<uint32_t>& spirv)
+{
+	auto reflection = spv_reflect::ShaderModule(spirv);
+
+	uint32_t count = 0;
+	reflection.EnumerateInputVariables(&count, nullptr);
+
+	std::vector<SpvReflectInterfaceVariable*> input_variables(count);
+	reflection.EnumerateInputVariables(&count, input_variables.data());
+
+	std::unordered_map<uint32_t, vk::Format> result;
+
+	for (auto input_variable : input_variables)
+	{
+		if (input_variable->decoration_flags & SPV_REFLECT_DECORATION_BUILT_IN)
+			continue;
+
+		auto format = vk::Format::eR32G32B32A32Sfloat;
+
+		if (input_variable->type_description->type_flags & SPV_REFLECT_TYPE_FLAG_INT)
+			format = input_variable->numeric.scalar.signedness ? vk::Format::eR32G32B32A32Sint : vk::Format::eR32G32B32A32Uint;
+
+		result.insert({ input_variable->location, format });
+	}
+
+	return result;
+}
+
 std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<vk::DescriptorSetLayoutBinding>> CreatePipelineLayout(
 	const std::vector<std::vector<uint32_t>>& spirvs)
 {
@@ -425,11 +459,13 @@ public:
 	const auto& getVertexShaderModule() const { return mVertexShaderModule; }
 	const auto& getFragmentShaderModule() const { return mFragmentShaderModule; }
 	const auto& getRequiredDescriptorBindings() const { return mRequiredDescriptorBindings; }
+	const auto& getVertexInputs() const { return mVertexInputs; }
 
 private:
 	vk::raii::DescriptorSetLayout mDescriptorSetLayout = nullptr;
 	vk::raii::PipelineLayout mPipelineLayout = nullptr;
 	vk::raii::ShaderModule mVertexShaderModule = nullptr;
+	std::unordered_map<uint32_t, vk::Format> mVertexInputs; // location, format
 	vk::raii::ShaderModule mFragmentShaderModule = nullptr;
 	std::vector<vk::DescriptorSetLayoutBinding> mRequiredDescriptorBindings;
 
@@ -454,6 +490,8 @@ void main()
 
 		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout({ 
 			vertex_shader_spirv, fragment_shader_spirv });
+
+		mVertexInputs = GetVertexInputs(vertex_shader_spirv);
 
 		auto vertex_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(vertex_shader_spirv);
@@ -1680,6 +1718,41 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 		}
 	}
 
+	auto default_vertex_input_binding_description = vk::VertexInputBindingDescription()
+		.setInputRate(vk::VertexInputRate::eVertex)
+		.setBinding(DefaultVertexBufferBinding);
+
+	for (const auto& [location, format] : pipeline_state.shader->getVertexInputs())
+	{
+		auto provided = std::ranges::any_of(vertex_input_attribute_descriptions, [&](const auto& description) {
+			return description.location == location;
+		});
+
+		if (provided)
+			continue;
+
+		static const std::unordered_map<vk::Format, uint32_t> DefaultOffsetMap = {
+			{ vk::Format::eR32G32B32A32Sfloat, 0 },
+			{ vk::Format::eR32G32B32A32Uint, 16 },
+			{ vk::Format::eR32G32B32A32Sint, 32 },
+		};
+
+		auto vertex_input_attribute_description = vk::VertexInputAttributeDescription()
+			.setBinding(DefaultVertexBufferBinding)
+			.setLocation(location)
+			.setFormat(format)
+			.setOffset(DefaultOffsetMap.at(format));
+
+		vertex_input_attribute_descriptions.push_back(vertex_input_attribute_description);
+
+		auto has_default_binding = std::ranges::any_of(vertex_input_binding_descriptions, [](const auto& description) {
+			return description.binding == DefaultVertexBufferBinding;
+		});
+
+		if (!has_default_binding)
+			vertex_input_binding_descriptions.push_back(default_vertex_input_binding_description);
+	}
+
 	// TODO: use dynamic state for InputLayout
 	// https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_vertex_input_dynamic_state.html
 
@@ -1807,6 +1880,9 @@ static void EnsureVertexBuffers(vk::raii::CommandBuffer& cmdlist)
 	}
 
 	cmdlist.bindVertexBuffers2(0, buffers, offsets, nullptr, strides);
+
+	// zero stride makes every vertex read the same defaults
+	cmdlist.bindVertexBuffers2(DefaultVertexBufferBinding, { *gContext->default_vertex_buffer->getBuffer() }, { 0 }, nullptr, { 0 });
 }
 
 static void EnsureIndexBuffer(vk::raii::CommandBuffer& cmdlist)
@@ -2572,6 +2648,18 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 	CreateSwapchain(width, height);
 	MoveToNextFrame();
 	Begin();
+
+	const float default_float[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	const uint32_t default_int[4] = { 0, 0, 0, 1 };
+
+	uint8_t default_vertex[48];
+	memcpy(default_vertex, default_float, 16);
+	memcpy(default_vertex + 16, default_int, 16);
+	memcpy(default_vertex + 32, default_int, 16);
+
+	gContext->default_vertex_buffer = new VertexBufferVK(sizeof(default_vertex), 0);
+	gContext->default_vertex_buffer->write(default_vertex, sizeof(default_vertex));
+	gContext->objects.insert(gContext->default_vertex_buffer);
 }
 
 BackendVK::~BackendVK()
