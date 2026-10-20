@@ -433,7 +433,19 @@ public:
 	ShaderVK(const std::string& vertex_code, const std::string& fragment_code,
 		std::vector<std::string> defines)
 	{
-		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, vertex_code, defines);
+		// shaders are written for opengl clip space depth [-w, w], vulkan expects [0, w]
+		auto vertex_defines = defines;
+		vertex_defines.push_back("main skygfx_main");
+
+		auto fixed_vertex_code = vertex_code + R"(
+#undef main
+void main()
+{
+	skygfx_main();
+	gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
+})";
+
+		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, fixed_vertex_code, vertex_defines);
 		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
 
 		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout({ 
