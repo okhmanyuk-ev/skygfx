@@ -9,7 +9,7 @@
 namespace skygfx
 {
 	std::vector<uint32_t> CompileGlslToSpirv(ShaderStage stage, const std::string& code,
-		const std::vector<std::string>& defines = {});
+		const std::vector<std::string>& defines = {}, uint32_t texture_binding_offset = 0);
 	std::string CompileSpirvToHlsl(const std::vector<uint32_t>& spirv, uint32_t version);
 	std::string CompileSpirvToGlsl(const std::vector<uint32_t>& spirv, bool es = false,
 		uint32_t version = 450, bool enable_420pack_extension = true,

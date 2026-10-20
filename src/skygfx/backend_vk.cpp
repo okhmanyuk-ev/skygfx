@@ -356,6 +356,10 @@ const static std::unordered_map<ShaderReflection::DescriptorType, vk::Descriptor
 	{ ShaderReflection::DescriptorType::StorageBuffer, vk::DescriptorType::eStorageBuffer }
 };
 
+// other backends have separate binding spaces for textures and uniform buffers,
+// vulkan has one per descriptor set, so textures are moved past the uniform buffers
+static constexpr uint32_t TextureBindingOffset = 32;
+
 std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<vk::DescriptorSetLayoutBinding>> CreatePipelineLayout(
 	const std::vector<std::vector<uint32_t>>& spirvs)
 {
@@ -445,8 +449,8 @@ void main()
 	gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;
 })";
 
-		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, fixed_vertex_code, vertex_defines);
-		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines);
+		auto vertex_shader_spirv = CompileGlslToSpirv(ShaderStage::Vertex, fixed_vertex_code, vertex_defines, TextureBindingOffset);
+		auto fragment_shader_spirv = CompileGlslToSpirv(ShaderStage::Fragment, fragment_code, defines, TextureBindingOffset);
 
 		std::tie(mPipelineLayout, mDescriptorSetLayout, mRequiredDescriptorBindings) = CreatePipelineLayout({ 
 			vertex_shader_spirv, fragment_shader_spirv });
@@ -483,8 +487,8 @@ public:
 	RaytracingShaderVK(const std::string& raygen_code, const std::vector<std::string>& miss_codes,
 		const std::string& closesthit_code, std::vector<std::string> defines)
 	{
-		auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code);
-		auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code);
+		auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code, {}, TextureBindingOffset);
+		auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code, {}, TextureBindingOffset);
 
 		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(raygen_shader_spirv);
@@ -502,7 +506,7 @@ public:
 
 		for (const auto& miss_code : miss_codes)
 		{
-			auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code);
+			auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code, {}, TextureBindingOffset);
 
 			auto miss_shader_module_create_info = vk::ShaderModuleCreateInfo()
 				.setCode(miss_shader_spirv);
@@ -1411,7 +1415,7 @@ static void PushDescriptorTexture(vk::raii::CommandBuffer& cmdlist, vk::Pipeline
 		gContext->sampler_states.insert({ gContext->sampler_state, std::move(sampler) });
 	}
 
-	auto texture = gContext->textures.at(binding);
+	auto texture = gContext->textures.at(binding - TextureBindingOffset);
 	texture->ensureState(cmdlist, vk::ImageLayout::eGeneral);
 
 	const auto& sampler = gContext->sampler_states.at(gContext->sampler_state);
@@ -2614,7 +2618,7 @@ void BackendVK::setScissor(std::optional<Scissor> scissor)
 void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 {
 	gContext->textures[binding] = (TextureVK*)handle;
-	gContext->graphics_pipeline_ignore_bindings.erase(binding);
+	gContext->graphics_pipeline_ignore_bindings.erase(binding + TextureBindingOffset);
 }
 
 void BackendVK::setRenderTarget(const RenderTarget** render_target, size_t count)

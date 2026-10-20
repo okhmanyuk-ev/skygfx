@@ -8,7 +8,8 @@
 
 using namespace skygfx;
 
-std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::string& code, const std::vector<std::string>& defines)
+std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::string& code, const std::vector<std::string>& defines,
+	uint32_t texture_binding_offset)
 {
 	static const std::unordered_map<ShaderStage, EShLanguage> StageMap = {
 		{ ShaderStage::Vertex, EShLangVertex },
@@ -41,6 +42,9 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 	shader.setPreamble(preamble.c_str());
 	shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_6);
 
+	if (texture_binding_offset != 0)
+		shader.setShiftBinding(glslang::EResTexture, texture_binding_offset);
+
 	auto messages = EShMessages(EShMsgSpvRules | EShMsgVulkanRules | EShMsgEnhanced);
 
 	if (!shader.parse(GetDefaultResources(), 100, false, messages))
@@ -55,6 +59,12 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 	if (!program.link(messages))
 	{
 		auto info_log = shader.getInfoLog();
+		throw std::runtime_error(info_log);
+	}
+
+	if (texture_binding_offset != 0 && !program.mapIO())
+	{
+		auto info_log = program.getInfoLog();
 		throw std::runtime_error(info_log);
 	}
 
