@@ -1538,10 +1538,12 @@ void BackendGL::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::
 	assert(dst_texture->getHeight() >= static_cast<uint32_t>(dst_pos.y + size.y));
 	assert(dst_texture->getFormat() == format);
 
-	auto y = backbuffer_height - src_pos.y - size.y;
+	// positions are top-left based, opengl framebuffers and textures are bottom-left based
+	auto src_y = backbuffer_height - src_pos.y - size.y;
+	auto dst_y = static_cast<int32_t>(dst_texture->getHeight()) - dst_pos.y - size.y;
 
 	TextureGL::ScopedBind binding(dst_texture->getGLTexture());
-	glCopyTexSubImage2D(GL_TEXTURE_2D, 0, dst_pos.x, dst_pos.y, src_pos.x, y, size.x, size.y);
+	glCopyTexSubImage2D(GL_TEXTURE_2D, 0, dst_pos.x, dst_y, src_pos.x, src_y, size.x, size.y);
 }
 
 void BackendGL::present()
