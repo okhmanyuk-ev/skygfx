@@ -2994,8 +2994,8 @@ void BackendVK::present()
 
 	gContext->semaphore_index = (gContext->semaphore_index + 1) % gContext->frames.size();
 
-	MoveToNextFrame();
 	WaitForGpu();
+	MoveToNextFrame();
 	Begin();
 }
 
