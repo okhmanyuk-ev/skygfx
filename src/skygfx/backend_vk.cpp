@@ -1125,6 +1125,8 @@ static void BeginRenderPass()
 
 	for (auto target : targets)
 	{
+		target->getTexture()->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eGeneral);
+
 		auto color_attachment = vk::RenderingAttachmentInfo()
 			.setImageView(*target->getTexture()->getImageView())
 			.setImageLayout(vk::ImageLayout::eGeneral)
