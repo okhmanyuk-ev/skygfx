@@ -97,7 +97,6 @@ struct ContextVK
 	constexpr static vk::Format DefaultDepthStencilFormat = vk::Format::eD32SfloatS8Uint;
 
 	bool working = false;
-	VertexBufferVK* default_vertex_buffer = nullptr;
 
 	uint32_t width = 0;
 	uint32_t height = 0;
@@ -170,6 +169,9 @@ struct ContextVK
 	vk::PipelineStageFlags2 current_memory_stage = vk::PipelineStageFlagBits2::eTransfer;
 
 	std::unordered_set<ObjectVK*> objects;
+
+	// declared last to be destroyed while frames and device are still alive
+	std::unique_ptr<VertexBufferVK> default_vertex_buffer;
 };
 
 static ContextVK* gContext = nullptr;
@@ -2655,9 +2657,8 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 	memcpy(default_vertex + 16, default_int, 16);
 	memcpy(default_vertex + 32, default_int, 16);
 
-	gContext->default_vertex_buffer = new VertexBufferVK(sizeof(default_vertex), 0);
+	gContext->default_vertex_buffer = std::make_unique<VertexBufferVK>(sizeof(default_vertex), 0);
 	gContext->default_vertex_buffer->write(default_vertex, sizeof(default_vertex));
-	gContext->objects.insert(gContext->default_vertex_buffer);
 }
 
 BackendVK::~BackendVK()
