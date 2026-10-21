@@ -2618,7 +2618,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 	if ((formats.size() == 1) && (formats.at(0).format == vk::Format::eUndefined))
 	{
 		gContext->surface_format = {
-			vk::Format::eB8G8R8A8Unorm,
+			vk::Format::eR8G8B8A8Unorm,
 			formats.at(0).colorSpace
 		};
 	}
@@ -2627,7 +2627,8 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 		bool found = false;
 		for (const auto& format : formats)
 		{
-			if (format.format == vk::Format::eB8G8R8A8Unorm)
+			// matches rgba textures, so backbuffer copies don't need format conversion
+			if (format.format == vk::Format::eR8G8B8A8Unorm)
 			{
 				gContext->surface_format = format;
 				found = true;
