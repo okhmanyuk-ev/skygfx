@@ -52,6 +52,23 @@ SKYGFX_MAKE_HASHABLE(RaytracingPipelineStateVK,
 	t.shader
 );
 
+struct RaytracingShaderBindingTable
+{
+	vk::raii::Buffer raygen_buffer;
+	vk::raii::DeviceMemory raygen_memory;
+	vk::StridedDeviceAddressRegionKHR raygen_address;
+
+	vk::raii::Buffer miss_buffer;
+	vk::raii::DeviceMemory miss_memory;
+	vk::StridedDeviceAddressRegionKHR miss_address;
+
+	vk::raii::Buffer hit_buffer;
+	vk::raii::DeviceMemory hit_memory;
+	vk::StridedDeviceAddressRegionKHR hit_address;
+
+	vk::StridedDeviceAddressRegionKHR callable_address;
+};
+
 struct SamplerStateVK
 {
 	Sampler sampler = Sampler::Linear;
@@ -128,6 +145,7 @@ struct ContextVK
 
 	RaytracingPipelineStateVK raytracing_pipeline_state;
 	std::unordered_map<RaytracingPipelineStateVK, vk::raii::Pipeline> raytracing_pipeline_states;
+	std::unordered_map<RaytracingPipelineStateVK, RaytracingShaderBindingTable> raytracing_shader_binding_tables;
 
 	SamplerStateVK sampler_state;
 	std::unordered_map<SamplerStateVK, vk::raii::Sampler> sampler_states;
@@ -1573,23 +1591,6 @@ inline T AlignUp(T size, size_t alignment) noexcept
 	return size;
 }
 
-struct RaytracingShaderBindingTable
-{
-	vk::raii::Buffer raygen_buffer;
-	vk::raii::DeviceMemory raygen_memory;
-	vk::StridedDeviceAddressRegionKHR raygen_address;
-
-	vk::raii::Buffer miss_buffer;
-	vk::raii::DeviceMemory miss_memory;
-	vk::StridedDeviceAddressRegionKHR miss_address;
-
-	vk::raii::Buffer hit_buffer;
-	vk::raii::DeviceMemory hit_memory;
-	vk::StridedDeviceAddressRegionKHR hit_address;
-
-	vk::StridedDeviceAddressRegionKHR callable_address;
-};
-
 static RaytracingShaderBindingTable CreateRaytracingShaderBindingTable(const vk::raii::Pipeline& pipeline)
 {
 	auto ray_tracing_pipeline_properties = gContext->physical_device.getProperties2<vk::PhysicalDeviceProperties2,
@@ -2979,8 +2980,15 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 	EnsureRaytracingState();
 
-	const auto& pipeline = gContext->raytracing_pipeline_states.at(gContext->raytracing_pipeline_state);
-	static auto binding_table = CreateRaytracingShaderBindingTable(pipeline);
+	const auto& state = gContext->raytracing_pipeline_state;
+
+	if (!gContext->raytracing_shader_binding_tables.contains(state))
+	{
+		const auto& pipeline = gContext->raytracing_pipeline_states.at(state);
+		gContext->raytracing_shader_binding_tables.insert({ state, CreateRaytracingShaderBindingTable(pipeline) });
+	}
+
+	const auto& binding_table = gContext->raytracing_shader_binding_tables.at(state);
 
 	gContext->getCurrentFrame().command_buffer.traceRaysKHR(binding_table.raygen_address, binding_table.miss_address,
 		binding_table.hit_address, binding_table.callable_address, width, height, depth);
@@ -3104,6 +3112,11 @@ void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
 
 	std::erase_if(gContext->raytracing_pipeline_states, [&](const auto& item) {
 		const auto& [state, pipeline] = item;
+		return state.shader == shader;
+	});
+
+	std::erase_if(gContext->raytracing_shader_binding_tables, [&](const auto& item) {
+		const auto& [state, binding_table] = item;
 		return state.shader == shader;
 	});
 
