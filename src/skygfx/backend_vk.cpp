@@ -1598,15 +1598,6 @@ static RaytracingShaderBindingTable CreateRaytracingShaderBindingTable(const vk:
 	auto handle_size = ray_tracing_pipeline_properties.shaderGroupHandleSize;
 	auto handle_size_aligned = AlignUp(handle_size, ray_tracing_pipeline_properties.shaderGroupHandleAlignment);
 
-	auto [raygen_buffer, raygen_memory] = CreateBuffer(handle_size_aligned,
-		vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto [miss_buffer, miss_memory] = CreateBuffer(handle_size_aligned, 
-		vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
-	auto [hit_buffer, hit_memory] = CreateBuffer(handle_size_aligned,
-		vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
-
 	const auto& shader = gContext->raytracing_pipeline_state.shader;
 
 	auto raygen_shader_count = 1;
@@ -1614,34 +1605,37 @@ static RaytracingShaderBindingTable CreateRaytracingShaderBindingTable(const vk:
 	auto hit_shader_count = 1;
 
 	auto group_count = raygen_shader_count + miss_shader_count + hit_shader_count;
-	auto sbt_size = group_count * handle_size_aligned;
 
-	auto shader_handle_storage = pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, (uint32_t)group_count, sbt_size);
+	auto shader_handle_storage = pipeline.getRayTracingShaderGroupHandlesKHR<uint8_t>(0, (uint32_t)group_count,
+		group_count * handle_size);
 
-	auto get_shader_ptr = [&](size_t index) {
-		return shader_handle_storage.data() + (handle_size_aligned * index);
+	auto create_table = [&](size_t first_group, size_t count) {
+		auto size = handle_size_aligned * count;
+
+		auto [buffer, memory] = CreateBuffer(size,
+			vk::BufferUsageFlagBits::eShaderBindingTableKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
+
+		std::vector<uint8_t> handles(size);
+
+		for (size_t i = 0; i < count; i++)
+		{
+			std::memcpy(handles.data() + (handle_size_aligned * i),
+				shader_handle_storage.data() + (handle_size * (first_group + i)), handle_size);
+		}
+
+		WriteToBuffer(memory, handles.data(), size);
+
+		auto address = vk::StridedDeviceAddressRegionKHR()
+			.setStride(handle_size_aligned)
+			.setSize(size)
+			.setDeviceAddress(GetBufferDeviceAddress(*buffer));
+
+		return std::make_tuple(std::move(buffer), std::move(memory), address);
 	};
 
-	WriteToBuffer(raygen_memory, get_shader_ptr(0), handle_size * raygen_shader_count);
-	WriteToBuffer(miss_memory, get_shader_ptr(raygen_shader_count), handle_size * miss_shader_count);
-	WriteToBuffer(hit_memory, get_shader_ptr(raygen_shader_count + miss_shader_count), handle_size * hit_shader_count);
-
-	auto raygen_address = vk::StridedDeviceAddressRegionKHR()
-		.setStride(handle_size_aligned)
-		.setSize(handle_size_aligned)
-		.setDeviceAddress(GetBufferDeviceAddress(*raygen_buffer));
-
-	auto miss_address = vk::StridedDeviceAddressRegionKHR()
-		.setStride(handle_size_aligned)
-		.setSize(handle_size_aligned)
-		.setDeviceAddress(GetBufferDeviceAddress(*miss_buffer));
-
-	auto hit_address = vk::StridedDeviceAddressRegionKHR()
-		.setStride(handle_size_aligned)
-		.setSize(handle_size_aligned)
-		.setDeviceAddress(GetBufferDeviceAddress(*hit_buffer));
-
-	auto callable_shader_binding_table = vk::StridedDeviceAddressRegionKHR();
+	auto [raygen_buffer, raygen_memory, raygen_address] = create_table(0, raygen_shader_count);
+	auto [miss_buffer, miss_memory, miss_address] = create_table(raygen_shader_count, miss_shader_count);
+	auto [hit_buffer, hit_memory, hit_address] = create_table(raygen_shader_count + miss_shader_count, hit_shader_count);
 
 	return RaytracingShaderBindingTable{
 		.raygen_buffer = std::move(raygen_buffer),
@@ -1656,7 +1650,7 @@ static RaytracingShaderBindingTable CreateRaytracingShaderBindingTable(const vk:
 		.hit_memory = std::move(hit_memory),
 		.hit_address = hit_address,
 
-		.callable_address = callable_shader_binding_table
+		.callable_address = vk::StridedDeviceAddressRegionKHR()
 	};
 }
 
