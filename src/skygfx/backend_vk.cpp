@@ -2619,20 +2619,18 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 	}
 	else
 	{
-		bool found = false;
-		for (const auto& format : formats)
+		gContext->surface_format = formats.at(0);
+
+		// rgba matches textures, so backbuffer copies don't need format conversion
+		for (auto preferred_format : { vk::Format::eR8G8B8A8Unorm, vk::Format::eB8G8R8A8Unorm })
 		{
-			// matches rgba textures, so backbuffer copies don't need format conversion
-			if (format.format == vk::Format::eR8G8B8A8Unorm)
-			{
-				gContext->surface_format = format;
-				found = true;
-				break;
-			}
-		}
-		if (!found)
-		{
-			gContext->surface_format = formats.at(0);
+			auto format = std::ranges::find(formats, preferred_format, &vk::SurfaceFormatKHR::format);
+
+			if (format == formats.end())
+				continue;
+
+			gContext->surface_format = *format;
+			break;
 		}
 	}
 
