@@ -2344,9 +2344,11 @@ static void End()
 		vk::PipelineStageFlagBits::eAllCommands
 	};
 
+	const auto& image_acquired_semaphore = gContext->frames.at(gContext->semaphore_index).image_acquired_semaphore;
+
 	auto submit_info = vk::SubmitInfo()
 		.setWaitDstStageMask(wait_dst_stage_mask)
-		.setWaitSemaphores(*frame.image_acquired_semaphore)
+		.setWaitSemaphores(*image_acquired_semaphore)
 		.setCommandBuffers(*frame.command_buffer)
 		.setSignalSemaphores(*frame.render_complete_semaphore);
 
