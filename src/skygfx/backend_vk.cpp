@@ -2188,7 +2188,13 @@ static void EnsureRaytracingState()
 	auto& cmdlist = gContext->getCurrentFrame().command_buffer;
 
 	EnsureRenderPassDeactivated();
-	EnsureMemoryState(cmdlist, vk::PipelineStageFlagBits2::eAllGraphics);
+
+	// consecutive dispatches can read what the previous ones wrote
+	if (gContext->current_memory_stage == vk::PipelineStageFlagBits2::eRayTracingShaderKHR)
+		SetMemoryBarrier(cmdlist, vk::PipelineStageFlagBits2::eRayTracingShaderKHR, vk::PipelineStageFlagBits2::eRayTracingShaderKHR);
+	else
+		EnsureMemoryState(cmdlist, vk::PipelineStageFlagBits2::eRayTracingShaderKHR);
+
 	EnsureRaytracingPipelineState(cmdlist);
 	EnsureRaytracingDescriptors(cmdlist);
 }
