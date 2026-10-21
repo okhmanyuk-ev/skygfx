@@ -2946,15 +2946,35 @@ void BackendVK::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::
 		.setAspectMask(vk::ImageAspectFlagBits::eColor)
 		.setLayerCount(1);
 
+	src_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
+	dst_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);
+
+	if (src_texture->getFormat() != dst_texture->getFormat())
+	{
+		auto blit_region = vk::ImageBlit2()
+			.setSrcSubresource(subresource)
+			.setDstSubresource(subresource)
+			.setSrcOffsets({ vk::Offset3D{ src_pos.x, src_pos.y, 0 }, vk::Offset3D{ src_pos.x + size.x, src_pos.y + size.y, 1 } })
+			.setDstOffsets({ vk::Offset3D{ dst_pos.x, dst_pos.y, 0 }, vk::Offset3D{ dst_pos.x + size.x, dst_pos.y + size.y, 1 } });
+
+		auto blit_image_info = vk::BlitImageInfo2()
+			.setSrcImage(src_image)
+			.setDstImage(dst_image)
+			.setSrcImageLayout(vk::ImageLayout::eTransferSrcOptimal)
+			.setDstImageLayout(vk::ImageLayout::eTransferDstOptimal)
+			.setRegions(blit_region)
+			.setFilter(vk::Filter::eNearest);
+
+		gContext->getCurrentFrame().command_buffer.blitImage2(blit_image_info);
+		return;
+	}
+
 	auto region = vk::ImageCopy2()
 		.setSrcSubresource(subresource)
 		.setDstSubresource(subresource)
 		.setSrcOffset({ src_pos.x, src_pos.y, 0 })
 		.setDstOffset({ dst_pos.x, dst_pos.y, 0 })
 		.setExtent({ static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y), 1 });
-
-	src_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferSrcOptimal);
-	dst_texture->ensureState(gContext->getCurrentFrame().command_buffer, vk::ImageLayout::eTransferDstOptimal);
 
 	auto copy_image_info = vk::CopyImageInfo2()
 		.setSrcImage(src_image)
