@@ -935,10 +935,10 @@ public:
 			.setGeometries(geometry);
 
 		auto build_sizes = gContext->device.getAccelerationStructureBuildSizesKHR(
-			vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { 1 });
+			vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { index_count / 3 });
 
 		std::tie(mBlasBuffer, mBlasMemory) = CreateBuffer(build_sizes.accelerationStructureSize,
-			vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+			vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
 		auto create_info = vk::AccelerationStructureCreateInfoKHR()
 			.setBuffer(*mBlasBuffer)
@@ -1043,7 +1043,7 @@ public:
 			vk::AccelerationStructureBuildTypeKHR::eDevice, build_geometry_info, { (uint32_t)instances.size() });
 
 		std::tie(mTlasBuffer, mTlasMemory) = CreateBuffer(build_sizes.accelerationStructureSize,
-			vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR);
+			vk::BufferUsageFlagBits::eAccelerationStructureStorageKHR | vk::BufferUsageFlagBits::eShaderDeviceAddress);
 
 		auto create_info = vk::AccelerationStructureCreateInfoKHR()
 			.setBuffer(*mTlasBuffer)
