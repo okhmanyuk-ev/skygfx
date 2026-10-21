@@ -1720,9 +1720,9 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 		}
 	}
 
-	auto default_vertex_input_binding_description = vk::VertexInputBindingDescription()
+	vertex_input_binding_descriptions.push_back(vk::VertexInputBindingDescription()
 		.setInputRate(vk::VertexInputRate::eVertex)
-		.setBinding(DefaultVertexBufferBinding);
+		.setBinding(DefaultVertexBufferBinding));
 
 	for (const auto& [location, format] : pipeline_state.shader->getVertexInputs())
 	{
@@ -1746,13 +1746,6 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 			.setOffset(DefaultOffsetMap.at(format));
 
 		vertex_input_attribute_descriptions.push_back(vertex_input_attribute_description);
-
-		auto has_default_binding = std::ranges::any_of(vertex_input_binding_descriptions, [](const auto& description) {
-			return description.binding == DefaultVertexBufferBinding;
-		});
-
-		if (!has_default_binding)
-			vertex_input_binding_descriptions.push_back(default_vertex_input_binding_description);
 	}
 
 	// TODO: use dynamic state for InputLayout
