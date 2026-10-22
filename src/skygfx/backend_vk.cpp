@@ -545,8 +545,8 @@ public:
 	RaytracingShaderVK(const std::string& raygen_code, const std::vector<std::string>& miss_codes,
 		const std::string& closesthit_code, std::vector<std::string> defines)
 	{
-		auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code, {}, TextureBindingOffset);
-		auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code, {}, TextureBindingOffset);
+		auto raygen_shader_spirv = CompileGlslToSpirv(ShaderStage::Raygen, raygen_code, defines, TextureBindingOffset);
+		auto closesthit_shader_spirv = CompileGlslToSpirv(ShaderStage::ClosestHit, closesthit_code, defines, TextureBindingOffset);
 
 		auto raygen_shader_module_create_info = vk::ShaderModuleCreateInfo()
 			.setCode(raygen_shader_spirv);
@@ -564,7 +564,7 @@ public:
 
 		for (const auto& miss_code : miss_codes)
 		{
-			auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code, {}, TextureBindingOffset);
+			auto miss_shader_spirv = CompileGlslToSpirv(ShaderStage::Miss, miss_code, defines, TextureBindingOffset);
 
 			auto miss_shader_module_create_info = vk::ShaderModuleCreateInfo()
 				.setCode(miss_shader_spirv);
