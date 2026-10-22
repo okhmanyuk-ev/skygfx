@@ -6,6 +6,8 @@
 #include <imgui_impl_glfw.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <numbers>
+#include <cstddef>
+#include <array>
 
 // Whitted-style raytracer with soft shadows from an area light and photon traced caustics and indirect light.
 // Every frame:
@@ -16,19 +18,16 @@
 // Once at start the photon pass also shoots photons over the whole hemisphere, the ones that reach a room surface
 // after diffuse bounces or the mirror sphere go to its indirect map. Moving glass objects barely change it,
 // so these photons pass through them.
+// Light maps hold irradiance for a light of unit intensity, so changing the intensity doesn't rebuild them.
 
 const uint32_t CausticMapResolution = 160;
 const uint32_t IndirectMapResolution = 48;
 const uint32_t PhotonGridSize = 384;
-const uint32_t CausticPhotonLayers = 2; // one per moving glass object
-const uint32_t IndirectPhotonLayers = 64;
+const uint32_t CausticLayers = 2; // photon layers, one per moving glass object
+const uint32_t IndirectLayers = 64; // photon layers for the indirect map
+const uint32_t NoLightMap = 0xFFFFFFFF;
 
 const std::string common_code = R"(
-const uint MaterialDiffuse = 0;
-const uint MaterialMirror = 1;
-const uint MaterialEmissive = 2;
-const uint MaterialGlass = 3;
-
 const float PI = 3.14159265359;
 
 struct Payload
@@ -39,22 +38,28 @@ struct Payload
 	uint material;
 	vec3 geometry_normal; // faces the ray
 	uint object;
-	uint front_face;
+	bool front_face;
 };
 
 struct Object
 {
+	mat4 transform;
+	vec4 color;
+	vec4 checker_color;
 	uint index_offset;
 	uint material;
 	uint checker;
 	float checker_scale;
-	vec4 color;
-	vec4 checker_color;
-	uvec4 light_map; // x - map index + 1 (0 if none), y - u axis, z - v axis
+	uvec4 light_map; // x - map index or NO_LIGHT_MAP, y - u axis, z - v axis
 };
 
+bool hasLightMap(Object object)
+{
+	return object.light_map.x != NO_LIGHT_MAP;
+}
+
 layout(binding = 3) buffer Objects { Object objects[]; };
-layout(binding = 7) buffer LightMaps { uint light_maps[]; };
+layout(binding = 6) buffer LightMaps { uint light_maps[]; };
 )";
 
 const std::string raygen_common_code = common_code + R"(
@@ -67,19 +72,15 @@ layout(binding = 2) uniform _settings
 	vec4 right;
 	vec4 up;
 	vec4 light; // xyz - center, w - radius
-	vec4 light_color;
+	vec4 light_color; // radiance of a light of unit intensity
 	vec4 room_min;
 	vec4 room_max;
-	vec4 ambient;
-	vec4 caustic_targets[2]; // xyz - center, w - bounding radius
+	vec4 caustic_targets[CAUSTIC_LAYERS]; // xyz - center, w - bounding radius
 	uvec4 caustic_target_objects;
-	uint shadow_samples;
-	uint caustic_resolution;
-	uint indirect_resolution;
-	uint indirect_offset;
-	float light_map_scale;
+	float light_intensity;
 	float ior;
 	float exposure;
+	uint shadow_samples;
 	uint caustics;
 	uint indirect;
 } settings;
@@ -87,21 +88,50 @@ layout(binding = 2) uniform _settings
 layout(location = 0) rayPayloadEXT Payload payload;
 layout(location = 1) rayPayloadEXT bool visible;
 
+const uint MaxDepth = 8;
+const uint StackSize = 12;
+const float Epsilon = 0.001;
+const float MaxDistance = 100.0; // longer than any path inside the room
+const float MinRelativeWeight = 0.01; // rays weaker than this part of their initial weight are dropped
+
+float maxComponent(vec3 v)
+{
+	return max(v.r, max(v.g, v.b));
+}
+
+// throughput for camera rays, power for photons
+struct Ray
+{
+	vec3 origin;
+	vec3 direction;
+	vec3 weight;
+	uint depth;
+};
+
+// rays waiting to be traced, a hit on glass adds two of them
+Ray stack[StackSize];
+uint stack_size = 0;
+
+// rays too weak to matter are dropped
+void push(Ray ray, float min_weight)
+{
+	if (maxComponent(ray.weight) > min_weight && stack_size < StackSize)
+		stack[stack_size++] = ray;
+}
+
+Ray pop()
+{
+	return stack[--stack_size];
+}
+
 struct LightMap
 {
 	uint offset;
 	uint resolution;
 };
 
-LightMap causticMap()
-{
-	return LightMap(0, settings.caustic_resolution);
-}
-
-LightMap indirectMap()
-{
-	return LightMap(settings.indirect_offset, settings.indirect_resolution);
-}
+const LightMap CausticMap = LightMap(0u, CAUSTIC_MAP_RESOLUTION);
+const LightMap IndirectMap = LightMap(INDIRECT_MAP_OFFSET, INDIRECT_MAP_RESOLUTION);
 
 uint rng_state;
 
@@ -121,21 +151,61 @@ float random()
 bool traceScene(vec3 origin, vec3 direction)
 {
 	payload.distance = -1.0;
-	traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, 0.0, direction, 100.0, 0);
+	traceRayEXT(topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, 0, 0, 0, origin, 0.0, direction, MaxDistance, 0);
 	return payload.distance >= 0.0;
 }
 
-float fresnel(float cos_i, float n1, float n2)
+// area is a fraction of the disk around its center, so a uniform area gives uniformly spread points
+vec3 lightPoint(float area, float angle)
 {
-	float r0 = (n1 - n2) / (n1 + n2);
-	r0 *= r0;
-	return r0 + (1.0 - r0) * pow(1.0 - cos_i, 5.0);
+	float r = settings.light.w * sqrt(area);
+	return settings.light.xyz + vec3(r * cos(angle), 0.0, r * sin(angle));
 }
 
-uint lightMapCell(LightMap map, Object object, ivec2 cell, uint channel)
+float lightArea()
 {
-	uint index = object.light_map.x - 1;
-	return map.offset + ((index * map.resolution + uint(cell.y)) * map.resolution + uint(cell.x)) * 3 + channel;
+	return PI * settings.light.w * settings.light.w;
+}
+
+// moves a hit point off the surface to the side the ray came from (1) or to the other side (-1)
+vec3 offsetFromSurface(vec3 pos, float side)
+{
+	return pos + payload.geometry_normal * Epsilon * side;
+}
+
+void reflectOnMirror(Ray ray, vec3 pos, float min_weight)
+{
+	push(Ray(offsetFromSurface(pos, 1.0), reflect(ray.direction, payload.normal), ray.weight * payload.color,
+		ray.depth + 1), min_weight);
+}
+
+// a ray hitting glass splits into a reflected and a refracted part, the latter is empty on total internal reflection
+void splitOnGlass(Ray ray, vec3 pos, float min_weight)
+{
+	float eta = payload.front_face ? 1.0 / settings.ior : settings.ior;
+	vec3 refract_direction = refract(ray.direction, payload.normal, eta);
+	float reflectance = 1.0;
+
+	if (dot(refract_direction, refract_direction) > 0.0)
+	{
+		// Schlick's approximation takes the angle on the side of the less dense medium
+		float cos_theta = eta > 1.0 ? -dot(refract_direction, payload.normal) : -dot(ray.direction, payload.normal);
+		float r0 = (1.0 - eta) / (1.0 + eta);
+		r0 *= r0;
+		reflectance = r0 + (1.0 - r0) * pow(1.0 - cos_theta, 5.0);
+	}
+
+	push(Ray(offsetFromSurface(pos, 1.0), reflect(ray.direction, payload.normal), ray.weight * reflectance,
+		ray.depth + 1), min_weight);
+	push(Ray(offsetFromSurface(pos, -1.0), refract_direction, ray.weight * (1.0 - reflectance) * payload.color,
+		ray.depth + 1), min_weight);
+}
+
+// index of the cell's red channel, green and blue follow it
+uint lightMapCell(LightMap map, Object object, ivec2 cell)
+{
+	uint index = object.light_map.x;
+	return map.offset + ((index * map.resolution + uint(cell.y)) * map.resolution + uint(cell.x)) * 3;
 }
 
 vec2 lightMapCoord(LightMap map, Object object, vec3 pos)
@@ -150,24 +220,18 @@ float lightMapCellArea(LightMap map, Object object)
 	return size[object.light_map.y] * size[object.light_map.z] / float(map.resolution * map.resolution);
 }
 
-vec3 readLightMap(LightMap map, Object object, ivec2 cell)
+// an orthonormal basis with n as its z axis
+mat3 basis(vec3 n)
 {
-	cell = clamp(cell, ivec2(0), ivec2(int(map.resolution) - 1));
-	vec3 value;
-	for (uint c = 0; c < 3; c++)
-	{
-		value[c] = float(light_maps[lightMapCell(map, object, cell, c)]);
-	}
-	return value / settings.light_map_scale;
+	vec3 t = normalize(cross(n, abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+	return mat3(t, cross(n, t), n);
 }
 
 vec3 cosineSampleHemisphere(vec3 n, vec2 u)
 {
 	float phi = 2.0 * PI * u.x;
 	float r = sqrt(u.y);
-	vec3 t = normalize(cross(n, abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
-	vec3 b = cross(n, t);
-	return normalize(t * cos(phi) * r + b * sin(phi) * r + n * sqrt(1.0 - u.y));
+	return normalize(basis(n) * vec3(r * cos(phi), r * sin(phi), sqrt(1.0 - u.y)));
 }
 )";
 
@@ -177,16 +241,12 @@ const std::string render_raygen_shader_code = R"(
 )" + raygen_common_code + R"(
 layout(binding = 1, rgba32f) uniform image2D image;
 
-const uint MaxDepth = 8;
-const uint StackSize = 12;
+const vec3 Ambient = vec3(0.005, 0.005, 0.006);
 
-struct Ray
+vec3 lightRadiance()
 {
-	vec3 origin;
-	vec3 direction;
-	vec3 throughput;
-	uint depth;
-};
+	return settings.light_color.rgb * settings.light_intensity;
+}
 
 bool isVisible(vec3 origin, vec3 direction, float distance)
 {
@@ -198,66 +258,30 @@ bool isVisible(vec3 origin, vec3 direction, float distance)
 
 // a fixed set of points spread over the light disk gives smooth noise-free penumbras,
 // a per-pixel rotation of the set turns banding into fine static grain
-vec3 directLight(vec3 pos, vec3 normal, uint samples, float rotation)
+vec3 directIrradiance(vec3 pos, vec3 normal, uint samples, float rotation)
 {
-	float radius = settings.light.w;
 	float sum = 0.0;
 
 	for (uint i = 0; i < samples; i++)
 	{
-		float r = radius * sqrt((float(i) + 0.5) / float(samples));
-		float angle = float(i) * 2.39996323 + rotation;
-		vec3 light_pos = settings.light.xyz + vec3(r * cos(angle), 0.0, r * sin(angle));
+		vec3 light_pos = lightPoint((float(i) + 0.5) / float(samples), float(i) * 2.39996323 + rotation);
 		vec3 to_light = light_pos - pos;
 		float distance_sqr = dot(to_light, to_light);
 		float distance = sqrt(distance_sqr);
 		vec3 direction = to_light / distance;
 		float cos_surface = dot(normal, direction);
-
 		float cos_light = direction.y; // the light faces down
 
 		if (cos_surface <= 0.0 || cos_light <= 0.0)
 			continue;
 
-		if (!isVisible(pos, direction, distance - 0.001))
+		if (!isVisible(pos, direction, distance - Epsilon))
 			continue;
 
 		sum += cos_surface * cos_light / distance_sqr;
 	}
 
-	float area = PI * radius * radius;
-	return settings.light_color.rgb * sum * area / float(samples);
-}
-
-vec3 causticIrradiance(Object object, vec3 pos)
-{
-	LightMap map = causticMap();
-	ivec2 center = ivec2(floor(lightMapCoord(map, object, pos)));
-	const float weights[5] = float[](1.0, 4.0, 6.0, 4.0, 1.0);
-	vec3 sum = vec3(0.0);
-
-	for (int y = -2; y <= 2; y++)
-	{
-		for (int x = -2; x <= 2; x++)
-		{
-			sum += readLightMap(map, object, center + ivec2(x, y)) * weights[x + 2] * weights[y + 2] / 256.0;
-		}
-	}
-
-	return sum;
-}
-
-vec3 indirectIrradiance(Object object, vec3 pos)
-{
-	LightMap map = indirectMap();
-	vec2 coord = lightMapCoord(map, object, pos) - 0.5;
-	ivec2 base = ivec2(floor(coord));
-	vec2 f = coord - vec2(base);
-
-	return mix(
-		mix(readLightMap(map, object, base), readLightMap(map, object, base + ivec2(1, 0)), f.x),
-		mix(readLightMap(map, object, base + ivec2(0, 1)), readLightMap(map, object, base + ivec2(1, 1)), f.x),
-		f.y);
+	return lightRadiance() * sum * lightArea() / float(samples);
 }
 
 // the light hangs a bit below the ceiling and glows from both sides, nothing is between its back side
@@ -273,10 +297,77 @@ vec3 lightBackSideIrradiance(vec3 pos, vec3 normal)
 	float rho = length(pos.xz - settings.light.xz);
 	float a = rho * rho + h * h + r * r;
 	float form_factor = 0.5 * (1.0 - (a - 2.0 * r * r) / sqrt(a * a - 4.0 * rho * rho * r * r));
-	return settings.light_color.rgb * PI * form_factor;
+	return lightRadiance() * PI * form_factor;
 }
 
-vec3 tonemap(vec3 x)
+vec3 readLightMap(LightMap map, Object object, ivec2 cell)
+{
+	uint index = lightMapCell(map, object, clamp(cell, ivec2(0), ivec2(int(map.resolution) - 1)));
+	return vec3(light_maps[index], light_maps[index + 1], light_maps[index + 2]) / LIGHT_MAP_SCALE;
+}
+
+vec3 causticIrradiance(Object object, vec3 pos)
+{
+	ivec2 center = ivec2(floor(lightMapCoord(CausticMap, object, pos)));
+	const float weights[5] = float[](1.0, 4.0, 6.0, 4.0, 1.0);
+	vec3 sum = vec3(0.0);
+
+	for (int y = -2; y <= 2; y++)
+	{
+		for (int x = -2; x <= 2; x++)
+		{
+			sum += readLightMap(CausticMap, object, center + ivec2(x, y)) * weights[x + 2] * weights[y + 2] / 256.0;
+		}
+	}
+
+	return sum;
+}
+
+vec3 indirectIrradiance(Object object, vec3 pos)
+{
+	vec2 coord = lightMapCoord(IndirectMap, object, pos) - 0.5;
+	ivec2 base = ivec2(floor(coord));
+	vec2 f = coord - vec2(base);
+
+	return mix(
+		mix(readLightMap(IndirectMap, object, base), readLightMap(IndirectMap, object, base + ivec2(1, 0)), f.x),
+		mix(readLightMap(IndirectMap, object, base + ivec2(0, 1)), readLightMap(IndirectMap, object, base + ivec2(1, 1)), f.x),
+		f.y);
+}
+
+vec3 shadeDiffuse(vec3 pos, uint depth, float rotation)
+{
+	// surfaces seen through mirrors and glass are distorted by them, so fewer shadow rays are enough
+	uint samples = depth == 0 ? settings.shadow_samples : max(settings.shadow_samples / 4, 1);
+	vec3 irradiance = directIrradiance(offsetFromSurface(pos, 1.0), payload.normal, samples, rotation) +
+		lightBackSideIrradiance(pos, payload.normal);
+
+	Object object = objects[payload.object];
+
+	if (hasLightMap(object))
+	{
+		vec3 light_maps_irradiance = vec3(0.0);
+
+		if (settings.caustics != 0)
+			light_maps_irradiance += causticIrradiance(object, pos);
+
+		if (settings.indirect != 0)
+			light_maps_irradiance += indirectIrradiance(object, pos);
+
+		irradiance += light_maps_irradiance * settings.light_intensity;
+	}
+
+	return payload.color * (irradiance / PI + Ambient);
+}
+
+vec3 cameraRayDirection(uvec2 pixel, uvec2 size)
+{
+	vec2 d = (vec2(pixel) + 0.5) / vec2(size) * 2.0 - 1.0;
+	return normalize(settings.forward.xyz + settings.right.xyz * d.x - settings.up.xyz * d.y);
+}
+
+// Narkowicz's fit of the ACES filmic curve
+vec3 tonemapAces(vec3 x)
 {
 	const float a = 2.51;
 	const float b = 0.03;
@@ -294,82 +385,41 @@ void main()
 	float noise = fract(52.9829189 * fract(dot(vec2(pixel), vec2(0.06711056, 0.00583715))));
 	float rotation = noise * 2.0 * PI;
 
-	vec2 d = (vec2(pixel) + 0.5) / vec2(size) * 2.0 - 1.0;
-	vec3 direction = normalize(settings.forward.xyz + settings.right.xyz * d.x - settings.up.xyz * d.y);
-
-	Ray stack[StackSize];
-	uint stack_size = 0;
-	stack[stack_size++] = Ray(settings.eye.xyz, direction, vec3(1.0), 0);
+	push(Ray(settings.eye.xyz, cameraRayDirection(pixel, size), vec3(1.0), 0), 0.0);
 
 	vec3 color = vec3(0.0);
 
 	while (stack_size > 0)
 	{
-		Ray ray = stack[--stack_size];
+		Ray ray = pop();
 
 		if (!traceScene(ray.origin, ray.direction))
 			continue;
 
-		Object object = objects[payload.object];
 		vec3 pos = ray.origin + ray.direction * payload.distance;
 
-		if (payload.material == MaterialEmissive)
+		if (payload.material == MATERIAL_EMISSIVE)
 		{
-			color += ray.throughput * settings.light_color.rgb;
+			color += ray.weight * lightRadiance();
 			continue;
 		}
 
-		if (payload.material == MaterialDiffuse)
+		if (payload.material == MATERIAL_DIFFUSE)
 		{
-			vec3 offset_pos = pos + payload.geometry_normal * 0.001;
-			uint samples = ray.depth == 0 ? settings.shadow_samples : max(settings.shadow_samples / 4, 1);
-			vec3 irradiance = directLight(offset_pos, payload.normal, samples, rotation) +
-				lightBackSideIrradiance(pos, payload.normal);
-
-			if (object.light_map.x != 0 && settings.caustics != 0)
-				irradiance += causticIrradiance(object, pos);
-
-			if (object.light_map.x != 0 && settings.indirect != 0)
-				irradiance += indirectIrradiance(object, pos);
-
-			color += ray.throughput * payload.color * (irradiance / PI + settings.ambient.rgb);
+			color += ray.weight * shadeDiffuse(pos, ray.depth, rotation);
 			continue;
 		}
 
 		if (ray.depth >= MaxDepth)
 			continue;
 
-		vec3 reflect_origin = pos + payload.geometry_normal * 0.001;
-		vec3 reflect_direction = reflect(ray.direction, payload.normal);
-
-		if (payload.material == MaterialMirror)
-		{
-			if (stack_size < StackSize)
-				stack[stack_size++] = Ray(reflect_origin, reflect_direction, ray.throughput * payload.color, ray.depth + 1);
-			continue;
-		}
-
-		// glass
-
-		float n1 = payload.front_face != 0 ? 1.0 : settings.ior;
-		float n2 = payload.front_face != 0 ? settings.ior : 1.0;
-		vec3 refract_direction = refract(ray.direction, payload.normal, n1 / n2);
-		float reflectance = 1.0;
-
-		if (dot(refract_direction, refract_direction) > 0.0)
-			reflectance = fresnel(-dot(ray.direction, payload.normal), n1, n2);
-
-		vec3 reflect_throughput = ray.throughput * reflectance;
-		vec3 refract_throughput = ray.throughput * (1.0 - reflectance) * payload.color;
-
-		if (max(reflect_throughput.r, max(reflect_throughput.g, reflect_throughput.b)) > 0.01 && stack_size < StackSize)
-			stack[stack_size++] = Ray(reflect_origin, reflect_direction, reflect_throughput, ray.depth + 1);
-
-		if (max(refract_throughput.r, max(refract_throughput.g, refract_throughput.b)) > 0.01 && stack_size < StackSize)
-			stack[stack_size++] = Ray(pos - payload.geometry_normal * 0.001, refract_direction, refract_throughput, ray.depth + 1);
+		if (payload.material == MATERIAL_MIRROR)
+			reflectOnMirror(ray, pos, MinRelativeWeight);
+		else
+			splitOnGlass(ray, pos, MinRelativeWeight);
 	}
 
-	vec3 result = pow(tonemap(color * settings.exposure), vec3(1.0 / 2.2));
+	vec3 result = pow(tonemapAces(color * settings.exposure), vec3(1.0 / 2.2));
 
 	imageStore(image, ivec2(pixel), vec4(result, 1.0));
 })";
@@ -378,18 +428,8 @@ const std::string photon_raygen_shader_code = R"(
 #version 460
 #extension GL_EXT_ray_tracing : require
 )" + raygen_common_code + R"(
-const uint MaxDepth = 8;
-const uint StackSize = 12;
 const uint IndirectBounces = 2;
-const uint CausticLayers = 2;
-
-struct Photon
-{
-	vec3 origin;
-	vec3 direction;
-	vec3 power;
-	uint depth;
-};
+const uint MaxIndirectSteps = 16; // bounces and passes through glass
 
 // power is what arrives at the surface, the surface's albedo is applied when it is rendered
 void splat(LightMap map, Object object, vec3 pos, vec3 power)
@@ -397,7 +437,7 @@ void splat(LightMap map, Object object, vec3 pos, vec3 power)
 	vec2 coord = lightMapCoord(map, object, pos) - 0.5;
 	ivec2 base = ivec2(floor(coord));
 	vec2 f = coord - vec2(base);
-	vec3 irradiance = power / lightMapCellArea(map, object) * settings.light_map_scale;
+	vec3 irradiance = power / lightMapCellArea(map, object) * LIGHT_MAP_SCALE;
 	int res = int(map.resolution);
 
 	for (int y = 0; y <= 1; y++)
@@ -410,28 +450,30 @@ void splat(LightMap map, Object object, vec3 pos, vec3 power)
 				continue;
 
 			float weight = (x == 0 ? 1.0 - f.x : f.x) * (y == 0 ? 1.0 - f.y : f.y);
+			uint index = lightMapCell(map, object, cell);
 
 			for (uint c = 0; c < 3; c++)
 			{
-				atomicAdd(light_maps[lightMapCell(map, object, cell, c)], uint(irradiance[c] * weight + 0.5));
+				atomicAdd(light_maps[index + c], uint(irradiance[c] * weight + 0.5));
 			}
 		}
 	}
 }
 
-vec3 sampleLightOrigin()
+// u spreads directions uniformly over the solid angle of the cone
+vec3 sampleCone(vec3 axis, float cos_max, vec2 u)
 {
-	float radius = settings.light.w;
-	float r = radius * sqrt(random());
-	float angle = 2.0 * PI * random();
-	return settings.light.xyz + vec3(r * cos(angle), 0.0, r * sin(angle));
+	float cos_theta = 1.0 - u.x * (1.0 - cos_max);
+	float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+	float phi = 2.0 * PI * u.y;
+	return normalize(basis(axis) * vec3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta));
 }
 
 void traceCausticPhoton(uvec3 id, uvec3 size)
 {
 	vec4 target = settings.caustic_targets[id.z];
 	uint target_object = settings.caustic_target_objects[id.z];
-	vec3 origin = sampleLightOrigin();
+	vec3 origin = lightPoint(random(), 2.0 * PI * random());
 
 	// sample a direction inside the cone that encloses the target's bounding sphere
 
@@ -442,32 +484,23 @@ void traceCausticPhoton(uvec3 id, uvec3 size)
 	float cos_max = sqrt(1.0 - sin_max * sin_max);
 
 	vec2 u = (vec2(id.xy) + vec2(random(), random())) / vec2(size.xy);
-	float cos_theta = 1.0 - u.x * (1.0 - cos_max);
-	float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-	float phi = 2.0 * PI * u.y;
-
-	vec3 tangent = normalize(cross(axis, abs(axis.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
-	vec3 bitangent = cross(axis, tangent);
-	vec3 direction = normalize(tangent * cos(phi) * sin_theta + bitangent * sin(phi) * sin_theta + axis * cos_theta);
+	vec3 direction = sampleCone(axis, cos_max, u);
 
 	float cos_light = -direction.y;
 
 	if (cos_light <= 0.0)
 		return;
 
-	float area = PI * settings.light.w * settings.light.w;
 	float solid_angle = 2.0 * PI * (1.0 - cos_max);
-	vec3 power = settings.light_color.rgb * cos_light * area * solid_angle / float(size.x * size.y);
-	float min_power = max(power.r, max(power.g, power.b)) * 0.01;
+	vec3 power = settings.light_color.rgb * cos_light * lightArea() * solid_angle / float(size.x * size.y);
+	float min_power = maxComponent(power) * MinRelativeWeight;
 
 	// photons are split on glass instead of picking one way randomly, so dim reflected caustics stay smooth
-	Photon stack[StackSize];
-	uint stack_size = 0;
-	stack[stack_size++] = Photon(origin, direction, power, 0);
+	push(Ray(origin, direction, power, 0), 0.0);
 
 	while (stack_size > 0)
 	{
-		Photon photon = stack[--stack_size];
+		Ray photon = pop();
 
 		if (!traceScene(photon.origin, photon.direction))
 			continue;
@@ -476,91 +509,69 @@ void traceCausticPhoton(uvec3 id, uvec3 size)
 		if (photon.depth == 0 && payload.object != target_object)
 			continue;
 
-		Object object = objects[payload.object];
 		vec3 pos = photon.origin + photon.direction * payload.distance;
 
-		if (payload.material == MaterialDiffuse)
+		if (payload.material == MATERIAL_DIFFUSE)
 		{
-			if (photon.depth > 0 && object.light_map.x != 0)
-				splat(causticMap(), object, pos, photon.power);
+			Object object = objects[payload.object];
+
+			if (photon.depth > 0 && hasLightMap(object))
+				splat(CausticMap, object, pos, photon.weight);
 			continue;
 		}
 
-		if (payload.material == MaterialEmissive || photon.depth >= MaxDepth)
+		if (payload.material == MATERIAL_EMISSIVE || photon.depth >= MaxDepth)
 			continue;
 
-		vec3 reflect_origin = pos + payload.geometry_normal * 0.001;
-		vec3 reflect_direction = reflect(photon.direction, payload.normal);
-
-		if (payload.material == MaterialMirror)
-		{
-			if (stack_size < StackSize)
-				stack[stack_size++] = Photon(reflect_origin, reflect_direction, photon.power * payload.color, photon.depth + 1);
-			continue;
-		}
-
-		float n1 = payload.front_face != 0 ? 1.0 : settings.ior;
-		float n2 = payload.front_face != 0 ? settings.ior : 1.0;
-		vec3 refract_direction = refract(photon.direction, payload.normal, n1 / n2);
-		float reflectance = 1.0;
-
-		if (dot(refract_direction, refract_direction) > 0.0)
-			reflectance = fresnel(-dot(photon.direction, payload.normal), n1, n2);
-
-		vec3 reflect_power = photon.power * reflectance;
-		vec3 refract_power = photon.power * (1.0 - reflectance) * payload.color;
-
-		if (max(reflect_power.r, max(reflect_power.g, reflect_power.b)) > min_power && stack_size < StackSize)
-			stack[stack_size++] = Photon(reflect_origin, reflect_direction, reflect_power, photon.depth + 1);
-
-		if (max(refract_power.r, max(refract_power.g, refract_power.b)) > min_power && stack_size < StackSize)
-			stack[stack_size++] = Photon(pos - payload.geometry_normal * 0.001, refract_direction, refract_power, photon.depth + 1);
+		if (payload.material == MATERIAL_MIRROR)
+			reflectOnMirror(photon, pos, min_power);
+		else
+			splitOnGlass(photon, pos, min_power);
 	}
 }
 
 // indirect light is low frequency, so a coarse map filled by photons that bounce between room surfaces is enough
 void traceIndirectPhoton(uvec3 id, uvec3 size)
 {
-	vec3 origin = sampleLightOrigin();
+	vec3 origin = lightPoint(random(), 2.0 * PI * random());
 	vec2 u = (vec2(id.xy) + vec2(random(), random())) / vec2(size.xy);
 	vec3 direction = cosineSampleHemisphere(vec3(0.0, -1.0, 0.0), u);
-
-	float area = PI * settings.light.w * settings.light.w;
-	vec3 power = settings.light_color.rgb * area * PI / float(size.x * size.y * (size.z - CausticLayers));
+	vec3 power = settings.light_color.rgb * lightArea() * PI / float(size.x * size.y * (size.z - CAUSTIC_LAYERS));
 
 	uint bounce = 0;
 	bool indirect = false;
 
-	for (uint i = 0; i < 16 && bounce <= IndirectBounces; i++)
+	for (uint i = 0; i < MaxIndirectSteps && bounce <= IndirectBounces; i++)
 	{
-		if (!traceScene(origin, direction) || payload.material == MaterialEmissive)
+		if (!traceScene(origin, direction) || payload.material == MATERIAL_EMISSIVE)
 			return;
 
-		Object object = objects[payload.object];
 		vec3 pos = origin + direction * payload.distance;
 
 		// the mirror sphere doesn't move, so its caustics are built here with plenty of photons
-		if (payload.material == MaterialMirror)
+		if (payload.material == MATERIAL_MIRROR)
 		{
 			power *= payload.color;
-			origin = pos + payload.geometry_normal * 0.001;
+			origin = offsetFromSurface(pos, 1.0);
 			direction = reflect(direction, payload.normal);
 			indirect = true;
 			continue;
 		}
 
 		// glass objects move while the indirect map is built once
-		if (payload.material == MaterialGlass)
+		if (payload.material == MATERIAL_GLASS)
 		{
-			origin = pos + direction * 0.001;
+			origin = pos + direction * Epsilon;
 			continue;
 		}
 
-		if (indirect && object.light_map.x != 0)
-			splat(indirectMap(), object, pos, power);
+		Object object = objects[payload.object];
+
+		if (indirect && hasLightMap(object))
+			splat(IndirectMap, object, pos, power);
 
 		power *= payload.color;
-		origin = pos + payload.geometry_normal * 0.001;
+		origin = offsetFromSurface(pos, 1.0);
 		direction = cosineSampleHemisphere(payload.normal, vec2(random(), random()));
 		bounce += 1;
 		indirect = true;
@@ -576,7 +587,7 @@ void main()
 	rng_state = (id.z * size.y + id.y) * size.x + id.x;
 	pcg();
 
-	if (id.z < CausticLayers)
+	if (id.z < CAUSTIC_LAYERS)
 		traceCausticPhoton(id, size);
 	else
 		traceIndirectPhoton(id, size);
@@ -586,6 +597,7 @@ const std::string clear_raygen_shader_code = R"(
 #version 460
 #extension GL_EXT_ray_tracing : require
 )" + common_code + R"(
+// skygfx has no compute shaders, so light maps are cleared by a raygen shader that traces nothing
 void main()
 {
 	light_maps[gl_LaunchIDEXT.x] = 0;
@@ -641,11 +653,14 @@ void main()
 
 	vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
 
-	vec3 normal = normalize(v0.normal.xyz * barycentrics.x + v1.normal.xyz * barycentrics.y +
-		v2.normal.xyz * barycentrics.z);
-	vec3 geometry_normal = normalize(cross(v1.pos.xyz - v0.pos.xyz, v2.pos.xyz - v0.pos.xyz));
+	// vertices are in object space, objects are only rotated and moved, so normals turn with the same matrix
+	mat3 rotation = mat3(object.transform);
 
-	bool front_face = dot(normal, gl_WorldRayDirectionEXT) < 0.0;
+	vec3 normal = normalize(rotation * (v0.normal.xyz * barycentrics.x + v1.normal.xyz * barycentrics.y +
+		v2.normal.xyz * barycentrics.z));
+	vec3 geometry_normal = normalize(rotation * cross(v1.pos.xyz - v0.pos.xyz, v2.pos.xyz - v0.pos.xyz));
+
+	payload.front_face = dot(normal, gl_WorldRayDirectionEXT) < 0.0;
 
 	if (dot(geometry_normal, gl_WorldRayDirectionEXT) > 0.0)
 		geometry_normal = -geometry_normal;
@@ -670,7 +685,6 @@ void main()
 	payload.material = object.material;
 	payload.geometry_normal = geometry_normal;
 	payload.object = gl_InstanceCustomIndexEXT;
-	payload.front_face = front_face ? 1 : 0;
 })";
 
 struct Vertex
@@ -687,21 +701,22 @@ struct Mesh
 
 enum class Material : uint32_t
 {
-	Diffuse = 0,
-	Mirror = 1,
-	Emissive = 2,
-	Glass = 3
+	Diffuse,
+	Mirror,
+	Emissive,
+	Glass
 };
 
 struct alignas(16) Object
 {
-	uint32_t index_offset;
+	glm::mat4 transform = glm::mat4(1.0f);
+	glm::vec4 color;
+	glm::vec4 checker_color = { 0.0f, 0.0f, 0.0f, 1.0f };
+	uint32_t index_offset = 0;
 	Material material;
 	uint32_t checker = 0;
 	float checker_scale = 1.0f;
-	glm::vec4 color;
-	glm::vec4 checker_color = { 0.0f, 0.0f, 0.0f, 1.0f };
-	glm::uvec4 light_map = { 0, 0, 0, 0 };
+	glm::uvec4 light_map = { NoLightMap, 0, 0, 0 };
 };
 
 struct alignas(16) Settings
@@ -714,26 +729,27 @@ struct alignas(16) Settings
 	glm::vec4 light_color;
 	glm::vec4 room_min;
 	glm::vec4 room_max;
-	glm::vec4 ambient;
-	glm::vec4 caustic_targets[2];
+	glm::vec4 caustic_targets[CausticLayers];
 	glm::uvec4 caustic_target_objects;
-	uint32_t shadow_samples;
-	uint32_t caustic_resolution;
-	uint32_t indirect_resolution;
-	uint32_t indirect_offset;
-	float light_map_scale;
+	float light_intensity;
 	float ior;
 	float exposure;
+	uint32_t shadow_samples;
 	uint32_t caustics;
 	uint32_t indirect;
 };
+
+// must match the std430 objects buffer and the std140 settings block in the shaders
+static_assert(sizeof(Object) == 128 && offsetof(Object, light_map) == 112);
+static_assert(offsetof(Settings, light_intensity) == 176);
+static_assert(CausticLayers <= 4); // caustic_target_objects holds up to 4 indices
 
 struct SceneObject
 {
 	Mesh mesh;
 	Object object;
 	bool animated = false;
-	glm::mat4 transform = glm::mat4(1.0f);
+	float bounding_radius = 0.0f; // around the object's origin, photons for caustics are aimed at this sphere
 	std::unique_ptr<skygfx::BLAS> blas;
 };
 
@@ -824,7 +840,7 @@ Mesh CreateCylinder(float radius, float half_height, int segments)
 	return mesh;
 }
 
-Mesh CreateSphere(const glm::vec3& center, float radius, int slices, int stacks)
+Mesh CreateSphere(float radius, int slices, int stacks)
 {
 	Mesh mesh;
 
@@ -836,7 +852,7 @@ Mesh CreateSphere(const glm::vec3& center, float radius, int slices, int stacks)
 		{
 			auto phi = (float)slice / (float)slices * 2.0f * std::numbers::pi_v<float>;
 			auto normal = glm::vec3{ glm::sin(theta) * glm::cos(phi), glm::cos(theta), glm::sin(theta) * glm::sin(phi) };
-			AddVertex(mesh, center + normal * radius, normal);
+			AddVertex(mesh, normal * radius, normal);
 		}
 	}
 
@@ -855,16 +871,16 @@ Mesh CreateSphere(const glm::vec3& center, float radius, int slices, int stacks)
 	return mesh;
 }
 
-Mesh CreateDisk(const glm::vec3& center, float radius, int segments)
+Mesh CreateDisk(float radius, int segments)
 {
 	Mesh mesh;
 	auto normal = glm::vec3{ 0.0f, -1.0f, 0.0f };
-	AddVertex(mesh, center, normal);
+	AddVertex(mesh, { 0.0f, 0.0f, 0.0f }, normal);
 
 	for (int i = 0; i <= segments; i++)
 	{
 		auto angle = (float)i / (float)segments * 2.0f * std::numbers::pi_v<float>;
-		AddVertex(mesh, center + glm::vec3{ glm::cos(angle), 0.0f, glm::sin(angle) } * radius, normal);
+		AddVertex(mesh, glm::vec3{ glm::cos(angle), 0.0f, glm::sin(angle) } * radius, normal);
 	}
 
 	for (uint32_t i = 1; i <= (uint32_t)segments; i++)
@@ -873,6 +889,232 @@ Mesh CreateDisk(const glm::vec3& center, float radius, int segments)
 	}
 
 	return mesh;
+}
+
+const glm::vec3 RoomMin = { -2.0f, 0.0f, -2.0f };
+const glm::vec3 RoomMax = { 2.0f, 2.9f, 8.0f };
+const glm::vec3 LightCenter = { 0.0f, RoomMax.y - 0.03f, 0.3f };
+const float LightRadius = 0.5f;
+const glm::vec3 LightColor = { 0.95f, 0.9f, 1.0f };
+const glm::vec3 SphereCenter = { 0.0f, 1.105f, 0.16f };
+const float SphereRadius = 0.58f;
+const float BoxHalfSize = 0.37f;
+const float CylinderRadius = 0.35f;
+const float CylinderHalfHeight = 0.3f;
+
+const glm::vec3 Eye = { 0.0f, 1.45f, 7.34f };
+const float Fov = glm::radians(27.8f);
+
+struct Scene
+{
+	std::vector<SceneObject> objects;
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+	uint32_t light_map_count = 0;
+	uint32_t box = 0;
+	uint32_t cylinder = 0;
+	std::array<uint32_t, CausticLayers> caustic_targets = {};
+};
+
+Scene CreateScene()
+{
+	const auto white = glm::vec4{ 0.75f, 0.75f, 0.75f, 1.0f };
+	const auto floor_white = glm::vec4{ 0.6f, 0.6f, 0.6f, 1.0f };
+	const auto black = glm::vec4{ 0.04f, 0.04f, 0.04f, 1.0f };
+	const auto chrome = glm::vec4{ 0.85f, 0.85f, 0.85f, 1.0f };
+	const auto glass = glm::vec4{ 0.95f, 0.97f, 1.0f, 1.0f };
+
+	const auto& a = RoomMin;
+	const auto& b = RoomMax;
+
+	Scene scene;
+	auto& objects = scene.objects;
+
+	// a wall's light map spans the two axes the wall doesn't face
+	auto add_wall = [&](const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& p3,
+		const glm::vec4& color, bool checker = false) {
+		auto mesh = CreateQuad(p0, p1, p2, p3);
+		auto normal = glm::abs(glm::vec3(mesh.vertices.front().normal));
+		auto axis = normal.x > 0.5f ? 0u : normal.y > 0.5f ? 1u : 2u;
+		auto map_index = (uint32_t)objects.size();
+		objects.push_back({ std::move(mesh), {
+			.color = color,
+			.checker_color = black,
+			.material = Material::Diffuse,
+			.checker = checker,
+			.checker_scale = 5.5f,
+			.light_map = { map_index, (axis + 1) % 3, (axis + 2) % 3, 0 }
+		} });
+	};
+
+	add_wall({ a.x, a.y, b.z }, { b.x, a.y, b.z }, { b.x, a.y, a.z }, { a.x, a.y, a.z }, floor_white, true); // floor
+	add_wall({ a.x, b.y, a.z }, { b.x, b.y, a.z }, { b.x, b.y, b.z }, { a.x, b.y, b.z }, white); // ceiling
+	add_wall({ a.x, a.y, a.z }, { b.x, a.y, a.z }, { b.x, b.y, a.z }, { a.x, b.y, a.z }, white); // back
+	add_wall({ b.x, a.y, b.z }, { a.x, a.y, b.z }, { a.x, b.y, b.z }, { b.x, b.y, b.z }, white); // front
+	add_wall({ a.x, a.y, b.z }, { a.x, a.y, a.z }, { a.x, b.y, a.z }, { a.x, b.y, b.z }, { 0.02f, 0.05f, 0.8f, 1.0f }); // left
+	add_wall({ b.x, a.y, a.z }, { b.x, a.y, b.z }, { b.x, b.y, b.z }, { b.x, b.y, a.z }, { 0.8f, 0.03f, 0.02f, 1.0f }); // right
+
+	scene.light_map_count = (uint32_t)objects.size();
+
+	// the light's radiance comes from the settings, so its intensity can change at runtime
+	objects.push_back({ CreateDisk(LightRadius, 64), {
+		.transform = glm::translate(glm::mat4(1.0f), LightCenter),
+		.material = Material::Emissive
+	} });
+
+	objects.push_back({ CreateSphere(SphereRadius, 64, 32), {
+		.transform = glm::translate(glm::mat4(1.0f), SphereCenter),
+		.color = chrome,
+		.material = Material::Mirror
+	} });
+
+	scene.box = (uint32_t)objects.size();
+	objects.push_back({
+		.mesh = CreateBox(BoxHalfSize),
+		.object = { .color = glass, .material = Material::Glass },
+		.animated = true,
+		.bounding_radius = BoxHalfSize * glm::sqrt(3.0f)
+	});
+
+	scene.cylinder = (uint32_t)objects.size();
+	objects.push_back({
+		.mesh = CreateCylinder(CylinderRadius, CylinderHalfHeight, 64),
+		.object = { .color = glass, .material = Material::Glass },
+		.animated = true,
+		.bounding_radius = glm::length(glm::vec2{ CylinderRadius, CylinderHalfHeight })
+	});
+
+	scene.caustic_targets = { scene.box, scene.cylinder };
+
+	for (auto& scene_object : objects)
+	{
+		scene_object.object.index_offset = (uint32_t)scene.indices.size();
+
+		auto vertex_offset = (uint32_t)scene.vertices.size();
+		scene.vertices.insert(scene.vertices.end(), scene_object.mesh.vertices.begin(), scene_object.mesh.vertices.end());
+
+		for (auto index : scene_object.mesh.indices)
+		{
+			scene.indices.push_back(vertex_offset + index);
+		}
+	}
+
+	return scene;
+}
+
+// the box and the cylinder orbit the sphere on opposite sides, one revolution per 10 seconds
+void AnimateScene(Scene& scene, float time)
+{
+	const auto orbit_radius = glm::vec2{ 1.25f, 0.9f };
+	const auto orbit_height = 1.82f;
+	auto orbit = time * 2.0f * std::numbers::pi_v<float> / 10.0f;
+
+	auto orbit_position = [&](float angle) {
+		return glm::vec3{ SphereCenter.x - glm::cos(angle) * orbit_radius.x, orbit_height,
+			SphereCenter.z + glm::sin(angle) * orbit_radius.y };
+	};
+
+	auto& box = scene.objects.at(scene.box).object.transform;
+	box = glm::translate(glm::mat4(1.0f), orbit_position(orbit));
+	box = glm::rotate(box, time * 1.5f, glm::normalize(glm::vec3{ 0.3f, 1.0f, 0.2f }));
+	box = glm::rotate(box, glm::radians(25.0f), { 1.0f, 0.0f, 0.0f });
+
+	auto& cylinder = scene.objects.at(scene.cylinder).object.transform;
+	cylinder = glm::translate(glm::mat4(1.0f), orbit_position(orbit + std::numbers::pi_v<float>));
+	cylinder = glm::rotate(cylinder, time * 1.2f, glm::normalize(glm::vec3{ 0.4f, 0.2f, 1.0f }));
+	cylinder = glm::rotate(cylinder, glm::radians(20.0f), { 0.0f, 0.0f, 1.0f });
+}
+
+struct Options
+{
+	bool animated = true;
+	float speed = 1.0f;
+	float light_intensity = 10.0f;
+	float exposure = 1.0f;
+	float ior = 1.5f;
+	int shadow_samples = 16;
+	bool caustics = true;
+	bool indirect = true;
+};
+
+void ShowOptions(Options& options)
+{
+	ImGui::Begin("Settings", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
+	ImGui::SetWindowPos({ 16.0f, 16.0f });
+	ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);
+	ImGui::Checkbox("Animated", &options.animated);
+	ImGui::SliderFloat("Speed", &options.speed, 0.0f, 3.0f);
+	ImGui::SliderFloat("Light", &options.light_intensity, 0.0f, 30.0f);
+	ImGui::SliderFloat("Exposure", &options.exposure, 0.1f, 4.0f);
+	ImGui::SliderFloat("IOR", &options.ior, 1.0f, 2.5f);
+	ImGui::SliderInt("Shadow samples", &options.shadow_samples, 1, 64);
+	ImGui::Checkbox("Caustics", &options.caustics);
+	ImGui::Checkbox("Indirect light", &options.indirect);
+	ImGui::End();
+}
+
+Settings MakeSettings(const Scene& scene, const Options& options, float aspect)
+{
+	auto tan_half_fov = glm::tan(Fov * 0.5f);
+
+	auto settings = Settings{
+		.eye = glm::vec4(Eye, 0.0f),
+		.forward = { 0.0f, 0.0f, -1.0f, 0.0f },
+		.right = { tan_half_fov * aspect, 0.0f, 0.0f, 0.0f },
+		.up = { 0.0f, tan_half_fov, 0.0f, 0.0f },
+		.light = glm::vec4(LightCenter, LightRadius),
+		.light_color = glm::vec4(LightColor, 1.0f),
+		.room_min = glm::vec4(RoomMin, 0.0f),
+		.room_max = glm::vec4(RoomMax, 0.0f),
+		.light_intensity = options.light_intensity,
+		.ior = options.ior,
+		.exposure = options.exposure,
+		.shadow_samples = (uint32_t)options.shadow_samples,
+		.caustics = options.caustics,
+		.indirect = options.indirect
+	};
+
+	for (uint32_t i = 0; i < CausticLayers; i++)
+	{
+		auto index = scene.caustic_targets.at(i);
+		const auto& target = scene.objects.at(index);
+		settings.caustic_targets[i] = glm::vec4(glm::vec3(target.object.transform[3]), target.bounding_radius);
+		settings.caustic_target_objects[i] = index;
+	}
+
+	return settings;
+}
+
+// caustic maps of all room surfaces, then their indirect maps
+struct LightMapsLayout
+{
+	uint32_t indirect_offset;
+	uint32_t size;
+};
+
+LightMapsLayout GetLightMapsLayout(uint32_t map_count)
+{
+	auto caustic_size = map_count * CausticMapResolution * CausticMapResolution * 3;
+	auto indirect_size = map_count * IndirectMapResolution * IndirectMapResolution * 3;
+	return { caustic_size, caustic_size + indirect_size };
+}
+
+// constants shared with the shaders, light maps store fixed point irradiance,
+// so photons can add to them with integer atomics
+std::vector<std::string> MakeShaderDefines(const LightMapsLayout& layout)
+{
+	return {
+		"CAUSTIC_MAP_RESOLUTION " + std::to_string(CausticMapResolution) + "u",
+		"INDIRECT_MAP_RESOLUTION " + std::to_string(IndirectMapResolution) + "u",
+		"INDIRECT_MAP_OFFSET " + std::to_string(layout.indirect_offset) + "u",
+		"CAUSTIC_LAYERS " + std::to_string(CausticLayers) + "u",
+		"NO_LIGHT_MAP " + std::to_string(NoLightMap) + "u",
+		"MATERIAL_DIFFUSE " + std::to_string((uint32_t)Material::Diffuse) + "u",
+		"MATERIAL_MIRROR " + std::to_string((uint32_t)Material::Mirror) + "u",
+		"MATERIAL_EMISSIVE " + std::to_string((uint32_t)Material::Emissive) + "u",
+		"MATERIAL_GLASS " + std::to_string((uint32_t)Material::Glass) + "u",
+		"LIGHT_MAP_SCALE 1048576.0"
+	};
 }
 
 int main()
@@ -891,122 +1133,32 @@ int main()
 		skygfx::Resize(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 	});
 
+	auto scene = CreateScene();
+
+	const auto light_maps = GetLightMapsLayout(scene.light_map_count);
+	const auto defines = MakeShaderDefines(light_maps);
+
+	auto objects_buffer = skygfx::StorageBuffer(scene.objects.size() * sizeof(Object));
+	auto indices_buffer = skygfx::StorageBuffer(scene.indices.data(), scene.indices.size() * sizeof(uint32_t));
+	auto vertices_buffer = skygfx::StorageBuffer(scene.vertices.data(), scene.vertices.size() * sizeof(Vertex));
+	auto light_maps_buffer = skygfx::StorageBuffer(light_maps.size * sizeof(uint32_t));
+
 	auto miss_shaders = { miss_shader_code, shadow_miss_shader_code };
-	auto render_shader = skygfx::RaytracingShader(render_raygen_shader_code, miss_shaders, closesthit_shader_code);
-	auto photon_shader = skygfx::RaytracingShader(photon_raygen_shader_code, miss_shaders, closesthit_shader_code);
-	auto clear_shader = skygfx::RaytracingShader(clear_raygen_shader_code, miss_shaders, closesthit_shader_code);
-
-	const auto room_min = glm::vec3{ -2.0f, 0.0f, -2.0f };
-	const auto room_max = glm::vec3{ 2.0f, 2.9f, 8.0f };
-	const auto light_center = glm::vec3{ 0.0f, room_max.y - 0.03f, 0.3f };
-	const auto light_radius = 0.5f;
-	const auto light_tint = glm::vec3{ 0.95f, 0.9f, 1.0f };
-	const auto sphere_center = glm::vec3{ 0.0f, 1.105f, 0.16f };
-	const auto sphere_radius = 0.58f;
-	const auto box_half_size = 0.37f;
-	const auto cylinder_radius = 0.35f;
-	const auto cylinder_half_height = 0.3f;
-
-	const auto white = glm::vec4{ 0.75f, 0.75f, 0.75f, 1.0f };
-	const auto floor_white = glm::vec4{ 0.6f, 0.6f, 0.6f, 1.0f };
-	const auto black = glm::vec4{ 0.04f, 0.04f, 0.04f, 1.0f };
-	const auto chrome = glm::vec4{ 0.85f, 0.85f, 0.85f, 1.0f };
-	const auto glass = glm::vec4{ 0.95f, 0.97f, 1.0f, 1.0f };
-
-	const auto& a = room_min;
-	const auto& b = room_max;
-
-	std::vector<SceneObject> scene;
-
-	auto add_wall = [&](const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& p2, const glm::vec3& p3,
-		const glm::vec4& color, uint32_t u_axis, uint32_t v_axis, uint32_t checker = 0) {
-		auto map_index = (uint32_t)scene.size();
-		scene.push_back({ CreateQuad(p0, p1, p2, p3), {
-			.material = Material::Diffuse,
-			.checker = checker,
-			.checker_scale = 5.5f,
-			.color = color,
-			.checker_color = black,
-			.light_map = { map_index + 1, u_axis, v_axis, 0 }
-		} });
-	};
-
-	add_wall({ a.x, a.y, b.z }, { b.x, a.y, b.z }, { b.x, a.y, a.z }, { a.x, a.y, a.z }, floor_white, 0, 2, 1); // floor
-	add_wall({ a.x, b.y, a.z }, { b.x, b.y, a.z }, { b.x, b.y, b.z }, { a.x, b.y, b.z }, white, 0, 2); // ceiling
-	add_wall({ a.x, a.y, a.z }, { b.x, a.y, a.z }, { b.x, b.y, a.z }, { a.x, b.y, a.z }, white, 0, 1); // back
-	add_wall({ b.x, a.y, b.z }, { a.x, a.y, b.z }, { a.x, b.y, b.z }, { b.x, b.y, b.z }, white, 0, 1); // front
-	add_wall({ a.x, a.y, b.z }, { a.x, a.y, a.z }, { a.x, b.y, a.z }, { a.x, b.y, b.z },
-		{ 0.02f, 0.05f, 0.8f, 1.0f }, 2, 1); // left
-	add_wall({ b.x, a.y, a.z }, { b.x, a.y, b.z }, { b.x, b.y, b.z }, { b.x, b.y, a.z },
-		{ 0.8f, 0.03f, 0.02f, 1.0f }, 2, 1); // right
-
-	const auto light_map_count = (uint32_t)scene.size();
-
-	scene.push_back({ CreateDisk(light_center, light_radius, 64), {
-		.material = Material::Emissive,
-		.color = glm::vec4(light_tint, 1.0f)
-	} });
-
-	scene.push_back({ CreateSphere(sphere_center, sphere_radius, 64, 32), { .material = Material::Mirror, .color = chrome } });
-
-	const auto box_index = (uint32_t)scene.size();
-	scene.push_back({ CreateBox(box_half_size), { .material = Material::Glass, .color = glass }, true });
-
-	const auto cylinder_index = (uint32_t)scene.size();
-	scene.push_back({ CreateCylinder(cylinder_radius, cylinder_half_height, 64), { .material = Material::Glass, .color = glass }, true });
-
-	auto& box = scene.at(box_index);
-	auto& cylinder = scene.at(cylinder_index);
-
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-	std::vector<Object> objects;
-
-	for (auto& scene_object : scene)
-	{
-		scene_object.object.index_offset = (uint32_t)indices.size();
-		objects.push_back(scene_object.object);
-
-		auto vertex_offset = (uint32_t)vertices.size();
-		vertices.insert(vertices.end(), scene_object.mesh.vertices.begin(), scene_object.mesh.vertices.end());
-
-		for (auto index : scene_object.mesh.indices)
-		{
-			indices.push_back(vertex_offset + index);
-		}
-	}
-
-	const auto caustic_maps_size = light_map_count * CausticMapResolution * CausticMapResolution * 3;
-	const auto indirect_maps_size = light_map_count * IndirectMapResolution * IndirectMapResolution * 3;
-	const auto light_maps_size = caustic_maps_size + indirect_maps_size;
-
-	auto objects_buffer = skygfx::StorageBuffer(objects.data(), objects.size() * sizeof(Object));
-	auto indices_buffer = skygfx::StorageBuffer(indices.data(), indices.size() * sizeof(uint32_t));
-	auto vertices_buffer = skygfx::StorageBuffer(vertices.size() * sizeof(Vertex));
-	auto light_maps_buffer = skygfx::StorageBuffer(light_maps_size * sizeof(uint32_t));
+	auto render_shader = skygfx::RaytracingShader(render_raygen_shader_code, miss_shaders, closesthit_shader_code, defines);
+	auto photon_shader = skygfx::RaytracingShader(photon_raygen_shader_code, miss_shaders, closesthit_shader_code, defines);
+	auto clear_shader = skygfx::RaytracingShader(clear_raygen_shader_code, miss_shaders, closesthit_shader_code, defines);
 
 	auto imgui = ImguiHelper();
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 
-	bool animated = true;
-	float speed = 1.0f;
-	float light_intensity = 10.0f;
-	float exposure = 1.0f;
-	float ior = 1.5f;
-	int shadow_samples = 16;
-	bool caustics = true;
-	bool indirect = true;
+	std::vector<Object> objects(scene.objects.size());
+	std::vector<skygfx::BottomLevelAccelerationStructureHandle*> blases(scene.objects.size());
 
+	Options options;
 	bool indirect_ready = false;
 	float time = 0.0f;
 	auto prev_time = glfwGetTime();
-
-	const auto eye = glm::vec3{ 0.0f, 1.45f, 7.34f };
-	const auto forward = glm::vec3{ 0.0f, 0.0f, -1.0f };
-	const auto right = glm::vec3{ 1.0f, 0.0f, 0.0f };
-	const auto up = glm::vec3{ 0.0f, 1.0f, 0.0f };
-	const auto fov = glm::radians(27.8f);
 
 	while (!glfwWindowShouldClose(window))
 	{
@@ -1015,124 +1167,48 @@ int main()
 		prev_time = now;
 
 		ImGui_ImplGlfw_NewFrame();
-
 		ImGui::NewFrame();
+		ShowOptions(options);
 
-		ImGui::Begin("Settings", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove);
-		ImGui::SetWindowPos({ 16.0f, 16.0f });
-		ImGui::Text("%.0f fps", ImGui::GetIO().Framerate);
-		ImGui::Checkbox("Animated", &animated);
-		ImGui::SliderFloat("Speed", &speed, 0.0f, 3.0f);
+		if (options.animated)
+			time += dt * options.speed;
 
-		// the indirect map is built once, so it is rebuilt when the light changes
-		if (ImGui::SliderFloat("Light", &light_intensity, 0.0f, 30.0f))
-			indirect_ready = false;
+		AnimateScene(scene, time);
 
-		ImGui::SliderFloat("Exposure", &exposure, 0.1f, 4.0f);
-		ImGui::SliderFloat("IOR", &ior, 1.0f, 2.5f);
-		ImGui::SliderInt("Shadow samples", &shadow_samples, 1, 64);
-		ImGui::Checkbox("Caustics", &caustics);
-		ImGui::Checkbox("Indirect light", &indirect);
-		ImGui::End();
-
-		if (animated)
-			time += dt * speed;
-
-		auto light_color = light_tint * light_intensity;
-
-		// the box and the cylinder orbit the sphere on opposite sides, one revolution per 10 seconds
-
-		const auto orbit_radius = glm::vec2{ 1.25f, 0.9f };
-		const auto orbit_height = 1.82f;
-		auto orbit = time * 2.0f * std::numbers::pi_v<float> / 10.0f;
-
-		auto orbit_position = [&](float angle) {
-			return glm::vec3{ sphere_center.x - glm::cos(angle) * orbit_radius.x, orbit_height,
-				sphere_center.z + glm::sin(angle) * orbit_radius.y };
-		};
-
-		box.transform = glm::translate(glm::mat4(1.0f), orbit_position(orbit));
-		box.transform = glm::rotate(box.transform, time * 1.5f, glm::normalize(glm::vec3{ 0.3f, 1.0f, 0.2f }));
-		box.transform = glm::rotate(box.transform, glm::radians(25.0f), { 1.0f, 0.0f, 0.0f });
-
-		cylinder.transform = glm::translate(glm::mat4(1.0f), orbit_position(orbit + std::numbers::pi_v<float>));
-		cylinder.transform = glm::rotate(cylinder.transform, time * 1.2f, glm::normalize(glm::vec3{ 0.4f, 0.2f, 1.0f }));
-		cylinder.transform = glm::rotate(cylinder.transform, glm::radians(20.0f), { 0.0f, 0.0f, 1.0f });
-
-		auto vertex_offset = vertices.begin();
-
-		for (auto& scene_object : scene)
+		for (size_t i = 0; i < scene.objects.size(); i++)
 		{
+			auto& scene_object = scene.objects.at(i);
+
 			if (scene_object.animated || !scene_object.blas)
 			{
-				auto world_mesh = scene_object.mesh;
-
-				for (auto& vertex : world_mesh.vertices)
-				{
-					vertex.pos = scene_object.transform * vertex.pos;
-					vertex.normal = scene_object.transform * vertex.normal;
-				}
-
-				std::copy(world_mesh.vertices.begin(), world_mesh.vertices.end(), vertex_offset);
-				scene_object.blas = std::make_unique<skygfx::BLAS>(world_mesh.vertices, 0, world_mesh.indices, 0, glm::mat4(1.0f));
+				scene_object.blas = std::make_unique<skygfx::BLAS>(scene_object.mesh.vertices, 0, scene_object.mesh.indices,
+					0, scene_object.object.transform);
 			}
 
-			vertex_offset += scene_object.mesh.vertices.size();
+			objects.at(i) = scene_object.object;
+			blases.at(i) = *scene_object.blas;
 		}
 
-		vertices_buffer.write(vertices.data(), vertices.size() * sizeof(Vertex));
-
-		std::vector<skygfx::BottomLevelAccelerationStructureHandle*> blases;
-
-		for (auto& scene_object : scene)
-		{
-			blases.push_back(*scene_object.blas);
-		}
+		objects_buffer.write(objects.data(), objects.size() * sizeof(Object));
 
 		auto tlas = skygfx::TLAS(blases);
 
 		auto target = skygfx::AcquireTransientRenderTarget();
-		auto tan_half_fov = glm::tan(fov * 0.5f);
 		auto aspect = (float)target->getWidth() / (float)target->getHeight();
 
-		skygfx::SetUniformBuffer(2, Settings{
-			.eye = glm::vec4(eye, 0.0f),
-			.forward = glm::vec4(forward, 0.0f),
-			.right = glm::vec4(right * tan_half_fov * aspect, 0.0f),
-			.up = glm::vec4(up * tan_half_fov, 0.0f),
-			.light = glm::vec4(light_center, light_radius),
-			.light_color = glm::vec4(light_color, 1.0f),
-			.room_min = glm::vec4(room_min, 0.0f),
-			.room_max = glm::vec4(room_max, 0.0f),
-			.ambient = { 0.005f, 0.005f, 0.006f, 0.0f },
-			.caustic_targets = {
-				glm::vec4(glm::vec3(box.transform[3]), box_half_size * glm::sqrt(3.0f)),
-				glm::vec4(glm::vec3(cylinder.transform[3]), glm::length(glm::vec2{ cylinder_radius, cylinder_half_height }))
-			},
-			.caustic_target_objects = { box_index, cylinder_index, 0, 0 },
-			.shadow_samples = (uint32_t)shadow_samples,
-			.caustic_resolution = CausticMapResolution,
-			.indirect_resolution = IndirectMapResolution,
-			.indirect_offset = caustic_maps_size,
-			.light_map_scale = 65536.0f,
-			.ior = ior,
-			.exposure = exposure,
-			.caustics = caustics,
-			.indirect = indirect
-		});
-
+		skygfx::SetUniformBuffer(2, MakeSettings(scene, options, aspect));
 		skygfx::SetStorageBuffer(3, objects_buffer);
 		skygfx::SetStorageBuffer(4, indices_buffer);
 		skygfx::SetStorageBuffer(5, vertices_buffer);
-		skygfx::SetStorageBuffer(7, light_maps_buffer);
+		skygfx::SetStorageBuffer(6, light_maps_buffer);
 		skygfx::SetRenderTarget(*target);
 		skygfx::SetAccelerationStructure(0, tlas);
 
 		skygfx::SetShader(clear_shader);
-		skygfx::DispatchRays(indirect_ready ? caustic_maps_size : light_maps_size, 1, 1);
+		skygfx::DispatchRays(indirect_ready ? light_maps.indirect_offset : light_maps.size, 1, 1);
 
 		skygfx::SetShader(photon_shader);
-		skygfx::DispatchRays(PhotonGridSize, PhotonGridSize, CausticPhotonLayers + (indirect_ready ? 0 : IndirectPhotonLayers));
+		skygfx::DispatchRays(PhotonGridSize, PhotonGridSize, CausticLayers + (indirect_ready ? 0 : IndirectLayers));
 		indirect_ready = true;
 
 		skygfx::SetShader(render_shader);
