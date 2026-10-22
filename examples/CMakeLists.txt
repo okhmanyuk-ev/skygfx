@@ -165,3 +165,9 @@ set_property(TARGET 15_raytraced_shadows PROPERTY FOLDER ${EXAMPLES_FOLDER})
 add_executable(16_scratch_api_triangle 16_scratch_api_triangle/main.cpp)
 target_link_libraries(16_scratch_api_triangle glfw skygfx)
 set_property(TARGET 16_scratch_api_triangle PROPERTY FOLDER ${EXAMPLES_FOLDER})
+
+# 17 - raytraced cornell box
+
+add_executable(17_raytraced_cornell_box 17_raytraced_cornell_box/main.cpp)
+target_link_libraries(17_raytraced_cornell_box glfw skygfx imgui_helper)
+set_property(TARGET 17_raytraced_cornell_box PROPERTY FOLDER ${EXAMPLES_FOLDER})
