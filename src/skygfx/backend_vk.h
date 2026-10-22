@@ -88,7 +88,7 @@ namespace skygfx
 		void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) override;
 
 		TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
-			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures) override;
+			const std::vector<TopLevelAccelerationStructure::Instance>& instances) override;
 		void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) override;
 
 		StorageBufferHandle* createStorageBuffer(size_t size) override;

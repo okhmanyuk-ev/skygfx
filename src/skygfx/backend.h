@@ -89,7 +89,7 @@ namespace skygfx
 		virtual void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
-			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures) = 0;
+			const std::vector<TopLevelAccelerationStructure::Instance>& instances) = 0;
 		virtual void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual StorageBufferHandle* createStorageBuffer(size_t size) = 0;

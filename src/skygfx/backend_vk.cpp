@@ -1005,16 +1005,16 @@ private:
 	vk::raii::DeviceMemory mTlasMemory = nullptr;
 
 public:
-	TopLevelAccelerationStructureVK(
-		const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures)
+	TopLevelAccelerationStructureVK(const std::vector<TopLevelAccelerationStructure::Instance>& tlas_instances)
 	{
-		auto transform = glm::mat4(1.0f);
-
 		std::vector<vk::AccelerationStructureInstanceKHR> instances;
 
-		for (auto [custom_index, handle] : bottom_level_acceleration_structures)
+		for (const auto& tlas_instance : tlas_instances)
 		{
-			const auto& blas = *(BottomLevelAccelerationStructureVK*)handle;
+			const auto& blas = *(BottomLevelAccelerationStructureVK*)tlas_instance.blas;
+
+			// vulkan takes the top three rows of the matrix in row-major order
+			auto transform = glm::transpose(tlas_instance.transform);
 
 			auto blas_device_address_info = vk::AccelerationStructureDeviceAddressInfoKHR()
 				.setAccelerationStructure(*blas.getBlas());
@@ -1025,7 +1025,7 @@ public:
 				.setTransform(*(vk::TransformMatrixKHR*)&transform)
 				.setMask(0xFF)
 				.setInstanceShaderBindingTableRecordOffset(0)
-				.setInstanceCustomIndex(custom_index) // gl_InstanceCustomIndexEXT
+				.setInstanceCustomIndex(tlas_instance.custom_index) // gl_InstanceCustomIndexEXT
 				.setFlags(vk::GeometryInstanceFlagBitsKHR::eTriangleFacingCullDisable)
 				.setAccelerationStructureReference(blas_device_address);
 
@@ -3226,9 +3226,9 @@ void BackendVK::destroyBottomLevelAccelerationStructure(BottomLevelAccelerationS
 }
 
 TopLevelAccelerationStructureHandle* BackendVK::createTopLevelAccelerationStructure(
-	const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures)
+	const std::vector<TopLevelAccelerationStructure::Instance>& instances)
 {
-	auto top_level_acceleration_structure = new TopLevelAccelerationStructureVK(bottom_level_acceleration_structures);
+	auto top_level_acceleration_structure = new TopLevelAccelerationStructureVK(instances);
 	gContext->objects.insert(top_level_acceleration_structure);
 	return (TopLevelAccelerationStructureHandle*)top_level_acceleration_structure;
 }

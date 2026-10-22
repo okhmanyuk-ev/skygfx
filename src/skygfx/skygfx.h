@@ -332,6 +332,15 @@ namespace skygfx
 	class TopLevelAccelerationStructure : public noncopyable
 	{
 	public:
+		struct Instance
+		{
+			BottomLevelAccelerationStructureHandle* blas = nullptr;
+			glm::mat4 transform = glm::mat4(1.0f);
+			uint32_t custom_index = 0;
+		};
+
+	public:
+		TopLevelAccelerationStructure(const std::vector<Instance>& instances);
 		TopLevelAccelerationStructure(
 			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures);
 		TopLevelAccelerationStructure(
@@ -341,8 +350,9 @@ namespace skygfx
 		operator TopLevelAccelerationStructureHandle* () { return mTopLevelAccelerationStructureHandle; }
 
 	private:
-		std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>
-			CreateIndexedBlases(const std::vector<BottomLevelAccelerationStructureHandle*>& blases);
+		static std::vector<Instance> CreateInstances(
+			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& blases);
+		static std::vector<Instance> CreateInstances(const std::vector<BottomLevelAccelerationStructureHandle*>& blases);
 
 	private:
 		TopLevelAccelerationStructureHandle* mTopLevelAccelerationStructureHandle = nullptr;

@@ -390,15 +390,20 @@ BottomLevelAccelerationStructure::~BottomLevelAccelerationStructure()
 
 // top level acceleration structure
 
-TopLevelAccelerationStructure::TopLevelAccelerationStructure(
-	const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures)
+TopLevelAccelerationStructure::TopLevelAccelerationStructure(const std::vector<Instance>& instances)
 {
-	mTopLevelAccelerationStructureHandle = gRaytracingBackend->createTopLevelAccelerationStructure(bottom_level_acceleration_structures);
+	mTopLevelAccelerationStructureHandle = gRaytracingBackend->createTopLevelAccelerationStructure(instances);
+}
+
+TopLevelAccelerationStructure::TopLevelAccelerationStructure(
+	const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures) :
+	TopLevelAccelerationStructure(CreateInstances(bottom_level_acceleration_structures))
+{
 }
 
 TopLevelAccelerationStructure::TopLevelAccelerationStructure(
 	const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures) :
-	TopLevelAccelerationStructure(CreateIndexedBlases(bottom_level_acceleration_structures))
+	TopLevelAccelerationStructure(CreateInstances(bottom_level_acceleration_structures))
 {
 }
 
@@ -408,13 +413,24 @@ TopLevelAccelerationStructure::~TopLevelAccelerationStructure()
 		gRaytracingBackend->destroyTopLevelAccelerationStructure(mTopLevelAccelerationStructureHandle);
 }
 
-std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>
-	TopLevelAccelerationStructure::CreateIndexedBlases(const std::vector<BottomLevelAccelerationStructureHandle*>& blases)
+std::vector<TopLevelAccelerationStructure::Instance> TopLevelAccelerationStructure::CreateInstances(
+	const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& blases)
 {
-	std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>> result;
+	std::vector<Instance> result;
+	for (auto [custom_index, blas] : blases)
+	{
+		result.push_back({ .blas = blas, .custom_index = custom_index });
+	}
+	return result;
+}
+
+std::vector<TopLevelAccelerationStructure::Instance> TopLevelAccelerationStructure::CreateInstances(
+	const std::vector<BottomLevelAccelerationStructureHandle*>& blases)
+{
+	std::vector<Instance> result;
 	for (auto blas : blases)
 	{
-		result.push_back({ (uint32_t)result.size(), blas });
+		result.push_back({ .blas = blas, .custom_index = (uint32_t)result.size() });
 	}
 	return result;
 }
