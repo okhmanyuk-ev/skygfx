@@ -43,7 +43,6 @@ struct Payload
 
 struct Object
 {
-	mat4 transform;
 	vec4 color;
 	vec4 checker_color;
 	uint index_offset;
@@ -653,8 +652,8 @@ void main()
 
 	vec3 barycentrics = vec3(1.0 - attribs.x - attribs.y, attribs.x, attribs.y);
 
-	// vertices are in object space, objects are only rotated and moved, so normals turn with the same matrix
-	mat3 rotation = mat3(object.transform);
+	// vertices are in object space, objects are only rotated and moved, so normals turn with the instance's matrix
+	mat3 rotation = mat3(gl_ObjectToWorldEXT);
 
 	vec3 normal = normalize(rotation * (v0.normal.xyz * barycentrics.x + v1.normal.xyz * barycentrics.y +
 		v2.normal.xyz * barycentrics.z));
@@ -709,7 +708,6 @@ enum class Material : uint32_t
 
 struct alignas(16) Object
 {
-	glm::mat4 transform = glm::mat4(1.0f);
 	glm::vec4 color;
 	glm::vec4 checker_color = { 0.0f, 0.0f, 0.0f, 1.0f };
 	uint32_t index_offset = 0;
@@ -740,7 +738,7 @@ struct alignas(16) Settings
 };
 
 // must match the std430 objects buffer and the std140 settings block in the shaders
-static_assert(sizeof(Object) == 128 && offsetof(Object, light_map) == 112);
+static_assert(sizeof(Object) == 64 && offsetof(Object, light_map) == 48);
 static_assert(offsetof(Settings, light_intensity) == 176);
 static_assert(CausticLayers <= 4); // caustic_target_objects holds up to 4 indices
 
@@ -748,7 +746,7 @@ struct SceneObject
 {
 	Mesh mesh;
 	Object object;
-	bool animated = false;
+	glm::mat4 transform = glm::mat4(1.0f);
 	float bounding_radius = 0.0f; // around the object's origin, photons for caustics are aimed at this sphere
 	std::unique_ptr<skygfx::BLAS> blas;
 };
@@ -957,22 +955,22 @@ Scene CreateScene()
 	scene.light_map_count = (uint32_t)objects.size();
 
 	// the light's radiance comes from the settings, so its intensity can change at runtime
-	objects.push_back({ CreateDisk(LightRadius, 64), {
-		.transform = glm::translate(glm::mat4(1.0f), LightCenter),
-		.material = Material::Emissive
-	} });
+	objects.push_back({
+		.mesh = CreateDisk(LightRadius, 64),
+		.object = { .material = Material::Emissive },
+		.transform = glm::translate(glm::mat4(1.0f), LightCenter)
+	});
 
-	objects.push_back({ CreateSphere(SphereRadius, 64, 32), {
-		.transform = glm::translate(glm::mat4(1.0f), SphereCenter),
-		.color = chrome,
-		.material = Material::Mirror
-	} });
+	objects.push_back({
+		.mesh = CreateSphere(SphereRadius, 64, 32),
+		.object = { .color = chrome, .material = Material::Mirror },
+		.transform = glm::translate(glm::mat4(1.0f), SphereCenter)
+	});
 
 	scene.box = (uint32_t)objects.size();
 	objects.push_back({
 		.mesh = CreateBox(BoxHalfSize),
 		.object = { .color = glass, .material = Material::Glass },
-		.animated = true,
 		.bounding_radius = BoxHalfSize * glm::sqrt(3.0f)
 	});
 
@@ -980,7 +978,6 @@ Scene CreateScene()
 	objects.push_back({
 		.mesh = CreateCylinder(CylinderRadius, CylinderHalfHeight, 64),
 		.object = { .color = glass, .material = Material::Glass },
-		.animated = true,
 		.bounding_radius = glm::length(glm::vec2{ CylinderRadius, CylinderHalfHeight })
 	});
 
@@ -988,6 +985,9 @@ Scene CreateScene()
 
 	for (auto& scene_object : objects)
 	{
+		// meshes stay in object space, objects are moved by instance transforms of the top level structure
+		scene_object.blas = std::make_unique<skygfx::BLAS>(scene_object.mesh.vertices, 0, scene_object.mesh.indices, 0,
+			glm::mat4(1.0f));
 		scene_object.object.index_offset = (uint32_t)scene.indices.size();
 
 		auto vertex_offset = (uint32_t)scene.vertices.size();
@@ -1014,12 +1014,12 @@ void AnimateScene(Scene& scene, float time)
 			SphereCenter.z + glm::sin(angle) * orbit_radius.y };
 	};
 
-	auto& box = scene.objects.at(scene.box).object.transform;
+	auto& box = scene.objects.at(scene.box).transform;
 	box = glm::translate(glm::mat4(1.0f), orbit_position(orbit));
 	box = glm::rotate(box, time * 1.5f, glm::normalize(glm::vec3{ 0.3f, 1.0f, 0.2f }));
 	box = glm::rotate(box, glm::radians(25.0f), { 1.0f, 0.0f, 0.0f });
 
-	auto& cylinder = scene.objects.at(scene.cylinder).object.transform;
+	auto& cylinder = scene.objects.at(scene.cylinder).transform;
 	cylinder = glm::translate(glm::mat4(1.0f), orbit_position(orbit + std::numbers::pi_v<float>));
 	cylinder = glm::rotate(cylinder, time * 1.2f, glm::normalize(glm::vec3{ 0.4f, 0.2f, 1.0f }));
 	cylinder = glm::rotate(cylinder, glm::radians(20.0f), { 0.0f, 0.0f, 1.0f });
@@ -1078,7 +1078,7 @@ Settings MakeSettings(const Scene& scene, const Options& options, float aspect)
 	{
 		auto index = scene.caustic_targets.at(i);
 		const auto& target = scene.objects.at(index);
-		settings.caustic_targets[i] = glm::vec4(glm::vec3(target.object.transform[3]), target.bounding_radius);
+		settings.caustic_targets[i] = glm::vec4(glm::vec3(target.transform[3]), target.bounding_radius);
 		settings.caustic_target_objects[i] = index;
 	}
 
@@ -1138,7 +1138,17 @@ int main()
 	const auto light_maps = GetLightMapsLayout(scene.light_map_count);
 	const auto defines = MakeShaderDefines(light_maps);
 
-	auto objects_buffer = skygfx::StorageBuffer(scene.objects.size() * sizeof(Object));
+	std::vector<Object> objects;
+	std::vector<skygfx::TLAS::Instance> instances;
+
+	for (uint32_t i = 0; i < (uint32_t)scene.objects.size(); i++)
+	{
+		auto& scene_object = scene.objects.at(i);
+		objects.push_back(scene_object.object);
+		instances.push_back({ .blas = *scene_object.blas, .custom_index = i });
+	}
+
+	auto objects_buffer = skygfx::StorageBuffer(objects.data(), objects.size() * sizeof(Object));
 	auto indices_buffer = skygfx::StorageBuffer(scene.indices.data(), scene.indices.size() * sizeof(uint32_t));
 	auto vertices_buffer = skygfx::StorageBuffer(scene.vertices.data(), scene.vertices.size() * sizeof(Vertex));
 	auto light_maps_buffer = skygfx::StorageBuffer(light_maps.size * sizeof(uint32_t));
@@ -1151,9 +1161,6 @@ int main()
 	auto imgui = ImguiHelper();
 
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
-
-	std::vector<Object> objects(scene.objects.size());
-	std::vector<skygfx::BottomLevelAccelerationStructureHandle*> blases(scene.objects.size());
 
 	Options options;
 	bool indirect_ready = false;
@@ -1177,21 +1184,10 @@ int main()
 
 		for (size_t i = 0; i < scene.objects.size(); i++)
 		{
-			auto& scene_object = scene.objects.at(i);
-
-			if (scene_object.animated || !scene_object.blas)
-			{
-				scene_object.blas = std::make_unique<skygfx::BLAS>(scene_object.mesh.vertices, 0, scene_object.mesh.indices,
-					0, scene_object.object.transform);
-			}
-
-			objects.at(i) = scene_object.object;
-			blases.at(i) = *scene_object.blas;
+			instances.at(i).transform = scene.objects.at(i).transform;
 		}
 
-		objects_buffer.write(objects.data(), objects.size() * sizeof(Object));
-
-		auto tlas = skygfx::TLAS(blases);
+		auto tlas = skygfx::TLAS(instances);
 
 		auto target = skygfx::AcquireTransientRenderTarget();
 		auto aspect = (float)target->getWidth() / (float)target->getHeight();
