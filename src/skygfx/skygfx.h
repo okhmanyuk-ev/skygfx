@@ -95,6 +95,8 @@ namespace skygfx
 
 	class Texture : private noncopyable
 	{
+		friend void SetBackendType(BackendType type);
+
 	public:
 		Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count);
 		Texture(uint32_t width, uint32_t height, PixelFormat format, const void* memory, bool generate_mips = false);
@@ -125,6 +127,8 @@ namespace skygfx
 
 	class RenderTarget : public Texture
 	{
+		friend void SetBackendType(BackendType type);
+
 	public:
 		RenderTarget(uint32_t width, uint32_t height, PixelFormat format = PixelFormat::RGBA32Float);
 		RenderTarget(RenderTarget&& other) noexcept;
@@ -140,6 +144,8 @@ namespace skygfx
 
 	class Shader : private noncopyable
 	{
+		friend void SetBackendType(BackendType type);
+
 	public:
 		Shader(const std::string& vertex_code, const std::string& fragment_code,
 			const std::vector<std::string>& defines = {});
@@ -152,6 +158,9 @@ namespace skygfx
 
 	private:
 		ShaderHandle* mShaderHandle = nullptr;
+		std::string mVertexCode;
+		std::string mFragmentCode;
+		std::vector<std::string> mDefines;
 	};
 
 	class RaytracingShader : private noncopyable
@@ -169,6 +178,8 @@ namespace skygfx
 
 	class Buffer : private noncopyable
 	{
+		friend void SetBackendType(BackendType type);
+
 	public:
 		Buffer(size_t size);
 		Buffer(Buffer&& other) noexcept;
@@ -177,12 +188,18 @@ namespace skygfx
 
 		auto getSize() const { return mSize; }
 
+	protected:
+		void writeShadow(const void* memory, size_t size);
+
 	private:
 		size_t mSize = 0;
+		std::vector<uint8_t> mShadow; // cpu copy of contents, used to restore buffer after backend switch
 	};
 
 	class VertexBuffer : public Buffer
 	{
+		friend void SetBackendType(BackendType type);
+
 	public:
 		VertexBuffer(size_t size, size_t stride);
 		VertexBuffer(const void* memory, size_t size, size_t stride);
@@ -215,10 +232,13 @@ namespace skygfx
 
 	private:
 		VertexBufferHandle* mVertexBufferHandle = nullptr;
+		size_t mStride = 0;
 	};
 
 	class IndexBuffer : public Buffer
 	{
+		friend void SetBackendType(BackendType type);
+
 	public:
 		IndexBuffer(size_t size, size_t stride);
 		IndexBuffer(const void* memory, size_t size, size_t stride);
@@ -251,10 +271,13 @@ namespace skygfx
 
 	private:
 		IndexBufferHandle* mIndexBufferHandle = nullptr;
+		size_t mStride = 0;
 	};
 
 	class UniformBuffer : public Buffer
 	{
+		friend void SetBackendType(BackendType type);
+
 	public:
 		UniformBuffer(size_t size);
 		UniformBuffer(const void* memory, size_t size);
@@ -595,6 +618,10 @@ namespace skygfx
 	void Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> type = std::nullopt,
 		Adapter adapter = Adapter::HighPerformance, const std::unordered_set<Feature>& features = {});
 	void Finalize();
+
+	// recreates all textures, render targets, shaders and buffers on a new backend,
+	// call it between frames (after Present), raytracing objects are not supported
+	void SetBackendType(BackendType type);
 
 	void Resize(uint32_t width, uint32_t height);
 

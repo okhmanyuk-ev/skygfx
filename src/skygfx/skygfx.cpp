@@ -5,11 +5,17 @@
 #include "backend_gl.h"
 #include "backend_vk.h"
 #include "backend_mtl.h"
+#include <cstring>
+#include <exception>
+#include <type_traits>
 
 using namespace skygfx;
 
 static Backend* gBackend = nullptr;
 static RaytracingBackend* gRaytracingBackend = nullptr;
+static void* gWindow = nullptr;
+static Adapter gAdapter = Adapter::HighPerformance;
+static std::unordered_set<Feature> gFeatures;
 static glm::u32vec2 gSize = { 0, 0 };
 static bool gVsync = false;
 static uint32_t gDrawcalls = 0;
@@ -20,6 +26,16 @@ static std::optional<VertexBuffer> gVertexBuffer;
 static std::optional<IndexBuffer> gIndexBuffer;
 static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
 static std::unordered_map<uint32_t, StorageBuffer> gStorageBuffers;
+
+// live objects, used by SetBackendType to recreate them on a new backend.
+// never freed, so objects destroyed during static deinitialization still can unregister
+
+template<class T>
+static std::unordered_set<T*>& Registry()
+{
+	static auto registry = new std::unordered_set<T*>();
+	return *registry;
+}
 
 // texture
 
@@ -33,6 +49,7 @@ Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t m
 	assert(height > 0);
 	assert(mip_count > 0);
 	mTextureHandle = gBackend->createTexture(width, height, format, mip_count);
+	Registry<Texture>().insert(this);
 }
 
 Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, const void* memory, bool generate_mips) :
@@ -51,10 +68,13 @@ Texture::Texture(Texture&& other) noexcept
 	mHeight = std::exchange(other.mHeight, 0);
 	mFormat = std::exchange(other.mFormat, {});
 	mMipCount = std::exchange(other.mMipCount, 0);
+	Registry<Texture>().insert(this);
 }
 
 Texture::~Texture()
 {
+	Registry<Texture>().erase(this);
+
 	if (gBackend)
 		gBackend->destroyTexture(mTextureHandle);
 }
@@ -102,15 +122,19 @@ Texture& Texture::operator=(Texture&& other) noexcept
 RenderTarget::RenderTarget(uint32_t width, uint32_t height, PixelFormat format) : Texture(width, height, format, 1)
 {
 	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
+	Registry<RenderTarget>().insert(this);
 }
 
 RenderTarget::RenderTarget(RenderTarget&& other) noexcept : Texture(std::move(other))
 {
 	mRenderTargetHandle = std::exchange(other.mRenderTargetHandle, nullptr);
+	Registry<RenderTarget>().insert(this);
 }
 
 RenderTarget::~RenderTarget()
 {
+	Registry<RenderTarget>().erase(this);
+
 	if (gBackend)
 		gBackend->destroyRenderTarget(mRenderTargetHandle);
 }
@@ -132,9 +156,13 @@ RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept
 
 // shader
 
-Shader::Shader(const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines)
+Shader::Shader(const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines) :
+	mVertexCode(vertex_code),
+	mFragmentCode(fragment_code),
+	mDefines(defines)
 {
 	mShaderHandle = gBackend->createShader(vertex_code, fragment_code, defines);
+	Registry<Shader>().insert(this);
 }
 
 Shader::Shader(Shader&& other) noexcept
@@ -143,10 +171,16 @@ Shader::Shader(Shader&& other) noexcept
 		gBackend->destroyShader(mShaderHandle);
 
 	mShaderHandle = std::exchange(other.mShaderHandle, nullptr);
+	mVertexCode = std::move(other.mVertexCode);
+	mFragmentCode = std::move(other.mFragmentCode);
+	mDefines = std::move(other.mDefines);
+	Registry<Shader>().insert(this);
 }
 
 Shader::~Shader()
 {
+	Registry<Shader>().erase(this);
+
 	if (gBackend)
 		gBackend->destroyShader(mShaderHandle);
 }
@@ -160,6 +194,9 @@ Shader& Shader::operator=(Shader&& other) noexcept
 		gBackend->destroyShader(mShaderHandle);
 
 	mShaderHandle = std::exchange(other.mShaderHandle, nullptr);
+	mVertexCode = std::move(other.mVertexCode);
+	mFragmentCode = std::move(other.mFragmentCode);
+	mDefines = std::move(other.mDefines);
 	return *this;
 }
 
@@ -179,7 +216,7 @@ RaytracingShader::~RaytracingShader()
 
 // buffer
 
-Buffer::Buffer(size_t size) : mSize(size)
+Buffer::Buffer(size_t size) : mSize(size), mShadow(size)
 {
 	assert(size > 0);
 }
@@ -187,6 +224,7 @@ Buffer::Buffer(size_t size) : mSize(size)
 Buffer::Buffer(Buffer&& other) noexcept
 {
 	mSize = std::exchange(other.mSize, 0);
+	mShadow = std::move(other.mShadow);
 }
 
 Buffer& Buffer::operator=(Buffer&& other) noexcept
@@ -195,14 +233,22 @@ Buffer& Buffer::operator=(Buffer&& other) noexcept
 		return *this;
 
 	mSize = std::exchange(other.mSize, 0);
+	mShadow = std::move(other.mShadow);
 	return *this;
+}
+
+void Buffer::writeShadow(const void* memory, size_t size)
+{
+	assert(size <= mShadow.size());
+	std::memcpy(mShadow.data(), memory, size);
 }
 
 // vertex buffer
 
-VertexBuffer::VertexBuffer(size_t size, size_t stride) : Buffer(size)
+VertexBuffer::VertexBuffer(size_t size, size_t stride) : Buffer(size), mStride(stride)
 {
 	mVertexBufferHandle = gBackend->createVertexBuffer(size, stride);
+	Registry<VertexBuffer>().insert(this);
 }
 
 VertexBuffer::VertexBuffer(const void* memory, size_t size, size_t stride) : VertexBuffer(size, stride)
@@ -216,10 +262,14 @@ VertexBuffer::VertexBuffer(VertexBuffer&& other) noexcept : Buffer(std::move(oth
 		gBackend->destroyVertexBuffer(mVertexBufferHandle);
 
 	mVertexBufferHandle = std::exchange(other.mVertexBufferHandle, nullptr);
+	mStride = std::exchange(other.mStride, 0);
+	Registry<VertexBuffer>().insert(this);
 }
 
 VertexBuffer::~VertexBuffer()
 {
+	Registry<VertexBuffer>().erase(this);
+
 	if (gBackend && mVertexBufferHandle)
 		gBackend->destroyVertexBuffer(mVertexBufferHandle);
 }
@@ -235,19 +285,23 @@ VertexBuffer& VertexBuffer::operator=(VertexBuffer&& other) noexcept
 		gBackend->destroyVertexBuffer(mVertexBufferHandle);
 
 	mVertexBufferHandle = std::exchange(other.mVertexBufferHandle, nullptr);
+	mStride = std::exchange(other.mStride, 0);
 	return *this;
 }
 
 void VertexBuffer::write(const void* memory, size_t size, size_t stride)
 {
 	gBackend->writeVertexBufferMemory(mVertexBufferHandle, memory, size, stride);
+	writeShadow(memory, size);
+	mStride = stride;
 }
 
 // index buffer
 
-IndexBuffer::IndexBuffer(size_t size, size_t stride) : Buffer(size)
+IndexBuffer::IndexBuffer(size_t size, size_t stride) : Buffer(size), mStride(stride)
 {
 	mIndexBufferHandle = gBackend->createIndexBuffer(size, stride);
+	Registry<IndexBuffer>().insert(this);
 }
 
 IndexBuffer::IndexBuffer(const void* memory, size_t size, size_t stride) : IndexBuffer(size, stride)
@@ -258,10 +312,14 @@ IndexBuffer::IndexBuffer(const void* memory, size_t size, size_t stride) : Index
 IndexBuffer::IndexBuffer(IndexBuffer&& other) noexcept : Buffer(std::move(other))
 {
 	mIndexBufferHandle = std::exchange(other.mIndexBufferHandle, nullptr);
+	mStride = std::exchange(other.mStride, 0);
+	Registry<IndexBuffer>().insert(this);
 }
 
 IndexBuffer::~IndexBuffer()
 {
+	Registry<IndexBuffer>().erase(this);
+
 	if (gBackend && mIndexBufferHandle)
 		gBackend->destroyIndexBuffer(mIndexBufferHandle);
 }
@@ -277,12 +335,15 @@ IndexBuffer& IndexBuffer::operator=(IndexBuffer&& other) noexcept
 		gBackend->destroyIndexBuffer(mIndexBufferHandle);
 
 	mIndexBufferHandle = std::exchange(other.mIndexBufferHandle, nullptr);
+	mStride = std::exchange(other.mStride, 0);
 	return *this;
 }
 
 void IndexBuffer::write(const void* memory, size_t size, size_t stride)
 {
 	gBackend->writeIndexBufferMemory(mIndexBufferHandle, memory, size, stride);
+	writeShadow(memory, size);
+	mStride = stride;
 }
 
 // uniform buffer
@@ -290,6 +351,7 @@ void IndexBuffer::write(const void* memory, size_t size, size_t stride)
 UniformBuffer::UniformBuffer(size_t size) : Buffer(size)
 {
 	mUniformBufferHandle = gBackend->createUniformBuffer(size);
+	Registry<UniformBuffer>().insert(this);
 }
 
 UniformBuffer::UniformBuffer(const void* memory, size_t size) : UniformBuffer(size)
@@ -300,10 +362,13 @@ UniformBuffer::UniformBuffer(const void* memory, size_t size) : UniformBuffer(si
 UniformBuffer::UniformBuffer(UniformBuffer&& other) noexcept : Buffer(std::move(other))
 {
 	mUniformBufferHandle = std::exchange(other.mUniformBufferHandle, nullptr);
+	Registry<UniformBuffer>().insert(this);
 }
 
 UniformBuffer::~UniformBuffer()
 {
+	Registry<UniformBuffer>().erase(this);
+
 	if (gBackend && mUniformBufferHandle)
 		gBackend->destroyUniformBuffer(mUniformBufferHandle);
 }
@@ -325,6 +390,7 @@ UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) noexcept
 void UniformBuffer::write(const void* memory, size_t size)
 {
 	gBackend->writeUniformBufferMemory(mUniformBufferHandle, memory, size);
+	writeShadow(memory, size);
 }
 
 // storage buffer
@@ -639,6 +705,31 @@ static void DestroyTransientRenderTargets()
 
 // device
 
+static Backend* CreateBackend(BackendType type, uint32_t width, uint32_t height)
+{
+#ifdef SKYGFX_HAS_D3D11
+	if (type == BackendType::D3D11)
+		return new BackendD3D11(gWindow, width, height, gAdapter);
+#endif
+#ifdef SKYGFX_HAS_D3D12
+	if (type == BackendType::D3D12)
+		return new BackendD3D12(gWindow, width, height, gAdapter);
+#endif
+#ifdef SKYGFX_HAS_OPENGL
+	if (type == BackendType::OpenGL)
+		return new BackendGL(gWindow, width, height, gAdapter);
+#endif
+#ifdef SKYGFX_HAS_VULKAN
+	if (type == BackendType::Vulkan)
+		return new BackendVK(gWindow, width, height, gAdapter, gFeatures);
+#endif
+#ifdef SKYGFX_HAS_METAL
+	if (type == BackendType::Metal)
+		return new BackendMetal(gWindow, width, height);
+#endif
+	throw std::runtime_error("backend not implemented");
+}
+
 void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::optional<BackendType> _type,
 	Adapter adapter, const std::unordered_set<Feature>& features)
 {
@@ -646,29 +737,10 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 
 	auto type = _type.value_or(GetDefaultBackend().value());
 
-#ifdef SKYGFX_HAS_D3D11
-	if (type == BackendType::D3D11)
-		gBackend = new BackendD3D11(window, width, height, adapter);
-#endif
-#ifdef SKYGFX_HAS_D3D12
-	if (type == BackendType::D3D12)
-		gBackend = new BackendD3D12(window, width, height, adapter);
-#endif
-#ifdef SKYGFX_HAS_OPENGL
-	if (type == BackendType::OpenGL)
-		gBackend = new BackendGL(window, width, height, adapter);
-#endif
-#ifdef SKYGFX_HAS_VULKAN
-	if (type == BackendType::Vulkan)
-		gBackend = new BackendVK(window, width, height, adapter, features);
-#endif
-#ifdef SKYGFX_HAS_METAL
-	if (type == BackendType::Metal)
-		gBackend = new BackendMetal(window, width, height);
-#endif
-
-	if (gBackend == nullptr)
-		throw std::runtime_error("backend not implemented");
+	gWindow = window;
+	gAdapter = adapter;
+	gFeatures = features;
+	gBackend = CreateBackend(type, width, height);
 
 	SetVsync(false);
 
@@ -703,6 +775,145 @@ void skygfx::Finalize()
 	{
 		gRaytracingBackend = nullptr;
 	}
+}
+
+void skygfx::SetBackendType(BackendType type)
+{
+	assert(gBackend != nullptr);
+
+	if (type == gBackendType)
+		return;
+
+	if (gRaytracingBackend != nullptr)
+		throw std::runtime_error("backend switching is not supported with raytracing");
+
+	if (!GetAvailableBackends().contains(type))
+		throw std::runtime_error("backend is not available on this platform");
+
+	// moved-from objects have no handle, skip them
+
+	auto collect = [](const auto& registry, auto handle_of) {
+		std::vector<std::remove_cvref_t<decltype(*registry.begin())>> result;
+		std::copy_if(registry.begin(), registry.end(), std::back_inserter(result), [&](auto object) {
+			return handle_of(object) != nullptr;
+		});
+		return result;
+	};
+
+	auto textures = collect(Registry<Texture>(), [](Texture* object) { return object->mTextureHandle; });
+	auto render_targets = collect(Registry<RenderTarget>(), [](RenderTarget* object) { return object->mRenderTargetHandle; });
+	auto shaders = collect(Registry<Shader>(), [](Shader* object) { return object->mShaderHandle; });
+	auto vertex_buffers = collect(Registry<VertexBuffer>(), [](VertexBuffer* object) { return object->mVertexBufferHandle; });
+	auto index_buffers = collect(Registry<IndexBuffer>(), [](IndexBuffer* object) { return object->mIndexBufferHandle; });
+	auto uniform_buffers = collect(Registry<UniformBuffer>(), [](UniformBuffer* object) { return object->mUniformBufferHandle; });
+
+	std::unordered_map<Texture*, std::vector<std::vector<uint8_t>>> pixels;
+
+	for (auto texture : textures)
+	{
+		auto& mips = pixels[texture];
+
+		for (uint32_t mip_level = 0; mip_level < texture->mMipCount; mip_level++)
+		{
+			mips.push_back(gBackend->readTexturePixels(texture->mTextureHandle, mip_level));
+		}
+	}
+
+	for (auto render_target : render_targets)
+		gBackend->destroyRenderTarget(render_target->mRenderTargetHandle);
+
+	for (auto texture : textures)
+		gBackend->destroyTexture(texture->mTextureHandle);
+
+	for (auto shader : shaders)
+		gBackend->destroyShader(shader->mShaderHandle);
+
+	for (auto buffer : vertex_buffers)
+		gBackend->destroyVertexBuffer(buffer->mVertexBufferHandle);
+
+	for (auto buffer : index_buffers)
+		gBackend->destroyIndexBuffer(buffer->mIndexBufferHandle);
+
+	for (auto buffer : uniform_buffers)
+		gBackend->destroyUniformBuffer(buffer->mUniformBufferHandle);
+
+	delete gBackend;
+	gBackend = nullptr;
+
+	// if the new backend fails to start, bring back the old one so the app keeps working
+
+	std::exception_ptr error;
+
+	try
+	{
+		gBackend = CreateBackend(type, gSize.x, gSize.y);
+		gBackendType = type;
+	}
+	catch (...)
+	{
+		error = std::current_exception();
+		gBackend = CreateBackend(gBackendType, gSize.x, gSize.y);
+	}
+
+	for (auto texture : textures)
+	{
+		texture->mTextureHandle = gBackend->createTexture(texture->mWidth, texture->mHeight,
+			texture->mFormat, texture->mMipCount);
+
+		const auto& mips = pixels.at(texture);
+
+		for (uint32_t mip_level = 0; mip_level < (uint32_t)mips.size(); mip_level++)
+		{
+			const auto& mip = mips.at(mip_level);
+
+			if (mip.empty())
+				continue;
+
+			gBackend->writeTexturePixels(texture->mTextureHandle, GetMipWidth(texture->mWidth, mip_level),
+				GetMipHeight(texture->mHeight, mip_level), mip.data(), mip_level, 0, 0);
+		}
+	}
+
+	for (auto render_target : render_targets)
+	{
+		render_target->mRenderTargetHandle = gBackend->createRenderTarget(render_target->getWidth(),
+			render_target->getHeight(), render_target->mTextureHandle);
+	}
+
+	for (auto shader : shaders)
+	{
+		shader->mShaderHandle = gBackend->createShader(shader->mVertexCode, shader->mFragmentCode,
+			shader->mDefines);
+	}
+
+	for (auto buffer : vertex_buffers)
+	{
+		buffer->mVertexBufferHandle = gBackend->createVertexBuffer(buffer->mSize, buffer->mStride);
+		gBackend->writeVertexBufferMemory(buffer->mVertexBufferHandle, buffer->mShadow.data(),
+			buffer->mSize, buffer->mStride);
+	}
+
+	for (auto buffer : index_buffers)
+	{
+		buffer->mIndexBufferHandle = gBackend->createIndexBuffer(buffer->mSize, buffer->mStride);
+		gBackend->writeIndexBufferMemory(buffer->mIndexBufferHandle, buffer->mShadow.data(),
+			buffer->mSize, buffer->mStride);
+	}
+
+	for (auto buffer : uniform_buffers)
+	{
+		buffer->mUniformBufferHandle = gBackend->createUniformBuffer(buffer->mSize);
+		gBackend->writeUniformBufferMemory(buffer->mUniformBufferHandle, buffer->mShadow.data(),
+			buffer->mSize);
+	}
+
+	gBackend->setVsync(gVsync);
+	gRenderTargetSize.reset();
+	gBackbufferFormat = PixelFormat::RGBA8UNorm;
+	gDrawcalls = 0;
+
+	if (error)
+		std::rethrow_exception(error);
 }
 
 void skygfx::Resize(uint32_t width, uint32_t height)

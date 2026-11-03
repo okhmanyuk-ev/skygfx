@@ -867,6 +867,7 @@ BackendD3D11::~BackendD3D11()
 {
 	DestroyMainRenderTarget();
 	delete gContext;
+	gContext = nullptr;
 }
 
 void BackendD3D11::resize(uint32_t width, uint32_t height)
