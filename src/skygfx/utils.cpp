@@ -1240,6 +1240,85 @@ void utils::passes::Bloom(Texture* src, RenderTarget* dst, float bright_threshol
 	}
 }
 
+void utils::passes::DualFilterBlur(Texture* src, RenderTarget* dst, float levels)
+{
+	if (levels <= 0.0f)
+	{
+		Blit(src, dst);
+		return;
+	}
+
+	// each level halves resolution while downsampling and doubles it back while upsampling.
+	// fractional level is achieved by blending two neighbouring levels while upsampling
+
+	auto count = static_cast<uint32_t>(glm::ceil(levels));
+	auto whole = static_cast<uint32_t>(glm::floor(levels));
+	auto fraction = levels - static_cast<float>(whole);
+
+	// acquire targets
+
+	std::vector<RenderTarget*> tex_chain;
+
+	for (uint32_t i = 0; i < count; i++)
+	{
+		auto w = glm::max(src->getWidth() >> (i + 1), 1u);
+		auto h = glm::max(src->getHeight() >> (i + 1), 1u);
+		tex_chain.push_back(AcquireTransientRenderTarget(w, h));
+	}
+
+	// downsample
+
+	auto downsample_src = src;
+
+	for (auto target : tex_chain)
+	{
+		Blit(downsample_src, target, {
+			.effect = effects::BloomDownsample(false)
+		});
+		ViewStage("downsample", target);
+		downsample_src = target;
+	}
+
+	// upsample
+
+	auto upsample = [](Texture* upsample_src, RenderTarget* upsample_dst, float alpha) {
+		std::optional<BlendMode> blend_mode;
+
+		if (alpha < 1.0f)
+			blend_mode = BlendStates::NonPremultiplied;
+
+		Blit(upsample_src, upsample_dst, {
+			.color = { 1.0f, 1.0f, 1.0f, alpha },
+			.blend_mode = blend_mode,
+			.effect = effects::BloomUpsample()
+		});
+		ViewStage("upsample", upsample_dst);
+	};
+
+	for (uint32_t i = count - 1; i > 0; i--)
+	{
+		// tex_chain[i - 1] holds level i, mix it with the deeper level when levels is fractional
+		upsample(tex_chain[i], tex_chain[i - 1], i == whole && fraction > 0.0f ? fraction : 1.0f);
+	}
+
+	if (whole == 0)
+	{
+		Blit(src, dst);
+		upsample(tex_chain.front(), dst, fraction);
+	}
+	else
+	{
+		upsample(tex_chain.front(), dst, 1.0f);
+	}
+
+	// release targets
+
+	for (auto target : tex_chain)
+	{
+		ReleaseTransientRenderTarget(target);
+	}
+}
+
 void utils::passes::BloomGaussian(Texture* src, RenderTarget* dst, float bright_threshold,
 	float intensity)
 {

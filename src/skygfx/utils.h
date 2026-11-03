@@ -616,6 +616,7 @@ namespace skygfx::utils
 			float intensity = 2.0f);
 		void BloomGaussian(Texture* src, RenderTarget* dst = nullptr, float bright_threshold = 1.0f,
 			float intensity = 2.0f);
+		void DualFilterBlur(Texture* src, RenderTarget* dst = nullptr, float levels = 3.0f);
 	}
 
 	struct Model
