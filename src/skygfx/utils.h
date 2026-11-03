@@ -172,10 +172,9 @@ namespace skygfx::utils
 
 		struct alignas(16) BloomDownsample
 		{
-			BloomDownsample(uint32_t step_number);
+			BloomDownsample(bool karis_average);
 
-			glm::vec2 resolution;
-			uint32_t step_number;
+			uint32_t karis_average;
 
 			static const std::string VertexShaderCode;
 			static const std::string FragmentShaderCode;

@@ -451,7 +451,7 @@ const std::string utils::effects::BloomDownsample::FragmentShaderCode =
 	utils::effects::BasicEffect::FragmentShaderCode + R"(
 layout(binding = EFFECT_UNIFORM_BINDING) uniform _downsample
 {
-	uint step_number;
+	uint karis_average;
 } downsample;
 
 vec3 getSample(sampler2D srcSampler, const vec2 uv)
@@ -487,9 +487,9 @@ vec3 downsample13tap(sampler2D srcSampler, const vec2 centerUV)
 	taps[11] = getSample(srcSampler, centerUV + vec2( 0, 2) * pixelSize);
 	taps[12] = getSample(srcSampler, centerUV + vec2( 2, 2) * pixelSize);
 
-	// on the first downsample use Karis average
+	// Karis average is used on the first bloom downsample
 
-	if (downsample.step_number == 0)
+	if (downsample.karis_average != 0)
 	{
 		vec3 box[5];
 		box[0] = 0.25 * (taps[3] + taps[4] + taps[8]  + taps[9]);
@@ -657,8 +657,8 @@ utils::effects::GaussianBlur::GaussianBlur(glm::vec2 _direction) :
 {
 }
 
-utils::effects::BloomDownsample::BloomDownsample(uint32_t _step_number) :
-	step_number(_step_number)
+utils::effects::BloomDownsample::BloomDownsample(bool _karis_average) :
+	karis_average(_karis_average ? 1 : 0)
 {
 }
 
@@ -1204,7 +1204,7 @@ void utils::passes::Bloom(Texture* src, RenderTarget* dst, float bright_threshol
 	for (auto target : tex_chain)
 	{
 		Blit(downsample_src, target, {
-			.effect = effects::BloomDownsample(step_number)
+			.effect = effects::BloomDownsample(step_number == 0)
 		});
 		ViewStage("downsample", target);
 		downsample_src = target;
