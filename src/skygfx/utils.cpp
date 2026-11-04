@@ -1157,6 +1157,38 @@ void utils::passes::Grayscale(Texture* src, RenderTarget* dst, float intensity)
 	ViewStage("grayscale", dst);
 }
 
+// acquires targets of halving size and fills them by successive downsampling of src
+static std::vector<RenderTarget*> AcquireDownsampleChain(Texture* src, uint32_t count, bool karis_average)
+{
+	std::vector<RenderTarget*> tex_chain;
+	auto downsample_src = src;
+
+	for (uint32_t i = 0; i < count; i++)
+	{
+		auto w = glm::max(src->getWidth() >> (i + 1), 1u);
+		auto h = glm::max(src->getHeight() >> (i + 1), 1u);
+		auto target = AcquireTransientRenderTarget(w, h);
+
+		// Karis average is applied only on the first downsample
+		utils::passes::Blit(downsample_src, target, {
+			.effect = utils::effects::BloomDownsample(karis_average && i == 0)
+		});
+		utils::ViewStage("downsample", target);
+		tex_chain.push_back(target);
+		downsample_src = target;
+	}
+
+	return tex_chain;
+}
+
+static void ReleaseDownsampleChain(const std::vector<RenderTarget*>& tex_chain)
+{
+	for (auto target : tex_chain)
+	{
+		ReleaseTransientRenderTarget(target);
+	}
+}
+
 void utils::passes::Bloom(Texture* src, RenderTarget* dst, float bright_threshold, float intensity)
 {
 	Blit(src, dst);
@@ -1164,27 +1196,11 @@ void utils::passes::Bloom(Texture* src, RenderTarget* dst, float bright_threshol
 	if (intensity <= 0.0f)
 		return;
 
-	constexpr int ChainSize = 8;
-
-	// acquire targets
-
-	auto bright = AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
-
-	std::array<RenderTarget*, ChainSize> tex_chain;
-
-	for (int i = 0; i < ChainSize; i++)
-	{
-		auto w = src->getWidth() >> (i + 1);
-		auto h = src->getHeight() >> (i + 1);
-
-		w = glm::max(w, 1u);
-		h = glm::max(h, 1u);
-
-		tex_chain[i] = AcquireTransientRenderTarget(w, h);
-	}
+	constexpr uint32_t ChainSize = 8;
 
 	// extract bright
 
+	auto bright = AcquireTransientRenderTarget(src->getWidth(), src->getHeight());
 	auto downsample_src = src;
 
 	if (bright_threshold > 0.0f)
@@ -1199,17 +1215,7 @@ void utils::passes::Bloom(Texture* src, RenderTarget* dst, float bright_threshol
 
 	// downsample
 
-	uint32_t step_number = 0;
-
-	for (auto target : tex_chain)
-	{
-		Blit(downsample_src, target, {
-			.effect = effects::BloomDownsample(step_number == 0)
-		});
-		ViewStage("downsample", target);
-		downsample_src = target;
-		step_number += 1;
-	}
+	auto tex_chain = AcquireDownsampleChain(downsample_src, ChainSize, true);
 
 	// upsample
 
@@ -1233,11 +1239,7 @@ void utils::passes::Bloom(Texture* src, RenderTarget* dst, float bright_threshol
 	// release targets
 
 	ReleaseTransientRenderTarget(bright);
-
-	for (auto target : tex_chain)
-	{
-		ReleaseTransientRenderTarget(target);
-	}
+	ReleaseDownsampleChain(tex_chain);
 }
 
 void utils::passes::DualFilterBlur(Texture* src, RenderTarget* dst, float levels)
@@ -1255,29 +1257,9 @@ void utils::passes::DualFilterBlur(Texture* src, RenderTarget* dst, float levels
 	auto whole = static_cast<uint32_t>(glm::floor(levels));
 	auto fraction = levels - static_cast<float>(whole);
 
-	// acquire targets
-
-	std::vector<RenderTarget*> tex_chain;
-
-	for (uint32_t i = 0; i < count; i++)
-	{
-		auto w = glm::max(src->getWidth() >> (i + 1), 1u);
-		auto h = glm::max(src->getHeight() >> (i + 1), 1u);
-		tex_chain.push_back(AcquireTransientRenderTarget(w, h));
-	}
-
 	// downsample
 
-	auto downsample_src = src;
-
-	for (auto target : tex_chain)
-	{
-		Blit(downsample_src, target, {
-			.effect = effects::BloomDownsample(false)
-		});
-		ViewStage("downsample", target);
-		downsample_src = target;
-	}
+	auto tex_chain = AcquireDownsampleChain(src, count, false);
 
 	// upsample
 
@@ -1311,12 +1293,7 @@ void utils::passes::DualFilterBlur(Texture* src, RenderTarget* dst, float levels
 		upsample(tex_chain.front(), dst, 1.0f);
 	}
 
-	// release targets
-
-	for (auto target : tex_chain)
-	{
-		ReleaseTransientRenderTarget(target);
-	}
+	ReleaseDownsampleChain(tex_chain);
 }
 
 void utils::passes::BloomGaussian(Texture* src, RenderTarget* dst, float bright_threshold,
