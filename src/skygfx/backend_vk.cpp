@@ -133,6 +133,7 @@ struct ContextVK
 
 	uint32_t semaphore_index = 0;
 	uint32_t frame_index = 0;
+	bool wait_image_acquired_semaphore = false;
 
 	Frame& getCurrentFrame() { return frames.at(frame_index); }
 
@@ -2295,6 +2296,7 @@ static void MoveToNextFrame()
 	auto [result, image_index] = gContext->swapchain.acquireNextImage(UINT64_MAX, *image_acquired_semaphore);
 
 	gContext->frame_index = image_index;
+	gContext->wait_image_acquired_semaphore = true;
 }
 
 static void Begin()
@@ -2320,7 +2322,7 @@ static void Begin()
 	gContext->getCurrentFrame().command_buffer.begin(begin_info);
 }
 
-static void End()
+static void End(bool signal_render_complete)
 {
 	assert(gContext->working);
 	gContext->working = false;
@@ -2343,10 +2345,17 @@ static void End()
 	const auto& image_acquired_semaphore = gContext->frames.at(gContext->semaphore_index).image_acquired_semaphore;
 
 	auto submit_info = vk::SubmitInfo()
-		.setWaitDstStageMask(wait_dst_stage_mask)
-		.setWaitSemaphores(*image_acquired_semaphore)
-		.setCommandBuffers(*frame.command_buffer)
-		.setSignalSemaphores(*frame.render_complete_semaphore);
+		.setCommandBuffers(*frame.command_buffer);
+
+	if (gContext->wait_image_acquired_semaphore)
+	{
+		submit_info.setWaitDstStageMask(wait_dst_stage_mask);
+		submit_info.setWaitSemaphores(*image_acquired_semaphore);
+		gContext->wait_image_acquired_semaphore = false;
+	}
+
+	if (signal_render_complete)
+		submit_info.setSignalSemaphores(*frame.render_complete_semaphore);
 
 	gContext->queue.submit(submit_info, *frame.fence);
 }
@@ -2662,7 +2671,7 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 
 BackendVK::~BackendVK()
 {
-	End();
+	End(false);
 	WaitForGpu();
 
 	delete gContext;
@@ -2671,7 +2680,10 @@ BackendVK::~BackendVK()
 
 void BackendVK::resize(uint32_t width, uint32_t height)
 {
-	End();
+	if (width == 0 || height == 0)
+		return;
+
+	End(false);
 	WaitForGpu();
 	CreateSwapchain(width, height);
 	MoveToNextFrame();
@@ -3002,7 +3014,17 @@ void BackendVK::dispatchRays(uint32_t width, uint32_t height, uint32_t depth)
 
 void BackendVK::present()
 {
-	End();
+	auto surface_extent = gContext->physical_device.getSurfaceCapabilitiesKHR(*gContext->surface).currentExtent;
+	auto minimized = surface_extent.width == 0 || surface_extent.height == 0;
+
+	End(!minimized);
+
+	if (minimized)
+	{
+		WaitForGpu();
+		Begin();
+		return;
+	}
 
 	const auto& render_complete_semaphore = gContext->getCurrentFrame().render_complete_semaphore;
 
