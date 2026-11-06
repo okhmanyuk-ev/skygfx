@@ -644,7 +644,7 @@ void skygfx::Initialize(void* window, uint32_t width, uint32_t height, std::opti
 {
 	assert(gBackend == nullptr);
 
-	auto type = _type.value_or(GetDefaultBackend().value());
+	auto type = _type.has_value() ? _type.value() : GetDefaultBackend(features).value();
 
 #ifdef SKYGFX_HAS_D3D11
 	if (type == BackendType::D3D11)
