@@ -1592,6 +1592,17 @@ void BackendGL::generateMips(TextureHandle* handle)
 void BackendGL::destroyTexture(TextureHandle* handle)
 {
 	auto texture = (TextureGL*)handle;
+
+	std::erase_if(gContext->textures, [&](const auto& item) {
+		const auto& [binding, _texture] = item;
+
+		if (_texture != texture)
+			return false;
+
+		gContext->dirty_textures.erase(binding);
+		return true;
+	});
+
 	delete texture;
 }
 
