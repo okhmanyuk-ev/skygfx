@@ -120,7 +120,7 @@ namespace skygfx
 		std::vector<uint8_t> read(uint32_t mip_level = 0);
 		void generateMips();
 
-		operator TextureHandle* () { return mTextureHandle.get(); }
+		operator TextureHandle* () const { return mTextureHandle.get(); }
 
 		auto getWidth() const { return mWidth; }
 		auto getHeight() const { return mHeight; }
@@ -140,7 +140,7 @@ namespace skygfx
 	public:
 		RenderTarget(uint32_t width, uint32_t height, PixelFormat format = PixelFormat::RGBA32Float);
 
-		operator RenderTargetHandle* () { return mRenderTargetHandle.get(); }
+		operator RenderTargetHandle* () const { return mRenderTargetHandle.get(); }
 
 	private:
 		detail::HandlePtr<RenderTargetHandle> mRenderTargetHandle;
@@ -152,7 +152,7 @@ namespace skygfx
 		Shader(const std::string& vertex_code, const std::string& fragment_code,
 			const std::vector<std::string>& defines = {});
 
-		operator ShaderHandle* () { return mShaderHandle.get(); }
+		operator ShaderHandle* () const { return mShaderHandle.get(); }
 
 	private:
 		detail::HandlePtr<ShaderHandle> mShaderHandle;
@@ -164,7 +164,7 @@ namespace skygfx
 		RaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 			const std::string& closesthit_code, const std::vector<std::string>& defines = {});
 
-		operator RaytracingShaderHandle* () { return mRaytracingShaderHandle.get(); }
+		operator RaytracingShaderHandle* () const { return mRaytracingShaderHandle.get(); }
 
 	private:
 		detail::HandlePtr<RaytracingShaderHandle> mRaytracingShaderHandle;
@@ -207,7 +207,7 @@ namespace skygfx
 			write(values.data(), values.size());
 		}
 
-		operator VertexBufferHandle* () { return mVertexBufferHandle.get(); }
+		operator VertexBufferHandle* () const { return mVertexBufferHandle.get(); }
 
 	private:
 		detail::HandlePtr<VertexBufferHandle> mVertexBufferHandle;
@@ -239,7 +239,7 @@ namespace skygfx
 			write(values.data(), values.size());
 		}
 
-		operator IndexBufferHandle* () { return mIndexBufferHandle.get(); }
+		operator IndexBufferHandle* () const { return mIndexBufferHandle.get(); }
 
 	private:
 		detail::HandlePtr<IndexBufferHandle> mIndexBufferHandle;
@@ -257,9 +257,9 @@ namespace skygfx
 		void write(const void* memory, size_t size);
 		
 		template <class T>
-		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
+		void write(const T& value) { write(&value, sizeof(T)); }
 
-		operator UniformBufferHandle* () { return mUniformBufferHandle.get(); }
+		operator UniformBufferHandle* () const { return mUniformBufferHandle.get(); }
 
 	private:
 		detail::HandlePtr<UniformBufferHandle> mUniformBufferHandle;
@@ -277,9 +277,9 @@ namespace skygfx
 		void write(const void* memory, size_t size);
 
 		template <class T>
-		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
+		void write(const T& value) { write(&value, sizeof(T)); }
 
-		operator StorageBufferHandle* () { return mStorageBufferHandle.get(); }
+		operator StorageBufferHandle* () const { return mStorageBufferHandle.get(); }
 
 	private:
 		detail::HandlePtr<StorageBufferHandle> mStorageBufferHandle;
@@ -306,7 +306,7 @@ namespace skygfx
 				indices.data(), (uint32_t)indices.size(), index_offset, transform)
 		{}
 
-		operator BottomLevelAccelerationStructureHandle* () { return mBottomLevelAccelerationStructureHandle.get(); }
+		operator BottomLevelAccelerationStructureHandle* () const { return mBottomLevelAccelerationStructureHandle.get(); }
 
 	private:
 		detail::HandlePtr<BottomLevelAccelerationStructureHandle> mBottomLevelAccelerationStructureHandle;
@@ -329,7 +329,7 @@ namespace skygfx
 		TopLevelAccelerationStructure(
 			const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures);
 
-		operator TopLevelAccelerationStructureHandle* () { return mTopLevelAccelerationStructureHandle.get(); }
+		operator TopLevelAccelerationStructureHandle* () const { return mTopLevelAccelerationStructureHandle.get(); }
 
 	private:
 		static std::vector<Instance> CreateInstances(
@@ -654,7 +654,7 @@ namespace skygfx
 	template <class T>
 	void SetUniformBuffer(uint32_t binding, const T& value)
 	{
-		SetUniformBuffer(binding, &const_cast<T&>(value), sizeof(T));
+		SetUniformBuffer(binding, &value, sizeof(T));
 	}
 
 	void SetStorageBuffer(uint32_t binding, const void* memory, size_t size);

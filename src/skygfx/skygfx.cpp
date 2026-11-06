@@ -529,7 +529,7 @@ void skygfx::SetScissor(const std::optional<Scissor>& scissor)
 
 void skygfx::SetTexture(uint32_t binding, const Texture& texture)
 {
-	gBackend->setTexture(binding, const_cast<Texture&>(texture));
+	gBackend->setTexture(binding, texture);
 }
 
 void skygfx::SetRenderTarget(const std::vector<const RenderTarget*>& value)
@@ -549,7 +549,7 @@ void skygfx::SetRenderTarget(const std::vector<const RenderTarget*>& value)
 
 void skygfx::SetRenderTarget(const RenderTarget& value)
 {
-	SetRenderTarget({ (RenderTarget*)&value });
+	SetRenderTarget({ &value });
 }
 
 void skygfx::SetRenderTarget(std::nullopt_t value)
@@ -559,12 +559,12 @@ void skygfx::SetRenderTarget(std::nullopt_t value)
 
 void skygfx::SetShader(const Shader& shader)
 {
-	gBackend->setShader(const_cast<Shader&>(shader));
+	gBackend->setShader(shader);
 }
 
 void skygfx::SetShader(const RaytracingShader& shader)
 {
-	gRaytracingBackend->setRaytracingShader(const_cast<RaytracingShader&>(shader));
+	gRaytracingBackend->setRaytracingShader(shader);
 }
 
 void skygfx::SetInputLayout(const InputLayout& value)
@@ -589,22 +589,22 @@ void skygfx::SetVertexBuffer(const VertexBuffer& value)
 
 void skygfx::SetIndexBuffer(const IndexBuffer& value)
 {
-	gBackend->setIndexBuffer(const_cast<IndexBuffer&>(value));
+	gBackend->setIndexBuffer(value);
 }
 
 void skygfx::SetUniformBuffer(uint32_t binding, const UniformBuffer& value)
 {
-	gBackend->setUniformBuffer(binding, const_cast<UniformBuffer&>(value));
+	gBackend->setUniformBuffer(binding, value);
 }
 
 void skygfx::SetStorageBuffer(uint32_t binding, const StorageBuffer& value)
 {
-	gRaytracingBackend->setStorageBuffer(binding, const_cast<StorageBuffer&>(value));
+	gRaytracingBackend->setStorageBuffer(binding, value);
 }
 
 void skygfx::SetAccelerationStructure(uint32_t binding, const TopLevelAccelerationStructure& value)
 {
-	gRaytracingBackend->setAccelerationStructure(binding, const_cast<TopLevelAccelerationStructure&>(value));
+	gRaytracingBackend->setAccelerationStructure(binding, value);
 }
 
 void skygfx::SetBlendMode(const std::optional<BlendMode>& blend_mode)
