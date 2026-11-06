@@ -824,7 +824,7 @@ public:
 		EnsureRenderPassDeactivated();
 		EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eTransfer);
 
-		if (size < 65536)
+		if (size < 65536 && size % 4 == 0)
 		{
 			gContext->getCurrentFrame().command_buffer.updateBuffer<uint8_t>(*mBuffer, 0, { (uint32_t)size, (uint8_t*)memory });
 			return;
