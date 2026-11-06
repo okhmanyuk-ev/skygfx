@@ -598,6 +598,8 @@ public:
 		mStride(stride)
 	{
 	}
+
+	~VertexBufferGL();
 };
 
 class IndexBufferGL : public IndexBufferHandle, public BufferGL
@@ -614,6 +616,8 @@ public:
 		mStride(stride)
 	{
 	}
+
+	~IndexBufferGL();
 };
 
 class UniformBufferGL : public UniformBufferHandle, public BufferGL
@@ -700,8 +704,6 @@ struct ContextGL
 	bool has_anisotropy_extension = false;
 #endif
 
-	ExecuteList execute_after_present;
-
 	std::unordered_map<uint32_t, TextureGL*> textures;
 	std::unordered_set<uint32_t> dirty_textures;
 
@@ -745,6 +747,21 @@ struct ContextGL
 };
 
 static ContextGL* gContext = nullptr;
+
+VertexBufferGL::~VertexBufferGL()
+{
+	if (std::ranges::find(gContext->vertex_buffers, this) == gContext->vertex_buffers.end())
+		return;
+
+	gContext->vertex_buffers.clear();
+	gContext->vertex_array_dirty = true;
+}
+
+IndexBufferGL::~IndexBufferGL()
+{
+	if (gContext->index_buffer == this)
+		gContext->index_buffer = nullptr;
+}
 
 uint32_t ContextGL::getBackbufferWidth()
 {
@@ -1568,7 +1585,6 @@ void BackendGL::present()
 #elif defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 	eglSwapBuffers(gEglDisplay, gEglSurface);
 #endif
-	gContext->execute_after_present.flush();
 }
 
 TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, PixelFormat format,
@@ -1648,10 +1664,7 @@ VertexBufferHandle* BackendGL::createVertexBuffer(size_t size, size_t stride)
 
 void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = static_cast<VertexBufferGL*>(handle);
-		delete buffer;
-	});
+	delete static_cast<VertexBufferGL*>(handle);
 }
 
 void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -1670,14 +1683,7 @@ IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
 
 void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = static_cast<IndexBufferGL*>(handle);
-
-		if (gContext->index_buffer == buffer)
-			gContext->index_buffer = nullptr;
-
-		delete buffer;
-	});
+	delete static_cast<IndexBufferGL*>(handle);
 }
 
 void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -1696,10 +1702,7 @@ UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
 
 void BackendGL::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	gContext->execute_after_present.add([handle] {
-		auto buffer = static_cast<UniformBufferGL*>(handle);
-		delete buffer;
-	});
+	delete static_cast<UniformBufferGL*>(handle);
 }
 
 void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)

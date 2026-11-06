@@ -48,36 +48,5 @@ namespace skygfx
 		};\
 	}
 
-class ExecuteList
-{
-public:
-	using Func = std::function<void()>;
-
-public:
-	~ExecuteList()
-	{
-		flush();
-	}
-
-public:
-	void add(Func func) 
-	{ 
-		mFuncs.push_back(func); 
-	}
-
-	void flush()
-	{
-		for (auto func : mFuncs)
-		{
-			func();
-		}
-
-		mFuncs.clear();
-	}
-
-private:
-	std::list<Func> mFuncs;
-};
-
 template<class... Ts> struct cases : Ts... { using Ts::operator()...; };
 template<class... Ts> cases(Ts...)-> cases<Ts...>;
