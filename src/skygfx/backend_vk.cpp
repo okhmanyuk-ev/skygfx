@@ -318,6 +318,8 @@ static void SetImageMemoryBarrier(const vk::raii::CommandBuffer& cmdbuf, vk::Ima
 	uint32_t level_count = VK_REMAINING_MIP_LEVELS, uint32_t base_array_layer = 0,
 	uint32_t layer_count = VK_REMAINING_ARRAY_LAYERS);
 
+static void SetMemoryBarrier(const vk::raii::CommandBuffer& cmdbuf, vk::PipelineStageFlags2 src_stage,
+	vk::PipelineStageFlags2 dst_stage);
 static void EnsureMemoryState(const vk::raii::CommandBuffer& cmdbuf, vk::PipelineStageFlags2 stage);
 static void OneTimeSubmit(std::function<void(const vk::raii::CommandBuffer&)> func);
 
@@ -1274,6 +1276,9 @@ static void EndRenderPass()
 	gContext->render_pass_active = false;
 
 	gContext->getCurrentFrame().command_buffer.endRendering();
+
+	SetMemoryBarrier(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eAllGraphics,
+		vk::PipelineStageFlagBits2::eAllGraphics);
 }
 
 static void EnsureRenderPassActivated()
