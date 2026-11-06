@@ -2510,7 +2510,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugUtilsMessengerCallback(VkDebugUtilsMessageSe
 			}
 		}
 	}
-	return VK_TRUE;
+	return VK_FALSE;
 }
 #endif
 
