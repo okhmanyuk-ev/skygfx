@@ -534,7 +534,14 @@ void skygfx::SetTexture(uint32_t binding, const Texture& texture)
 
 void skygfx::SetRenderTarget(const std::vector<const RenderTarget*>& value)
 {
-	gBackend->setRenderTarget((const RenderTarget**)value.data(), value.size());
+	std::vector<RenderTargetHandle*> handles;
+	handles.reserve(value.size());
+
+	for (auto target : value)
+		handles.push_back(*target);
+
+	gBackend->setRenderTarget(handles);
+
 	if (value.empty())
 	{
 		gRenderTargetSize.reset();
@@ -579,7 +586,13 @@ void skygfx::SetInputLayout(const std::vector<InputLayout>& value)
 
 void skygfx::SetVertexBuffer(const std::vector<const VertexBuffer*>& vertex_buffers)
 {
-	gBackend->setVertexBuffer((const VertexBuffer**)vertex_buffers.data(), vertex_buffers.size());
+	std::vector<VertexBufferHandle*> handles;
+	handles.reserve(vertex_buffers.size());
+
+	for (auto buffer : vertex_buffers)
+		handles.push_back(*buffer);
+
+	gBackend->setVertexBuffer(handles);
 }
 
 void skygfx::SetVertexBuffer(const VertexBuffer& value)

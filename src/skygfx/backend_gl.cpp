@@ -1276,9 +1276,9 @@ void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->sampler_state_dirty = true;
 }
 
-void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count)
+void BackendGL::setRenderTarget(std::span<RenderTargetHandle* const> handles)
 {
-	if (count == 0)
+	if (handles.empty())
 	{
 #if defined(SKYGFX_PLATFORM_WINDOWS) | defined(SKYGFX_PLATFORM_MACOS) | defined(SKYGFX_PLATFORM_EMSCRIPTEN)
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1297,9 +1297,9 @@ void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count
 	}
 	std::vector<RenderTargetGL*> render_targets;
 
-	for (size_t i = 0; i < count; i++)
+	for (auto handle : handles)
 	{
-		auto target = static_cast<RenderTargetGL*>((RenderTargetHandle*)*(RenderTarget*)render_target[i]);
+		auto target = static_cast<RenderTargetGL*>(handle);
 		render_targets.push_back(target);
 	}
 
@@ -1339,12 +1339,12 @@ void BackendGL::setInputLayout(const std::vector<InputLayout>& value)
 	gContext->vertex_array_dirty = true;
 }
 
-void BackendGL::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
+void BackendGL::setVertexBuffer(std::span<VertexBufferHandle* const> handles)
 {
 	gContext->vertex_buffers.clear();
-	for (size_t i = 0; i < count; i++)
+	for (auto handle : handles)
 	{
-		auto buffer = static_cast<VertexBufferGL*>((VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i]);
+		auto buffer = static_cast<VertexBufferGL*>(handle);
 		gContext->vertex_buffers.push_back(buffer);
 	}
 	gContext->vertex_array_dirty = true;

@@ -1239,22 +1239,22 @@ void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->textures[binding] = static_cast<TextureD3D12*>(handle);
 }
 
-void BackendD3D12::setRenderTarget(const RenderTarget** render_target, size_t count)
+void BackendD3D12::setRenderTarget(std::span<RenderTargetHandle* const> handles)
 {
 	std::vector<RenderTargetD3D12*> render_targets;
 	std::vector<DXGI_FORMAT> color_attachment_formats;
 	std::optional<DXGI_FORMAT> depth_stencil_format;
 
-	if (count == 0)
+	if (handles.empty())
 	{
 		color_attachment_formats = { MainRenderTargetColorAttachmentFormat };
 		depth_stencil_format = MainRenderTargetDepthStencilAttachmentFormat;
 	}
 	else
 	{
-		for (size_t i = 0; i < count; i++)
+		for (auto handle : handles)
 		{
-			auto target = static_cast<RenderTargetD3D12*>((RenderTargetHandle*)*(RenderTarget*)render_target[i]);
+			auto target = static_cast<RenderTargetD3D12*>(handle);
 
 			render_targets.push_back(target);
 			color_attachment_formats.push_back(PixelFormatMap.at(target->getTexture()->getFormat()));
@@ -1285,12 +1285,12 @@ void BackendD3D12::setInputLayout(const std::vector<InputLayout>& value)
 	gContext->pipeline_state.input_layouts = value;
 }
 
-void BackendD3D12::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
+void BackendD3D12::setVertexBuffer(std::span<VertexBufferHandle* const> handles)
 {
 	gContext->vertex_buffers.clear();
-	for (size_t i = 0; i < count; i++)
+	for (auto handle : handles)
 	{
-		auto buffer = static_cast<VertexBufferD3D12*>((VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i]);
+		auto buffer = static_cast<VertexBufferD3D12*>(handle);
 		gContext->vertex_buffers.push_back(buffer);
 	}
 	gContext->vertex_buffers_dirty = true;

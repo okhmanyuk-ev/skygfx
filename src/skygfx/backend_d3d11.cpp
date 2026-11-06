@@ -860,7 +860,7 @@ BackendD3D11::BackendD3D11(void* window, uint32_t width, uint32_t height, Adapte
 		&default_vertex_stride, &default_vertex_offset);
 
 	CreateMainRenderTarget(width, height);
-	setRenderTarget(nullptr, 0);
+	setRenderTarget({});
 }
 
 BackendD3D11::~BackendD3D11()
@@ -874,7 +874,7 @@ void BackendD3D11::resize(uint32_t width, uint32_t height)
 	DestroyMainRenderTarget();
 	gContext->swapchain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
 	CreateMainRenderTarget(width, height);
-	setRenderTarget(nullptr, 0); // TODO: do it when nullptr was before
+	setRenderTarget({}); // TODO: do it when nullptr was before
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
@@ -935,9 +935,9 @@ void BackendD3D11::setInputLayout(const std::vector<InputLayout>& value)
 	gContext->input_layouts_dirty = true;
 }
 
-void BackendD3D11::setRenderTarget(const RenderTarget** render_target, size_t count)
+void BackendD3D11::setRenderTarget(std::span<RenderTargetHandle* const> handles)
 {
-	if (count == 0)
+	if (handles.empty())
 	{
 		gContext->context->OMSetRenderTargets(1, gContext->main_render_target->getD3D11RenderTargetView().GetAddressOf(),
 			gContext->main_render_target->getD3D11DepthStencilView().Get());
@@ -958,9 +958,9 @@ void BackendD3D11::setRenderTarget(const RenderTarget** render_target, size_t co
 
 	gContext->render_targets.clear();
 
-	for (size_t i = 0; i < count; i++)
+	for (auto handle : handles)
 	{
-		auto target = static_cast<RenderTargetD3D11*>((RenderTargetHandle*)*(RenderTarget*)render_target[i]);
+		auto target = static_cast<RenderTargetD3D11*>(handle);
 
 		if (prev_shader_resource_view.Get() == target->getTexture()->getD3D11ShaderResourceView().Get())
 		{
@@ -992,15 +992,15 @@ void BackendD3D11::setShader(ShaderHandle* handle)
 	gContext->input_layouts_dirty = true;
 }
 
-void BackendD3D11::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
+void BackendD3D11::setVertexBuffer(std::span<VertexBufferHandle* const> handles)
 {
 	std::vector<ID3D11Buffer*> buffers;
 	std::vector<UINT> strides;
 	std::vector<UINT> offsets;
 
-	for (size_t i = 0; i < count; i++)
+	for (auto handle : handles)
 	{
-		auto buffer = static_cast<VertexBufferD3D11*>((VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i]);
+		auto buffer = static_cast<VertexBufferD3D11*>(handle);
 		buffers.push_back(buffer->getD3D11Buffer().Get());
 		strides.push_back((UINT)buffer->getStride());
 		offsets.push_back(0);

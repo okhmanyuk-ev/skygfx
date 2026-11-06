@@ -2815,22 +2815,22 @@ void BackendVK::setTexture(uint32_t binding, TextureHandle* handle)
 	gContext->graphics_pipeline_ignore_bindings.erase(binding + TextureBindingOffset);
 }
 
-void BackendVK::setRenderTarget(const RenderTarget** render_target, size_t count)
+void BackendVK::setRenderTarget(std::span<RenderTargetHandle* const> handles)
 {
 	std::vector<RenderTargetVK*> render_targets;
 	std::vector<vk::Format> color_attachment_formats;
 	std::optional<vk::Format> depth_stencil_format;
 
-	if (count == 0)
+	if (handles.empty())
 	{
 		color_attachment_formats = { gContext->surface_format.format };
 		depth_stencil_format = ContextVK::DefaultDepthStencilFormat;
 	}
 	else
 	{
-		for (size_t i = 0; i < count; i++)
+		for (auto handle : handles)
 		{
-			auto target = static_cast<RenderTargetVK*>((RenderTargetHandle*)*(RenderTarget*)render_target[i]);
+			auto target = static_cast<RenderTargetVK*>(handle);
 			render_targets.push_back(target);
 			color_attachment_formats.push_back(target->getTexture()->getFormat());
 
@@ -2873,12 +2873,12 @@ void BackendVK::setRaytracingShader(RaytracingShaderHandle* handle)
 	gContext->raytracing_pipeline_state.shader = shader;
 }
 
-void BackendVK::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count)
+void BackendVK::setVertexBuffer(std::span<VertexBufferHandle* const> handles)
 {
 	gContext->vertex_buffers.clear();
-	for (size_t i = 0; i < count; i++)
+	for (auto handle : handles)
 	{
-		auto buffer = static_cast<VertexBufferVK*>((VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i]);
+		auto buffer = static_cast<VertexBufferVK*>(handle);
 		gContext->vertex_buffers.push_back(buffer);
 	}
 	gContext->vertex_buffers_dirty = true;
