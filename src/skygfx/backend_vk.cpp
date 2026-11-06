@@ -13,6 +13,7 @@
 using namespace skygfx;
 
 class ObjectVK;
+class BufferVK;
 class ShaderVK;
 class RaytracingShaderVK;
 class UniformBufferVK;
@@ -134,6 +135,7 @@ struct ContextVK
 
 	uint32_t semaphore_index = 0;
 	uint32_t frame_index = 0;
+	uint64_t frame_number = 0;
 	bool wait_image_acquired_semaphore = false;
 
 	Frame& getCurrentFrame() { return frames.at(frame_index); }
@@ -190,6 +192,15 @@ struct ContextVK
 
 	std::unordered_set<ObjectVK*> objects;
 
+	static constexpr size_t UploadBufferSize = 8 * 1024 * 1024;
+	static constexpr size_t UploadAlignment = 256;
+
+	vk::raii::Buffer upload_buffer = nullptr;
+	vk::raii::DeviceMemory upload_memory = nullptr;
+	std::byte* upload_data = nullptr;
+	size_t upload_offset = 0;
+	std::vector<BufferVK*> uploaded_buffers;
+
 	// declared last to be destroyed while frames and device are still alive
 	std::unique_ptr<VertexBufferVK> default_vertex_buffer;
 };
@@ -217,7 +228,8 @@ static std::tuple<vk::raii::Buffer, vk::raii::DeviceMemory> CreateBuffer(uint64_
 	auto buffer = gContext->device.createBuffer(buffer_create_info);
 
 	auto memory_requirements = buffer.getMemoryRequirements();
-	auto memory_type = GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible, memory_requirements.memoryTypeBits);
+	auto memory_type = GetMemoryType(vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+		memory_requirements.memoryTypeBits);
 
 	auto memory_allocate_info = vk::MemoryAllocateInfo()
 		.setAllocationSize(memory_requirements.size)
@@ -867,27 +879,72 @@ public:
 class BufferVK : public ObjectVK
 {
 public:
-	const auto& getBuffer() const { return mBuffer; }
+	vk::Buffer getBuffer() const { return mUploadOffset.has_value() ? *gContext->upload_buffer : *mBuffer; }
+	vk::DeviceSize getOffset() const { return mUploadOffset.value_or(0); }
+	auto getSize() const { return mSize; }
+	void markUsed() { mUseFrameNumber = gContext->frame_number; }
 
 private:
 	vk::raii::Buffer mBuffer = nullptr;
 	vk::raii::DeviceMemory mDeviceMemory = nullptr;
+	void* mMemory = nullptr;
+	size_t mSize = 0;
+	uint64_t mUseFrameNumber = 0;
+	std::optional<size_t> mUploadOffset;
+	size_t mUploadSize = 0;
 
 public:
-	BufferVK(size_t size, vk::BufferUsageFlags usage)
+	BufferVK(size_t size, vk::BufferUsageFlags usage) : mSize(size)
 	{
 		usage |= vk::BufferUsageFlagBits::eTransferDst;
 		std::tie(mBuffer, mDeviceMemory) = CreateBuffer(size, usage);
+		mMemory = mDeviceMemory.mapMemory(0, size);
 	}
 
 	~BufferVK()
 	{
+		if (mUploadOffset.has_value())
+			std::erase(gContext->uploaded_buffers, this);
+
 		DestroyStaging(std::move(mBuffer));
 		DestroyStaging(std::move(mDeviceMemory));
 	}
 
+	void resolveUpload()
+	{
+		memcpy(mMemory, gContext->upload_data + mUploadOffset.value(), mUploadSize);
+		mUploadOffset.reset();
+	}
+
 	void write(const void* memory, size_t size)
 	{
+		if (mUseFrameNumber != gContext->frame_number)
+		{
+			memcpy(mMemory, memory, size);
+			return;
+		}
+
+		auto upload_offset = (gContext->upload_offset + ContextVK::UploadAlignment - 1) / ContextVK::UploadAlignment * ContextVK::UploadAlignment;
+
+		if (upload_offset + size <= ContextVK::UploadBufferSize)
+		{
+			memcpy(gContext->upload_data + upload_offset, memory, size);
+
+			if (!mUploadOffset.has_value())
+				gContext->uploaded_buffers.push_back(this);
+
+			mUploadOffset = upload_offset;
+			mUploadSize = size;
+			gContext->upload_offset = upload_offset + size;
+			return;
+		}
+
+		if (mUploadOffset.has_value())
+		{
+			std::erase(gContext->uploaded_buffers, this);
+			mUploadOffset.reset();
+		}
+
 		EnsureRenderPassDeactivated();
 		EnsureMemoryState(gContext->getCurrentFrame().command_buffer, vk::PipelineStageFlagBits2::eTransfer);
 
@@ -1541,11 +1598,12 @@ static vk::raii::Sampler CreateSamplerState(const SamplerStateVK& sampler_state)
 
 static void PushDescriptorBuffer(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding, vk::DescriptorType type,
-	const vk::raii::Buffer& buffer)
+	const BufferVK& buffer)
 {
 	auto descriptor_buffer_info = vk::DescriptorBufferInfo()
-		.setBuffer(*buffer)
-		.setRange(VK_WHOLE_SIZE);
+		.setBuffer(buffer.getBuffer())
+		.setOffset(buffer.getOffset())
+		.setRange(buffer.getSize());
 
 	auto write_descriptor_set = vk::WriteDescriptorSet()
 		.setDstBinding(binding)
@@ -1590,9 +1648,10 @@ static void PushDescriptorUniformBuffer(vk::raii::CommandBuffer& cmdlist, vk::Pi
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	auto buffer = gContext->uniform_buffers.at(binding);
+	buffer->markUsed();
 
 	PushDescriptorBuffer(cmdlist, pipeline_bind_point, pipeline_layout, binding,
-		vk::DescriptorType::eUniformBuffer, buffer->getBuffer());
+		vk::DescriptorType::eUniformBuffer, *buffer);
 }
 
 static void PushDescriptorAccelerationStructure(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
@@ -1637,9 +1696,10 @@ static void PushDescriptorStorageBuffer(vk::raii::CommandBuffer& cmdlist, vk::Pi
 	const vk::raii::PipelineLayout& pipeline_layout, uint32_t binding)
 {
 	auto buffer = gContext->storage_buffers.at(binding);
+	buffer->markUsed();
 
 	PushDescriptorBuffer(cmdlist, pipeline_bind_point, pipeline_layout, binding,
-		vk::DescriptorType::eStorageBuffer, buffer->getBuffer());
+		vk::DescriptorType::eStorageBuffer, *buffer);
 }
 
 static void PushDescriptors(vk::raii::CommandBuffer& cmdlist, vk::PipelineBindPoint pipeline_bind_point,
@@ -1961,15 +2021,16 @@ static void EnsureVertexBuffers(vk::raii::CommandBuffer& cmdlist)
 
 	for (auto vertex_buffer : gContext->vertex_buffers)
 	{
-		buffers.push_back(*vertex_buffer->getBuffer());
-		offsets.push_back(0);
+		vertex_buffer->markUsed();
+		buffers.push_back(vertex_buffer->getBuffer());
+		offsets.push_back(vertex_buffer->getOffset());
 		strides.push_back(vertex_buffer->getStride());
 	}
 
 	cmdlist.bindVertexBuffers2(0, buffers, offsets, nullptr, strides);
 
 	// zero stride makes every vertex read the same defaults
-	cmdlist.bindVertexBuffers2(DefaultVertexBufferBinding, { *gContext->default_vertex_buffer->getBuffer() }, { 0 }, nullptr, { 0 });
+	cmdlist.bindVertexBuffers2(DefaultVertexBufferBinding, { gContext->default_vertex_buffer->getBuffer() }, { 0 }, nullptr, { 0 });
 }
 
 static void EnsureIndexBuffer(vk::raii::CommandBuffer& cmdlist)
@@ -1979,8 +2040,9 @@ static void EnsureIndexBuffer(vk::raii::CommandBuffer& cmdlist)
 
 	gContext->index_buffer_dirty = false;
 	
+	gContext->index_buffer->markUsed();
 	auto index_type = GetIndexTypeFromStride(gContext->index_buffer->getStride());
-	cmdlist.bindIndexBuffer(*gContext->index_buffer->getBuffer(), 0, index_type);
+	cmdlist.bindIndexBuffer(gContext->index_buffer->getBuffer(), gContext->index_buffer->getOffset(), index_type);
 }
 
 static void EnsureTopology(vk::raii::CommandBuffer& cmdlist)
@@ -2307,6 +2369,12 @@ static void WaitForGpu()
 	const auto& fence = gContext->getCurrentFrame().fence;
 	auto wait_result = gContext->device.waitForFences({ *fence }, true, UINT64_MAX);
 	ReleaseStaging();
+
+	for (auto buffer : gContext->uploaded_buffers)
+		buffer->resolveUpload();
+
+	gContext->uploaded_buffers.clear();
+	gContext->upload_offset = 0;
 }
 
 static void CreateSwapchain(uint32_t width, uint32_t height)
@@ -2421,6 +2489,7 @@ static void Begin()
 {
 	assert(!gContext->working);
 	gContext->working = true;
+	gContext->frame_number += 1;
 
 	gContext->pipeline_state_dirty = true;
 	gContext->topology_dirty = true;
@@ -2782,6 +2851,11 @@ BackendVK::BackendVK(void* window, uint32_t width, uint32_t height, Adapter adap
 	memcpy(default_vertex, default_float, 16);
 	memcpy(default_vertex + 16, default_int, 16);
 	memcpy(default_vertex + 32, default_int, 16);
+
+	std::tie(gContext->upload_buffer, gContext->upload_memory) = CreateBuffer(ContextVK::UploadBufferSize,
+		vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eIndexBuffer |
+		vk::BufferUsageFlagBits::eUniformBuffer | vk::BufferUsageFlagBits::eStorageBuffer);
+	gContext->upload_data = static_cast<std::byte*>(gContext->upload_memory.mapMemory(0, ContextVK::UploadBufferSize));
 
 	gContext->default_vertex_buffer = std::make_unique<VertexBufferVK>(sizeof(default_vertex), 0);
 	gContext->default_vertex_buffer->write(default_vertex, sizeof(default_vertex));
@@ -3274,6 +3348,12 @@ void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, const void
 {
 	auto buffer = static_cast<UniformBufferVK*>(handle);
 	buffer->write(memory, size);
+
+	for (const auto& [binding, uniform_buffer] : gContext->uniform_buffers)
+	{
+		if (uniform_buffer == buffer)
+			gContext->graphics_pipeline_ignore_bindings.erase(binding);
+	}
 }
 
 BottomLevelAccelerationStructureHandle* BackendVK::createBottomLevelAccelerationStructure(const void* vertex_memory,
