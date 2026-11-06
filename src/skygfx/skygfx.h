@@ -83,6 +83,26 @@ namespace skygfx
 	using BottomLevelAccelerationStructureHandle = struct BottomLevelAccelerationStructureHandle;
 	using TopLevelAccelerationStructureHandle = struct TopLevelAccelerationStructureHandle;
 
+	namespace detail
+	{
+		struct HandleDeleter
+		{
+			void operator()(TextureHandle* handle) const;
+			void operator()(RenderTargetHandle* handle) const;
+			void operator()(ShaderHandle* handle) const;
+			void operator()(RaytracingShaderHandle* handle) const;
+			void operator()(VertexBufferHandle* handle) const;
+			void operator()(IndexBufferHandle* handle) const;
+			void operator()(UniformBufferHandle* handle) const;
+			void operator()(StorageBufferHandle* handle) const;
+			void operator()(BottomLevelAccelerationStructureHandle* handle) const;
+			void operator()(TopLevelAccelerationStructureHandle* handle) const;
+		};
+
+		template<class T>
+		using HandlePtr = std::unique_ptr<T, HandleDeleter>;
+	}
+
 	class noncopyable
 	{
 	protected:
@@ -93,22 +113,21 @@ namespace skygfx
 		noncopyable& operator=(const noncopyable&) = delete;
 	};
 
-	class Texture : private noncopyable
+	class Texture
 	{
 	public:
 		Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count);
 		Texture(uint32_t width, uint32_t height, PixelFormat format, const void* memory, bool generate_mips = false);
-		Texture(Texture&& other) noexcept;
-		virtual ~Texture();
+		Texture(Texture&&) noexcept = default;
+		Texture& operator=(Texture&&) noexcept = default;
+		virtual ~Texture() = default;
 
 		void write(uint32_t width, uint32_t height, const void* memory, uint32_t mip_level = 0,
 			uint32_t offset_x = 0, uint32_t offset_y = 0);
 		std::vector<uint8_t> read(uint32_t mip_level = 0);
 		void generateMips();
 
-		Texture& operator=(Texture&& other) noexcept;
-
-		operator TextureHandle* () { return mTextureHandle; }
+		operator TextureHandle* () { return mTextureHandle.get(); }
 
 		auto getWidth() const { return mWidth; }
 		auto getHeight() const { return mHeight; }
@@ -116,7 +135,7 @@ namespace skygfx
 		auto getMipCount() const { return mMipCount; }
 
 	private:
-		TextureHandle* mTextureHandle = nullptr;
+		detail::HandlePtr<TextureHandle> mTextureHandle;
 		uint32_t mWidth = 0;
 		uint32_t mHeight = 0;
 		PixelFormat mFormat;
@@ -127,53 +146,41 @@ namespace skygfx
 	{
 	public:
 		RenderTarget(uint32_t width, uint32_t height, PixelFormat format = PixelFormat::RGBA32Float);
-		RenderTarget(RenderTarget&& other) noexcept;
-		~RenderTarget();
 
-		RenderTarget& operator=(RenderTarget&& other) noexcept;
-
-		operator RenderTargetHandle* () { return mRenderTargetHandle; }
+		operator RenderTargetHandle* () { return mRenderTargetHandle.get(); }
 
 	private:
-		RenderTargetHandle* mRenderTargetHandle = nullptr;
+		detail::HandlePtr<RenderTargetHandle> mRenderTargetHandle;
 	};
 
-	class Shader : private noncopyable
+	class Shader
 	{
 	public:
 		Shader(const std::string& vertex_code, const std::string& fragment_code,
 			const std::vector<std::string>& defines = {});
-		Shader(Shader&& other) noexcept;
-		virtual ~Shader();
 
-		operator ShaderHandle* () { return mShaderHandle; }
-
-		Shader& operator=(Shader&& other) noexcept;
+		operator ShaderHandle* () { return mShaderHandle.get(); }
 
 	private:
-		ShaderHandle* mShaderHandle = nullptr;
+		detail::HandlePtr<ShaderHandle> mShaderHandle;
 	};
 
-	class RaytracingShader : private noncopyable
+	class RaytracingShader
 	{
 	public:
 		RaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 			const std::string& closesthit_code, const std::vector<std::string>& defines = {});
-		virtual ~RaytracingShader();
 
-		operator RaytracingShaderHandle* () { return mRaytracingShaderHandle; }
+		operator RaytracingShaderHandle* () { return mRaytracingShaderHandle.get(); }
 
 	private:
-		RaytracingShaderHandle* mRaytracingShaderHandle = nullptr;
+		detail::HandlePtr<RaytracingShaderHandle> mRaytracingShaderHandle;
 	};
 
-	class Buffer : private noncopyable
+	class Buffer
 	{
 	public:
 		Buffer(size_t size);
-		Buffer(Buffer&& other) noexcept;
-
-		Buffer& operator=(Buffer&& other) noexcept;
 
 		auto getSize() const { return mSize; }
 
@@ -186,10 +193,6 @@ namespace skygfx
 	public:
 		VertexBuffer(size_t size, size_t stride);
 		VertexBuffer(const void* memory, size_t size, size_t stride);
-		VertexBuffer(VertexBuffer&& other) noexcept;
-		~VertexBuffer();
-
-		VertexBuffer& operator=(VertexBuffer&& other) noexcept;
 
 		template<class T>
 		explicit VertexBuffer(const T* memory, size_t count) : VertexBuffer(memory, count * sizeof(T), sizeof(T)) {}
@@ -211,10 +214,10 @@ namespace skygfx
 			write(values.data(), values.size());
 		}
 
-		operator VertexBufferHandle* () { return mVertexBufferHandle; }
+		operator VertexBufferHandle* () { return mVertexBufferHandle.get(); }
 
 	private:
-		VertexBufferHandle* mVertexBufferHandle = nullptr;
+		detail::HandlePtr<VertexBufferHandle> mVertexBufferHandle;
 	};
 
 	class IndexBuffer : public Buffer
@@ -222,10 +225,6 @@ namespace skygfx
 	public:
 		IndexBuffer(size_t size, size_t stride);
 		IndexBuffer(const void* memory, size_t size, size_t stride);
-		IndexBuffer(IndexBuffer&& other) noexcept;
-		~IndexBuffer();
-
-		IndexBuffer& operator=(IndexBuffer&& other) noexcept;
 
 		template<class T>
 		explicit IndexBuffer(const T* memory, size_t count) : IndexBuffer(memory, count * sizeof(T), sizeof(T)) {}
@@ -247,10 +246,10 @@ namespace skygfx
 			write(values.data(), values.size());
 		}
 
-		operator IndexBufferHandle* () { return mIndexBufferHandle; }
+		operator IndexBufferHandle* () { return mIndexBufferHandle.get(); }
 
 	private:
-		IndexBufferHandle* mIndexBufferHandle = nullptr;
+		detail::HandlePtr<IndexBufferHandle> mIndexBufferHandle;
 	};
 
 	class UniformBuffer : public Buffer
@@ -258,10 +257,6 @@ namespace skygfx
 	public:
 		UniformBuffer(size_t size);
 		UniformBuffer(const void* memory, size_t size);
-		UniformBuffer(UniformBuffer&& other) noexcept;
-		~UniformBuffer();
-
-		UniformBuffer& operator=(UniformBuffer&& other) noexcept;
 
 		template <class T>
 		explicit UniformBuffer(T value) : UniformBuffer(&value, sizeof(T)) {}
@@ -271,10 +266,10 @@ namespace skygfx
 		template <class T>
 		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
 
-		operator UniformBufferHandle* () { return mUniformBufferHandle; }
+		operator UniformBufferHandle* () { return mUniformBufferHandle.get(); }
 
 	private:
-		UniformBufferHandle* mUniformBufferHandle = nullptr;
+		detail::HandlePtr<UniformBufferHandle> mUniformBufferHandle;
 	};
 
 	class StorageBuffer : public Buffer
@@ -282,10 +277,6 @@ namespace skygfx
 	public:
 		StorageBuffer(size_t size);
 		StorageBuffer(const void* memory, size_t size);
-		StorageBuffer(StorageBuffer&& other) noexcept;
-		~StorageBuffer();
-
-		StorageBuffer& operator=(StorageBuffer&& other) noexcept;
 
 		template <class T>
 		explicit StorageBuffer(T value) : StorageBuffer(&value, sizeof(T)) {}
@@ -295,19 +286,18 @@ namespace skygfx
 		template <class T>
 		void write(const T& value) { write(&const_cast<T&>(value), sizeof(T)); }
 
-		operator StorageBufferHandle* () { return mStorageBufferHandle; }
+		operator StorageBufferHandle* () { return mStorageBufferHandle.get(); }
 
 	private:
-		StorageBufferHandle* mStorageBufferHandle = nullptr;
+		detail::HandlePtr<StorageBufferHandle> mStorageBufferHandle;
 	};
 
-	class BottomLevelAccelerationStructure : public noncopyable
+	class BottomLevelAccelerationStructure
 	{
 	public:
 		BottomLevelAccelerationStructure(const void* vertex_memory, uint32_t vertex_count, uint32_t vertex_offset,
 			uint32_t vertex_stride, const void* index_memory, uint32_t index_count, uint32_t index_offset,
 			uint32_t index_stride, const glm::mat4& transform);
-		~BottomLevelAccelerationStructure();
 
 		template<class Vertex, class Index>
 		explicit BottomLevelAccelerationStructure(const Vertex* vertex_memory, uint32_t vertex_count,
@@ -323,13 +313,13 @@ namespace skygfx
 				indices.data(), (uint32_t)indices.size(), index_offset, transform)
 		{}
 
-		operator BottomLevelAccelerationStructureHandle* () { return mBottomLevelAccelerationStructureHandle; }
+		operator BottomLevelAccelerationStructureHandle* () { return mBottomLevelAccelerationStructureHandle.get(); }
 
 	private:
-		BottomLevelAccelerationStructureHandle* mBottomLevelAccelerationStructureHandle = nullptr;
+		detail::HandlePtr<BottomLevelAccelerationStructureHandle> mBottomLevelAccelerationStructureHandle;
 	};
 
-	class TopLevelAccelerationStructure : public noncopyable
+	class TopLevelAccelerationStructure
 	{
 	public:
 		struct Instance
@@ -345,9 +335,8 @@ namespace skygfx
 			const std::vector<std::tuple<uint32_t, BottomLevelAccelerationStructureHandle*>>& bottom_level_acceleration_structures);
 		TopLevelAccelerationStructure(
 			const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures);
-		~TopLevelAccelerationStructure();
 
-		operator TopLevelAccelerationStructureHandle* () { return mTopLevelAccelerationStructureHandle; }
+		operator TopLevelAccelerationStructureHandle* () { return mTopLevelAccelerationStructureHandle.get(); }
 
 	private:
 		static std::vector<Instance> CreateInstances(
@@ -355,7 +344,7 @@ namespace skygfx
 		static std::vector<Instance> CreateInstances(const std::vector<BottomLevelAccelerationStructureHandle*>& blases);
 
 	private:
-		TopLevelAccelerationStructureHandle* mTopLevelAccelerationStructureHandle = nullptr;
+		detail::HandlePtr<TopLevelAccelerationStructureHandle> mTopLevelAccelerationStructureHandle;
 	};
 
 	using BLAS = BottomLevelAccelerationStructure;

@@ -21,6 +21,68 @@ static std::optional<IndexBuffer> gIndexBuffer;
 static std::unordered_map<uint32_t, UniformBuffer> gUniformBuffers;
 static std::unordered_map<uint32_t, StorageBuffer> gStorageBuffers;
 
+// handle deleter
+
+void skygfx::detail::HandleDeleter::operator()(TextureHandle* handle) const
+{
+	if (gBackend)
+		gBackend->destroyTexture(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(RenderTargetHandle* handle) const
+{
+	if (gBackend)
+		gBackend->destroyRenderTarget(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(ShaderHandle* handle) const
+{
+	if (gBackend)
+		gBackend->destroyShader(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(RaytracingShaderHandle* handle) const
+{
+	if (gRaytracingBackend)
+		gRaytracingBackend->destroyRaytracingShader(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(VertexBufferHandle* handle) const
+{
+	if (gBackend)
+		gBackend->destroyVertexBuffer(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(IndexBufferHandle* handle) const
+{
+	if (gBackend)
+		gBackend->destroyIndexBuffer(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(UniformBufferHandle* handle) const
+{
+	if (gBackend)
+		gBackend->destroyUniformBuffer(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(StorageBufferHandle* handle) const
+{
+	if (gRaytracingBackend)
+		gRaytracingBackend->destroyStorageBuffer(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(BottomLevelAccelerationStructureHandle* handle) const
+{
+	if (gRaytracingBackend)
+		gRaytracingBackend->destroyBottomLevelAccelerationStructure(handle);
+}
+
+void skygfx::detail::HandleDeleter::operator()(TopLevelAccelerationStructureHandle* handle) const
+{
+	if (gRaytracingBackend)
+		gRaytracingBackend->destroyTopLevelAccelerationStructure(handle);
+}
+
 // texture
 
 Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t mip_count) :
@@ -32,7 +94,7 @@ Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, uint32_t m
 	assert(width > 0);
 	assert(height > 0);
 	assert(mip_count > 0);
-	mTextureHandle = gBackend->createTexture(width, height, format, mip_count);
+	mTextureHandle.reset(gBackend->createTexture(width, height, format, mip_count));
 }
 
 Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, const void* memory, bool generate_mips) :
@@ -44,21 +106,6 @@ Texture::Texture(uint32_t width, uint32_t height, PixelFormat format, const void
 		generateMips();
 }
 
-Texture::Texture(Texture&& other) noexcept
-{
-	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
-	mWidth = std::exchange(other.mWidth, 0);
-	mHeight = std::exchange(other.mHeight, 0);
-	mFormat = std::exchange(other.mFormat, {});
-	mMipCount = std::exchange(other.mMipCount, 0);
-}
-
-Texture::~Texture()
-{
-	if (gBackend)
-		gBackend->destroyTexture(mTextureHandle);
-}
-
 void Texture::write(uint32_t width, uint32_t height, const void* memory, uint32_t mip_level,
 	uint32_t offset_x, uint32_t offset_y)
 {
@@ -68,99 +115,30 @@ void Texture::write(uint32_t width, uint32_t height, const void* memory, uint32_
 	assert(offset_y + height <= GetMipHeight(mHeight, mip_level));
 	assert(mip_level < mMipCount);
 	assert(memory != nullptr);
-	gBackend->writeTexturePixels(mTextureHandle, width, height, memory, mip_level, offset_x, offset_y);
+	gBackend->writeTexturePixels(mTextureHandle.get(), width, height, memory, mip_level, offset_x, offset_y);
 }
 
 std::vector<uint8_t> Texture::read(uint32_t mip_level)
 {
 	assert(mip_level < mMipCount);
-	return gBackend->readTexturePixels(mTextureHandle, mip_level);
+	return gBackend->readTexturePixels(mTextureHandle.get(), mip_level);
 }
 
 void Texture::generateMips()
 {
-	gBackend->generateMips(mTextureHandle);
-}
-
-Texture& Texture::operator=(Texture&& other) noexcept
-{
-	if (this == &other)
-		return *this;
-
-	if (mTextureHandle)
-		gBackend->destroyTexture(mTextureHandle);
-
-	mTextureHandle = std::exchange(other.mTextureHandle, nullptr);
-	mWidth = std::exchange(other.mWidth, 0);
-	mHeight = std::exchange(other.mHeight, 0);
-	mFormat = std::exchange(other.mFormat, {});
-	mMipCount = std::exchange(other.mMipCount, 0);
-
-	return *this;
+	gBackend->generateMips(mTextureHandle.get());
 }
 
 RenderTarget::RenderTarget(uint32_t width, uint32_t height, PixelFormat format) : Texture(width, height, format, 1)
 {
-	mRenderTargetHandle = gBackend->createRenderTarget(width, height, *this);
-}
-
-RenderTarget::RenderTarget(RenderTarget&& other) noexcept : Texture(std::move(other))
-{
-	mRenderTargetHandle = std::exchange(other.mRenderTargetHandle, nullptr);
-}
-
-RenderTarget::~RenderTarget()
-{
-	if (gBackend)
-		gBackend->destroyRenderTarget(mRenderTargetHandle);
-}
-
-RenderTarget& RenderTarget::operator=(RenderTarget&& other) noexcept
-{
-	Texture::operator=(std::move(other));
-
-	if (this == &other)
-		return *this;
-
-	if (mRenderTargetHandle)
-		gBackend->destroyRenderTarget(mRenderTargetHandle);
-
-	mRenderTargetHandle = std::exchange(other.mRenderTargetHandle, nullptr);
-
-	return *this;
+	mRenderTargetHandle.reset(gBackend->createRenderTarget(width, height, *this));
 }
 
 // shader
 
 Shader::Shader(const std::string& vertex_code, const std::string& fragment_code, const std::vector<std::string>& defines)
 {
-	mShaderHandle = gBackend->createShader(vertex_code, fragment_code, defines);
-}
-
-Shader::Shader(Shader&& other) noexcept
-{
-	if (mShaderHandle)
-		gBackend->destroyShader(mShaderHandle);
-
-	mShaderHandle = std::exchange(other.mShaderHandle, nullptr);
-}
-
-Shader::~Shader()
-{
-	if (gBackend)
-		gBackend->destroyShader(mShaderHandle);
-}
-
-Shader& Shader::operator=(Shader&& other) noexcept
-{
-	if (this == &other)
-		return *this;
-
-	if (mShaderHandle)
-		gBackend->destroyShader(mShaderHandle);
-
-	mShaderHandle = std::exchange(other.mShaderHandle, nullptr);
-	return *this;
+	mShaderHandle.reset(gBackend->createShader(vertex_code, fragment_code, defines));
 }
 
 // raytracing shader
@@ -168,13 +146,7 @@ Shader& Shader::operator=(Shader&& other) noexcept
 RaytracingShader::RaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 	const std::string& closesthit_code, const std::vector<std::string>& defines)
 {
-	mRaytracingShaderHandle = gRaytracingBackend->createRaytracingShader(raygen_code, miss_code, closesthit_code, defines);
-}
-
-RaytracingShader::~RaytracingShader()
-{
-	if (gRaytracingBackend)
-		gRaytracingBackend->destroyRaytracingShader(mRaytracingShaderHandle);
+	mRaytracingShaderHandle.reset(gRaytracingBackend->createRaytracingShader(raygen_code, miss_code, closesthit_code, defines));
 }
 
 // buffer
@@ -184,25 +156,11 @@ Buffer::Buffer(size_t size) : mSize(size)
 	assert(size > 0);
 }
 
-Buffer::Buffer(Buffer&& other) noexcept
-{
-	mSize = std::exchange(other.mSize, 0);
-}
-
-Buffer& Buffer::operator=(Buffer&& other) noexcept
-{
-	if (this == &other)
-		return *this;
-
-	mSize = std::exchange(other.mSize, 0);
-	return *this;
-}
-
 // vertex buffer
 
 VertexBuffer::VertexBuffer(size_t size, size_t stride) : Buffer(size)
 {
-	mVertexBufferHandle = gBackend->createVertexBuffer(size, stride);
+	mVertexBufferHandle.reset(gBackend->createVertexBuffer(size, stride));
 }
 
 VertexBuffer::VertexBuffer(const void* memory, size_t size, size_t stride) : VertexBuffer(size, stride)
@@ -210,44 +168,16 @@ VertexBuffer::VertexBuffer(const void* memory, size_t size, size_t stride) : Ver
 	write(memory, size, stride);
 }
 
-VertexBuffer::VertexBuffer(VertexBuffer&& other) noexcept : Buffer(std::move(other))
-{
-	if (mVertexBufferHandle)
-		gBackend->destroyVertexBuffer(mVertexBufferHandle);
-
-	mVertexBufferHandle = std::exchange(other.mVertexBufferHandle, nullptr);
-}
-
-VertexBuffer::~VertexBuffer()
-{
-	if (gBackend && mVertexBufferHandle)
-		gBackend->destroyVertexBuffer(mVertexBufferHandle);
-}
-
-VertexBuffer& VertexBuffer::operator=(VertexBuffer&& other) noexcept
-{
-	Buffer::operator=(std::move(other));
-
-	if (this == &other)
-		return *this;
-
-	if (mVertexBufferHandle)
-		gBackend->destroyVertexBuffer(mVertexBufferHandle);
-
-	mVertexBufferHandle = std::exchange(other.mVertexBufferHandle, nullptr);
-	return *this;
-}
-
 void VertexBuffer::write(const void* memory, size_t size, size_t stride)
 {
-	gBackend->writeVertexBufferMemory(mVertexBufferHandle, memory, size, stride);
+	gBackend->writeVertexBufferMemory(mVertexBufferHandle.get(), memory, size, stride);
 }
 
 // index buffer
 
 IndexBuffer::IndexBuffer(size_t size, size_t stride) : Buffer(size)
 {
-	mIndexBufferHandle = gBackend->createIndexBuffer(size, stride);
+	mIndexBufferHandle.reset(gBackend->createIndexBuffer(size, stride));
 }
 
 IndexBuffer::IndexBuffer(const void* memory, size_t size, size_t stride) : IndexBuffer(size, stride)
@@ -255,41 +185,16 @@ IndexBuffer::IndexBuffer(const void* memory, size_t size, size_t stride) : Index
 	write(memory, size, stride);
 }
 
-IndexBuffer::IndexBuffer(IndexBuffer&& other) noexcept : Buffer(std::move(other))
-{
-	mIndexBufferHandle = std::exchange(other.mIndexBufferHandle, nullptr);
-}
-
-IndexBuffer::~IndexBuffer()
-{
-	if (gBackend && mIndexBufferHandle)
-		gBackend->destroyIndexBuffer(mIndexBufferHandle);
-}
-
-IndexBuffer& IndexBuffer::operator=(IndexBuffer&& other) noexcept
-{
-	Buffer::operator=(std::move(other));
-
-	if (this == &other)
-		return *this;
-
-	if (mIndexBufferHandle)
-		gBackend->destroyIndexBuffer(mIndexBufferHandle);
-
-	mIndexBufferHandle = std::exchange(other.mIndexBufferHandle, nullptr);
-	return *this;
-}
-
 void IndexBuffer::write(const void* memory, size_t size, size_t stride)
 {
-	gBackend->writeIndexBufferMemory(mIndexBufferHandle, memory, size, stride);
+	gBackend->writeIndexBufferMemory(mIndexBufferHandle.get(), memory, size, stride);
 }
 
 // uniform buffer
 
 UniformBuffer::UniformBuffer(size_t size) : Buffer(size)
 {
-	mUniformBufferHandle = gBackend->createUniformBuffer(size);
+	mUniformBufferHandle.reset(gBackend->createUniformBuffer(size));
 }
 
 UniformBuffer::UniformBuffer(const void* memory, size_t size) : UniformBuffer(size)
@@ -297,41 +202,16 @@ UniformBuffer::UniformBuffer(const void* memory, size_t size) : UniformBuffer(si
 	write(memory, size);
 }
 
-UniformBuffer::UniformBuffer(UniformBuffer&& other) noexcept : Buffer(std::move(other))
-{
-	mUniformBufferHandle = std::exchange(other.mUniformBufferHandle, nullptr);
-}
-
-UniformBuffer::~UniformBuffer()
-{
-	if (gBackend && mUniformBufferHandle)
-		gBackend->destroyUniformBuffer(mUniformBufferHandle);
-}
-
-UniformBuffer& UniformBuffer::operator=(UniformBuffer&& other) noexcept
-{
-	Buffer::operator=(std::move(other));
-
-	if (this == &other)
-		return *this;
-
-	if (mUniformBufferHandle)
-		gBackend->destroyUniformBuffer(mUniformBufferHandle);
-
-	mUniformBufferHandle = std::exchange(other.mUniformBufferHandle, nullptr);
-	return *this;
-}
-
 void UniformBuffer::write(const void* memory, size_t size)
 {
-	gBackend->writeUniformBufferMemory(mUniformBufferHandle, memory, size);
+	gBackend->writeUniformBufferMemory(mUniformBufferHandle.get(), memory, size);
 }
 
 // storage buffer
 
 StorageBuffer::StorageBuffer(size_t size) : Buffer(size)
 {
-	mStorageBufferHandle = gRaytracingBackend->createStorageBuffer(size);
+	mStorageBufferHandle.reset(gRaytracingBackend->createStorageBuffer(size));
 }
 
 StorageBuffer::StorageBuffer(const void* memory, size_t size) : StorageBuffer(size)
@@ -339,34 +219,9 @@ StorageBuffer::StorageBuffer(const void* memory, size_t size) : StorageBuffer(si
 	write(memory, size);
 }
 
-StorageBuffer::StorageBuffer(StorageBuffer&& other) noexcept : Buffer(std::move(other))
-{
-	mStorageBufferHandle = std::exchange(other.mStorageBufferHandle, nullptr);
-}
-
-StorageBuffer::~StorageBuffer()
-{
-	if (gRaytracingBackend && mStorageBufferHandle)
-		gRaytracingBackend->destroyStorageBuffer(mStorageBufferHandle);
-}
-
-StorageBuffer& StorageBuffer::operator=(StorageBuffer&& other) noexcept
-{
-	Buffer::operator=(std::move(other));
-
-	if (this == &other)
-		return *this;
-
-	if (mStorageBufferHandle)
-		gRaytracingBackend->destroyStorageBuffer(mStorageBufferHandle);
-
-	mStorageBufferHandle = std::exchange(other.mStorageBufferHandle, nullptr);
-	return *this;
-}
-
 void StorageBuffer::write(const void* memory, size_t size)
 {
-	gRaytracingBackend->writeStorageBufferMemory(mStorageBufferHandle, memory, size);
+	gRaytracingBackend->writeStorageBufferMemory(mStorageBufferHandle.get(), memory, size);
 }
 
 // bottom level acceleration structure
@@ -378,21 +233,15 @@ BottomLevelAccelerationStructure::BottomLevelAccelerationStructure(const void* v
 	auto vertex_memory_with_offset = (void*)((size_t)vertex_memory + vertex_offset);
 	auto index_memory_with_offset = (void*)((size_t)index_memory + index_offset);
 
-	mBottomLevelAccelerationStructureHandle = gRaytracingBackend->createBottomLevelAccelerationStructure(vertex_memory_with_offset,
-		vertex_count, vertex_stride, index_memory_with_offset, index_count, index_stride, transform);
-}
-
-BottomLevelAccelerationStructure::~BottomLevelAccelerationStructure()
-{
-	if (gRaytracingBackend && mBottomLevelAccelerationStructureHandle)
-		gRaytracingBackend->destroyBottomLevelAccelerationStructure(mBottomLevelAccelerationStructureHandle);
+	mBottomLevelAccelerationStructureHandle.reset(gRaytracingBackend->createBottomLevelAccelerationStructure(vertex_memory_with_offset,
+		vertex_count, vertex_stride, index_memory_with_offset, index_count, index_stride, transform));
 }
 
 // top level acceleration structure
 
 TopLevelAccelerationStructure::TopLevelAccelerationStructure(const std::vector<Instance>& instances)
 {
-	mTopLevelAccelerationStructureHandle = gRaytracingBackend->createTopLevelAccelerationStructure(instances);
+	mTopLevelAccelerationStructureHandle.reset(gRaytracingBackend->createTopLevelAccelerationStructure(instances));
 }
 
 TopLevelAccelerationStructure::TopLevelAccelerationStructure(
@@ -405,12 +254,6 @@ TopLevelAccelerationStructure::TopLevelAccelerationStructure(
 	const std::vector<BottomLevelAccelerationStructureHandle*>& bottom_level_acceleration_structures) :
 	TopLevelAccelerationStructure(CreateInstances(bottom_level_acceleration_structures))
 {
-}
-
-TopLevelAccelerationStructure::~TopLevelAccelerationStructure()
-{
-	if (gRaytracingBackend && mTopLevelAccelerationStructureHandle)
-		gRaytracingBackend->destroyTopLevelAccelerationStructure(mTopLevelAccelerationStructureHandle);
 }
 
 std::vector<TopLevelAccelerationStructure::Instance> TopLevelAccelerationStructure::CreateInstances(
