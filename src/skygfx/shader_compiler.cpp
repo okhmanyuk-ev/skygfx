@@ -58,7 +58,7 @@ std::vector<uint32_t> skygfx::CompileGlslToSpirv(ShaderStage stage, const std::s
 
 	if (!program.link(messages))
 	{
-		auto info_log = shader.getInfoLog();
+		auto info_log = program.getInfoLog();
 		throw std::runtime_error(info_log);
 	}
 
