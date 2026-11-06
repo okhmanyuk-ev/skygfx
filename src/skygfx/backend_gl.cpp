@@ -812,7 +812,6 @@ static void EnsureGraphicsState(bool draw_indexed)
 	{
 		glUseProgram(gContext->shader->getProgram());
 		gContext->vertex_array_dirty = true;
-		gContext->index_buffer_dirty = draw_indexed;
 		gContext->shader_dirty = false;
 	}
 
@@ -1656,6 +1655,7 @@ void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, const void* 
 IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new IndexBufferGL(size, stride);
+	gContext->index_buffer_dirty = true;
 	return (IndexBufferHandle*)buffer;
 }
 
@@ -1676,6 +1676,7 @@ void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, const void* me
 	auto buffer = (IndexBufferGL*)handle;
 	buffer->write(memory, size);
 	buffer->setStride(stride);
+	gContext->index_buffer_dirty = true;
 }
 
 UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
