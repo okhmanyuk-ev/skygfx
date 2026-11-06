@@ -1623,7 +1623,7 @@ static void AddIndicesForVertexArray(utils::MeshBuilder::Mode mode, skygfx::Topo
 			return;
 
 		extract_line_list_indices_from_line_strip(vertex_start, vertex_count, indices);
-		add_indices(indices, vertex_start + vertex_count - 1, vertex_start);
+		add_indices(indices, vertex_count - 1, vertex_start);
 	};
 
 	auto extract_triangles_indices_from_triangle_fan = [&add_indices](uint32_t vertex_start, uint32_t vertex_count, auto& indices) {
