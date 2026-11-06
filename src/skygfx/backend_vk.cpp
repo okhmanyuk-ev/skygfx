@@ -364,6 +364,17 @@ const static std::unordered_map<ComparisonFunc, vk::CompareOp> CompareOpMap = {
 	{ ComparisonFunc::GreaterEqual, vk::CompareOp::eGreaterOrEqual }
 };
 
+const static std::unordered_map<StencilOp, vk::StencilOp> StencilOpMap = {
+	{ StencilOp::Keep, vk::StencilOp::eKeep },
+	{ StencilOp::Zero, vk::StencilOp::eZero },
+	{ StencilOp::Replace, vk::StencilOp::eReplace },
+	{ StencilOp::IncrementSaturation, vk::StencilOp::eIncrementAndClamp },
+	{ StencilOp::DecrementSaturation, vk::StencilOp::eDecrementAndClamp },
+	{ StencilOp::Invert, vk::StencilOp::eInvert },
+	{ StencilOp::Increment, vk::StencilOp::eIncrementAndWrap },
+	{ StencilOp::Decrement, vk::StencilOp::eDecrementAndWrap },
+};
+
 const static std::unordered_map<ShaderStage, vk::ShaderStageFlagBits> ShaderStageMap = {
 	{ ShaderStage::Vertex, vk::ShaderStageFlagBits::eVertex },
 	{ ShaderStage::Fragment, vk::ShaderStageFlagBits::eFragment },
@@ -1840,7 +1851,11 @@ static vk::raii::Pipeline CreateGraphicsPipeline(const PipelineStateVK& pipeline
 		vk::DynamicState::eColorWriteMaskEXT,
 		vk::DynamicState::eColorBlendEquationEXT,
 		vk::DynamicState::eColorBlendEnableEXT,
-		vk::DynamicState::eStencilTestEnable
+		vk::DynamicState::eStencilTestEnable,
+		vk::DynamicState::eStencilOp,
+		vk::DynamicState::eStencilCompareMask,
+		vk::DynamicState::eStencilWriteMask,
+		vk::DynamicState::eStencilReference
 	};
 
 	auto pipeline_dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo()
@@ -2178,7 +2193,15 @@ static void EnsureStencilMode(vk::raii::CommandBuffer& cmdlist)
 
 	gContext->stencil_mode_dirty = false;
 
+	auto stencil_mode = gContext->stencil_mode.value_or(StencilMode());
+	auto face = vk::StencilFaceFlagBits::eFrontAndBack;
+
 	cmdlist.setStencilTestEnable(gContext->stencil_mode.has_value());
+	cmdlist.setStencilOp(face, StencilOpMap.at(stencil_mode.fail_op), StencilOpMap.at(stencil_mode.pass_op),
+		StencilOpMap.at(stencil_mode.depth_fail_op), CompareOpMap.at(stencil_mode.func));
+	cmdlist.setStencilCompareMask(face, stencil_mode.read_mask);
+	cmdlist.setStencilWriteMask(face, stencil_mode.write_mask);
+	cmdlist.setStencilReference(face, stencil_mode.reference);
 }
 
 static void EnsureGraphicsPipelineState(vk::raii::CommandBuffer& cmdlist)
