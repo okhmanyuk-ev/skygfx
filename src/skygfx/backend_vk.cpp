@@ -117,6 +117,7 @@ struct ContextVK
 
 	uint32_t width = 0;
 	uint32_t height = 0;
+	bool vsync = true;
 
 	struct Frame
 	{
@@ -2332,6 +2333,22 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 
 	auto format = gContext->surface_format.format;
 
+	auto present_mode = vk::PresentModeKHR::eFifo;
+
+	if (!gContext->vsync)
+	{
+		auto present_modes = gContext->physical_device.getSurfacePresentModesKHR(*gContext->surface);
+
+		for (auto mode : { vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eImmediate })
+		{
+			if (std::ranges::find(present_modes, mode) == present_modes.end())
+				continue;
+
+			present_mode = mode;
+			break;
+		}
+	}
+
 	auto swapchain_info = vk::SwapchainCreateInfoKHR()
 		.setSurface(*gContext->surface)
 		.setMinImageCount(desired_number_of_swapchain_images)
@@ -2343,7 +2360,7 @@ static void CreateSwapchain(uint32_t width, uint32_t height)
 		.setImageArrayLayers(1)
 		.setImageSharingMode(vk::SharingMode::eExclusive)
 		.setQueueFamilyIndices(gContext->queue_family_index)
-		.setPresentMode(vk::PresentModeKHR::eFifo)
+		.setPresentMode(present_mode)
 		.setClipped(true)
 		.setCompositeAlpha(vk::CompositeAlphaFlagBitsKHR::eOpaque)
 		.setOldSwapchain(*gContext->swapchain);
@@ -2788,7 +2805,21 @@ void BackendVK::resize(uint32_t width, uint32_t height)
 
 void BackendVK::setVsync(bool value)
 {
-	// TODO: implement
+	if (gContext->vsync == value)
+		return;
+
+	gContext->vsync = value;
+
+	auto surface_extent = gContext->physical_device.getSurfaceCapabilitiesKHR(*gContext->surface).currentExtent;
+
+	if (surface_extent.width == 0 || surface_extent.height == 0)
+		return;
+
+	End(false);
+	WaitForGpu();
+	CreateSwapchain(gContext->width, gContext->height);
+	MoveToNextFrame();
+	Begin();
 }
 
 void BackendVK::setTopology(Topology topology)
