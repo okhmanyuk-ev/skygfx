@@ -779,7 +779,7 @@ static void EnsureScissor()
 	glEnable(GL_SCISSOR_TEST);
 
 	auto x = (GLint)glm::round(scissor->position.x);
-	auto y = (GLint)glm::round(gContext->height - scissor->position.y - scissor->size.y); // TODO: need different calculations when render target
+	auto y = (GLint)glm::round(gContext->getBackbufferHeight() - scissor->position.y - scissor->size.y);
 	auto width = (GLint)glm::round(scissor->size.x);
 	auto height = (GLint)glm::round(scissor->size.y);
 	glScissor(x, y, width, height);
@@ -1203,6 +1203,9 @@ void BackendGL::resize(uint32_t width, uint32_t height)
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
+
+	if (gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendGL::setVsync(bool value)
@@ -1258,6 +1261,9 @@ void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count
 		if (!gContext->viewport.has_value())
 			gContext->viewport_dirty = true;
 
+		if (gContext->scissor.has_value())
+			gContext->scissor_dirty = true;
+
 		return;
 	}
 	std::vector<RenderTargetGL*> render_targets;
@@ -1287,6 +1293,9 @@ void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count
 
 	if (!gContext->viewport.has_value())
 		gContext->viewport_dirty = true;
+
+	if (gContext->scissor.has_value())
+		gContext->scissor_dirty = true;
 }
 
 void BackendGL::setShader(ShaderHandle* handle)
