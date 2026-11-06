@@ -3165,22 +3165,12 @@ void BackendVK::generateMips(TextureHandle* handle)
 	texture->generateMips();
 }
 
-void BackendVK::destroyTexture(TextureHandle* handle)
-{
-	delete static_cast<TextureVK*>(handle);
-}
-
 RenderTargetHandle* BackendVK::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = static_cast<TextureVK*>(texture_handle);
 	auto render_target = new RenderTargetVK(width, height, texture);
 	render_target->track();
 	return render_target;
-}
-
-void BackendVK::destroyRenderTarget(RenderTargetHandle* handle)
-{
-	delete static_cast<RenderTargetVK*>(handle);
 }
 
 ShaderHandle* BackendVK::createShader(const std::string& vertex_code, const std::string& fragment_code,
@@ -3191,11 +3181,6 @@ ShaderHandle* BackendVK::createShader(const std::string& vertex_code, const std:
 	return shader;
 }
 
-void BackendVK::destroyShader(ShaderHandle* handle)
-{
-	delete static_cast<ShaderVK*>(handle);
-}
-
 RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 	const std::string& closesthit_code, const std::vector<std::string>& defines)
 {
@@ -3204,21 +3189,11 @@ RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& ray
 	return shader;
 }
 
-void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
-{
-	delete static_cast<RaytracingShaderVK*>(handle);
-}
-
 VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferVK(size, stride);
 	buffer->track();
 	return buffer;
-}
-
-void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
-{
-	delete static_cast<VertexBufferVK*>(handle);
 }
 
 void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -3242,11 +3217,6 @@ IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
 	return buffer;
 }
 
-void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
-{
-	delete static_cast<IndexBufferVK*>(handle);
-}
-
 void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = static_cast<IndexBufferVK*>(handle);
@@ -3262,11 +3232,6 @@ UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
 	auto buffer = new UniformBufferVK(size);
 	buffer->track();
 	return buffer;
-}
-
-void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
-{
-	delete static_cast<UniformBufferVK*>(handle);
 }
 
 void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
@@ -3285,11 +3250,6 @@ BottomLevelAccelerationStructureHandle* BackendVK::createBottomLevelAcceleration
 	return bottom_level_acceleration_structure;
 }
 
-void BackendVK::destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle)
-{
-	delete static_cast<BottomLevelAccelerationStructureVK*>(handle);
-}
-
 TopLevelAccelerationStructureHandle* BackendVK::createTopLevelAccelerationStructure(
 	const std::vector<TopLevelAccelerationStructure::Instance>& instances)
 {
@@ -3298,21 +3258,11 @@ TopLevelAccelerationStructureHandle* BackendVK::createTopLevelAccelerationStruct
 	return top_level_acceleration_structure;
 }
 
-void BackendVK::destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle)
-{
-	delete static_cast<TopLevelAccelerationStructureVK*>(handle);
-}
-
 StorageBufferHandle* BackendVK::createStorageBuffer(size_t size)
 {
 	auto buffer = new StorageBufferVK(size);
 	buffer->track();
 	return buffer;
-}
-
-void BackendVK::destroyStorageBuffer(StorageBufferHandle* handle)
-{
-	delete static_cast<StorageBufferVK*>(handle);
 }
 
 void BackendVK::writeStorageBufferMemory(StorageBufferHandle* handle, const void* memory, size_t size)

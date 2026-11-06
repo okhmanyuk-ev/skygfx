@@ -72,31 +72,24 @@ namespace skygfx
 		ClosestHit
 	};
 
-	struct TextureHandle { virtual ~TextureHandle() = default; };
-	struct RenderTargetHandle { virtual ~RenderTargetHandle() = default; };
-	struct ShaderHandle { virtual ~ShaderHandle() = default; };
-	struct RaytracingShaderHandle { virtual ~RaytracingShaderHandle() = default; };
-	struct VertexBufferHandle { virtual ~VertexBufferHandle() = default; };
-	struct IndexBufferHandle { virtual ~IndexBufferHandle() = default; };
-	struct UniformBufferHandle { virtual ~UniformBufferHandle() = default; };
-	struct StorageBufferHandle { virtual ~StorageBufferHandle() = default; };
-	struct BottomLevelAccelerationStructureHandle { virtual ~BottomLevelAccelerationStructureHandle() = default; };
-	struct TopLevelAccelerationStructureHandle { virtual ~TopLevelAccelerationStructureHandle() = default; };
+	struct Handle { virtual ~Handle() = default; };
+
+	struct TextureHandle : Handle {};
+	struct RenderTargetHandle : Handle {};
+	struct ShaderHandle : Handle {};
+	struct RaytracingShaderHandle : Handle {};
+	struct VertexBufferHandle : Handle {};
+	struct IndexBufferHandle : Handle {};
+	struct UniformBufferHandle : Handle {};
+	struct StorageBufferHandle : Handle {};
+	struct BottomLevelAccelerationStructureHandle : Handle {};
+	struct TopLevelAccelerationStructureHandle : Handle {};
 
 	namespace detail
 	{
 		struct HandleDeleter
 		{
-			void operator()(TextureHandle* handle) const;
-			void operator()(RenderTargetHandle* handle) const;
-			void operator()(ShaderHandle* handle) const;
-			void operator()(RaytracingShaderHandle* handle) const;
-			void operator()(VertexBufferHandle* handle) const;
-			void operator()(IndexBufferHandle* handle) const;
-			void operator()(UniformBufferHandle* handle) const;
-			void operator()(StorageBufferHandle* handle) const;
-			void operator()(BottomLevelAccelerationStructureHandle* handle) const;
-			void operator()(TopLevelAccelerationStructureHandle* handle) const;
+			void operator()(Handle* handle) const;
 		};
 
 		template<class T>

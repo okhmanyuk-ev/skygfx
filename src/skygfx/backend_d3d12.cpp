@@ -1500,23 +1500,11 @@ void BackendD3D12::generateMips(TextureHandle* handle)
 	texture->generateMips();
 }
 
-void BackendD3D12::destroyTexture(TextureHandle* handle)
-{
-	auto texture = static_cast<TextureD3D12*>(handle);
-	delete texture;
-}
-
 RenderTargetHandle* BackendD3D12::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = static_cast<TextureD3D12*>(texture_handle);
 	auto render_target = new RenderTargetD3D12(width, height, texture);
 	return render_target;
-}
-
-void BackendD3D12::destroyRenderTarget(RenderTargetHandle* handle)
-{
-	auto render_target = static_cast<RenderTargetD3D12*>(handle);
-	delete render_target;
 }
 
 ShaderHandle* BackendD3D12::createShader(const std::string& vertex_code,
@@ -1526,22 +1514,10 @@ ShaderHandle* BackendD3D12::createShader(const std::string& vertex_code,
 	return shader;
 }
 
-void BackendD3D12::destroyShader(ShaderHandle* handle)
-{
-	auto shader = static_cast<ShaderD3D12*>(handle);
-	delete shader;
-}
-
 VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferD3D12(size, stride);
 	return buffer;
-}
-
-void BackendD3D12::destroyVertexBuffer(VertexBufferHandle* handle)
-{
-	auto buffer = static_cast<VertexBufferD3D12*>(handle);
-	delete buffer;
 }
 
 void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -1576,22 +1552,10 @@ void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, const void*
 		gContext->index_buffer_dirty = true;
 }
 
-void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
-{
-	auto buffer = static_cast<IndexBufferD3D12*>(handle);
-	delete buffer;
-}
-
 UniformBufferHandle* BackendD3D12::createUniformBuffer(size_t size)
 {
 	auto buffer = new UniformBufferD3D12(size);
 	return buffer;
-}
-
-void BackendD3D12::destroyUniformBuffer(UniformBufferHandle* handle)
-{
-	auto buffer = static_cast<UniformBufferD3D12*>(handle);
-	delete buffer;
 }
 
 void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)

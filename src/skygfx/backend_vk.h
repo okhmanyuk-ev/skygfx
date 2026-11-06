@@ -56,43 +56,33 @@ namespace skygfx
 			uint32_t mip_level, uint32_t offset_x, uint32_t offset_y) override;
 		std::vector<uint8_t> readTexturePixels(TextureHandle* handle, uint32_t mip_level) override;
 		void generateMips(TextureHandle* handle) override;
-		void destroyTexture(TextureHandle* handle) override;
 
 		RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) override;
-		void destroyRenderTarget(RenderTargetHandle* handle) override;
 
 		ShaderHandle* createShader(const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) override;
-		void destroyShader(ShaderHandle* handle) override;
 
 		RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code,
 			const std::vector<std::string>& miss_code, const std::string& closesthit_code,
 			const std::vector<std::string>& defines) override;
-		void destroyRaytracingShader(RaytracingShaderHandle* handle) override;
 
 		VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) override;
-		void destroyVertexBuffer(VertexBufferHandle* handle) override;
 		void writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride) override;
 
 		IndexBufferHandle* createIndexBuffer(size_t size, size_t stride) override;
-		void destroyIndexBuffer(IndexBufferHandle* handle) override;
 		void writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride) override;
 
 		UniformBufferHandle* createUniformBuffer(size_t size) override;
-		void destroyUniformBuffer(UniformBufferHandle* handle) override;
 		void writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size) override;
 
 		BottomLevelAccelerationStructureHandle* createBottomLevelAccelerationStructure(const void* vertex_memory,
 			uint32_t vertex_count, uint32_t vertex_stride, const void* index_memory, uint32_t index_count,
 			uint32_t index_stride, const glm::mat4& transform) override;
-		void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) override;
 
 		TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
 			const std::vector<TopLevelAccelerationStructure::Instance>& instances) override;
-		void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) override;
 
 		StorageBufferHandle* createStorageBuffer(size_t size) override;
-		void destroyStorageBuffer(StorageBufferHandle* handle) override;
 		void writeStorageBufferMemory(StorageBufferHandle* handle, const void* memory, size_t size) override;
 	};
 }

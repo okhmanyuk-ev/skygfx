@@ -47,25 +47,19 @@ namespace skygfx
 			uint32_t mip_level, uint32_t offset_x, uint32_t offset_y) = 0;
 		virtual std::vector<uint8_t> readTexturePixels(TextureHandle* handle, uint32_t mip_level) = 0;
 		virtual void generateMips(TextureHandle* handle) = 0;
-		virtual void destroyTexture(TextureHandle* handle) = 0;
 
 		virtual RenderTargetHandle* createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture) = 0;
-		virtual void destroyRenderTarget(RenderTargetHandle* handle) = 0;
 
 		virtual ShaderHandle* createShader(const std::string& vertex_code, 
 			const std::string& fragment_code, const std::vector<std::string>& defines) = 0;
-		virtual void destroyShader(ShaderHandle* handle) = 0;
 
 		virtual VertexBufferHandle* createVertexBuffer(size_t size, size_t stride) = 0;
-		virtual void destroyVertexBuffer(VertexBufferHandle* handle) = 0;
 		virtual void writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride) = 0;
 
 		virtual IndexBufferHandle* createIndexBuffer(size_t size, size_t stride) = 0;
-		virtual void destroyIndexBuffer(IndexBufferHandle* handle) = 0;
 		virtual void writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride) = 0;
 
 		virtual UniformBufferHandle* createUniformBuffer(size_t size) = 0;
-		virtual void destroyUniformBuffer(UniformBufferHandle* handle) = 0;
 		virtual void writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size) = 0;
 	};
 
@@ -81,19 +75,15 @@ namespace skygfx
 		virtual RaytracingShaderHandle* createRaytracingShader(const std::string& raygen_code,
 			const std::vector<std::string>& miss_code, const std::string& closesthit_code,
 			const std::vector<std::string>& defines) = 0;
-		virtual void destroyRaytracingShader(RaytracingShaderHandle* handle) = 0;
 
 		virtual BottomLevelAccelerationStructureHandle* createBottomLevelAccelerationStructure(const void* vertex_memory,
 			uint32_t vertex_count, uint32_t vertex_stride, const void* index_memory, uint32_t index_count,
 			uint32_t index_stride, const glm::mat4& transform) = 0;
-		virtual void destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual TopLevelAccelerationStructureHandle* createTopLevelAccelerationStructure(
 			const std::vector<TopLevelAccelerationStructure::Instance>& instances) = 0;
-		virtual void destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle) = 0;
 
 		virtual StorageBufferHandle* createStorageBuffer(size_t size) = 0;
-		virtual void destroyStorageBuffer(StorageBufferHandle* handle) = 0;
 		virtual void writeStorageBufferMemory(StorageBufferHandle* handle, const void* memory, size_t size) = 0;
 	};
 }

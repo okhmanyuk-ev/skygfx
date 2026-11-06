@@ -1200,23 +1200,11 @@ void BackendD3D11::generateMips(TextureHandle* handle)
 	texture->generateMips();
 }
 
-void BackendD3D11::destroyTexture(TextureHandle* handle)
-{
-	auto texture = static_cast<TextureD3D11*>(handle);
-	delete texture;
-}
-
 RenderTargetHandle* BackendD3D11::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = static_cast<TextureD3D11*>(texture_handle);
 	auto render_target = new RenderTargetD3D11(width, height, texture);
 	return render_target;
-}
-
-void BackendD3D11::destroyRenderTarget(RenderTargetHandle* handle)
-{
-	auto render_target = static_cast<RenderTargetD3D11*>(handle);
-	delete render_target;
 }
 
 ShaderHandle* BackendD3D11::createShader(const std::string& vertex_code, 
@@ -1226,22 +1214,10 @@ ShaderHandle* BackendD3D11::createShader(const std::string& vertex_code,
 	return shader;
 }
 
-void BackendD3D11::destroyShader(ShaderHandle* handle)
-{
-	auto shader = static_cast<ShaderD3D11*>(handle);
-	delete shader;
-}
-
 VertexBufferHandle* BackendD3D11::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferD3D11(size, stride);
 	return buffer;
-}
-
-void BackendD3D11::destroyVertexBuffer(VertexBufferHandle* handle)
-{
-	auto buffer = static_cast<VertexBufferD3D11*>(handle);
-	delete buffer;
 }
 
 void BackendD3D11::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -1264,22 +1240,10 @@ void BackendD3D11::writeIndexBufferMemory(IndexBufferHandle* handle, const void*
 	buffer->setStride(stride);
 }
 
-void BackendD3D11::destroyIndexBuffer(IndexBufferHandle* handle)
-{
-	auto buffer = static_cast<IndexBufferD3D11*>(handle);
-	delete buffer;
-}
-
 UniformBufferHandle* BackendD3D11::createUniformBuffer(size_t size)
 {
 	auto buffer = new UniformBufferD3D11(size);
 	return buffer;
-}
-
-void BackendD3D11::destroyUniformBuffer(UniformBufferHandle* handle)
-{
-	auto buffer = static_cast<UniformBufferD3D11*>(handle);
-	delete buffer;
 }
 
 void BackendD3D11::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)

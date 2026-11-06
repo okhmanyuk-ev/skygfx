@@ -1625,22 +1625,11 @@ void BackendGL::generateMips(TextureHandle* handle)
 	texture->generateMips();
 }
 
-void BackendGL::destroyTexture(TextureHandle* handle)
-{
-	delete static_cast<TextureGL*>(handle);
-}
-
 RenderTargetHandle* BackendGL::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = static_cast<TextureGL*>(texture_handle);
 	auto render_target = new RenderTargetGL(texture);
 	return render_target;
-}
-
-void BackendGL::destroyRenderTarget(RenderTargetHandle* handle)
-{
-	auto render_target = static_cast<RenderTargetGL*>(handle);
-	delete render_target;
 }
 
 ShaderHandle* BackendGL::createShader(const std::string& vertex_code,
@@ -1650,21 +1639,10 @@ ShaderHandle* BackendGL::createShader(const std::string& vertex_code,
 	return shader;
 }
 
-void BackendGL::destroyShader(ShaderHandle* handle)
-{
-	auto shader = static_cast<ShaderGL*>(handle);
-	delete shader;
-}
-
 VertexBufferHandle* BackendGL::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferGL(size, stride);
 	return buffer;
-}
-
-void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
-{
-	delete static_cast<VertexBufferGL*>(handle);
 }
 
 void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -1681,11 +1659,6 @@ IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
 	return buffer;
 }
 
-void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
-{
-	delete static_cast<IndexBufferGL*>(handle);
-}
-
 void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
 	auto buffer = static_cast<IndexBufferGL*>(handle);
@@ -1698,11 +1671,6 @@ UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
 {
 	auto buffer = new UniformBufferGL(size);
 	return buffer;
-}
-
-void BackendGL::destroyUniformBuffer(UniformBufferHandle* handle)
-{
-	delete static_cast<UniformBufferGL*>(handle);
 }
 
 void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)

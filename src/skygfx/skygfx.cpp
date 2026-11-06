@@ -23,64 +23,10 @@ static std::unordered_map<uint32_t, StorageBuffer> gStorageBuffers;
 
 // handle deleter
 
-void skygfx::detail::HandleDeleter::operator()(TextureHandle* handle) const
+void skygfx::detail::HandleDeleter::operator()(Handle* handle) const
 {
 	if (gBackend)
-		gBackend->destroyTexture(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(RenderTargetHandle* handle) const
-{
-	if (gBackend)
-		gBackend->destroyRenderTarget(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(ShaderHandle* handle) const
-{
-	if (gBackend)
-		gBackend->destroyShader(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(RaytracingShaderHandle* handle) const
-{
-	if (gRaytracingBackend)
-		gRaytracingBackend->destroyRaytracingShader(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(VertexBufferHandle* handle) const
-{
-	if (gBackend)
-		gBackend->destroyVertexBuffer(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(IndexBufferHandle* handle) const
-{
-	if (gBackend)
-		gBackend->destroyIndexBuffer(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(UniformBufferHandle* handle) const
-{
-	if (gBackend)
-		gBackend->destroyUniformBuffer(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(StorageBufferHandle* handle) const
-{
-	if (gRaytracingBackend)
-		gRaytracingBackend->destroyStorageBuffer(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(BottomLevelAccelerationStructureHandle* handle) const
-{
-	if (gRaytracingBackend)
-		gRaytracingBackend->destroyBottomLevelAccelerationStructure(handle);
-}
-
-void skygfx::detail::HandleDeleter::operator()(TopLevelAccelerationStructureHandle* handle) const
-{
-	if (gRaytracingBackend)
-		gRaytracingBackend->destroyTopLevelAccelerationStructure(handle);
+		delete handle;
 }
 
 // texture
