@@ -217,7 +217,7 @@ static const std::unordered_map<PixelFormat, GLenum> TextureFormatMap = {
 	{ PixelFormat::RGBA8UNorm, GL_RGBA },
 };
 
-class ShaderGL
+class ShaderGL : public ShaderHandle
 {
 private:
 	GLuint mProgram;
@@ -371,7 +371,7 @@ static std::vector<uint8_t> FlipPixels(const void* memory, uint32_t width, uint3
 	return result;
 }
 
-class TextureGL
+class TextureGL : public TextureHandle
 {
 public:
 	class ScopedBind : public skygfx::noncopyable
@@ -500,7 +500,7 @@ public:
 	}
 };
 
-class RenderTargetGL
+class RenderTargetGL : public RenderTargetHandle
 {
 public:
 	auto getGLFramebuffer() const { return mFramebuffer; }
@@ -584,7 +584,7 @@ public:
 	}
 };
 
-class VertexBufferGL : public BufferGL
+class VertexBufferGL : public VertexBufferHandle, public BufferGL
 {
 public:
 	auto getStride() const { return mStride; }
@@ -600,7 +600,7 @@ public:
 	}
 };
 
-class IndexBufferGL : public BufferGL
+class IndexBufferGL : public IndexBufferHandle, public BufferGL
 {
 public:
 	auto getStride() const { return mStride; }
@@ -616,7 +616,7 @@ public:
 	}
 };
 
-class UniformBufferGL : public BufferGL
+class UniformBufferGL : public UniformBufferHandle, public BufferGL
 {
 public:
 	UniformBufferGL(size_t size) : BufferGL(size, GL_UNIFORM_BUFFER)
@@ -932,7 +932,7 @@ static void EnsureGraphicsState(bool draw_indexed)
 
 		for (auto [binding, texture_handle] : gContext->textures)
 		{
-			bool texture_has_mips = ((TextureGL*)texture_handle)->getMipCount() > 1;
+			bool texture_has_mips = texture_handle->getMipCount() > 1;
 			auto sampler_type = texture_has_mips ? ContextGL::SamplerType::Mipmap : ContextGL::SamplerType::NoMipmap;
 			auto sampler = gContext->sampler_states.at(value).at(sampler_type);
 			glBindSampler(binding, sampler);
@@ -1242,7 +1242,7 @@ void BackendGL::setScissor(std::optional<Scissor> scissor)
 
 void BackendGL::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	gContext->textures[binding] = (TextureGL*)handle;
+	gContext->textures[binding] = static_cast<TextureGL*>(handle);
 	gContext->dirty_textures.insert(binding);
 	gContext->sampler_state_dirty = true;
 }
@@ -1270,7 +1270,7 @@ void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count
 
 	for (size_t i = 0; i < count; i++)
 	{
-		auto target = (RenderTargetGL*)(RenderTargetHandle*)*(RenderTarget*)render_target[i];
+		auto target = static_cast<RenderTargetGL*>((RenderTargetHandle*)*(RenderTarget*)render_target[i]);
 		render_targets.push_back(target);
 	}
 
@@ -1300,7 +1300,7 @@ void BackendGL::setRenderTarget(const RenderTarget** render_target, size_t count
 
 void BackendGL::setShader(ShaderHandle* handle)
 {
-	gContext->shader = (ShaderGL*)handle;
+	gContext->shader = static_cast<ShaderGL*>(handle);
 	gContext->shader_dirty = true;
 }
 
@@ -1315,7 +1315,7 @@ void BackendGL::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count
 	gContext->vertex_buffers.clear();
 	for (size_t i = 0; i < count; i++)
 	{
-		auto buffer = (VertexBufferGL*)(VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i];
+		auto buffer = static_cast<VertexBufferGL*>((VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i]);
 		gContext->vertex_buffers.push_back(buffer);
 	}
 	gContext->vertex_array_dirty = true;
@@ -1323,13 +1323,13 @@ void BackendGL::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t count
 
 void BackendGL::setIndexBuffer(IndexBufferHandle* handle)
 {
-	gContext->index_buffer = (IndexBufferGL*)handle;
+	gContext->index_buffer = static_cast<IndexBufferGL*>(handle);
 	gContext->index_buffer_dirty = true;
 }
 
 void BackendGL::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferGL*)handle;
+	auto buffer = static_cast<UniformBufferGL*>(handle);
 	glBindBufferBase(GL_UNIFORM_BUFFER, binding, buffer->getGLBuffer());
 }
 
@@ -1538,7 +1538,7 @@ void BackendGL::copyBackbufferToTexture(const glm::i32vec2& src_pos, const glm::
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto dst_texture = reinterpret_cast<TextureGL*>(dst_texture_handle);
+	auto dst_texture = static_cast<TextureGL*>(dst_texture_handle);
 	auto format = gContext->getBackbufferFormat();
 	auto backbuffer_height = gContext->getBackbufferHeight();
 
@@ -1575,31 +1575,31 @@ TextureHandle* BackendGL::createTexture(uint32_t width, uint32_t height, PixelFo
 	uint32_t mip_count)
 {
 	auto texture = new TextureGL(width, height, format, mip_count);
-	return (TextureHandle*)texture;
+	return texture;
 }
 
 void BackendGL::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, const void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
-	auto texture = (TextureGL*)handle;
+	auto texture = static_cast<TextureGL*>(handle);
 	texture->write(width, height, memory, mip_level, offset_x, offset_y);
 }
 
 std::vector<uint8_t> BackendGL::readTexturePixels(TextureHandle* handle, uint32_t mip_level)
 {
-	auto texture = (TextureGL*)handle;
+	auto texture = static_cast<TextureGL*>(handle);
 	return texture->read(mip_level);
 }
 
 void BackendGL::generateMips(TextureHandle* handle)
 {
-	auto texture = (TextureGL*)handle;
+	auto texture = static_cast<TextureGL*>(handle);
 	texture->generateMips();
 }
 
 void BackendGL::destroyTexture(TextureHandle* handle)
 {
-	auto texture = (TextureGL*)handle;
+	auto texture = static_cast<TextureGL*>(handle);
 
 	std::erase_if(gContext->textures, [&](const auto& item) {
 		const auto& [binding, _texture] = item;
@@ -1616,14 +1616,14 @@ void BackendGL::destroyTexture(TextureHandle* handle)
 
 RenderTargetHandle* BackendGL::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
-	auto texture = (TextureGL*)texture_handle;
+	auto texture = static_cast<TextureGL*>(texture_handle);
 	auto render_target = new RenderTargetGL(texture);
-	return (RenderTargetHandle*)render_target;
+	return render_target;
 }
 
 void BackendGL::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetGL*)handle;
+	auto render_target = static_cast<RenderTargetGL*>(handle);
 	delete render_target;
 }
 
@@ -1631,32 +1631,32 @@ ShaderHandle* BackendGL::createShader(const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
 	auto shader = new ShaderGL(vertex_code, fragment_code, defines);
-	return (ShaderHandle*)shader;
+	return shader;
 }
 
 void BackendGL::destroyShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderGL*)handle;
+	auto shader = static_cast<ShaderGL*>(handle);
 	delete shader;
 }
 
 VertexBufferHandle* BackendGL::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferGL(size, stride);
-	return (VertexBufferHandle*)buffer;
+	return buffer;
 }
 
 void BackendGL::destroyVertexBuffer(VertexBufferHandle* handle)
 {
 	gContext->execute_after_present.add([handle] {
-		auto buffer = (VertexBufferGL*)handle;
+		auto buffer = static_cast<VertexBufferGL*>(handle);
 		delete buffer;
 	});
 }
 
 void BackendGL::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
-	auto buffer = (VertexBufferGL*)handle;
+	auto buffer = static_cast<VertexBufferGL*>(handle);
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 }
@@ -1665,13 +1665,13 @@ IndexBufferHandle* BackendGL::createIndexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new IndexBufferGL(size, stride);
 	gContext->index_buffer_dirty = true;
-	return (IndexBufferHandle*)buffer;
+	return buffer;
 }
 
 void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 {
 	gContext->execute_after_present.add([handle] {
-		auto buffer = (IndexBufferGL*)handle;
+		auto buffer = static_cast<IndexBufferGL*>(handle);
 
 		if (gContext->index_buffer == buffer)
 			gContext->index_buffer = nullptr;
@@ -1682,7 +1682,7 @@ void BackendGL::destroyIndexBuffer(IndexBufferHandle* handle)
 
 void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
-	auto buffer = (IndexBufferGL*)handle;
+	auto buffer = static_cast<IndexBufferGL*>(handle);
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 	gContext->index_buffer_dirty = true;
@@ -1691,20 +1691,20 @@ void BackendGL::writeIndexBufferMemory(IndexBufferHandle* handle, const void* me
 UniformBufferHandle* BackendGL::createUniformBuffer(size_t size)
 {
 	auto buffer = new UniformBufferGL(size);
-	return (UniformBufferHandle*)buffer;
+	return buffer;
 }
 
 void BackendGL::destroyUniformBuffer(UniformBufferHandle* handle)
 {
 	gContext->execute_after_present.add([handle] {
-		auto buffer = (UniformBufferGL*)handle;
+		auto buffer = static_cast<UniformBufferGL*>(handle);
 		delete buffer;
 	});
 }
 
 void BackendGL::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
 {
-	auto buffer = (UniformBufferGL*)handle;
+	auto buffer = static_cast<UniformBufferGL*>(handle);
 	buffer->write(memory, size);
 }
 

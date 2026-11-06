@@ -231,7 +231,7 @@ ComPtr<ID3D12Resource> CreateBuffer(uint64_t size)
 	return result;
 }
 
-class ShaderD3D12
+class ShaderD3D12 : public ShaderHandle
 {
 public:
 	const auto& getRootSignature() const { return mRootSignature; }
@@ -356,7 +356,7 @@ public:
 	}
 };
 
-class TextureD3D12
+class TextureD3D12 : public TextureHandle
 {
 public:
 	const auto& getD3D12Texture() const { return mTexture; }
@@ -510,7 +510,7 @@ public:
 	}
 };
 
-class RenderTargetD3D12
+class RenderTargetD3D12 : public RenderTargetHandle
 {
 public:
 	const auto& getRtvHeap() const { return mRtvHeap; }
@@ -651,7 +651,7 @@ public:
 	}
 };
 
-class VertexBufferD3D12 : public BufferD3D12
+class VertexBufferD3D12 : public VertexBufferHandle, public BufferD3D12
 {
 public:
 	auto getStride() const { return mStride; }
@@ -667,7 +667,7 @@ public:
 	}
 };
 
-class IndexBufferD3D12 : public BufferD3D12
+class IndexBufferD3D12 : public IndexBufferHandle, public BufferD3D12
 {
 public:
 	auto getStride() const { return mStride; }
@@ -683,7 +683,7 @@ public:
 	}
 };
 
-class UniformBufferD3D12 : public BufferD3D12
+class UniformBufferD3D12 : public UniformBufferHandle, public BufferD3D12
 {
 public:
 	UniformBufferD3D12(size_t size) : BufferD3D12(AlignUp((int)size, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT), D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER)
@@ -1236,7 +1236,7 @@ void BackendD3D12::setScissor(std::optional<Scissor> scissor)
 
 void BackendD3D12::setTexture(uint32_t binding, TextureHandle* handle)
 {
-	gContext->textures[binding] = (TextureD3D12*)handle;
+	gContext->textures[binding] = static_cast<TextureD3D12*>(handle);
 }
 
 void BackendD3D12::setRenderTarget(const RenderTarget** render_target, size_t count)
@@ -1254,7 +1254,7 @@ void BackendD3D12::setRenderTarget(const RenderTarget** render_target, size_t co
 	{
 		for (size_t i = 0; i < count; i++)
 		{
-			auto target = (RenderTargetD3D12*)(RenderTargetHandle*)*(RenderTarget*)render_target[i];
+			auto target = static_cast<RenderTargetD3D12*>((RenderTargetHandle*)*(RenderTarget*)render_target[i]);
 
 			render_targets.push_back(target);
 			color_attachment_formats.push_back(PixelFormatMap.at(target->getTexture()->getFormat()));
@@ -1277,7 +1277,7 @@ void BackendD3D12::setRenderTarget(const RenderTarget** render_target, size_t co
 
 void BackendD3D12::setShader(ShaderHandle* handle)
 {
-	gContext->pipeline_state.shader = (ShaderD3D12*)handle;
+	gContext->pipeline_state.shader = static_cast<ShaderD3D12*>(handle);
 }
 
 void BackendD3D12::setInputLayout(const std::vector<InputLayout>& value)
@@ -1290,7 +1290,7 @@ void BackendD3D12::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t co
 	gContext->vertex_buffers.clear();
 	for (size_t i = 0; i < count; i++)
 	{
-		auto buffer = (VertexBufferD3D12*)(VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i];
+		auto buffer = static_cast<VertexBufferD3D12*>((VertexBufferHandle*)*(VertexBuffer*)vertex_buffer[i]);
 		gContext->vertex_buffers.push_back(buffer);
 	}
 	gContext->vertex_buffers_dirty = true;
@@ -1298,13 +1298,13 @@ void BackendD3D12::setVertexBuffer(const VertexBuffer** vertex_buffer, size_t co
 
 void BackendD3D12::setIndexBuffer(IndexBufferHandle* handle)
 {
-	gContext->index_buffer = (IndexBufferD3D12*)handle;
+	gContext->index_buffer = static_cast<IndexBufferD3D12*>(handle);
 	gContext->index_buffer_dirty = true;
 }
 
 void BackendD3D12::setUniformBuffer(uint32_t binding, UniformBufferHandle* handle)
 {
-	gContext->uniform_buffers[binding] = (UniformBufferD3D12*)handle;
+	gContext->uniform_buffers[binding] = static_cast<UniformBufferD3D12*>(handle);
 }
 
 void BackendD3D12::setBlendMode(const std::optional<BlendMode>& blend_mode)
@@ -1413,7 +1413,7 @@ void BackendD3D12::copyBackbufferToTexture(const glm::i32vec2& src_pos, const gl
 	if (size.x <= 0 || size.y <= 0)
 		return;
 
-	auto dst_texture = (TextureD3D12*)dst_texture_handle;
+	auto dst_texture = static_cast<TextureD3D12*>(dst_texture_handle);
 	auto format = gContext->getBackbufferFormat();
 
 	assert(dst_texture->getWidth() >= static_cast<uint32_t>(dst_pos.x + size.x));
@@ -1478,44 +1478,44 @@ TextureHandle* BackendD3D12::createTexture(uint32_t width, uint32_t height, Pixe
 	uint32_t mip_count)
 {
 	auto texture = new TextureD3D12(width, height, format, mip_count);
-	return (TextureHandle*)texture;
+	return texture;
 }
 
 void BackendD3D12::writeTexturePixels(TextureHandle* handle, uint32_t width, uint32_t height, const void* memory,
 	uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
 {
-	auto texture = (TextureD3D12*)handle;
+	auto texture = static_cast<TextureD3D12*>(handle);
 	texture->write(width, height, memory, mip_level, offset_x, offset_y);
 }
 
 std::vector<uint8_t> BackendD3D12::readTexturePixels(TextureHandle* handle, uint32_t mip_level)
 {
-	auto texture = (TextureD3D12*)handle;
+	auto texture = static_cast<TextureD3D12*>(handle);
 	return texture->read(mip_level);
 }
 
 void BackendD3D12::generateMips(TextureHandle* handle)
 {
-	auto texture = (TextureD3D12*)handle;
+	auto texture = static_cast<TextureD3D12*>(handle);
 	texture->generateMips();
 }
 
 void BackendD3D12::destroyTexture(TextureHandle* handle)
 {
-	auto texture = (TextureD3D12*)handle;
+	auto texture = static_cast<TextureD3D12*>(handle);
 	delete texture;
 }
 
 RenderTargetHandle* BackendD3D12::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
-	auto texture = (TextureD3D12*)texture_handle;
+	auto texture = static_cast<TextureD3D12*>(texture_handle);
 	auto render_target = new RenderTargetD3D12(width, height, texture);
-	return (RenderTargetHandle*)render_target;
+	return render_target;
 }
 
 void BackendD3D12::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = (RenderTargetD3D12*)handle;
+	auto render_target = static_cast<RenderTargetD3D12*>(handle);
 	delete render_target;
 }
 
@@ -1523,30 +1523,30 @@ ShaderHandle* BackendD3D12::createShader(const std::string& vertex_code,
 	const std::string& fragment_code, const std::vector<std::string>& defines)
 {
 	auto shader = new ShaderD3D12(vertex_code, fragment_code, defines);
-	return (ShaderHandle*)shader;
+	return shader;
 }
 
 void BackendD3D12::destroyShader(ShaderHandle* handle)
 {
-	auto shader = (ShaderD3D12*)handle;
+	auto shader = static_cast<ShaderD3D12*>(handle);
 	delete shader;
 }
 
 VertexBufferHandle* BackendD3D12::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferD3D12(size, stride);
-	return (VertexBufferHandle*)buffer;
+	return buffer;
 }
 
 void BackendD3D12::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = (VertexBufferD3D12*)handle;
+	auto buffer = static_cast<VertexBufferD3D12*>(handle);
 	delete buffer;
 }
 
 void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
-	auto buffer = (VertexBufferD3D12*)handle;
+	auto buffer = static_cast<VertexBufferD3D12*>(handle);
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 
@@ -1563,12 +1563,12 @@ void BackendD3D12::writeVertexBufferMemory(VertexBufferHandle* handle, const voi
 IndexBufferHandle* BackendD3D12::createIndexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new IndexBufferD3D12(size, stride);
-	return (IndexBufferHandle*)buffer;
+	return buffer;
 }
 
 void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
 {
-	auto buffer = (IndexBufferD3D12*)handle;
+	auto buffer = static_cast<IndexBufferD3D12*>(handle);
 	buffer->write(memory, size);
 	buffer->setStride(stride);
 
@@ -1578,25 +1578,25 @@ void BackendD3D12::writeIndexBufferMemory(IndexBufferHandle* handle, const void*
 
 void BackendD3D12::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = (IndexBufferD3D12*)handle;
+	auto buffer = static_cast<IndexBufferD3D12*>(handle);
 	delete buffer;
 }
 
 UniformBufferHandle* BackendD3D12::createUniformBuffer(size_t size)
 {
 	auto buffer = new UniformBufferD3D12(size);
-	return (UniformBufferHandle*)buffer;
+	return buffer;
 }
 
 void BackendD3D12::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	auto buffer = (UniformBufferD3D12*)handle;
+	auto buffer = static_cast<UniformBufferD3D12*>(handle);
 	delete buffer;
 }
 
 void BackendD3D12::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
 {
-	auto buffer = (UniformBufferD3D12*)handle;
+	auto buffer = static_cast<UniformBufferD3D12*>(handle);
 	buffer->write(memory, size);
 }
 

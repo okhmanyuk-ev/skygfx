@@ -72,16 +72,16 @@ namespace skygfx
 		ClosestHit
 	};
 
-	using TextureHandle = struct TextureHandle;
-	using RenderTargetHandle = struct RenderTargetHandle;
-	using ShaderHandle = struct ShaderHandle;
-	using RaytracingShaderHandle = struct RaytracingShaderHandle;
-	using VertexBufferHandle = struct VertexBufferHandle;
-	using IndexBufferHandle = struct IndexBufferHandle;
-	using UniformBufferHandle = struct UniformBufferHandle;
-	using StorageBufferHandle = struct StorageBufferHandle;
-	using BottomLevelAccelerationStructureHandle = struct BottomLevelAccelerationStructureHandle;
-	using TopLevelAccelerationStructureHandle = struct TopLevelAccelerationStructureHandle;
+	struct TextureHandle { virtual ~TextureHandle() = default; };
+	struct RenderTargetHandle { virtual ~RenderTargetHandle() = default; };
+	struct ShaderHandle { virtual ~ShaderHandle() = default; };
+	struct RaytracingShaderHandle { virtual ~RaytracingShaderHandle() = default; };
+	struct VertexBufferHandle { virtual ~VertexBufferHandle() = default; };
+	struct IndexBufferHandle { virtual ~IndexBufferHandle() = default; };
+	struct UniformBufferHandle { virtual ~UniformBufferHandle() = default; };
+	struct StorageBufferHandle { virtual ~StorageBufferHandle() = default; };
+	struct BottomLevelAccelerationStructureHandle { virtual ~BottomLevelAccelerationStructureHandle() = default; };
+	struct TopLevelAccelerationStructureHandle { virtual ~TopLevelAccelerationStructureHandle() = default; };
 
 	namespace detail
 	{
