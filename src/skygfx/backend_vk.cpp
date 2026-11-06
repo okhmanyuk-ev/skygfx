@@ -470,12 +470,43 @@ std::tuple<vk::raii::PipelineLayout, vk::raii::DescriptorSetLayout, std::vector<
 class ObjectVK
 {
 public:
-	virtual ~ObjectVK() {}
+	virtual ~ObjectVK()
+	{
+		if (mTracked)
+			gContext->objects.erase(this);
+	}
+
+	bool isTracked() const { return mTracked; }
+
+	void track()
+	{
+		mTracked = true;
+		gContext->objects.insert(this);
+	}
+
+private:
+	bool mTracked = false;
 };
 
 class ShaderVK : public ShaderHandle, public ObjectVK
 {
 public:
+	~ShaderVK()
+	{
+		for (auto& [state, pipeline] : gContext->pipeline_states)
+		{
+			if (state.shader != this)
+				continue;
+
+			DestroyStaging(std::move(pipeline));
+		}
+
+		std::erase_if(gContext->pipeline_states, [&](const auto& item) {
+			const auto& [state, pipeline] = item;
+			return state.shader == this;
+		});
+	}
+
 	const auto& getPipelineLayout() const { return mPipelineLayout; }
 	const auto& getVertexShaderModule() const { return mVertexShaderModule; }
 	const auto& getFragmentShaderModule() const { return mFragmentShaderModule; }
@@ -528,6 +559,19 @@ void main()
 class RaytracingShaderVK : public RaytracingShaderHandle, public ObjectVK
 {
 public:
+	~RaytracingShaderVK()
+	{
+		std::erase_if(gContext->raytracing_pipeline_states, [&](const auto& item) {
+			const auto& [state, pipeline] = item;
+			return state.shader == this;
+		});
+
+		std::erase_if(gContext->raytracing_shader_binding_tables, [&](const auto& item) {
+			const auto& [state, binding_table] = item;
+			return state.shader == this;
+		});
+	}
+
 	const auto& getRaygenShaderModule() const { return mRaygenShaderModule; }
 	const auto& getMissShaderModules() const { return mMissShaderModules; }
 	const auto& getClosestHitShaderModule() const { return mClosestHitShaderModule; }
@@ -631,6 +675,14 @@ public:
 
 	~TextureVK()
 	{
+		if (isTracked())
+		{
+			std::erase_if(gContext->textures, [&](const auto& item) {
+				const auto& [binding, texture] = item;
+				return texture == this;
+			});
+		}
+
 		if (mImage.has_value())
 			DestroyStaging(std::move(mImage.value()));
 
@@ -883,6 +935,14 @@ public:
 	UniformBufferVK(size_t size) : BufferVK(size, vk::BufferUsageFlagBits::eUniformBuffer)
 	{
 	}
+
+	~UniformBufferVK()
+	{
+		std::erase_if(gContext->uniform_buffers, [&](const auto& item) {
+			const auto& [binding, buffer] = item;
+			return buffer == this;
+		});
+	}
 };
 
 class StorageBufferVK : public StorageBufferHandle, public BufferVK
@@ -890,6 +950,14 @@ class StorageBufferVK : public StorageBufferHandle, public BufferVK
 public:
 	StorageBufferVK(size_t size) : BufferVK(size, vk::BufferUsageFlagBits::eStorageBuffer)
 	{
+	}
+
+	~StorageBufferVK()
+	{
+		std::erase_if(gContext->storage_buffers, [&](const auto& item) {
+			const auto& [binding, buffer] = item;
+			return buffer == this;
+		});
 	}
 };
 
@@ -1094,6 +1162,11 @@ public:
 
 	~TopLevelAccelerationStructureVK()
 	{
+		std::erase_if(gContext->top_level_acceleration_structures, [&](const auto& item) {
+			const auto& [binding, acceleration_structure] = item;
+			return acceleration_structure == this;
+		});
+
 		DestroyStaging(std::move(mTlas));
 		DestroyStaging(std::move(mTlasBuffer));
 		DestroyStaging(std::move(mTlasMemory));
@@ -1111,7 +1184,7 @@ ContextVK::ContextVK() :
 
 ContextVK::~ContextVK()
 {
-	for (auto object : objects)
+	for (auto object : std::exchange(objects, {}))
 		delete object;
 }
 
@@ -3046,7 +3119,7 @@ TextureHandle* BackendVK::createTexture(uint32_t width, uint32_t height, PixelFo
 	uint32_t mip_count)
 {
 	auto texture = new TextureVK(width, height, PixelFormatMap.at(format), mip_count);
-	gContext->objects.insert(texture);
+	texture->track();
 	return texture;
 }
 
@@ -3071,99 +3144,58 @@ void BackendVK::generateMips(TextureHandle* handle)
 
 void BackendVK::destroyTexture(TextureHandle* handle)
 {
-	auto texture = static_cast<TextureVK*>(handle);
-	
-	std::erase_if(gContext->textures, [&](const auto& item) {
-		const auto& [binding, _texture] = item;
-		return texture == _texture;
-	});
-
-	gContext->objects.erase(texture);
-	delete texture;
+	delete static_cast<TextureVK*>(handle);
 }
 
 RenderTargetHandle* BackendVK::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
 {
 	auto texture = static_cast<TextureVK*>(texture_handle);
 	auto render_target = new RenderTargetVK(width, height, texture);
-	gContext->objects.insert(render_target);
+	render_target->track();
 	return render_target;
 }
 
 void BackendVK::destroyRenderTarget(RenderTargetHandle* handle)
 {
-	auto render_target = static_cast<RenderTargetVK*>(handle);
-	gContext->objects.erase(render_target);
-	delete render_target;
+	delete static_cast<RenderTargetVK*>(handle);
 }
 
 ShaderHandle* BackendVK::createShader(const std::string& vertex_code, const std::string& fragment_code,
 	const std::vector<std::string>& defines)
 {
 	auto shader = new ShaderVK(vertex_code, fragment_code, defines);
-	gContext->objects.insert(shader);
+	shader->track();
 	return shader;
 }
 
 void BackendVK::destroyShader(ShaderHandle* handle)
 {
-	auto shader = static_cast<ShaderVK*>(handle);
-
-	for (auto& [state, pipeline] : gContext->pipeline_states)
-	{
-		if (state.shader != shader)
-			continue;
-
-		DestroyStaging(std::move(pipeline));
-	}
-
-	std::erase_if(gContext->pipeline_states, [&](const auto& item) {
-		const auto& [state, pipeline] = item;
-		return state.shader == shader;
-	});
-
-	gContext->objects.erase(shader);
-	delete shader;
+	delete static_cast<ShaderVK*>(handle);
 }
 
 RaytracingShaderHandle* BackendVK::createRaytracingShader(const std::string& raygen_code, const std::vector<std::string>& miss_code,
 	const std::string& closesthit_code, const std::vector<std::string>& defines)
 {
 	auto shader = new RaytracingShaderVK(raygen_code, miss_code, closesthit_code, defines);
-	gContext->objects.insert(shader);
+	shader->track();
 	return shader;
 }
 
 void BackendVK::destroyRaytracingShader(RaytracingShaderHandle* handle)
 {
-	auto shader = static_cast<RaytracingShaderVK*>(handle);
-
-	std::erase_if(gContext->raytracing_pipeline_states, [&](const auto& item) {
-		const auto& [state, pipeline] = item;
-		return state.shader == shader;
-	});
-
-	std::erase_if(gContext->raytracing_shader_binding_tables, [&](const auto& item) {
-		const auto& [state, binding_table] = item;
-		return state.shader == shader;
-	});
-
-	gContext->objects.erase(shader);
-	delete shader;
+	delete static_cast<RaytracingShaderVK*>(handle);
 }
 
 VertexBufferHandle* BackendVK::createVertexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new VertexBufferVK(size, stride);
-	gContext->objects.insert(buffer);
+	buffer->track();
 	return buffer;
 }
 
 void BackendVK::destroyVertexBuffer(VertexBufferHandle* handle)
 {
-	auto buffer = static_cast<VertexBufferVK*>(handle);
-	gContext->objects.erase(buffer);
-	delete buffer;
+	delete static_cast<VertexBufferVK*>(handle);
 }
 
 void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -3183,15 +3215,13 @@ void BackendVK::writeVertexBufferMemory(VertexBufferHandle* handle, const void* 
 IndexBufferHandle* BackendVK::createIndexBuffer(size_t size, size_t stride)
 {
 	auto buffer = new IndexBufferVK(size, stride);
-	gContext->objects.insert(buffer);
+	buffer->track();
 	return buffer;
 }
 
 void BackendVK::destroyIndexBuffer(IndexBufferHandle* handle)
 {
-	auto buffer = static_cast<IndexBufferVK*>(handle);
-	gContext->objects.erase(buffer);
-	delete buffer;
+	delete static_cast<IndexBufferVK*>(handle);
 }
 
 void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, const void* memory, size_t size, size_t stride)
@@ -3207,21 +3237,13 @@ void BackendVK::writeIndexBufferMemory(IndexBufferHandle* handle, const void* me
 UniformBufferHandle* BackendVK::createUniformBuffer(size_t size)
 {
 	auto buffer = new UniformBufferVK(size);
-	gContext->objects.insert(buffer);
+	buffer->track();
 	return buffer;
 }
 
 void BackendVK::destroyUniformBuffer(UniformBufferHandle* handle)
 {
-	auto buffer = static_cast<UniformBufferVK*>(handle);
-
-	std::erase_if(gContext->uniform_buffers, [&](const auto& item) {
-		const auto& [binding, _buffer] = item;
-		return buffer == _buffer;
-	});
-
-	gContext->objects.erase(buffer);
-	delete buffer;
+	delete static_cast<UniformBufferVK*>(handle);
 }
 
 void BackendVK::writeUniformBufferMemory(UniformBufferHandle* handle, const void* memory, size_t size)
@@ -3236,56 +3258,38 @@ BottomLevelAccelerationStructureHandle* BackendVK::createBottomLevelAcceleration
 {
 	auto bottom_level_acceleration_structure = new BottomLevelAccelerationStructureVK(vertex_memory,
 		vertex_count, vertex_stride, index_memory, index_count, index_stride, transform);
-	gContext->objects.insert(bottom_level_acceleration_structure);
+	bottom_level_acceleration_structure->track();
 	return bottom_level_acceleration_structure;
 }
 
 void BackendVK::destroyBottomLevelAccelerationStructure(BottomLevelAccelerationStructureHandle* handle)
 {
-	auto bottom_level_acceleration_structure = static_cast<BottomLevelAccelerationStructureVK*>(handle);
-	gContext->objects.erase(bottom_level_acceleration_structure);
-	delete bottom_level_acceleration_structure;
+	delete static_cast<BottomLevelAccelerationStructureVK*>(handle);
 }
 
 TopLevelAccelerationStructureHandle* BackendVK::createTopLevelAccelerationStructure(
 	const std::vector<TopLevelAccelerationStructure::Instance>& instances)
 {
 	auto top_level_acceleration_structure = new TopLevelAccelerationStructureVK(instances);
-	gContext->objects.insert(top_level_acceleration_structure);
+	top_level_acceleration_structure->track();
 	return top_level_acceleration_structure;
 }
 
 void BackendVK::destroyTopLevelAccelerationStructure(TopLevelAccelerationStructureHandle* handle)
 {
-	auto top_level_acceleration_structure = static_cast<TopLevelAccelerationStructureVK*>(handle);
-
-	std::erase_if(gContext->top_level_acceleration_structures, [&](const auto& item) {
-		const auto& [binding, _acceleration_structure] = item;
-		return top_level_acceleration_structure == _acceleration_structure;
-	});
-
-	gContext->objects.erase(top_level_acceleration_structure);
-	delete top_level_acceleration_structure;
+	delete static_cast<TopLevelAccelerationStructureVK*>(handle);
 }
 
 StorageBufferHandle* BackendVK::createStorageBuffer(size_t size)
 {
 	auto buffer = new StorageBufferVK(size);
-	gContext->objects.insert(buffer);
+	buffer->track();
 	return buffer;
 }
 
 void BackendVK::destroyStorageBuffer(StorageBufferHandle* handle)
 {
-	auto buffer = static_cast<StorageBufferVK*>(handle);
-
-	std::erase_if(gContext->storage_buffers, [&](const auto& item) {
-		const auto& [binding, _buffer] = item;
-		return buffer == _buffer;
-	});
-
-	gContext->objects.erase(buffer);
-	delete buffer;
+	delete static_cast<StorageBufferVK*>(handle);
 }
 
 void BackendVK::writeStorageBufferMemory(StorageBufferHandle* handle, const void* memory, size_t size)
