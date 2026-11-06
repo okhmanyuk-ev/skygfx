@@ -695,6 +695,7 @@ void skygfx::Finalize()
 	gVertexBuffer.reset();
 	gUniformBuffers.clear();
 	gStorageBuffers.clear();
+	gTransientRenderTargets.clear();
 
 	delete gBackend;
 	gBackend = nullptr;
