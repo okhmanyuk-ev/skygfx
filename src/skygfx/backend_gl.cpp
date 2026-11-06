@@ -431,10 +431,7 @@ public:
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip_count - 1);
 	}
 
-	~TextureGL()
-	{
-		glDeleteTextures(1, &mTexture);
-	}
+	~TextureGL();
 
 	void write(uint32_t width, uint32_t height, const void* memory,
 		uint32_t mip_level, uint32_t offset_x, uint32_t offset_y)
@@ -747,6 +744,21 @@ struct ContextGL
 };
 
 static ContextGL* gContext = nullptr;
+
+TextureGL::~TextureGL()
+{
+	std::erase_if(gContext->textures, [&](const auto& item) {
+		const auto& [binding, texture] = item;
+
+		if (texture != this)
+			return false;
+
+		gContext->dirty_textures.erase(binding);
+		return true;
+	});
+
+	glDeleteTextures(1, &mTexture);
+}
 
 VertexBufferGL::~VertexBufferGL()
 {
@@ -1615,19 +1627,7 @@ void BackendGL::generateMips(TextureHandle* handle)
 
 void BackendGL::destroyTexture(TextureHandle* handle)
 {
-	auto texture = static_cast<TextureGL*>(handle);
-
-	std::erase_if(gContext->textures, [&](const auto& item) {
-		const auto& [binding, _texture] = item;
-
-		if (_texture != texture)
-			return false;
-
-		gContext->dirty_textures.erase(binding);
-		return true;
-	});
-
-	delete texture;
+	delete static_cast<TextureGL*>(handle);
 }
 
 RenderTargetHandle* BackendGL::createRenderTarget(uint32_t width, uint32_t height, TextureHandle* texture_handle)
